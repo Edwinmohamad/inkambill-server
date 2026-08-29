@@ -1,0 +1,36 @@
+<section>
+  <div class="module-head"><div><div class="module-kicker"><%= language==='en'?'ACCOUNT PROFILE':'PROFIL AKUN' %></div><h1><%= language==='en'?'My Profile':'Profil Saya' %></h1><p><%= language==='en'?'Manage your photo, identity and account security.':'Kelola foto profil, identitas, dan keamanan akun.' %></p></div></div>
+  <div class="profile-page-grid">
+    <form class="data-card profile-card" method="post" action="/profile" enctype="multipart/form-data">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <div class="data-card-body">
+        <div class="profile-hero">
+          <label class="profile-photo-picker">
+            <% if(profile.profile_photo){ %><img src="/profile/photo/<%= encodeURIComponent(profile.profile_photo) %>" alt="Foto profil"><% } else { %><span><%= profile.name.charAt(0).toUpperCase() %></span><% } %>
+            <input type="file" name="profile_photo" accept="image/jpeg,image/png,image/webp">
+            <i class="bi bi-camera-fill"></i>
+          </label>
+          <div><div class="module-kicker"><%= profile.role.toUpperCase() %></div><h2><%= profile.name %></h2><p>@<%= profile.username %></p></div>
+        </div>
+        <div class="row g-3 mt-2">
+          <div class="col-12"><label class="form-label"><%= language==='en'?'Display Name':'Nama Tampilan' %></label><input class="form-control" name="name" value="<%= profile.name %>" required></div>
+          <div class="col-md-6"><label class="form-label">Email</label><input class="form-control" value="<%= profile.email||'-' %>" disabled></div>
+          <div class="col-md-6"><label class="form-label"><%= language==='en'?'Phone':'Telepon' %></label><input class="form-control" value="<%= profile.phone||'-' %>" disabled></div>
+          <div class="col-md-6"><label class="form-label"><%= language==='en'?'Department':'Departemen' %></label><input class="form-control" value="<%= profile.department_name||'-' %>" disabled></div>
+          <div class="col-md-6"><label class="form-label"><%= language==='en'?'Position':'Posisi' %></label><input class="form-control" value="<%= profile.position_name||'-' %>" disabled></div>
+        </div>
+        <div class="form-help mt-3">JPG / PNG / WEBP · maksimal 4 MB. Data karyawan dapat dilengkapi melalui menu Pengaturan → Karyawan.</div>
+        <button class="btn-tech primary mt-3"><i class="bi bi-check2-circle"></i><%= language==='en'?'Save Profile':'Simpan Profil' %></button>
+      </div>
+    </form>
+    <form class="data-card" method="post" action="/profile/password">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <div class="data-card-head"><div><h3><%= language==='en'?'Account Security':'Keamanan Akun' %></h3><small><%= language==='en'?'Change your login password':'Ganti password login' %></small></div><i class="bi bi-shield-lock text-purple"></i></div>
+      <div class="data-card-body d-grid gap-3">
+        <div><label class="form-label"><%= language==='en'?'Current Password':'Password Saat Ini' %></label><input class="form-control" type="password" name="current_password" required></div>
+        <div><label class="form-label"><%= language==='en'?'New Password':'Password Baru' %></label><input class="form-control" type="password" name="new_password" minlength="8" required></div>
+        <button class="btn-tech"><i class="bi bi-key-fill"></i><%= language==='en'?'Change Password':'Ganti Password' %></button>
+      </div>
+    </form>
+  </div>
+</section>

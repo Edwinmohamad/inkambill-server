@@ -1,0 +1,138 @@
+<section class="mikrotik-page analytics-v119">
+  <div class="module-head analytics-head">
+    <div><div class="module-kicker">SERVICE PPPoE FOCUS</div><h1>MikroTik PPPoE</h1><p>Analitik, sesi aktif, dan audit sinkronisasi PPPoE tanpa beban monitoring live traffic.</p></div>
+    <a class="btn-tech" href="/network/monitor"><i class="bi bi-activity"></i>Buka NMS Lengkap</a>
+  </div>
+
+  <% if(isDummy){ %><div class="alert alert-warning alert-modern" role="alert"><i class="bi bi-exclamation-triangle-fill me-2"></i>Router MikroTik sedang tidak dapat dijangkau atau data belum siap. Menampilkan tampilan kosong yang aman sampai koneksi pulih.</div><% } %>
+  <% if(overview.routerErrors && overview.routerErrors.length){ %><div class="alert alert-warning alert-modern" role="alert"><i class="bi bi-wifi-off me-2"></i><b><%= overview.routerErrors.length %> router</b> tidak dapat dijangkau: <%= overview.routerErrors.map(e=>`${e.siteCode}/${e.name}`).join(', ') %>.</div><% } %>
+
+  <nav class="analytics-tabs" aria-label="MikroTik PPPoE">
+    <button class="active" data-mikrotik-tab="analytics"><i class="bi bi-pie-chart-fill"></i>PPPoE Analytics</button>
+    <button data-mikrotik-tab="sessions"><i class="bi bi-broadcast-pin"></i>Active Sessions</button>
+    <button data-mikrotik-tab="audit"><i class="bi bi-shield-check"></i>Sync & Audit</button>
+  </nav>
+
+  <div class="analytics-pane active" data-mikrotik-pane="analytics">
+    <div class="analytics-kpi-grid">
+      <article><span>Total Secret PPPoE</span><strong><%= overview.stats.totalSecrets %></strong><small><%= overview.routersChecked %> router terpantau</small><i class="bi bi-people-fill"></i></article>
+      <article><span>Online</span><strong><%= overview.stats.online %></strong><small>Sesi aktif saat ini</small><i class="bi bi-wifi"></i></article>
+      <article><span>Offline</span><strong><%= overview.stats.offline %></strong><small>Secret tidak connect</small><i class="bi bi-wifi-off"></i></article>
+      <article><span>Isolir</span><strong><%= overview.stats.isolated %></strong><small>Disabled / isolir</small><i class="bi bi-slash-circle"></i></article>
+    </div>
+    <div class="analytics-finance-grid">
+      <article class="analytics-chart-card"><div class="analytics-section-title"><div><span>DISTRIBUSI PROFIL</span><h2>Paket / Profile PPPoE</h2></div></div><div class="analytics-chart"><canvas id="mikrotikProfileChart"></canvas></div></article>
+      <article class="analytics-chart-card"><div class="analytics-section-title"><div><span>TREN 24 JAM<% if(trend.isEstimated){ %> · ESTIMASI<% } %></span><h2>Active Users</h2></div></div><div class="analytics-chart"><canvas id="mikrotikTrendChart"></canvas></div><% if(trend.isEstimated){ %><small class="cell-sub d-block mt-2"><i class="bi bi-info-circle"></i> Riwayat sample masih sedikit, kurva di atas adalah estimasi halus dari kondisi online saat ini. Grafik akan mengikuti data riil seiring waktu berjalan.</small><% } %></article>
+    </div>
+  </div>
+
+  <div class="analytics-pane" data-mikrotik-pane="sessions">
+    <div class="data-card">
+      <div class="data-card-head"><div><h3>Sesi PPPoE Aktif</h3><small><%= sessions.length %> user sedang online.</small></div></div>
+      <div class="table-responsive"><table class="app-table">
+        <thead><tr><th>Username</th><th>Pelanggan</th><th>Site / Router</th><th>Profil</th><th>IP</th><th>Uptime</th><th>Aksi</th></tr></thead>
+        <tbody>
+          <% sessions.forEach(s=>{ %><tr>
+            <td><span class="cell-main"><%= s.username %></span></td>
+            <td><% if(s.customerName){ %><span class="cell-main"><%= s.customerName %></span><span class="cell-sub"><%= s.customerCode %></span><% }else{ %><span class="status-badge orange">Belum link billing</span><% } %></td>
+            <td><span class="status-badge purple"><%= s.siteCode %></span><span class="cell-sub d-block"><%= s.routerName %></span></td>
+            <td><%= s.profile %></td>
+            <td><%= s.address %></td>
+            <td><%= s.uptime %></td>
+            <td><button type="button" class="approval-button reject" data-kick-router="<%= s.routerId %>" data-kick-secret="<%= s.secretId %>" data-kick-name="<%= s.username %>"><i class="bi bi-plug-fill"></i>Kick Session</button></td>
+          </tr><% }) %>
+          <% if(!sessions.length){ %><tr><td colspan="7"><div class="empty-state"><i class="bi bi-wifi-off"></i><strong>Tidak ada sesi PPPoE aktif</strong></div></td></tr><% } %>
+        </tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <div class="analytics-pane" data-mikrotik-pane="audit">
+    <div class="analytics-kpi-grid">
+      <article><span>Synced</span><strong><%= overview.sync.synced %></strong><small>Billing ↔ Router cocok</small><i class="bi bi-check2-circle"></i></article>
+      <article><span>Missing</span><strong><%= overview.sync.missing %></strong><small>Billing aktif, belum ada secret</small><i class="bi bi-exclamation-triangle"></i></article>
+      <article><span>Rogue</span><strong><%= overview.sync.rogue %></strong><small>Secret di router, tanpa billing</small><i class="bi bi-shield-exclamation"></i></article>
+      <article><span>Exempt</span><strong><%= overview.sync.exempt %></strong><small>Admin / free, dikecualikan</small><i class="bi bi-shield-check"></i></article>
+    </div>
+
+    <div class="data-card">
+      <div class="data-card-head"><div><h3>Missing · Pelanggan Belum Punya Secret</h3><small>Billing aktif namun belum terhubung PPPoE di router site-nya.</small></div></div>
+      <div class="table-responsive"><table class="app-table">
+        <thead><tr><th>Pelanggan</th><th>Site</th><th>Saran Router</th><th>Aksi</th></tr></thead>
+        <tbody>
+          <% syncAudit.missing.forEach(m=>{ %><tr>
+            <td><span class="cell-main"><%= m.customerName %></span><span class="cell-sub"><%= m.customerCode %></span></td>
+            <td><span class="status-badge purple"><%= m.siteCode %></span></td>
+            <td><%= m.routerName %></td>
+            <td><button type="button" class="approval-button approve" data-push-customer="<%= m.customerId %>" data-push-name="<%= m.customerName %>"><i class="bi bi-cloud-arrow-up"></i>Push to Router</button></td>
+          </tr><% }) %>
+          <% if(!syncAudit.missing.length){ %><tr><td colspan="4"><div class="empty-state compact"><i class="bi bi-check2-circle"></i><strong>Semua pelanggan aktif sudah tersinkron</strong></div></td></tr><% } %>
+        </tbody>
+      </table></div>
+    </div>
+
+    <div class="data-card">
+      <div class="data-card-head"><div><h3>Rogue · Secret Tanpa Billing</h3><small>Ada di router tetapi tidak terhubung ke pelanggan billing mana pun dan bukan akun admin/free.</small></div></div>
+      <div class="table-responsive"><table class="app-table">
+        <thead><tr><th>Username</th><th>Site / Router</th><th>Profil</th><th>Status</th><th>Aksi</th></tr></thead>
+        <tbody>
+          <% syncAudit.rogue.forEach(r=>{ %><tr>
+            <td><span class="cell-main"><%= r.username %></span></td>
+            <td><span class="status-badge purple"><%= r.siteCode %></span><span class="cell-sub d-block"><%= r.routerName %></span></td>
+            <td><%= r.profile %></td>
+            <td><span class="status-badge <%= r.status==='online'?'green':r.status==='isolated'?'red':'orange' %>"><%= r.status %></span></td>
+            <td><button type="button" class="approval-button reject" data-delete-router="<%= r.routerId %>" data-delete-secret="<%= r.secretId %>" data-delete-name="<%= r.username %>"><i class="bi bi-trash3-fill"></i>Delete Secret</button></td>
+          </tr><% }) %>
+          <% if(!syncAudit.rogue.length){ %><tr><td colspan="5"><div class="empty-state compact"><i class="bi bi-check2-circle"></i><strong>Tidak ada rogue secret</strong></div></td></tr><% } %>
+        </tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <div class="nms-toast" id="mikrotikToast" hidden></div>
+</section>
+
+<div class="modal fade" id="mikrotikConfirmModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="mikrotikConfirmTitle">Konfirmasi</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body" id="mikrotikConfirmBody">-</div><div class="modal-footer"><button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button><button type="button" class="btn-tech danger" id="mikrotikConfirmSubmit">Konfirmasi</button></div></div></div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+(()=>{
+  document.querySelectorAll('[data-mikrotik-tab]').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('[data-mikrotik-tab]').forEach(x=>x.classList.toggle('active',x===btn));document.querySelectorAll('[data-mikrotik-pane]').forEach(x=>x.classList.toggle('active',x.dataset.mikrotikPane===btn.dataset.mikrotikTab));}));
+
+  const csrfToken=document.querySelector('meta[name="csrf-token"]')?.content||'';
+  const toastEl=document.getElementById('mikrotikToast');
+  const toast=(message,type='success')=>{if(!toastEl)return;toastEl.className=`nms-toast ${type}`;toastEl.innerHTML=`<i class="bi ${type==='danger'?'bi-x-octagon-fill':'bi-check-circle-fill'}"></i>${message}`;toastEl.hidden=false;clearTimeout(toastEl._t);toastEl._t=setTimeout(()=>toastEl.hidden=true,5000);};
+  async function post(url){const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','CSRF-Token':csrfToken},body:'{}'});let data={};try{data=await res.json();}catch(e){}if(!res.ok||!data.ok)throw new Error(data.error||`HTTP ${res.status}`);return data;}
+
+  const confirmModalEl=document.getElementById('mikrotikConfirmModal');
+  const confirmModal=window.bootstrap?new bootstrap.Modal(confirmModalEl):null;
+  let pendingAction=null;
+  function openConfirm(title,body,action){document.getElementById('mikrotikConfirmTitle').textContent=title;document.getElementById('mikrotikConfirmBody').textContent=body;pendingAction=action;confirmModal?confirmModal.show():((confirm(body))&&action());}
+  document.getElementById('mikrotikConfirmSubmit')?.addEventListener('click',async()=>{const action=pendingAction;pendingAction=null;confirmModal?.hide();if(action)await action();});
+
+  document.querySelectorAll('[data-kick-router]').forEach(btn=>btn.addEventListener('click',()=>{
+    openConfirm('Kick Session',`Putuskan sesi aktif ${btn.dataset.kickName}? Akun PPPoE tetap tersimpan.`,async()=>{
+      try{const r=await post(`/mikrotik/sessions/${btn.dataset.kickRouter}/${btn.dataset.kickSecret}/kick`);toast(r.message);setTimeout(()=>location.reload(),900);}catch(e){toast(e.message,'danger');}
+    });
+  }));
+  document.querySelectorAll('[data-delete-router]').forEach(btn=>btn.addEventListener('click',()=>{
+    openConfirm('Delete Secret',`Hapus permanen secret ${btn.dataset.deleteName} dari router? Tindakan ini tidak dapat dibatalkan.`,async()=>{
+      try{const r=await post(`/mikrotik/secrets/${btn.dataset.deleteRouter}/${btn.dataset.deleteSecret}/delete`);toast(r.message);setTimeout(()=>location.reload(),900);}catch(e){toast(e.message,'danger');}
+    });
+  }));
+  document.querySelectorAll('[data-push-customer]').forEach(btn=>btn.addEventListener('click',()=>{
+    openConfirm('Push to Router',`Buat secret PPPoE baru di router untuk ${btn.dataset.pushName}?`,async()=>{
+      try{const r=await post(`/mikrotik/customers/${btn.dataset.pushCustomer}/push`);toast(`${r.message} Username: ${r.username} · Password: ${r.password}`);setTimeout(()=>location.reload(),1600);}catch(e){toast(e.message,'danger');}
+    });
+  }));
+
+  if(typeof Chart==='undefined')return;
+  const profileData=<%- JSON.stringify(overview.profileDistribution) %>;
+  const trendData=<%- JSON.stringify(trend) %>;
+  const palette=['#766cff','#2ed6a1','#ffbd5b','#ff6969','#61d8ff','#8b7bff','#7d899d'];
+  const profileCanvas=document.getElementById('mikrotikProfileChart');
+  if(profileCanvas)new Chart(profileCanvas,{type:'doughnut',data:{labels:profileData.map(p=>p.profile),datasets:[{data:profileData.map(p=>p.count),backgroundColor:profileData.map((_,i)=>palette[i%palette.length]),borderColor:'rgba(8,12,25,.9)',borderWidth:3,hoverOffset:6}]},options:{responsive:true,maintainAspectRatio:false,cutout:'68%',plugins:{legend:{position:'bottom',labels:{color:'#8995aa',boxWidth:10,usePointStyle:true}}}}});
+  const trendCanvas=document.getElementById('mikrotikTrendChart');
+  if(trendCanvas){const ctx=trendCanvas.getContext('2d');const fill=ctx.createLinearGradient(0,0,0,220);fill.addColorStop(0,'rgba(97,216,255,.30)');fill.addColorStop(1,'rgba(97,216,255,0)');new Chart(trendCanvas,{type:'line',data:{labels:trendData.labels,datasets:[{label:'Active Users',data:trendData.values,borderColor:'#61d8ff',backgroundColor:fill,fill:true,tension:.35,borderWidth:2.2,pointRadius:0,pointHoverRadius:4,borderDash:trendData.isEstimated?[6,4]:[]}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{color:'#7f8aa0',maxTicksLimit:8}},y:{beginAtZero:true,grid:{color:'rgba(148,163,184,.08)'},ticks:{color:'#7f8aa0',precision:0}}}}});}
+})();
+</script>

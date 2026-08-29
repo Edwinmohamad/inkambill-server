@@ -1,0 +1,128 @@
+<% const paymentFilterQuery=new URLSearchParams({q:filters.q||'',site:filters.site||'',cluster:filters.cluster||'',month:filters.month||'',year:filters.year||'',approval:filters.approval||''}).toString(); const paymentMonthNames=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember']; %>
+<section>
+  <div class="module-head">
+    <div><div class="module-kicker">APPROVAL & TRANSACTION CENTER</div><h1>Approval & Transaksi</h1><p>Satu pusat verifikasi pembayaran pelanggan dan transaksi kas manual sebelum memengaruhi data keuangan resmi.</p></div>
+    <div class="module-actions"><% if(isAdmin){ %><a class="btn-tech" href="/payments/reconciliation"><i class="bi bi-arrow-left-right"></i>Rekonsiliasi Cash</a><button class="btn-tech primary" data-bs-toggle="modal" data-bs-target="#paymentModal"><i class="bi bi-plus-lg"></i>Catat Pembayaran</button><% } %></div>
+  </div>
+
+  <% if(Number(missingProof?.total||0)>0){ %>
+  <div class="alert alert-warning alert-modern alert-dismissible fade show" role="alert">
+    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+    <b><%= Number(missingProof.total) %> pembayaran</b> sudah disetujui (<%= formatRupiah(missingProof.amount||0) %>) namun belum memiliki lampiran bukti transfer. Segera lengkapi buktinya lewat tombol <b>Upload/Ganti Bukti</b> pada baris terkait.
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  <% } %>
+
+  <div class="metric-grid">
+    <article class="metric-card green"><div class="metric-top"><span class="metric-label">Pembayaran Terkonfirmasi</span><span class="metric-icon"><i class="bi bi-patch-check-fill"></i></span></div><strong><%= formatRupiah(summary.confirmed_total||0) %></strong><small><%= paymentMonthNames[summaryMonth-1] %> <%= summaryYear %></small></article>
+    <article class="metric-card orange"><div class="metric-top"><span class="metric-label">Cash di Tim</span><span class="metric-icon"><i class="bi bi-person-badge-fill"></i></span></div><strong><%= formatRupiah(summary.cash_held||0) %></strong><small>Belum disetor ke kas perusahaan</small></article>
+    <article class="metric-card red"><div class="metric-top"><span class="metric-label">Menunggu Approval</span><span class="metric-icon"><i class="bi bi-shield-exclamation"></i></span></div><strong><%= formatRupiah(summary.transfer_pending||0) %></strong><small>Hanya Master Admin yang dapat menyetujui</small></article>
+    <article class="metric-card"><div class="metric-top"><span class="metric-label">Faktur Terbuka</span><span class="metric-icon"><i class="bi bi-hourglass-split"></i></span></div><strong><%= openInvoices.length %></strong><small>Siap menerima pembayaran</small></article>
+  </div>
+
+  <div class="payment-approval-flow"><span><i class="bi bi-pencil-square"></i><b>1. Admin input</b></span><i class="bi bi-arrow-right"></i><span><i class="bi bi-paperclip"></i><b>2. Bukti opsional</b></span><i class="bi bi-arrow-right"></i><span><i class="bi bi-hourglass-split"></i><b>3. Menunggu</b></span><i class="bi bi-arrow-right"></i><span class="master"><i class="bi bi-shield-fill-check"></i><b>4. Master Approve / Reject</b></span></div>
+
+
+  <% if(isMasterAdmin){ %>
+  <article class="cash-approval-center" id="cash-approval">
+    <div class="data-card-head"><div><div class="module-kicker">CASH APPROVAL QUEUE</div><h3>Approval Kas Manual</h3><small>Pengeluaran / pemasukan dari Admin belum memengaruhi saldo real sebelum Anda menyetujui.</small></div><span class="cash-approval-count"><i class="bi bi-shield-check"></i><%= cashApprovals.length %> pending</span></div>
+    <% if(cashApprovals.length){ %><div class="cash-approval-list"><% cashApprovals.forEach(tx=>{ %>
+      <div class="cash-approval-item <%= tx.category_type %>">
+        <div class="cash-approval-type"><i class="bi <%= tx.category_type==='income'?'bi-arrow-down-left-circle-fill':'bi-arrow-up-right-circle-fill' %>"></i><span><b><%= tx.category_type==='income'?'Pemasukan':'Pengeluaran' %></b><small><%= tx.transaction_code||`TX-${tx.id}` %></small></span></div>
+        <div class="cash-approval-copy"><strong><%= tx.name %></strong><small><%= tx.category_name %> · <%= tx.site_code||'GLOBAL' %> · input <%= tx.creator_name||'-' %></small><em><%= tx.notes||'Tanpa catatan tambahan' %></em></div>
+        <div class="cash-approval-value"><strong><%= formatRupiah(tx.amount) %></strong><small><%= formatDate(tx.transaction_date) %></small><% if(tx.proof_path){ %><a href="/cash/<%= tx.id %>/proof" target="_blank" rel="noopener"><i class="bi bi-paperclip"></i>Bukti</a><% } %></div>
+        <div class="cash-approval-actions"><form method="post" action="/cash/<%= tx.id %>/approve" onsubmit="return confirm('Setujui transaksi kas <%= tx.transaction_code||tx.id %>? Nilainya akan masuk saldo real.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="return_to" value="/payments#cash-approval"><button class="approval-button approve"><i class="bi bi-check2-circle"></i>Approve</button></form><button type="button" class="approval-button reject" data-cash-reject="<%= tx.id %>" data-code="<%= tx.transaction_code||tx.id %>" data-bs-toggle="modal" data-bs-target="#cashRejectModal"><i class="bi bi-x-circle"></i>Reject</button></div>
+      </div>
+    <% }) %></div><% } else { %><div class="empty-state compact"><i class="bi bi-shield-check"></i><strong>Tidak ada kas menunggu approval</strong><small>Semua pengajuan kas manual sudah ditindaklanjuti.</small></div><% } %>
+  </article>
+  <% } %>
+
+  <form class="filter-card" method="get" action="/payments">
+    <div class="filter-grid payment-filter-grid">
+      <div class="filter-group"><label>CARI</label><div class="search-box"><i class="bi bi-search"></i><input name="q" value="<%= filters.q %>" placeholder="Nama, Customer ID, faktur, referensi..."></div></div>
+      <div class="filter-group"><label>SITE / POP</label><select class="form-select" name="site"><option value="">Semua Site</option><% sites.forEach(s=>{ %><option value="<%= s.code %>" <%= filters.site===s.code?'selected':'' %>><%= s.code %> · <%= s.name %></option><% }) %></select></div>
+      <div class="filter-group"><label>CLUSTER / ODP</label><select class="form-select" name="cluster"><option value="">Semua Cluster</option><% clusters.forEach(c=>{ %><option value="<%= c.id %>" <%= String(filters.cluster)===String(c.id)?'selected':'' %>><%= c.site_code %> · <%= c.name %></option><% }) %></select></div>
+      <div class="filter-group"><label>STATUS APPROVAL</label><select class="form-select" name="approval"><option value="">Semua Approval</option><option value="pending" <%= filters.approval==='pending'?'selected':'' %>>Menunggu Approval</option><option value="confirmed" <%= filters.approval==='confirmed'?'selected':'' %>>Disetujui</option><option value="failed" <%= filters.approval==='failed'?'selected':'' %>>Ditolak</option></select></div>
+      <div class="filter-group"><label>PERIODE</label><div class="d-flex gap-2"><select class="form-select" name="month"><option value="">Semua Bulan</option><% paymentMonthNames.forEach((name,index)=>{ %><option value="<%= index+1 %>" <%= Number(filters.month)===index+1?'selected':'' %>><%= name %></option><% }) %></select><input class="form-control" type="number" name="year" min="2020" max="2100" value="<%= filters.year||'' %>" placeholder="Tahun"></div></div>
+      <div class="filter-group d-flex align-items-end gap-2"><button class="btn-tech primary flex-fill"><i class="bi bi-search"></i>Cari</button><a class="btn-tech" href="/payments"><i class="bi bi-x-lg"></i></a></div>
+    </div>
+  </form>
+
+  <div class="data-card">
+    <div class="data-card-head">
+      <div><h3>Riwayat Pembayaran</h3><small>Master Admin dapat melakukan Approve atau Reject langsung dari kolom approval, atau memilih beberapa baris sekaligus untuk Approve Massal.</small></div>
+      <div class="invoice-registry-tools">
+        <% if(isMasterAdmin){ %><div class="invoice-selection-state"><i class="bi bi-check2-square"></i><span><b id="paymentsTableSelectedCount">0</b> dipilih</span></div><% } %>
+        <div class="legend-inline"><span><i class="dot success"></i>Disetujui</span><span><i class="dot warning"></i>Menunggu</span><span><i class="dot danger"></i>Ditolak</span></div>
+      </div>
+    </div>
+    <div class="table-responsive">
+      <table class="app-table" data-bulk-scope="paymentsApproveBulkBar">
+        <!-- v1.24.6 — kolom "Status Approval" dan "Approval Master" digabung jadi satu kolom "Approval"
+             (UI/UX audit): sebelumnya dua kolom terpisah membahas hal yang sama (badge status di satu
+             kolom, tombol Approve/Reject di kolom lain) — sekarang satu kolom saja: badge biasa, atau
+             kalau statusnya menunggu & yang login Master Admin, badge itu berubah jadi tombol langsung.
+             v1.25.2 — audit UI: kolom "Faktur" dihapus (nomor faktur dipindah jadi sub-teks di kolom
+             Pelanggan agar tetap bisa dibuka, tanpa kolom sendiri) dan kolom "Waktu" dihapus, digantikan
+             kolom "Jatuh Tempo" yang lebih relevan untuk follow-up penagihan. Kolom "No." dan checkbox
+             pilih-massal (Master Admin) ditambahkan di paling kiri. -->
+        <thead><tr>
+          <% if(isMasterAdmin){ %><th class="app-check-col"><input type="checkbox" class="form-check-input" data-select-all aria-label="Pilih semua pembayaran menunggu approval"></th><% } %>
+          <th>No.</th><th>Pelanggan</th><th>Site / Cluster</th><th>Jatuh Tempo</th><th>Nominal</th><th>Metode</th><th>Bukti Pembayaran</th><th>Diterima Oleh</th><th>Approval</th><th>Aksi</th>
+        </tr></thead>
+        <tbody>
+          <% payments.forEach((p,idx)=>{ %>
+          <tr>
+            <% if(isMasterAdmin){ %><td class="app-check-col"><input type="checkbox" class="form-check-input" data-row-check value="<%= p.id %>" <%= p.status==='pending'?'':'disabled' %> aria-label="Pilih pembayaran <%= p.reference||p.id %> untuk approve massal"></td><% } %>
+            <td><span class="cell-main"><%= idx+1 %></span></td>
+            <td><span class="cell-main"><%= p.customer_name %></span><span class="cell-sub"><%= p.customer_code %></span></td>
+            <td><span class="cell-main"><%= p.site_code %></span><span class="cell-sub">Cluster <%= p.cluster_name||'-' %></span></td>
+            <td><%= formatDate(p.due_date) %></td>
+            <td class="money"><%= formatRupiah(p.amount) %><span class="cell-sub"><%= p.reference||'-' %></span></td>
+            <td><span class="payment-method <%= p.method %>"><i class="bi <%= p.method==='cash'?'bi-cash-coin':p.method==='transfer'?'bi-bank':'bi-wallet2' %>"></i><%= statusLabel(p.method).toUpperCase() %></span></td>
+            <td>
+              <% if(p.proof_path){ %><button type="button" class="proof-chip proof-view-btn" data-bs-toggle="modal" data-bs-target="#proofViewerModal" data-proof-url="/payments/<%= p.id %>/proof" data-proof-mime="<%= p.proof_mime||'' %>" data-customer="<%= p.customer_name %>" data-customer-code="<%= p.customer_code %>" data-invoice="<%= p.invoice_number %>" data-amount="<%= formatRupiah(p.amount) %>" data-bank="<%= p.bank_name||'-' %>" data-reference="<%= p.reference||'-' %>" data-uploader="<%= p.proof_uploader_name||'-' %>" data-uploaded="<%= p.proof_uploaded_at?new Date(p.proof_uploaded_at).toLocaleString('id-ID',{timeZone:'Asia/Jakarta'}):'-' %>" data-status="<%= statusLabel(p.status) %>"><span class="proof-chip-icon"><i class="bi <%= p.proof_mime==='application/pdf'?'bi-file-earmark-pdf-fill':'bi-image-fill' %>"></i></span><span><strong>Lihat Bukti</strong><small><%= p.proof_mime==='application/pdf'?'PDF':'Foto' %></small></span></button>
+              <% } else { %><span class="proof-missing proof-optional"><i class="bi bi-paperclip"></i>Tanpa bukti · input admin</span><% } %>
+            </td>
+            <td><%= p.collector_name||'-' %></td>
+            <td>
+              <% if(p.status==='pending'){ %>
+                <% if(isMasterAdmin){ %><div class="master-approval-actions"><form method="post" action="/payments/<%= p.id %>/verify" onsubmit="return confirm('Approve pembayaran <%= p.reference||p.id %><%= p.proof_path?' berdasarkan bukti yang tersedia':' TANPA bukti lampiran' %>? Tagihan akan diperbarui.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="return_to" value="/payments?<%= paymentFilterQuery %>"><button class="approval-button approve"><i class="bi bi-check2-circle"></i>Approve</button></form><button type="button" class="approval-button reject" data-payment-reject="<%= p.id %>" data-reference="<%= p.reference||p.id %>" data-return-to="/payments?<%= paymentFilterQuery %>" data-bs-toggle="modal" data-bs-target="#paymentRejectModal"><i class="bi bi-x-circle"></i>Reject</button></div>
+                <% } else { %><span class="status-badge orange"><i class="bi bi-hourglass-split"></i> menunggu Master Admin</span><% } %>
+              <% } else if(p.status==='failed'){ %><span class="status-badge red"><i class="bi bi-x-octagon-fill"></i> ditolak <%= p.verifier_name||'Master Admin' %></span><% if(p.rejection_reason){ %><span class="payment-reject-reason"><b>Alasan:</b> <%= p.rejection_reason %></span><% } %>
+              <% } else if(p.method==='cash'&&p.settlement_status==='held_by_staff'){ %><span class="status-badge purple">cash di staff</span>
+              <% } else if(p.method==='cash'&&p.settlement_status==='settled'){ %><span class="status-badge green">sudah disetor</span>
+              <% } else { %><span class="status-badge green"><i class="bi bi-shield-check"></i> disetujui <%= p.verifier_name||'Master Admin' %></span><% } %>
+            </td>
+            <td><div class="payment-actions"><% if(isAdmin||Number(p.received_by)===Number(user.id)||Number(p.collector_user_id)===Number(user.id)){ %><button type="button" class="action-pill proof-upload-btn" title="<%= p.proof_path?'Ganti bukti':'Upload bukti pembayaran' %>" data-bs-toggle="modal" data-bs-target="#proofUploadModal" data-payment-id="<%= p.id %>" data-customer="<%= p.customer_name %>" data-invoice="<%= p.invoice_number %>"><i class="bi bi-cloud-arrow-up"></i></button><% } %><% if(p.proof_path){ %><a class="action-pill" href="/payments/<%= p.id %>/proof" target="_blank" rel="noopener" title="Buka bukti"><i class="bi bi-box-arrow-up-right"></i></a><% } %></div></td>
+          </tr>
+          <% }) %>
+          <% if(!payments.length){ %><tr><td colspan="<%= isMasterAdmin?11:10 %>"><div class="empty-state"><i class="bi bi-wallet2"></i><strong>Data pembayaran tidak ditemukan</strong><small>Ubah kata pencarian atau catat pembayaran baru.</small></div></td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <% if(isMasterAdmin){ %><div class="customer-bulk-bar" id="paymentsApproveBulkBar" hidden><span><b data-bulk-count>0</b> pembayaran terpilih</span><div class="customer-bulk-buttons"><button type="button" data-bulk-clear class="ghost"><i class="bi bi-x-lg"></i>Batal</button><button type="button" class="success" data-simple-delete-bulk data-simple-delete-variant="success" data-simple-delete-kicker="KONFIRMASI APPROVAL" data-simple-delete-confirm-label="Ya, Approve" data-simple-delete-confirm-icon="bi-check2-circle" data-bulk-scope-id="paymentsApproveBulkBar" data-bulk-url="/payments/bulk-verify" data-bulk-action-field="action" data-bulk-action-value="verify" data-bulk-id-field="payment_ids[]" data-entity-label-plural="pembayaran" data-simple-delete-title="Approve pembayaran terpilih?" data-simple-delete-warning="Hanya pembayaran yang masih berstatus menunggu dan nominalnya tidak melebihi sisa tagihan saat ini yang akan disetujui — sisanya otomatis dilewati. Tagihan dan jurnal kas terkait akan diperbarui otomatis."><i class="bi bi-check2-circle"></i>Approve Massal</button></div></div><% } %>
+</section>
+
+<% if(isAdmin){ %><%- include('_payment-modal',{openInvoices,staff,banks,preselectedInvoiceId,returnTo:'/payments?'+paymentFilterQuery,autoOpenPaymentModal:!!preselectedInvoiceId}) %><% } %>
+
+<div class="modal fade" id="proofViewerModal" tabindex="-1"><div class="modal-dialog modal-xl modal-dialog-centered"><div class="modal-content proof-viewer-modal"><div class="modal-header"><div><div class="module-kicker">BUKTI PEMBAYARAN</div><h5 class="modal-title">Bukti Pembayaran</h5></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body proof-viewer-grid"><div class="proof-stage"><div class="proof-stage-grid"></div><img id="proofViewerImage" alt="Bukti pembayaran" class="d-none"><iframe id="proofViewerPdf" title="Bukti pembayaran PDF" class="d-none"></iframe><div id="proofViewerLoading" class="proof-loading"><span class="proof-scan"></span><i class="bi bi-shield-lock-fill"></i><strong>Secure Payment Evidence</strong><small>Memuat bukti pembayaran...</small></div></div><aside class="proof-meta-panel"><div class="proof-verified-seal" id="proofStatusSeal"><i class="bi bi-patch-check-fill"></i><span>PAYMENT</span><strong>CONFIRMED</strong></div><div class="proof-meta-list"><div><span>Pelanggan</span><strong id="proofMetaCustomer">-</strong><small id="proofMetaCode">-</small></div><div><span>Faktur</span><strong id="proofMetaInvoice">-</strong></div><div><span>Nominal</span><strong id="proofMetaAmount">-</strong></div><div><span>Bank</span><strong id="proofMetaBank">-</strong></div><div><span>Referensi</span><strong id="proofMetaReference">-</strong></div><div><span>Diupload Oleh</span><strong id="proofMetaUploader">-</strong><small id="proofMetaUploaded">-</small></div></div><a id="proofOpenNew" class="btn-tech w-100 justify-content-center" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right"></i>Buka File Asli</a></aside></div></div></div></div>
+
+<div class="modal fade" id="proofUploadModal" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-centered"><form method="post" enctype="multipart/form-data" class="modal-content" id="proofReplaceForm"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="return_to" value="/payments?<%= paymentFilterQuery %>"><div class="modal-header"><div><div class="module-kicker">UPLOAD BUKTI</div><h5 class="modal-title">Upload / Ganti Bukti TF</h5></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="proof-payment-context"><i class="bi bi-receipt-cutoff"></i><div><strong id="proofUploadCustomer">-</strong><small id="proofUploadInvoice">-</small></div></div><label class="proof-dropzone large mt-3"><input id="replacement_proof_file" type="file" name="proof_file" accept="image/jpeg,image/png,image/webp,application/pdf" required><span class="proof-drop-icon"><i class="bi bi-cloud-arrow-up-fill"></i></span><span><strong>Pilih bukti pembayaran</strong><small>JPG, PNG, WEBP, PDF · Maks. 6 MB</small><em id="replacementProofName">Belum ada file dipilih</em></span></label></div><div class="modal-footer"><button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button><button class="btn-tech primary"><i class="bi bi-cloud-check"></i>Simpan Bukti</button></div></form></div></div>
+
+
+<div class="modal fade" id="cashRejectModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><form method="post" class="modal-content" id="cashRejectForm"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="return_to" value="/payments#cash-approval"><div class="modal-header"><div><div class="module-kicker">CASH APPROVAL</div><h5 class="modal-title">Reject Transaksi Kas</h5><small class="text-secondary" id="cashRejectCode">-</small></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><label class="form-label">Alasan Penolakan</label><textarea class="form-control" name="reason" rows="4" minlength="3" maxlength="500" required placeholder="Contoh: bukti belum sesuai / nominal perlu dikoreksi"></textarea><div class="secure-file-note mt-3"><i class="bi bi-shield-exclamation"></i><span>Transaksi yang ditolak tetap tersimpan sebagai riwayat, tetapi tidak masuk saldo dan laporan keuangan real.</span></div></div><div class="modal-footer"><button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button><button class="btn-tech danger"><i class="bi bi-x-octagon"></i>Reject Kas</button></div></form></div></div>
+
+<div class="modal fade" id="paymentRejectModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><form method="post" class="modal-content" id="paymentRejectForm"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="return_to" id="paymentRejectReturn"><div class="modal-header"><div><div class="module-kicker">MASTER APPROVAL</div><h5 class="modal-title">Reject Pembayaran</h5><small class="text-secondary" id="paymentRejectReference">-</small></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><label class="form-label">Alasan Penolakan</label><textarea class="form-control" name="reason" rows="4" maxlength="500" required placeholder="Contoh: nominal atau data transaksi belum sesuai"></textarea><div class="secure-file-note mt-3"><i class="bi bi-info-circle"></i><span>Faktur tetap terbuka dan admin dapat mengajukan pembayaran baru setelah transaksi ini ditolak.</span></div></div><div class="modal-footer"><button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button><button class="btn-tech danger"><i class="bi bi-x-octagon"></i>Reject Pembayaran</button></div></form></div></div>
+
+<script>
+(()=>{
+  const replaceInput=document.getElementById('replacement_proof_file');const replacementName=document.getElementById('replacementProofName');replaceInput?.addEventListener('change',()=>replacementName.textContent=replaceInput.files?.[0]?.name||'Belum ada file dipilih');
+  document.querySelectorAll('.proof-upload-btn').forEach(btn=>btn.addEventListener('click',()=>{const f=document.getElementById('proofReplaceForm');f.action=`/payments/${btn.dataset.paymentId}/proof`;document.getElementById('proofUploadCustomer').textContent=btn.dataset.customer||'-';document.getElementById('proofUploadInvoice').textContent=btn.dataset.invoice||'-';}));
+  document.querySelectorAll('[data-payment-reject]').forEach(btn=>btn.addEventListener('click',()=>{const f=document.getElementById('paymentRejectForm');f.action=`/payments/${btn.dataset.paymentReject}/reject`;document.getElementById('paymentRejectReturn').value=btn.dataset.returnTo||'/payments';document.getElementById('paymentRejectReference').textContent=`Referensi ${btn.dataset.reference||'-'}`;}));
+  document.querySelectorAll('[data-cash-reject]').forEach(btn=>btn.addEventListener('click',()=>{const f=document.getElementById('cashRejectForm');if(!f)return;f.action=`/cash/${btn.dataset.cashReject}/reject`;document.getElementById('cashRejectCode').textContent=`Transaksi ${btn.dataset.code||'-'}`;}));
+  const img=document.getElementById('proofViewerImage'),pdf=document.getElementById('proofViewerPdf'),loading=document.getElementById('proofViewerLoading');
+  document.querySelectorAll('.proof-view-btn').forEach(btn=>btn.addEventListener('click',()=>{const url=btn.dataset.proofUrl,mime=btn.dataset.proofMime||'';img.classList.add('d-none');pdf.classList.add('d-none');loading.classList.remove('d-none');document.getElementById('proofMetaCustomer').textContent=btn.dataset.customer||'-';document.getElementById('proofMetaCode').textContent=btn.dataset.customerCode||'-';document.getElementById('proofMetaInvoice').textContent=btn.dataset.invoice||'-';document.getElementById('proofMetaAmount').textContent=btn.dataset.amount||'-';document.getElementById('proofMetaBank').textContent=btn.dataset.bank||'-';document.getElementById('proofMetaReference').textContent=btn.dataset.reference||'-';document.getElementById('proofMetaUploader').textContent=btn.dataset.uploader||'-';document.getElementById('proofMetaUploaded').textContent=btn.dataset.uploaded||'-';document.getElementById('proofOpenNew').href=url;const seal=document.getElementById('proofStatusSeal');seal.classList.toggle('pending',btn.dataset.status==='pending');seal.querySelector('strong').textContent=btn.dataset.status==='pending'?'PENDING':'CONFIRMED';if(mime==='application/pdf'){pdf.src=url;pdf.classList.remove('d-none');setTimeout(()=>loading.classList.add('d-none'),500);}else{img.src=url;img.onload=()=>loading.classList.add('d-none');img.onerror=()=>loading.querySelector('small').textContent='Bukti gagal dimuat. Coba buka file asli.';img.classList.remove('d-none');}}));
+})();
+</script>

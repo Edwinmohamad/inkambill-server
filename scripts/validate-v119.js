@@ -1,0 +1,21 @@
+const fs=require('fs');
+function read(file){return fs.readFileSync(file,'utf8');}
+function must(file,needle,label=needle){const s=read(file);if(!s.includes(needle))throw new Error(`${file}: missing ${label}`);}
+function mustNot(file,needle,label=needle){const s=read(file);if(s.includes(needle))throw new Error(`${file}: forbidden ${label}`);}
+function exists(file){if(!fs.existsSync(file))throw new Error(`missing file: ${file}`);}
+function braces(file){const s=read(file);let depth=0;for(const ch of s){if(ch==='{')depth++;else if(ch==='}')depth--;if(depth<0)throw new Error(`${file}: closing brace imbalance`);}if(depth!==0)throw new Error(`${file}: brace imbalance ${depth}`);}
+
+const checks=[];
+function check(name,fn){fn();checks.push(name);}
+
+check('dashboard cleanup',()=>{mustNot('views/dashboard/index.ejs','PIKET MINGGU INI');mustNot('views/dashboard/index.ejs','Piket Minggu Ini');must('views/dashboard/index.ejs','Traffic PSB Hari Ini');must('views/dashboard/index.ejs','Total PSB Bulan Ini');must('views/dashboard/index.ejs','dashboard-user-ticker');must('views/dashboard/index.ejs','KONDISI PELANGGAN PER SITE');});
+check('analytics module',()=>{['routes/analytics.js','services/analyticsService.js','views/analytics/index.ejs'].forEach(exists);must('app.js',"app.use('/analytics'");must('views/partials/layout.ejs','href="/analytics"');must('views/analytics/index.ejs','SMART ADVISORY ENGINE');must('views/analytics/index.ejs','CASHFLOW STREAM');must('views/analytics/index.ejs','PSB CONVERSION FUNNEL');must('views/analytics/index.ejs','ODP CAPACITY HEATMAP');must('views/analytics/index.ejs','analytics-v119');mustNot('views/analytics/index.ejs','cdn.tailwindcss.com');must('routes/analytics.js',"router.get('/export-report'");must('services/analyticsService.js','function cutoffWindow');must('services/analyticsService.js','function buildReportSummary');});
+check('infrastructure hub',()=>{exists('services/infrastructureProxy.js');must('views/partials/layout.ejs','Infrastructure Hub');mustNot('views/network/tools.ejs','target="_blank"');must('views/network/tools.ejs','id="infraFrame"');must('views/network/tools.ejs','id="infraReload"');must('views/network/tools.ejs','id="infraFullscreen"');must('routes/network.js','/tools/proxy/:toolKey');must('services/infrastructureProxy.js','x-frame-options');must('services/infrastructureProxy.js','content-security-policy');must('middleware/csrf.js',"req.path.startsWith('/network/tools/proxy/')");});
+check('cash approval workflow',()=>{must('services/schemaService.js',"PENDING_APPROVAL','APPROVED','REJECTED");must('routes/finance.js',"'manual','PENDING_APPROVAL'");must('routes/finance.js',"router.post('/cash/:id/approve',requireMasterAdmin");must('routes/finance.js',"router.post('/cash/:id/reject',requireMasterAdmin");must('routes/reports.js',"COALESCE(ct.approval_status,'APPROVED')='APPROVED'");must('views/payments/index.ejs','id="cash-approval"');must('views/payments/index.ejs','cashRejectModal');must('views/partials/layout.ejs','Approval & Transaksi');});
+check('login ticker schema',()=>{must('services/schemaService.js','CREATE TABLE IF NOT EXISTS user_login_events');must('routes/auth.js','INSERT INTO user_login_events');must('routes/dashboard.js','frequentLogins');must('routes/dashboard.js','recentLogins');});
+check('pending cash excluded from real totals',()=>{must('routes/finance.js',"COALESCE(ct.approval_status,'APPROVED')='APPROVED'");must('services/analyticsService.js',"COALESCE(ct.approval_status,'APPROVED')='APPROVED'");must('routes/dashboard.js','pending_cash_approvals');});
+check('schema bootstrap',()=>{must('app.js','ensureV27Schema');must('services/schemaService.js','async function ensureV27Schema');});
+check('version',()=>{must('package.json','"version": "1.25.5"');must('views/partials/layout.ejs','CONTROL CENTER v1.25.5');});
+check('style markers',()=>{must('public/css/app.css','v1.19.0');must('public/css/app.css','@keyframes inkUserTicker');must('public/css/app.css','.psb-hero-v119');must('public/css/app.css','.infra-hub-shell');must('public/css/app.css','.analytics-v119');must('public/css/app.css','--border:var(--line)');must('public/css/app.css','--card:var(--panel)');braces('public/css/app.css');});
+
+console.log(`v1.19 contract validation OK: ${checks.length} groups passed (${checks.join(', ')}).`);

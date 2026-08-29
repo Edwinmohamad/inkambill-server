@@ -1,0 +1,7 @@
+<section class="access-denied-card">
+  <span class="access-denied-icon"><i class="bi bi-shield-lock-fill"></i></span>
+  <div class="module-kicker">ROLE PERMISSION</div>
+  <h1>Akses Dibatasi</h1>
+  <p>Role <strong><%= user?.role||'-' %></strong> belum memiliki permission <code><%= requiredPermission %></code>. Hubungi administrator untuk mengubah akses pada menu Pengaturan.</p>
+  <a class="btn-tech primary" href="/"><i class="bi bi-arrow-left"></i>Kembali ke Dashboard</a>
+</section>

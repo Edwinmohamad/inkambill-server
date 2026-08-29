@@ -1,0 +1,182 @@
+<% const customerFilterQuery=new URLSearchParams({q:filters.q||'',site:filters.site||'',cluster:filters.cluster||'',sales:filters.sales||'',status:filters.status||'',network:filters.network||''}).toString(); const isArchivedView=filters.status==='archived'; %>
+<% /* v1.21.0: explicit null/undefined check, never `||0` — a genuine 0 count must render as 0, not silently fall through to a stale value. */ const n=(v)=>v!=null?Number(v):0; %>
+<section>
+  <div class="module-head">
+    <div><div class="module-kicker">CUSTOMER EXPERIENCE</div><h1>Manajemen Pelanggan</h1><p>Kelola pelanggan, paket, site, status billing, dan kondisi jaringan dari satu layar.</p></div>
+    <div class="module-actions customer-actions"><a class="btn-tech" href="/customers/template.xlsx"><i class="bi bi-file-earmark-spreadsheet"></i>Template XLSX</a><% if(isAdmin){ %><button class="btn-tech" type="button" data-bs-toggle="modal" data-bs-target="#customerImportModal"><i class="bi bi-cloud-arrow-up-fill"></i>Import XLSX</button><% } %><a class="btn-tech" href="/customers/export.xlsx?<%= customerFilterQuery %>"><i class="bi bi-download"></i>Export XLSX</a><a class="btn-tech primary" href="/customers/new"><i class="bi bi-person-plus-fill"></i>Tambah Pelanggan</a></div>
+  </div>
+
+  <!-- v1.20 — Section 4: Data Diarsip sub-menu. A pure tab toggle on top of the existing filters. -->
+  <div class="customer-view-tabs" role="tablist" aria-label="Tampilan data pelanggan">
+    <a class="<%= !isArchivedView?'active':'' %>" href="/customers"><i class="bi bi-people-fill"></i>Data Aktif</a>
+    <a class="<%= isArchivedView?'active':'' %>" href="/customers?status=archived"><i class="bi bi-archive-fill"></i>Data Diarsip<span class="customer-view-tab-count"><%= n(stats.archived) %></span></a>
+  </div>
+
+  <div class="metric-grid">
+    <article class="metric-card"><div class="metric-top"><span class="metric-label">Total Pelanggan</span><span class="metric-icon"><i class="bi bi-people-fill"></i></span></div><strong><%= n(stats.total) %></strong><small>Seluruh data pelanggan</small></article>
+    <article class="metric-card green"><div class="metric-top"><span class="metric-label">Pelanggan Aktif</span><span class="metric-icon"><i class="bi bi-person-check-fill"></i></span></div><strong><%= n(stats.active) %></strong><small>Service aktif</small></article>
+    <article class="metric-card orange"><div class="metric-top"><span class="metric-label"><%= language==='en'?'Suspended':'Ditangguhkan' %></span><span class="metric-icon"><i class="bi bi-pause-circle-fill"></i></span></div><strong><%= n(stats.suspended) %></strong><small>Nonaktif sementara</small></article>
+    <article class="metric-card red"><div class="metric-top"><span class="metric-label">Terisolir</span><span class="metric-icon"><i class="bi bi-wifi-off"></i></span></div><strong><%= n(stats.isolated) %></strong><small>Status isolasi jaringan</small></article>
+  </div>
+
+  <form class="filter-card" method="get">
+    <div class="filter-grid">
+      <div class="filter-group"><label>PENCARIAN</label><input class="form-control" name="q" value="<%= filters.q %>" placeholder="ID, nama, telepon, alamat, site, cluster..."></div>
+      <div class="filter-group"><label>SITE / POP</label><select class="form-select" name="site"><option value="">Semua Site</option><% sites.forEach(s=>{ %><option value="<%= s.code %>" <%= filters.site===s.code?'selected':'' %>><%= s.code %> · <%= s.name %></option><% }) %></select></div>
+      <div class="filter-group"><label>CLUSTER / ODP</label><select class="form-select" name="cluster"><option value="">Semua Cluster</option><% clusters.forEach(c=>{ %><option value="<%= c.id %>" <%= String(filters.cluster)===String(c.id)?'selected':'' %>><%= c.site_code %> · <%= c.name %></option><% }) %></select></div>
+      <div class="filter-group"><label>SALES</label><select class="form-select" name="sales"><option value="">Semua Sales</option><% sales.forEach(s=>{ %><option value="<%= s.id %>" <%= String(filters.sales)===String(s.id)?'selected':'' %>><%= s.employee_code %> · <%= s.name %></option><% }) %></select></div>
+      <div class="filter-group"><label>STATUS PELANGGAN</label><select class="form-select" name="status"><option value="">Semua Status</option><option value="active" <%= filters.status==='active'?'selected':'' %>>Aktif</option><option value="inactive" <%= filters.status==='inactive'?'selected':'' %>>Tidak Aktif</option><option value="suspended" <%= filters.status==='suspended'?'selected':'' %>><%= statusLabel("suspended") %></option><option value="terminated" <%= filters.status==='terminated'?'selected':'' %>>Berhenti</option><option value="archived" <%= filters.status==='archived'?'selected':'' %>>🗄️ Data Diarsip</option></select></div>
+      <div class="filter-group d-flex align-items-end gap-2"><button class="btn-tech primary flex-fill"><i class="bi bi-funnel-fill"></i>Terapkan Filter</button><a class="btn-tech" href="/customers"><i class="bi bi-arrow-counterclockwise"></i></a></div>
+    </div>
+  </form>
+
+  <div class="data-card action-safe-card">
+    <div class="data-card-head"><div><h3>Database Pelanggan<%= isArchivedView?' · Arsip':'' %></h3><small><%= customers.length %> data ditemukan</small></div><div class="toolbar-right"><span class="status-badge purple"><%= customers.length %> rows</span></div></div>
+    <div class="table-responsive action-safe-table" data-bulk-scope="customerBulkBar">
+      <table class="app-table"><thead><tr><th class="customer-check-col"><input type="checkbox" class="form-check-input" data-select-all aria-label="Pilih semua pelanggan"></th><th class="customer-sequence">No.</th><th>Pelanggan</th><th>Site / Cluster</th><th>Paket</th><th>Harga Paket</th><th>Kontak</th><th class="text-center">Tindakan</th></tr></thead><tbody>
+      <% customers.forEach((c,index)=>{ const wa=c.whatsapp_status==='valid'?String(c.whatsapp_normalized||''):''; const archived=!!c.archived_at; %><tr data-customer-row="<%= c.id %>" data-customer-name="<%= c.name %>" data-customer-code="<%= c.customer_code %>" <% if(wa.length>=9){ %>data-customer-wa="<%= wa %>"<% } %>>
+        <td class="customer-check-col"><input type="checkbox" class="form-check-input" data-row-check value="<%= c.id %>" aria-label="Pilih <%= c.name %>"></td>
+        <td class="customer-sequence"><span class="cell-main"><%= index+1 %></span></td>
+        <td><a class="cell-main text-decoration-none" href="/customers/<%= c.id %>"><%= c.name %></a><span class="cell-sub"><%= c.customer_code %></span><% if(archived){ %><span class="status-badge gray customer-archived-pill"><i class="bi bi-archive-fill"></i>Diarsipkan</span><% } %></td>
+        <td><span class="cell-main"><%= c.site_code %></span><span class="cell-sub"><%= c.cluster_name || 'Belum di-cluster' %></span></td>
+        <td><span class="cell-main"><%= c.package_name %></span><span class="cell-sub"><%= c.speed_label || 'Paket Internet' %></span></td>
+        <td class="money"><%= formatRupiah(c.package_price) %><span class="cell-sub">/ bulan</span></td>
+        <td><% if(wa){ %><a class="customer-wa-link" href="https://wa.me/<%= wa %>" target="_blank" rel="noopener noreferrer" title="Buka WhatsApp <%= c.name %>"><i class="bi bi-whatsapp"></i><span><%= c.phone %></span></a><% }else{ %><span class="cell-main"><%= c.phone||'-' %></span><% } %><% if(c.whatsapp_status!=='valid'){ %><span class="wa-validation-badge invalid"><i class="bi bi-exclamation-octagon-fill"></i>Format nomor tidak valid</span><% } %></td>
+        <td class="text-center customer-action-cell">
+          <div class="customer-row-buttons">
+            <a class="btn-tech compact" href="/customers/<%= c.id %>/edit" title="Edit pelanggan"><i class="bi bi-pencil-square"></i></a>
+            <% if(isAdmin){ %>
+              <% if(archived){ %>
+                <form method="post" action="/customers/<%= c.id %>/restore" onsubmit="return confirm('Pulihkan pelanggan ini ke status Aktif?')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn-tech compact success" type="submit" title="Restore / Pulihkan"><i class="bi bi-arrow-counterclockwise"></i></button></form>
+                <% if(!Number(c.has_invoice_count||0)){ %><button class="btn-tech compact danger" type="button" data-hard-delete-danger="/customers/<%= c.id %>/hard-delete" data-entity-label="<%= c.name %> (<%= c.customer_code %>)" title="Hapus Permanen"><i class="bi bi-trash3-fill"></i></button><% } %>
+              <% }else{ %>
+                <button class="btn-tech compact danger" type="button" data-delete-choice data-archive-url="/customers/<%= c.id %>/delete" <% if(!Number(c.has_invoice_count||0)){ %>data-hard-delete-url="/customers/<%= c.id %>/hard-delete"<% } %> data-entity-label="<%= c.name %> (<%= c.customer_code %>)" title="Hapus"><i class="bi bi-trash3"></i></button>
+              <% } %>
+            <% } %>
+            <% if(isMasterAdmin && Number(c.has_invoice_count||0)>0){ %><button class="btn-tech compact danger" type="button" data-force-delete="/customers/<%= c.id %>/force-delete<%= archived?'?return_status=archived':'' %>" data-entity-label="<%= c.name %> (<%= c.customer_code %>)" data-force-delete-match="<%= c.customer_code %>" data-force-delete-warning="Pelanggan ini sudah memiliki riwayat tagihan. Hapus Paksa akan menghapus pelanggan INI beserta SELURUH tagihan dan riwayat pembayarannya secara permanen, dan TIDAK dapat dibatalkan." title="Hapus Paksa (Master Admin)"><i class="bi bi-exclamation-octagon-fill"></i></button><% } %>
+            <button class="action-menu" type="button" data-action-popover-target="customerAction<%= c.id %>" aria-label="Buka tindakan pelanggan <%= c.name %>"><i class="bi bi-three-dots-vertical"></i></button>
+          </div>
+          <div class="ink-action-popover" id="customerAction<%= c.id %>" hidden>
+            <div class="ink-action-popover-head"><div><small>PELANGGAN</small><strong><%= c.name %></strong><span><%= c.customer_code %> · <%= c.site_code %><%= c.cluster_name?' · '+c.cluster_name:'' %></span><% if(c.address){ %><span class="cell-sub"><%= c.address %></span><% } %></div></div>
+            <div class="ink-action-popover-body">
+              <a class="ink-action-item compact" href="/customers/<%= c.id %>"><i class="bi bi-person-vcard"></i><span><b>Detail Pelanggan</b><small>Lihat profil lengkap pelanggan</small></span></a>
+              <a class="ink-action-item compact" href="/customers/<%= c.id %>/edit"><i class="bi bi-pencil-square"></i><span><b>Edit</b><small>Perbarui data pelanggan</small></span></a>
+              <% if(c.open_invoice_id){ %><a class="ink-action-item compact success" href="/payments?invoice_id=<%= c.open_invoice_id %>"><i class="bi bi-wallet2"></i><span><b>Pembayaran</b><small>Catat pembayaran tagihan aktif</small></span></a><% }else{ %><a class="ink-action-item compact" href="/invoices?customer=<%= c.id %>"><i class="bi bi-receipt"></i><span><b>Cek Tagihan</b><small>Lihat daftar tagihan pelanggan</small></span></a><% } %>
+              <a class="ink-action-item compact" href="/payments?q=<%= encodeURIComponent(c.customer_code) %>"><i class="bi bi-clock-history"></i><span><b>Cek Pembayaran</b><small>Riwayat transaksi pelanggan</small></span></a>
+              <a class="ink-action-item compact" href="/invoices?customer=<%= c.id %>"><i class="bi bi-receipt-cutoff"></i><span><b>Rincian Tagihan</b><small>Invoice dan status pembayaran</small></span></a>
+              <a class="ink-action-item compact" href="/network/monitor"><i class="bi bi-router-fill"></i><span><b>Kelola di MikroTik NMS</b><small>Sinkron PPPoE dan monitoring dilakukan terpusat</small></span></a>
+              <% if(wa.length>=9){ %><a class="ink-action-item compact success" href="https://wa.me/<%= wa %>" target="_blank" rel="noopener noreferrer"><i class="bi bi-whatsapp"></i><span><b>WhatsApp</b><small>Hubungi pelanggan</small></span></a><% } %>
+              <div class="ink-action-separator"></div><div class="system-validation-note"><i class="bi bi-cpu-fill"></i><span><b>Validasi WhatsApp otomatis</b><small>Status dihitung sistem setiap nomor disimpan.</small></span></div>
+              <% if(isAdmin){ %><div class="ink-action-separator"></div>
+                <% if(archived){ %><form method="post" action="/customers/<%= c.id %>/restore" onsubmit="return confirm('Pulihkan pelanggan ini ke status Aktif?')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="ink-action-item compact success" type="submit"><i class="bi bi-arrow-counterclockwise"></i><span><b>Restore / Pulihkan</b><small>Kembalikan ke status aktif</small></span></button></form>
+                  <% if(!Number(c.has_invoice_count||0)){ %><button class="ink-action-item compact danger" type="button" data-hard-delete-danger="/customers/<%= c.id %>/hard-delete" data-entity-label="<%= c.name %> (<%= c.customer_code %>)"><i class="bi bi-trash3-fill"></i><span><b>Hapus Permanen</b><small>Tindakan tidak dapat dibatalkan</small></span></button><% } %>
+                <% }else{ %><button class="ink-action-item compact danger" type="button" data-delete-choice data-archive-url="/customers/<%= c.id %>/delete" <% if(!Number(c.has_invoice_count||0)){ %>data-hard-delete-url="/customers/<%= c.id %>/hard-delete"<% } %> data-entity-label="<%= c.name %> (<%= c.customer_code %>)"><i class="bi bi-trash3"></i><span><b>Hapus</b><small>Pilih arsip atau hapus permanen</small></span></button><% } %>
+              <% } %>
+              <% if(isMasterAdmin && Number(c.has_invoice_count||0)>0){ %><button class="ink-action-item compact danger" type="button" data-force-delete="/customers/<%= c.id %>/force-delete<%= archived?'?return_status=archived':'' %>" data-entity-label="<%= c.name %> (<%= c.customer_code %>)" data-force-delete-match="<%= c.customer_code %>" data-force-delete-warning="Pelanggan ini sudah memiliki riwayat tagihan. Hapus Paksa akan menghapus pelanggan INI beserta SELURUH tagihan dan riwayat pembayarannya secara permanen, dan TIDAK dapat dibatalkan."><i class="bi bi-exclamation-octagon-fill"></i><span><b>Hapus Paksa</b><small>Master Admin · hapus beserta tagihan & pembayaran</small></span></button><% } %>
+            </div>
+          </div>
+        </td>
+      </tr><% }) %>
+      <% if(!customers.length){ %><tr><td colspan="8"><div class="empty-state"><i class="bi bi-people"></i><strong>Data pelanggan tidak ditemukan</strong><small><%= isArchivedView?'Belum ada pelanggan yang diarsipkan.':'Coba ubah filter atau tambahkan pelanggan baru.' %></small></div></td></tr><% } %>
+      </tbody></table>
+    </div>
+  </div>
+
+  <!-- v1.20.1 — Section 3/4 revision: floating bulk action bar, shown once ≥1 row is checked
+       (see data-bulk-scope JS in app.js). Data Aktif gets a "Hapus" bulk action that opens the
+       shared Arsip vs Hapus Permanen choice modal; Data Diarsip gets a dedicated "Hapus Permanen
+       Massal" danger action instead, since archived rows only ever get hard-deleted or restored. -->
+  <div class="customer-bulk-bar" id="customerBulkBar" hidden data-return-status="<%= isArchivedView?'archived':'' %>">
+    <span><b data-bulk-count>0</b> pelanggan dipilih</span>
+    <div class="customer-bulk-buttons">
+      <% if(!isArchivedView){ %>
+      <button type="button" id="customerBulkDelete" class="danger"><i class="bi bi-trash3"></i>Hapus Massal</button>
+      <button type="button" id="customerBulkWa"><i class="bi bi-whatsapp"></i>Kirim WA Reminder Massal</button>
+      <button type="button" id="customerBulkPackage" data-bs-toggle="modal" data-bs-target="#customerBulkPackageModal"><i class="bi bi-box-seam"></i>Ubah Paket Massal</button>
+      <% }else{ %>
+      <button type="button" id="customerBulkHardDelete" class="danger"><i class="bi bi-trash3-fill"></i>Hapus Permanen Massal</button>
+      <% } %>
+      <% if(isMasterAdmin){ %><button type="button" class="danger" data-force-delete-bulk data-bulk-scope-id="customerBulkBar" data-bulk-url="/customers/bulk<%= isArchivedView?'?return_status=archived':'' %>" data-bulk-action-field="action" data-bulk-action-value="force_delete" data-bulk-id-field="customer_ids[]" data-entity-label-plural="pelanggan" data-force-delete-match="HAPUS PAKSA" data-force-delete-warning="Hapus Paksa akan menghapus SEMUA pelanggan terpilih beserta SELURUH tagihan dan riwayat pembayarannya secara permanen — dan TIDAK dapat dibatalkan."><i class="bi bi-exclamation-octagon-fill"></i>Hapus Paksa Massal</button><% } %>
+      <button type="button" class="ghost" data-bulk-clear><i class="bi bi-x-lg"></i>Batal</button>
+    </div>
+  </div>
+</section>
+
+<div class="modal fade" id="customerBulkPackageModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header"><div><div class="module-kicker">UBAH PAKET MASSAL</div><h5 class="modal-title">Pilih Paket Tujuan</h5><small class="text-secondary">Pelanggan pada site yang tidak cocok dengan paket akan dilewati.</small></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <label class="form-label">Paket Internet Tujuan</label>
+        <select class="form-select" id="customerBulkPackageSelect">
+          <option value="">Pilih paket…</option>
+          <% packages.forEach(p=>{ %><option value="<%= p.id %>"><%= p.site_code||'GLOBAL' %> · <%= p.name %><%= p.speed_label?' · '+p.speed_label:'' %></option><% }) %>
+        </select>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button><button type="button" class="btn-tech primary" id="customerBulkPackageSubmit"><i class="bi bi-box-seam"></i>Terapkan ke Pelanggan Terpilih</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="customerBulkWaModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content psb-modal-content">
+      <div class="modal-header"><div><div class="module-kicker">WA REMINDER MASSAL</div><h5 class="modal-title">Buka WhatsApp per Pelanggan</h5><small class="text-secondary"><b id="customerBulkWaTotal">0</b> dari pelanggan terpilih memiliki nomor WhatsApp tervalidasi.</small></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body"><div class="psb-customer-list" id="customerBulkWaList"></div></div>
+      <div class="modal-footer"><button type="button" class="btn-tech primary" data-bs-dismiss="modal">Tutup</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="customerImportModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <form class="modal-content customer-import-modal" method="post" action="/customers/import" enctype="multipart/form-data">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <div class="modal-header">
+        <div><div class="module-kicker">IMPORT PELANGGAN</div><h5 class="modal-title">Import Pelanggan dari Excel</h5><small class="text-secondary">Customer ID dibuat otomatis oleh sistem.</small></div>
+        <button class="btn-close" type="button" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="customer-import-console">
+          <div class="customer-import-topbar">
+            <label class="customer-import-file">
+              <i class="bi bi-file-earmark-spreadsheet-fill"></i>
+              <input type="file" name="customer_file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+              <span><b>Pilih file .xlsx</b><small data-file-label>Belum ada file dipilih</small></span>
+            </label>
+            <button class="btn-tech primary" type="submit"><i class="bi bi-cloud-arrow-up-fill"></i>Import</button>
+            <a class="btn-tech customer-template-download" href="/customers/template.xlsx"><i class="bi bi-file-earmark-arrow-down"></i>Download Format Import</a>
+          </div>
+          <div class="customer-import-warning">
+            <i class="bi bi-exclamation-triangle-fill"></i>
+            <div>
+              <strong>Sebelum melakukan import</strong>
+              <ul>
+                <li>Pastikan <a href="/sites" target="_blank">Site / POP</a> sudah dibuat.</li>
+                <li>Pastikan <a href="/packages" target="_blank">Paket Internet</a> sudah dibuat dan sesuai dengan Site pelanggan.</li>
+                <li>Jika mengisi Cluster / Router, data tersebut harus sudah ada pada Site yang sama.</li>
+                <li>Jangan menambahkan kolom Customer ID. Sistem generate otomatis, contoh <b>KRW-15-001</b>.</li>
+              </ul>
+            </div>
+          </div>
+          <div class="customer-import-required">
+            <div class="customer-import-required-head"><span>KOLOM WAJIB</span><small>Jika salah satu kosong, import seluruh file dibatalkan.</small></div>
+            <div class="customer-import-chip-grid">
+              <% ['Nama','Site','Paket Internet','Alamat','Whatsapp','Tanggal Instalasi','Tanggal Jatuh Tempo'].forEach(x=>{ %><span><i class="bi bi-asterisk"></i><%= x %></span><% }) %>
+            </div>
+          </div>
+          <div class="customer-import-rules">
+            <div><i class="bi bi-diagram-3-fill"></i><span><b>Site + Paket harus cocok</b><small>Paket site-specific tidak dapat digunakan di Site lain. Lihat sheet REFERENSI pada template.</small></span></div>
+            <div><i class="bi bi-shield-check"></i><span><b>Validasi atomik</b><small>Semua baris diperiksa dulu. Satu error = tidak ada data setengah masuk.</small></span></div>
+            <div><i class="bi bi-hash"></i><span><b>Customer ID otomatis</b><small>Format Site + Jatuh Tempo + nomor urut, tanpa risiko duplikat dari import normal.</small></span></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <span class="customer-import-footer-note"><i class="bi bi-info-circle"></i>Format yang disarankan: template terbaru dari tombol Download Format Import.</span>
+        <button class="btn-tech" type="button" data-bs-dismiss="modal">Batal</button>
+        <button class="btn-tech primary" type="submit"><i class="bi bi-stars"></i>Validasi & Import</button>
+      </div>
+    </form>
+  </div>
+</div>

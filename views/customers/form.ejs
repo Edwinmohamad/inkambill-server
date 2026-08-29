@@ -1,0 +1,82 @@
+<section>
+<div class="module-head"><div><div class="module-kicker"><%= customer?'CUSTOMER UPDATE':'NEW SUBSCRIBER' %></div><h1><%= customer?'Edit':'Tambah' %> Pelanggan</h1><p>Identitas pelanggan, Customer ID per site, service plan, dan billing preference.</p></div><div class="module-actions"><a class="btn-tech" href="/customers"><i class="bi bi-arrow-left"></i>Kembali</a></div></div>
+<form method="post" action="<%= customer ? '/customers/'+customer.id : '/customers' %>" class="data-card" id="customerForm"><input type="hidden" name="_csrf" value="<%= csrfToken %>">
+<div class="data-card-head"><div><h3>Customer Profile</h3><small>Customer ID dibuat manual dengan tombol Generate ID dan tetap bisa diedit sebelum disimpan.</small></div><span class="status-badge purple"><%= customer?.customer_code||'NEW' %></span></div>
+<div class="data-card-body"><div class="row g-3">
+<div class="col-md-5"><label class="form-label">Customer ID *</label><div class="customer-id-control"><input class="form-control" id="customerCode" name="customer_code" required value="<%= customer?.customer_code || '' %>" placeholder="KRW-15-001" autocomplete="off"><button class="btn-tech primary" id="generateCustomerCode" type="button"><i class="bi bi-stars"></i>Generate ID</button></div><div class="form-help">Format unik mengikuti site + jatuh tempo + nomor urut. Contoh KRW-15-001, CLM-30-001, KBG-15-001.</div></div>
+<div class="col-md-7"><label class="form-label">Nama *</label><input class="form-control" name="name" required value="<%= customer?.name || '' %>"></div>
+<div class="col-md-4"><label class="form-label">No. WhatsApp</label><input class="form-control" name="phone" value="<%= customer?.phone || '' %>" placeholder="628..."></div>
+<div class="col-md-3"><label class="form-label">Mode Email</label><select class="form-select" name="email_mode" id="emailMode"><option value="auto" <%= !customer || String(customer?.email||'').endsWith('@customer.inkamnet.local')?'selected':'' %>>Generate Otomatis</option><option value="manual" <%= customer && customer.email && !String(customer.email).endsWith('@customer.inkamnet.local')?'selected':'' %>>Input Manual</option></select></div>
+<div class="col-md-5"><label class="form-label">Email</label><input class="form-control" type="email" id="customerEmail" name="email" value="<%= customer?.email || '' %>" placeholder="otomatis@customer.inkamnet.local"><div class="form-help" id="emailHelp">Mode otomatis membuat alamat internal dari Customer ID. Pilih manual jika pelanggan punya email sendiri.</div></div>
+<div class="col-12"><label class="form-label">Alamat</label><textarea class="form-control" rows="3" name="address"><%= customer?.address || '' %></textarea></div>
+</div><hr style="border-color:var(--line);margin:24px 0"><div class="module-kicker">LAYANAN PELANGGAN</div><div class="row g-3">
+<div class="col-md-4"><label class="form-label">Site *</label><select class="form-select" name="site_id" id="customerSite" required><% sites.forEach(s=>{ %><option value="<%= s.id %>" data-code="<%= s.code %>" <%= String(customer?.site_id||'')===String(s.id)?'selected':'' %>><%= s.code %> · <%= s.name %></option><% }) %></select></div>
+<div class="col-md-4"><label class="form-label">Paket *</label><select class="form-select" name="package_id" id="customerPackage" required><% packages.forEach(p=>{ %><option value="<%= p.id %>" data-site-id="<%= p.site_id||'' %>" data-price="<%= Number(p.price) %>" <%= String(customer?.package_id||'')===String(p.id)?'selected':'' %>><%= p.site_code?`${p.site_code} · `:'GLOBAL · ' %><%= p.name %> · <%= formatRupiah(p.price) %></option><% }) %></select><div class="form-help">Hanya paket yang sesuai dengan Site pelanggan yang dapat dipilih.</div></div>
+<div class="col-md-4"><label class="form-label">Cluster / ODP</label><select class="form-select" name="cluster_id"><option value="">Belum dipilih</option><% clusters.forEach(cl=>{ %><option value="<%= cl.id %>" <%= String(customer?.cluster_id||'')===String(cl.id)?'selected':'' %>><%= cl.site_code %> · <%= cl.name %></option><% }) %></select></div>
+<div class="col-md-4"><label class="form-label">Sales</label><select class="form-select" name="sales_id"><option value="">Tanpa Sales / Direct</option><% sales.forEach(s=>{ %><option value="<%= s.id %>" <%= String(customer?.sales_id||'')===String(s.id)?'selected':'' %>><%= s.employee_code %> · <%= s.name %></option><% }) %></select><div class="form-help">Sumber data dari Pengaturan → Karyawan dengan posisi kategori Sales.</div></div>
+<% if(!customer){ %>
+<div class="col-12">
+  <div class="install-commission-box">
+    <label class="form-check d-flex align-items-center gap-2">
+      <input class="form-check-input" type="checkbox" id="isNewInstall" name="is_new_install" value="1">
+      <span>Pemasangan Baru <small class="d-block text-secondary">Pembayaran pertama pelanggan ini otomatis dianggap LUNAS (dibayar tunai saat pemasangan) dan 100% dibagi habis sebagai komisi teknisi &amp; sales sesuai skema paket — bukan pendapatan perusahaan. Mulai tagihan bulan kedua, normal 100% pendapatan perusahaan. Jangan dicentang untuk migrasi/impor pelanggan lama.</small></span>
+    </label>
+    <div class="row g-3 mt-1" id="installCommissionFields" hidden>
+      <div class="col-md-6"><label class="form-label">Nama Teknisi *</label><input class="form-control" name="install_technician_name" list="installTechnicianList" placeholder="Nama bebas, boleh bukan karyawan tetap"><datalist id="installTechnicianList"><% installTechnicians.forEach(t=>{ %><option value="<%= t.name %>"><% }) %></datalist></div>
+      <div class="col-md-6"><label class="form-label">Nama Sales *</label><input class="form-control" name="install_sales_name" list="installSalesList" placeholder="Nama bebas, boleh bukan karyawan tetap"><datalist id="installSalesList"><% installSalesNames.forEach(t=>{ %><option value="<%= t.name %>"><% }) %></datalist></div>
+      <div class="col-12"><small class="text-secondary" id="installCommissionHint">Pilih paket untuk melihat pembagian komisi otomatis.</small></div>
+    </div>
+  </div>
+</div>
+<% } %>
+<div class="col-12"><div class="nms-config-notice"><i class="bi bi-router-fill"></i><span><b>Konfigurasi PPPoE dipusatkan di MikroTik NMS</b><small>Secret, router, auto suggest pelanggan, serta sinkronisasi site dikelola dari <a href="/network/monitor">MikroTik NMS</a> agar tidak terjadi salah site atau data ganda.</small></span></div></div>
+</div><hr style="border-color:var(--line);margin:24px 0"><div class="module-kicker">BILLING POLICY</div><div class="row g-3">
+<div class="col-md-3"><label class="form-label">Aktif Sejak</label><input class="form-control" type="date" name="activation_date" value="<%= customer?.activation_date ? new Date(customer.activation_date).toISOString().slice(0,10) : '' %>"></div>
+<div class="col-md-3"><label class="form-label">Jatuh Tempo</label><input class="form-control" id="customerDueDay" type="number" min="1" max="28" name="due_day" value="<%= customer?.due_day || '' %>" placeholder="Default site"></div>
+<div class="col-md-3"><label class="form-label">Grace Period</label><input class="form-control" type="number" min="0" max="30" name="grace_days" value="<%= customer?.grace_days ?? '' %>" placeholder="Default site"></div>
+<div class="col-md-3"><label class="form-label">Status</label><select class="form-select" name="customer_status"><% ['active','suspended','terminated'].forEach(x=>{ %><option value="<%= x %>" <%= (customer?.customer_status||'active')===x?'selected':'' %>><%= statusLabel(x) %></option><% }) %></select></div>
+<div class="col-md-3"><label class="form-label">Diskon <small class="text-muted">(opsional)</small></label><select class="form-select" name="discount_id"><option value="">Tanpa diskon</option><% discounts.forEach(d=>{ %><option value="<%= d.id %>" <%= String(customer?.discount_id||'')===String(d.id)?'selected':'' %>><%= d.name %> (<%= d.type==='percent'?`${d.amount}%`:formatRupiah(d.amount) %>)</option><% }) %></select><small class="text-muted">Dipakai otomatis di setiap invoice bulanan pelanggan ini selama diskon masih aktif.</small></div>
+<div class="col-md-4"><div class="form-check form-switch mt-3"><input class="form-check-input" type="checkbox" name="prorata_enabled" id="prorata" <%= customer ? (customer.prorata_enabled?'checked':'') : 'checked' %>><label class="form-check-label" for="prorata">Prorata bulan pertama</label></div></div>
+<div class="col-12"><label class="form-label">Catatan</label><textarea class="form-control" rows="3" name="notes"><%= customer?.notes || '' %></textarea></div>
+</div><div class="mt-4 d-flex gap-2"><button class="btn-tech primary"><i class="bi bi-check2-circle"></i>Simpan Pelanggan</button><a href="/customers" class="btn-tech">Batal</a></div></div></form>
+</section>
+<script>
+(()=>{
+  // v1.25.5 (susulan #10) — nominal Komisi Sales (flat, seragam semua paket) dikirim dari server (lihat
+  // routes/customers.js options()) supaya pratinjau split komisi di bawah selalu sinkron dengan Menu
+  // Pengaturan -> Aplikasi tanpa perlu request tambahan.
+  const SALES_FLAT_COMMISSION=<%- JSON.stringify(installSalesFlatCommission) %>;
+  const formatRupiahJs=(n)=>'Rp'+Math.round(n).toLocaleString('id-ID');
+  const site=document.getElementById('customerSite'), pkg=document.getElementById('customerPackage'), due=document.getElementById('customerDueDay'), code=document.getElementById('customerCode'), btn=document.getElementById('generateCustomerCode'), mode=document.getElementById('emailMode'), email=document.getElementById('customerEmail');
+  const autoEmail=()=>{if(mode.value!=='auto')return;const local=(code.value||'pelanggan').toLowerCase().replace(/[^a-z0-9]+/g,'').slice(0,48)||'pelanggan';email.value=local+'@customer.inkamnet.local';email.readOnly=true;};
+  const syncPackages=()=>{if(!pkg||!site)return;const siteId=String(site.value||'');let selectedVisible=false,firstVisible=null;[...pkg.options].forEach(opt=>{const target=String(opt.dataset.siteId||'');const visible=!target||target===siteId;opt.hidden=!visible;opt.disabled=!visible;if(visible&&!firstVisible)firstVisible=opt;if(visible&&opt.selected)selectedVisible=true;});if(!selectedVisible&&firstVisible){pkg.value=firstVisible.value;}};
+  const syncMode=()=>{email.readOnly=mode.value==='auto';if(mode.value==='auto')autoEmail();else email.focus();};
+  mode.addEventListener('change',syncMode);code.addEventListener('input',autoEmail);site.addEventListener('change',syncPackages);
+  const newInstall=document.getElementById('isNewInstall'), installFields=document.getElementById('installCommissionFields'), installHint=document.getElementById('installCommissionHint');
+  if(newInstall&&installFields){
+    const syncInstallVisibility=()=>{
+      installFields.hidden=!newInstall.checked;
+      installFields.querySelectorAll('input').forEach(el=>el.required=newInstall.checked);
+      if(newInstall.checked&&pkg){
+        const opt=pkg.options[pkg.selectedIndex];
+        const price=opt?Number(opt.dataset.price||0):0;
+        const eligible=price>SALES_FLAT_COMMISSION;
+        if(installHint){
+          if(eligible){
+            installHint.textContent=`Skema otomatis: Teknisi ${formatRupiahJs(price-SALES_FLAT_COMMISSION)} · Sales ${formatRupiahJs(SALES_FLAT_COMMISSION)} (total ${formatRupiahJs(price)}).`;
+            installHint.className='text-success';
+          }else{
+            installHint.textContent=`Harga paket ini (${formatRupiahJs(price)}) harus lebih besar dari Komisi Sales flat (${formatRupiahJs(SALES_FLAT_COMMISSION)}) agar skema komisi otomatis berlaku — akan ditolak saat disimpan.`;
+            installHint.className='text-danger';
+          }
+        }
+      }
+    };
+    newInstall.addEventListener('change',syncInstallVisibility);
+    if(pkg)pkg.addEventListener('change',syncInstallVisibility);
+    syncInstallVisibility();
+  }
+  btn.addEventListener('click',async()=>{btn.disabled=true;const old=btn.innerHTML;btn.innerHTML='<span class="spinner-border spinner-border-sm"></span> Generate';try{const q=new URLSearchParams({site_id:site.value});if(due.value)q.set('due_day',due.value);const r=await fetch('/customers/generate-code?'+q.toString());const j=await r.json();if(!r.ok)throw new Error(j.error||'Generate ID gagal');code.value=j.code;if(!due.value)due.value=j.due_day;autoEmail();code.classList.add('is-valid');setTimeout(()=>code.classList.remove('is-valid'),1200);}catch(e){alert(e.message);}finally{btn.disabled=false;btn.innerHTML=old;}});
+  syncPackages();syncMode();
+})();
+</script>

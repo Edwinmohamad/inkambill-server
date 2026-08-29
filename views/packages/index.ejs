@@ -1,0 +1,81 @@
+<section class="package-page">
+  <div class="module-head">
+    <div><div class="module-kicker">SERVICE CATALOG</div><h1>Paket Internet</h1><p>Paket layanan dibedakan per Site / POP agar harga, bandwidth, dan PPP Profile tidak tercampur antar lokasi.</p></div>
+    <div class="module-actions"><button class="btn-tech primary" data-bs-toggle="modal" data-bs-target="#packageModal"><i class="bi bi-plus-lg"></i>Tambah Paket</button></div>
+  </div>
+
+  <div class="package-site-switcher"><a class="<%= selectedSite?'':'active' %>" href="/packages"><i class="bi bi-grid-fill"></i><span><strong>Semua Site</strong><small><%= siteStats.reduce((n,s)=>n+Number(s.package_count||0),0) %> paket</small></span></a><% siteStats.forEach(site=>{ %><a class="<%= String(selectedSite)===String(site.id)?'active':'' %>" href="/packages?site=<%= site.id %>"><span class="site-code-pill"><%= site.code %></span><span><strong><%= site.name %></strong><small><%= site.active_count %>/<%= site.package_count %> paket aktif</small></span></a><% }) %></div>
+
+  <div class="metric-grid">
+    <article class="metric-card"><div class="metric-top"><span class="metric-label">Total Paket</span><span class="metric-icon"><i class="bi bi-speedometer2"></i></span></div><strong><%= packages.length %></strong><small>Hasil filter saat ini</small></article>
+    <article class="metric-card green"><div class="metric-top"><span class="metric-label">Paket Aktif</span><span class="metric-icon"><i class="bi bi-check-circle-fill"></i></span></div><strong><%= packages.filter(p=>p.is_active).length %></strong><small>Siap dipakai pelanggan</small></article>
+    <article class="metric-card"><div class="metric-top"><span class="metric-label">Harga Terendah</span><span class="metric-icon"><i class="bi bi-tag-fill"></i></span></div><strong><%= formatRupiah(packages.length?Math.min(...packages.map(p=>Number(p.price))):0) %></strong><small>Paket termurah</small></article>
+    <article class="metric-card"><div class="metric-top"><span class="metric-label">Subscriber</span><span class="metric-icon"><i class="bi bi-people-fill"></i></span></div><strong><%= packages.reduce((a,p)=>a+Number(p.customer_count||0),0) %></strong><small>Pelanggan aktif</small></article>
+  </div>
+
+  <!-- v1.24.6 — "Distribusi Paket" relocated here from the Dashboard (see UI/UX audit): it belongs next to
+       the packages it's describing, and reuses the customer_count each package row already carries — no
+       new query needed. -->
+  <% const distTotalSubs=packages.reduce((a,p)=>a+Number(p.customer_count||0),0); const distPackages=packages.filter(p=>Number(p.customer_count||0)>0).sort((a,b)=>Number(b.customer_count||0)-Number(a.customer_count||0)); %>
+  <% if(distPackages.length){ %>
+  <article class="data-card package-distribution-card">
+    <div class="data-card-head"><div><h3>Distribusi Paket</h3><small>Persentase pelanggan aktif per paket<%= selectedSite?'':' · semua site' %></small></div><i class="bi bi-pie-chart-fill"></i></div>
+    <div class="package-distribution-list">
+      <% distPackages.forEach(p=>{ const pct=distTotalSubs?Math.round(Number(p.customer_count||0)/distTotalSubs*100):0; %>
+      <div class="package-distribution-row"><span class="package-distribution-name"><%= p.name %><small><%= p.site_code||'GLOBAL' %><%= p.speed_label?` · ${p.speed_label}`:'' %></small></span><span class="package-distribution-bar"><i style="width:<%= pct %>%"></i></span><b><%= pct %>%</b><em><%= p.customer_count %></em></div>
+      <% }) %>
+    </div>
+  </article>
+  <% } %>
+
+  <!-- v1.25.5 (update #2) — user feedback on the first redesign: "kotaknya terlalu besar" (the boxes
+       are still too big). That version kept a tall multi-block layout (identity block, a bordered hero
+       row with two 34px icon squares, a separate meta strip, a footer) — clean in isolation but still a
+       lot of vertical real estate per card. Flattened to 3 compact rows: identity+status on one line,
+       ALL four facts (speed/price/profile/subscribers) as small inline chips on one wrapping line, and a
+       slim actions row — no boxed icon tiles, no divider borders taking up their own space. Grid density
+       raised (auto-fill min 210px, was 270px) so more cards fit per row. -->
+  <div class="plan-grid package-catalog-grid" data-bulk-scope="packagesBulkBar">
+    <% packages.forEach((p,index)=>{ %>
+      <article class="plan-card reveal-item <%= p.is_active?'':'inactive' %>" style="--enter-delay:<%= Math.min(index*35,250) %>ms">
+        <div class="plan-row-top">
+          <input class="form-check-input package-row-check" type="checkbox" data-row-check value="<%= p.id %>" aria-label="Pilih paket <%= p.name %>">
+          <div class="plan-name">
+            <strong><%= p.name %></strong>
+            <small><i class="bi bi-geo-alt-fill"></i><%= p.site_code||'GLOBAL' %><%= p.site_name?` · ${p.site_name}`:'' %></small>
+          </div>
+          <span class="status-badge plan-status <%= p.is_active?'green':'gray' %>"><%= p.is_active?'AKTIF':'NONAKTIF' %></span>
+        </div>
+        <div class="plan-stats">
+          <span title="Bandwidth"><i class="bi bi-lightning-charge-fill"></i><%= p.speed_label||'-' %></span>
+          <span class="price" title="Harga per bulan"><i class="bi bi-cash-coin"></i><%= formatRupiah(p.price) %><em>/bln</em></span>
+          <span title="PPPoE Profile"><i class="bi bi-hdd-network"></i><%= p.mikrotik_profile||'-' %></span>
+          <span title="Jumlah pelanggan"><i class="bi bi-people-fill"></i><%= p.customer_count||0 %></span>
+        </div>
+        <div class="plan-row-actions">
+          <button class="action-pill" type="button" title="Edit Paket" data-bs-toggle="modal" data-bs-target="#editPackage<%= p.id %>"><i class="bi bi-pencil-square"></i></button>
+          <form method="post" action="/packages/<%= p.id %>/toggle"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="action-pill" title="Aktif/Nonaktif"><i class="bi bi-power"></i></button></form>
+          <button class="action-pill danger" type="button" title="Hapus Paket" data-simple-delete="/packages/<%= p.id %>/delete" data-entity-label="Paket <%= p.name %> (<%= p.site_code||'GLOBAL' %>)" data-simple-delete-title="Hapus paket ini?" data-simple-delete-warning="Paket akan dihapus permanen. Jika masih dipakai pelanggan, sistem akan menolak dan menyarankan Aktif/Nonaktif."><i class="bi bi-trash3-fill"></i></button>
+        </div>
+      </article>
+    <% }) %>
+    <% if(!packages.length){ %><div class="empty-state large"><i class="bi bi-speedometer2"></i><strong>Belum ada paket</strong><small>Tambahkan paket untuk Site / POP yang dipilih.</small></div><% } %>
+  </div>
+
+  <!-- Floating bulk action bar — mirrors #customerBulkBar's structure/CSS class for visual consistency. -->
+  <div class="customer-bulk-bar" id="packagesBulkBar" hidden>
+    <span><b data-bulk-count>0</b> paket terpilih</span>
+    <div class="customer-bulk-buttons">
+      <button type="button" data-bulk-clear class="ghost"><i class="bi bi-x-lg"></i>Batal</button>
+      <button type="button" class="danger" data-simple-delete-bulk data-bulk-scope-id="packagesBulkBar" data-bulk-url="/packages/bulk" data-bulk-action-field="action" data-bulk-action-value="delete" data-bulk-id-field="package_ids[]" data-entity-label-plural="paket" data-simple-delete-title="Hapus paket terpilih?" data-simple-delete-warning="Paket yang masih dipakai pelanggan akan otomatis dilewati dan dilaporkan jumlahnya."><i class="bi bi-trash3-fill"></i>Hapus Massal</button>
+    </div>
+  </div>
+</section>
+
+<div class="modal fade" id="packageModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><form method="post" action="/packages" class="modal-content"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><div class="modal-header"><div><div class="module-kicker">NEW SERVICE PLAN</div><h5 class="modal-title">Tambah Paket Internet</h5></div><button class="btn-close" type="button" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="row g-3"><div class="col-12"><label class="form-label">Site / POP *</label><select class="form-select" name="site_id" required><option value="">Pilih Site</option><% sites.forEach(s=>{ %><option value="<%= s.id %>"><%= s.code %> · <%= s.name %></option><% }) %></select></div><div class="col-12"><label class="form-label">Nama Paket *</label><input class="form-control" name="name" required placeholder="20Mbps-KRW"></div><div class="col-6"><label class="form-label">Bandwidth</label><input class="form-control" name="speed_label" placeholder="20 Mbps"></div><div class="col-6"><label class="form-label">Harga / Bulan</label><input class="form-control" type="number" min="0" name="price" required></div><div class="col-12"><label class="form-label">MikroTik PPP Profile</label><input class="form-control" name="mikrotik_profile" placeholder="20Mbps"></div>
+<div class="col-12"><div class="form-help"><i class="bi bi-info-circle"></i> Komisi Pemasangan Baru berlaku otomatis & seragam untuk semua paket (tidak diatur per-paket lagi) — atur nominalnya di Menu Pengaturan → Aplikasi.</div></div>
+</div></div><div class="modal-footer"><button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button><button class="btn-tech primary">Simpan Paket</button></div></form></div></div>
+
+<% packages.forEach(p=>{ %><div class="modal fade" id="editPackage<%= p.id %>" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><form method="post" action="/packages/<%= p.id %>/edit" class="modal-content"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><div class="modal-header"><div><div class="module-kicker">SERVICE PLAN UPDATE</div><h5 class="modal-title">Edit Paket <%= p.name %></h5></div><button class="btn-close" type="button" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="row g-3"><div class="col-12"><label class="form-label">Site / POP *</label><select class="form-select" name="site_id" required><option value="">Pilih Site</option><% sites.forEach(s=>{ %><option value="<%= s.id %>" <%= String(p.site_id||'')===String(s.id)?'selected':'' %>><%= s.code %> · <%= s.name %></option><% }) %></select><% if(!p.site_id){ %><div class="form-help text-warning-soft">Paket lama ini masih GLOBAL. Pilih site yang benar sebelum menyimpan perubahan.</div><% } %></div><div class="col-12"><label class="form-label">Nama Paket *</label><input class="form-control" name="name" required value="<%= p.name %>"></div><div class="col-6"><label class="form-label">Bandwidth</label><input class="form-control" name="speed_label" value="<%= p.speed_label||'' %>"></div><div class="col-6"><label class="form-label">Harga / Bulan</label><input class="form-control" type="number" min="0" name="price" value="<%= Number(p.price||0) %>" required></div><div class="col-12"><label class="form-label">MikroTik PPP Profile</label><input class="form-control" name="mikrotik_profile" value="<%= p.mikrotik_profile||'' %>"></div>
+<div class="col-12"><div class="form-help"><i class="bi bi-info-circle"></i> Komisi Pemasangan Baru berlaku otomatis & seragam untuk semua paket (tidak diatur per-paket lagi) — atur nominalnya di Menu Pengaturan → Aplikasi.</div></div>
+</div></div><div class="modal-footer"><button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button><button class="btn-tech primary"><i class="bi bi-check2"></i>Simpan Perubahan</button></div></form></div></div><% }) %>

@@ -1,0 +1,68 @@
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Database / backup
+backups/
+*.sql
+*.sql.gz
+*.dump
+
+# Payment proof / private uploads
+storage/payment-proofs/*
+!storage/payment-proofs/.gitkeep
+
+# Profile photos / private uploads
+storage/profile-photos/*
+!storage/profile-photos/.gitkeep
+
+# Cash proof / private expense evidence
+storage/cash-proofs/*
+!storage/cash-proofs/.gitkeep
+
+# Logs
+*.log
+/logs/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Temporary
+tmp/
+temp/
+*.tmp
+
+# Docker runtime
+docker-data/
+
+# Ticket photo attachments
+storage/ticket-attachments/*
+!storage/ticket-attachments/.gitkeep
+
+# Server duty proof photos
+storage/server-duty-proofs/*
+!storage/server-duty-proofs/.gitkeep
+
+# Local compose backups
+docker-compose.yml.bak-*
+*.bak
+
+# Patch / checksum / release notes local
+*.patch
+*.sha256
+CHANGED-FILES-*.txt
+INSTALL-*.txt
+FINAL-VALIDATION*.md
+README-CUMULATIVE-*.txt
+README-PATCH.txt
+BACA-DULU-*.txt
+
+# Claude local config
+.claude/

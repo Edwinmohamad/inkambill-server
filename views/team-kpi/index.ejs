@@ -1,0 +1,32 @@
+<section class="team-kpi-page">
+  <div class="module-head">
+    <div><div class="module-kicker">TEAM PERFORMANCE</div><h1>KPI Tim</h1><p>Penilaian dipisahkan sesuai bagian kerja: teknisi, staff/admin, sales, finance, dan management.</p></div>
+    <form class="kpi-period-filter" method="get" data-auto-filter><select class="form-select" name="month"><% monthNames.forEach((m,i)=>{ %><option value="<%= i+1 %>" <%= month===i+1?'selected':'' %>><%= m %></option><% }) %></select><input class="form-control" type="number" name="year" min="2020" max="2100" value="<%= year %>"><span class="auto-filter-hint"><i class="bi bi-lightning-charge-fill"></i>Otomatis</span></form>
+  </div>
+
+  <div class="team-kpi-summary">
+    <article><span><i class="bi bi-people-fill"></i></span><div><small>Tim Aktif</small><strong><%= summary.people %></strong></div></article>
+    <article><span><i class="bi bi-speedometer2"></i></span><div><small>Rata-rata Skor</small><strong><%= summary.avgScore %></strong></div></article>
+    <article><span><i class="bi bi-check2-circle"></i></span><div><small>Tiket Closed</small><strong><%= summary.closed %></strong></div></article>
+    <article><span><i class="bi bi-shield-check"></i></span><div><small>Piket Hadir</small><strong><%= summary.dutyPresent %></strong></div></article>
+    <article><span><i class="bi bi-person-plus-fill"></i></span><div><small>PSB</small><strong><%= summary.psb %></strong></div></article>
+    <article><span><i class="bi bi-tools"></i></span><div><small>Job Selesai</small><strong><%= summary.jobsDone %></strong></div></article>
+  </div>
+
+  <div class="data-card">
+    <div class="data-card-head"><div><h3>Penilaian <%= monthNames[month-1] %> <%= year %></h3><small>Skor dihitung dari aktivitas yang tercatat di sistem, bukan target manual.</small></div><span class="status-badge purple"><%= team.length %> orang</span></div>
+    <div class="table-responsive"><table class="app-table team-kpi-table role-aware"><thead><tr><th class="app-seq-col">No.</th><th>Karyawan</th><th>Jobdesk & Role</th><th>Aktivitas Sesuai Jobdesk</th><th>Skor KPI</th></tr></thead><tbody>
+      <% team.forEach((x,idx)=>{ const tone=x.score>=85?'green':x.score>=70?'purple':x.score>=55?'orange':'red'; %>
+      <tr>
+        <td><span class="cell-main"><%= idx+1 %></span></td>
+        <td><span class="cell-main"><%= x.name %></span><span class="cell-sub"><%= x.employee_code %></span></td>
+        <td><span class="cell-main"><%= x.position_name %></span><span class="cell-sub"><%= x.department_name %></span><span class="kpi-role-badge <%= x.effective_category %>"><i class="bi bi-person-badge-fill"></i><%= x.user_role||'tanpa akun' %> · <%= x.effective_category %></span></td>
+        <td><div class="kpi-focus-metrics"><% x.focusMetrics.forEach(metric=>{ %><span><small><%= metric[0] %></small><b><%= metric[1] %></b></span><% }) %></div></td>
+        <td><div class="kpi-score-block"><span class="status-badge <%= tone %>"><%= x.score %></span><div class="kpi-score-bar"><i style="width:<%= x.score %>%"></i></div><small><%= x.formula %></small></div></td>
+      </tr>
+      <% }) %>
+      <% if(!team.length){ %><tr><td colspan="5"><div class="empty-state"><i class="bi bi-bar-chart-steps"></i><strong>Belum ada data KPI</strong><small>Tambahkan data karyawan dan aktivitas operasional terlebih dahulu.</small></div></td></tr><% } %>
+    </tbody></table></div>
+  </div>
+  <div class="kpi-method-note"><i class="bi bi-info-circle-fill"></i><div><strong>Metode role-aware dan jobdesk-aware</strong><small>Teknisi dinilai dari tiket, update, job dan piket; Sales dari PSB; Admin dari layanan operasional dan input pembayaran; Finance dari pembayaran, approval dan jurnal kas; Master Admin/Management menitikberatkan approval serta kontrol operasional. Metrik yang tidak terkait jobdesk tidak membebani skor.</small></div></div>
+</section>

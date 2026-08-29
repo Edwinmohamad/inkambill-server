@@ -1,0 +1,105 @@
+<% const stateLabel={connected:'Terhubung',qr_pending:'Menunggu Scan QR',connecting:'Menghubungkan...',disconnected:'Terputus'}[gateway.state]||gateway.state;
+   const stateTone={connected:'green',qr_pending:'orange',connecting:'orange',disconnected:'red'}[gateway.state]||'gray'; %>
+<section class="wa-gateway-page">
+  <div class="module-head">
+    <div><div class="module-kicker">AUTOMATION</div><h1>WA Gateway</h1><p>Kirim pengingat WhatsApp otomatis langsung dari server — kirim manual, blast massal, dan auto-reminder terjadwal. Menggunakan koneksi WhatsApp Web (Baileys), bukan API resmi.</p></div>
+  </div>
+
+  <div class="metric-grid">
+    <article class="metric-card <%= stateTone %>"><div class="metric-top"><span class="metric-label">Status Koneksi</span><span class="metric-icon"><i class="bi bi-whatsapp"></i></span></div><strong id="waStateLabel"><%= stateLabel %></strong><small id="waStateSub"><%= gateway.connectedNumber?`Nomor +${gateway.connectedNumber}`:(gateway.lastDisconnectReason||'Belum pernah terhubung') %></small></article>
+    <article class="metric-card orange"><div class="metric-top"><span class="metric-label">Antrean</span><span class="metric-icon"><i class="bi bi-hourglass-split"></i></span></div><strong id="waQueuedCount"><%= stats.queued %></strong><small>Pesan menunggu dikirim</small></article>
+    <article class="metric-card green"><div class="metric-top"><span class="metric-label">Terkirim Hari Ini</span><span class="metric-icon"><i class="bi bi-check2-circle"></i></span></div><strong id="waSentTodayCount"><%= stats.sentToday %></strong><small>Total sepanjang waktu: <%= stats.sentTotal %></small></article>
+    <article class="metric-card red"><div class="metric-top"><span class="metric-label">Gagal Hari Ini</span><span class="metric-icon"><i class="bi bi-x-octagon"></i></span></div><strong id="waFailedTodayCount"><%= stats.failedToday %></strong><small>Cek log di bawah untuk detail error</small></article>
+  </div>
+
+  <div class="data-card">
+    <div class="data-card-head"><div><h3>Koneksi WhatsApp</h3><small>Hubungkan nomor WhatsApp yang akan dipakai untuk mengirim pesan otomatis.</small></div></div>
+    <div class="wa-gateway-connect-body">
+      <% if(!isMasterAdmin){ %>
+        <p class="text-secondary">Hanya Master Admin yang dapat menghubungkan/memutuskan WA Gateway. Hubungi Master Admin bila status masih Terputus.</p>
+      <% } else { %>
+        <% if(gateway.state==='qr_pending' && gateway.qrDataUrl){ %>
+          <div class="wa-gateway-qr-box"><img src="<%= gateway.qrDataUrl %>" alt="QR Code WA Gateway" id="waQrImage"><p>Buka WhatsApp di HP Anda &rarr; Perangkat Tertaut &rarr; Tautkan Perangkat, lalu scan QR ini. QR akan otomatis diperbarui bila kedaluwarsa.</p></div>
+        <% } %>
+        <div class="wa-gateway-actions">
+          <% if(gateway.state==='disconnected'){ %>
+            <form method="post" action="/wa-gateway/connect"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn-tech primary" type="submit"><i class="bi bi-plug-fill"></i>Hubungkan WA Gateway</button></form>
+          <% } else { %>
+            <form method="post" action="/wa-gateway/logout" onsubmit="return confirm('Putuskan WA Gateway? Pesan yang masih dalam antrean akan tertunda sampai terhubung kembali.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn-tech danger" type="submit"><i class="bi bi-plug"></i>Putuskan Koneksi</button></form>
+          <% } %>
+        </div>
+      <% } %>
+    </div>
+  </div>
+
+  <% if(isMasterAdmin){ %>
+  <div class="data-card">
+    <div class="data-card-head"><div><h3>Auto-Reminder Terjadwal</h3><small>Kirim pengingat tagihan otomatis setiap hari tanpa perlu diklik manual.</small></div></div>
+    <form method="post" action="/wa-gateway/settings" class="wa-reminder-settings-form">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <label class="form-check form-switch"><input class="form-check-input" type="checkbox" name="enabled" value="1" <%= reminderSettings.enabled?'checked':'' %>><span>Aktifkan auto-reminder harian</span></label>
+      <div class="wa-reminder-grid">
+        <label>Jam pengiriman (server time)<select class="form-select" name="hour"><% for(let h=0;h<24;h++){ %><option value="<%= h %>" <%= reminderSettings.hour===h?'selected':'' %>><%= String(h).padStart(2,'0') %>:00</option><% } %></select></label>
+        <label>Offset hari (relatif jatuh tempo, pisahkan koma)<input class="form-control" type="text" name="offsets" value="<%= reminderSettings.offsets %>" placeholder="-3,-1,0"></label>
+      </div>
+      <label>Template pesan<textarea class="form-control" name="template" rows="4"><%= reminderSettings.template %></textarea></label>
+      <small class="text-secondary">Placeholder tersedia: {nama} {kode} {periode} {nominal} {no_faktur} {jatuh_tempo}</small>
+      <div><button class="btn-tech primary" type="submit"><i class="bi bi-save"></i>Simpan Pengaturan</button></div>
+    </form>
+  </div>
+  <% } %>
+
+  <div class="data-card">
+    <div class="data-card-head"><div><h3>Log Pengiriman Terbaru</h3><small>50 pesan terakhir (manual, blast, dan auto-reminder)</small></div></div>
+    <div class="table-responsive">
+      <table class="app-table">
+        <thead><tr><th class="app-seq-col">No.</th><th>Waktu</th><th>Pelanggan</th><th>No. Faktur</th><th>Tipe</th><th>Nomor</th><th>Status</th><th>Pesan / Error</th></tr></thead>
+        <tbody id="waMessageLogBody">
+          <% messages.forEach((m,index)=>{ %>
+          <tr>
+            <td><span class="cell-main"><%= index+1 %></span></td>
+            <td><%= formatDate(m.created_at) %></td>
+            <td><%= m.customer_name||'-' %><% if(m.customer_code){ %><span class="cell-sub"><%= m.customer_code %></span><% } %></td>
+            <td><%= m.invoice_number||'-' %></td>
+            <td><span class="status-badge <%= m.message_type==='auto_reminder'?'purple':m.message_type==='blast'?'orange':'gray' %>"><%= m.message_type==='auto_reminder'?'Auto-Reminder':m.message_type==='blast'?'Blast':'Manual' %></span></td>
+            <td><%= m.phone %></td>
+            <td><span class="status-badge <%= m.status==='sent'?'green':m.status==='failed'?'red':'orange' %>"><%= m.status==='sent'?'Terkirim':m.status==='failed'?'Gagal':'Antrean' %></span></td>
+            <td><span class="cash-note"><%= m.status==='failed'?(m.error_message||'-'):m.message %></span></td>
+          </tr>
+          <% }) %>
+          <% if(!messages.length){ %><tr><td colspan="8"><div class="empty-state"><i class="bi bi-whatsapp"></i><strong>Belum ada pesan terkirim</strong><small>Hubungkan WA Gateway lalu kirim pengingat dari menu Tagihan/Pelanggan.</small></div></td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+<script>
+(()=>{
+  const stateLabels={connected:'Terhubung',qr_pending:'Menunggu Scan QR',connecting:'Menghubungkan...',disconnected:'Terputus'};
+  let pollDelay=<%= (gateway.state==='qr_pending'||gateway.state==='connecting')?3000:15000 %>;
+  let pollTimer=null;
+  async function poll(){
+    try{
+      const res=await fetch('/wa-gateway/status.json',{headers:{'Accept':'application/json'}});
+      if(!res.ok)return;
+      const data=await res.json();
+      const stateEl=document.getElementById('waStateLabel');
+      const subEl=document.getElementById('waStateSub');
+      if(stateEl)stateEl.textContent=stateLabels[data.gateway.state]||data.gateway.state;
+      if(subEl)subEl.textContent=data.gateway.connectedNumber?`Nomor +${data.gateway.connectedNumber}`:(data.gateway.lastDisconnectReason||'Belum pernah terhubung');
+      const qrImg=document.getElementById('waQrImage');
+      if(qrImg&&data.gateway.qrDataUrl)qrImg.src=data.gateway.qrDataUrl;
+      const queuedEl=document.getElementById('waQueuedCount');if(queuedEl)queuedEl.textContent=data.stats.queued;
+      const sentEl=document.getElementById('waSentTodayCount');if(sentEl)sentEl.textContent=data.stats.sentToday;
+      const failedEl=document.getElementById('waFailedTodayCount');if(failedEl)failedEl.textContent=data.stats.failedToday;
+      // Reload once when connection state settles from qr_pending/connecting into connected or
+      // disconnected, so the QR box / connect-disconnect buttons refresh into their final layout.
+      const wasTransitional=pollDelay===3000;
+      pollDelay=(data.gateway.state==='qr_pending'||data.gateway.state==='connecting')?3000:15000;
+      if(wasTransitional&&pollDelay===15000)location.reload();
+    }catch(e){ /* silent — next poll retries */ }
+    pollTimer=setTimeout(poll,pollDelay);
+  }
+  pollTimer=setTimeout(poll,pollDelay);
+})();
+</script>

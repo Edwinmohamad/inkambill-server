@@ -1,0 +1,56 @@
+services:
+  db:
+    image: mariadb:11.8
+    container_name: inkamnet-casaos-db
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: ${DB_NAME}
+      MARIADB_USER: ${DB_USER}
+      MARIADB_PASSWORD: ${DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      TZ: Asia/Jakarta
+    volumes:
+      - inkamnet_casaos_db:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+      - ./database/migration_v04.sql:/docker-entrypoint-initdb.d/004-migration-v04.sql:ro
+      - ./database/migration_v05.sql:/docker-entrypoint-initdb.d/005-migration-v05.sql:ro
+      - ./database/migration_v051.sql:/docker-entrypoint-initdb.d/006-migration-v051.sql:ro
+      - ./database/migration_v11.sql:/docker-entrypoint-initdb.d/007-migration-v11.sql:ro
+      - ./database/migration_v14.sql:/docker-entrypoint-initdb.d/008-migration-v14.sql:ro
+      - ./database/migration_v15.sql:/docker-entrypoint-initdb.d/009-migration-v15.sql:ro
+      - ./database/migration_v16.sql:/docker-entrypoint-initdb.d/010-migration-v16.sql:ro
+      - ./database/migration_v18.sql:/docker-entrypoint-initdb.d/011-migration-v18.sql:ro
+    networks:
+      - inkamnet_casaos_net
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    container_name: inkamnet-casaos-app
+    restart: unless-stopped
+    env_file: .env.casaos
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${PORT:-3201}:${PORT:-3201}"
+    volumes:
+      - ./storage:/app/storage
+    networks:
+      - inkamnet_casaos_net
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:'+(process.env.PORT||3201)+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+volumes:
+  inkamnet_casaos_db:
+
+networks:
+  inkamnet_casaos_net:

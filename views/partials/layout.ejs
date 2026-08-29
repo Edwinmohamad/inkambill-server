@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="<%= language %>" data-theme="dark" data-palette="nebula">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#090d1a">
+  <meta name="csrf-token" content="<%= csrfToken %>">
+  <meta name="wa-gateway-connected" content="<%= waGatewayConnected?'1':'0' %>">
+  <title><%= translateTitle(title) %> · <%= appName %></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/css/app.css?v=<%= assetVersion %>">
+  <script>(()=>{try{const allowed=['nebula','ocean','emerald','sunset','rose','ice'];const pref=localStorage.getItem('inkamnet-theme')||<%- JSON.stringify(defaultTheme||'dark') %>;document.documentElement.dataset.theme=pref==='system'?(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'):pref;const palette=localStorage.getItem('inkamnet-palette')||<%- JSON.stringify(defaultUiPalette||'nebula') %>;document.documentElement.dataset.palette=allowed.includes(palette)?palette:'nebula';if(sessionStorage.getItem('inkamnet-instant-filter')==='1'){sessionStorage.removeItem('inkamnet-instant-filter');document.documentElement.classList.add('instant-filter-nav')}}catch(e){}})();</script>
+  <style id="inkamnet-critical-ui">
+    /* Critical shell/loader CSS prevents FOUC and oversized logo while the main stylesheet is loading. */
+    #appLoader{position:fixed!important;inset:0!important;z-index:3000!important;display:grid!important;place-items:center!important;align-content:center!important;gap:18px!important;overflow:hidden!important;background:#070a13!important;color:#fff!important;transition:opacity .34s ease,visibility .34s ease!important}
+    #appLoader .boot-logo{width:min(250px,72vw)!important;height:88px!important;display:grid!important;place-items:center!important;position:relative!important}
+    #appLoader .boot-logo img{display:block!important;width:100%!important;max-width:250px!important;max-height:88px!important;height:auto!important;object-fit:contain!important}
+    #appLoader.is-hidden{opacity:0!important;visibility:hidden!important;pointer-events:none!important}
+    html.instant-filter-nav #appLoader{display:none!important}html.instant-filter-nav .page-enter{animation:none!important;transition:none!important}
+  </style>
+</head>
+<body>
+  <div class="ambient-grid" aria-hidden="true"></div>
+  <div class="ambient-orb orb-a" aria-hidden="true"></div>
+  <div class="ambient-orb orb-b" aria-hidden="true"></div>
+  <div class="signal-stream" aria-hidden="true"><span></span><span></span><span></span></div>
+
+  <div class="app-loader" id="appLoader" aria-hidden="true">
+    <div class="boot-logo"><img src="/img/inkamnet-wordmark-hq.png?v=1.2.2" alt="INKAMNET"></div>
+    <div class="loader-radar"><span></span><span></span><span></span><i class="bi bi-broadcast-pin"></i></div>
+    <div class="loader-copy"><strong>INKAMNET CONTROL CENTER</strong><small>Initializing Network · Billing · Warehouse · Finance</small></div>
+    <div class="boot-status"><span></span><b>SECURE SYSTEM READY</b></div>
+  </div>
+  <div class="page-progress" id="pageProgress"></div>
+
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <a href="/" class="brand-link">
+          <span class="brand-logo-plate"><img src="/img/inkamnet-wordmark-hq.png?v=1.2.2" alt="INKAMNET"></span>
+        </a>
+        <button class="sidebar-close d-lg-none" type="button" data-sidebar-close><i class="bi bi-x-lg"></i></button>
+      </div>
+
+      <div class="sidebar-scroll">
+        <div class="sidebar-section-label">CONTROL CENTER</div>
+        <nav class="sidebar-nav">
+          <a class="sidebar-link <%= currentPath === '/' ? 'active' : '' %>" href="/"><i class="bi bi-grid-1x2-fill"></i><span><%= t('dashboard') %></span><em>⌘</em></a>
+          <% if(can('finance')){ %><a class="sidebar-link <%= currentPath.startsWith('/analytics') ? 'active' : '' %>" href="/analytics"><i class="bi bi-pie-chart-fill"></i><span>Analitik Bisnis</span><em>AI</em></a><% } %>
+        </nav>
+
+        <% if(can('customers')){ %>
+        <div class="sidebar-section-label"><%= language==='en'?'CUSTOMERS':'PELANGGAN' %></div>
+        <nav class="sidebar-nav">
+          <a class="sidebar-link <%= currentPath.startsWith('/customers') ? 'active' : '' %>" href="/customers"><i class="bi bi-people-fill"></i><span><%= t('customers') %></span></a>
+          <a class="sidebar-link <%= currentPath.startsWith('/packages') ? 'active' : '' %>" href="/packages"><i class="bi bi-speedometer2"></i><span><%= t('packages') %></span></a>
+        </nav>
+        <% } %>
+
+        <% if(can('billing')){ %>
+        <div class="sidebar-section-label"><%= language==='en'?'BILLING':'TAGIHAN' %></div>
+        <nav class="sidebar-nav">
+          <a class="sidebar-link <%= currentPath.startsWith('/invoices') ? 'active' : '' %>" href="/invoices"><i class="bi bi-receipt-cutoff"></i><span><%= t('invoices') %></span></a>
+          <a class="sidebar-link <%= currentPath === '/payments' ? 'active' : '' %>" href="/payments"><i class="bi bi-shield-check"></i><span><%= language==='en'?'Approval & Transactions':'Approval & Transaksi' %></span></a>
+          <% if(isAdmin){ %><a class="sidebar-link <%= currentPath.startsWith('/payments/reconciliation') ? 'active' : '' %>" href="/payments/reconciliation"><i class="bi bi-arrow-repeat"></i><span><%= t('reconciliation') %></span></a><% } %>
+          <a class="sidebar-link <%= currentPath.startsWith('/custom-invoices') ? 'active' : '' %>" href="/custom-invoices"><i class="bi bi-file-earmark-text-fill"></i><span><%= t('customInvoices') %></span></a>
+          <a class="sidebar-link <%= currentPath.startsWith('/discounts') ? 'active' : '' %>" href="/discounts"><i class="bi bi-percent"></i><span><%= t('discounts') %></span></a>
+          <a class="sidebar-link <%= currentPath.startsWith('/charges') ? 'active' : '' %>" href="/charges"><i class="bi bi-plus-square-fill"></i><span><%= t('charges') %></span></a>
+          <% if(can('settings')){ %><a class="sidebar-link <%= currentPath.startsWith('/wa-gateway') ? 'active' : '' %>" href="/wa-gateway"><i class="bi bi-whatsapp"></i><span>WA Gateway</span></a><% } %>
+        </nav>
+        <% } %>
+
+        <% if(can('finance')||can('reports')){ %>
+        <div class="sidebar-section-label"><%= language==='en'?'FINANCE':'KEUANGAN' %></div>
+        <nav class="sidebar-nav">
+          <% if(can('finance')){ %><div class="sidebar-nav-group <%= currentPath.startsWith('/cash') ? 'open' : '' %>
+            <a class="sidebar-link <%= currentPath.startsWith('/cash') ? 'active' : '' %>" href="/cash"><i class="bi bi-cash-stack"></i><span><%= t('cash') %></span><em><i class="bi bi-chevron-down"></i></em></a>
+            <div class="sidebar-subnav"><a class="<%= currentPath.startsWith('/cash/categories') ? 'active' : '' %>" href="/cash/categories"><%= t('cashCategories') %></a><a class="<%= currentPath === '/cash' ? 'active' : '' %>" href="/cash"><%= t('cashData') %></a></div>
+          </div><% } %>
+          <% if(can('reports')){ %><a class="sidebar-link <%= currentPath.startsWith('/reports') ? 'active' : '' %>" href="/reports"><i class="bi bi-bar-chart-line-fill"></i><span><%= t('reports') %></span></a><% } %>
+        </nav>
+        <% } %>
+
+        <% if(can('support')){ %>
+        <div class="sidebar-section-label"><%= language==='en'?'SUPPORT':'DUKUNGAN' %></div>
+        <nav class="sidebar-nav">
+          <a class="sidebar-link <%= currentPath.startsWith('/tickets') ? 'active' : '' %>" href="/tickets"><i class="bi bi-life-preserver"></i><span><%= t('tickets') %></span></a>
+          <a class="sidebar-link <%= currentPath.startsWith('/team-kpi') ? 'active' : '' %>" href="/team-kpi"><i class="bi bi-bar-chart-steps"></i><span><%= language==='en'?'Team KPI':'KPI Tim' %></span></a>
+          <a class="sidebar-link <%= currentPath.startsWith('/schedules') ? 'active' : '' %>" href="/schedules"><i class="bi bi-calendar2-check-fill"></i><span><%= t('techSchedule') %></span></a>
+          <a class="sidebar-link <%= currentPath.startsWith('/server-duty') ? 'active' : '' %>" href="/server-duty"><i class="bi bi-shield-check"></i><span><%= t('serverDuty') %></span></a>
+        </nav>
+        <% } %>
+
+        <% if(can('network')){ %>
+        <div class="sidebar-section-label"><%= language==='en'?'NETWORK':'JARINGAN' %></div>
+        <nav class="sidebar-nav">
+          <a class="sidebar-link <%= currentPath.startsWith('/sites') ? 'active' : '' %>" href="/sites"><i class="bi bi-hdd-rack-fill"></i><span><%= t('sites') %></span></a>
+          <a class="sidebar-link <%= currentPath.startsWith('/routers') ? 'active' : '' %>" href="/routers"><i class="bi bi-router-fill"></i><span><%= t('routers') %></span></a>
+          <a class="sidebar-link <%= currentPath.startsWith('/clusters') ? 'active' : '' %>" href="/clusters"><i class="bi bi-diagram-3-fill"></i><span><%= t('clusters') %></span></a>
+          <a class="sidebar-link <%= currentPath.startsWith('/network/monitor') ? 'active' : '' %>" href="/network/monitor"><i class="bi bi-broadcast-pin"></i><span><%= t('monitor') %></span></a>
+          <details class="sidebar-nav-group infra-sidebar-group" <%= currentPath.startsWith('/network/tools') ? 'open' : '' %>>
+            <summary class="sidebar-link <%= currentPath.startsWith('/network/tools') ? 'active' : '' %>"><i class="bi bi-grid-1x2-fill"></i><span>Infrastructure Hub</span><em><i class="bi bi-chevron-down"></i></em></summary>
+            <div class="sidebar-subnav infra-sidebar-subnav"><a href="/network/tools"><i class="bi bi-grid"></i>Workspace Overview</a><a href="/network/tools?group=server"><i class="bi bi-server"></i>Server & OS</a><a href="/network/tools?group=management"><i class="bi bi-router-fill"></i>TR-069 & Management</a><a href="/network/tools?group=containers"><i class="bi bi-box-seam-fill"></i>Container Services</a></div>
+          </details>
+        </nav>
+        <% } %>
+
+        <% if(can('warehouse')){ %>
+        <div class="sidebar-section-label"><%= language==='en'?'WAREHOUSE':'GUDANG' %></div>
+        <nav class="sidebar-nav">
+          <a class="sidebar-link <%= currentPath === '/inventory' ? 'active' : '' %>" href="/inventory"><i class="bi bi-box-seam-fill"></i><span><%= t('stock') %></span></a>
+          <a class="sidebar-link <%= currentPath.startsWith('/inventory/movements') ? 'active' : '' %>" href="/inventory/movements"><i class="bi bi-arrow-left-right"></i><span><%= t('movements') %></span></a>
+          <a class="sidebar-link <%= currentPath.startsWith('/inventory/usage') ? 'active' : '' %>" href="/inventory/usage"><i class="bi bi-tools"></i><span><%= t('material') %></span></a>
+          <a class="sidebar-link <%= currentPath.startsWith('/inventory/suppliers') ? 'active' : '' %>" href="/inventory/suppliers"><i class="bi bi-truck"></i><span><%= t('supplier') %></span></a>
+        </nav>
+        <% } %>
+
+        <div class="sidebar-section-label">SYSTEM</div>
+        <nav class="sidebar-nav">
+          <% if(can('logs')){ %><a class="sidebar-link <%= currentPath.startsWith('/logs') ? 'active' : '' %>" href="/logs"><i class="bi bi-terminal-fill"></i><span><%= t('activityLog') %></span></a><% } %>
+          <a class="sidebar-link <%= currentPath.startsWith('/profile') ? 'active' : '' %>" href="/profile"><i class="bi bi-person-circle"></i><span><%= t('profile') %></span></a>
+          <% if(can('settings')){ %><a class="sidebar-link <%= currentPath.startsWith('/settings') ? 'active' : '' %>" href="/settings"><i class="bi bi-sliders2"></i><span><%= t('settings') %></span></a><% } %>
+        </nav>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="system-status"><span class="status-dot"></span><div><strong>INKAMNET System Online</strong><small>NOC · Billing · Finance · Warehouse</small></div></div>
+        <span class="version-pill">CONTROL CENTER v1.25.5</span>
+      </div>
+    </aside>
+
+    <div class="sidebar-backdrop" data-sidebar-close></div>
+
+    <div class="main-panel">
+      <header class="topbar">
+        <div class="d-flex align-items-center gap-3 min-w-0">
+          <button class="icon-button d-lg-none" type="button" data-sidebar-open><i class="bi bi-list"></i></button>
+          <div class="topbar-title-wrap min-w-0"><div class="topbar-kicker"><span class="topbar-live-dot"></span> INKAMNET CONTROL CENTER</div><div class="topbar-title text-truncate"><%= translateTitle(title) %></div></div>
+        </div>
+        <div class="topbar-actions">
+          <button class="command-button d-none d-md-flex" type="button" data-command-open><i class="bi bi-command"></i><span><%= t('quickCommand') %></span><kbd>Ctrl K</kbd></button>
+          <div class="live-clock d-none d-xl-flex"><i class="bi bi-clock-history"></i><span data-live-clock>--:--:-- WIB</span></div>
+          <div class="live-chip d-none d-xl-flex"><span class="pulse-dot"></span> <%= t('systemLive') %></div>
+          <div class="dropdown header-center-dropdown">
+            <button class="icon-button header-center-button" id="headerNotificationButton" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-label="Notifikasi" title="Notifikasi"><i class="bi bi-bell-fill"></i><span class="header-center-badge" id="headerNotificationBadge" hidden>0</span></button>
+            <div class="dropdown-menu dropdown-menu-end app-dropdown header-center-menu"><div class="header-center-head"><span><i class="bi bi-bell-fill"></i><strong>Notifikasi</strong></span><small>Operasional & approval</small></div><div class="header-center-list" id="headerNotificationList"><div class="header-center-loading"><span class="spinner-border spinner-border-sm"></span>Memuat notifikasi…</div></div><button type="button" class="header-read-all" id="headerNotificationReadAll"><i class="bi bi-check2-all"></i>Tandai notifikasi sudah dibaca</button></div>
+          </div>
+          <div class="dropdown header-center-dropdown">
+            <button class="icon-button header-center-button" id="headerMessageButton" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-label="Pesan internal" title="Pesan internal"><i class="bi bi-chat-dots-fill"></i><span class="header-center-badge message" id="headerMessageBadge" hidden>0</span></button>
+            <div class="dropdown-menu dropdown-menu-end app-dropdown header-center-menu"><div class="header-center-head"><span><i class="bi bi-chat-dots-fill"></i><strong>Pesan Tim</strong></span><button type="button" data-bs-toggle="modal" data-bs-target="#headerMessageComposeModal"><i class="bi bi-pencil-square"></i>Pesan Baru</button></div><div class="header-center-list" id="headerMessageList"><div class="header-center-loading"><span class="spinner-border spinner-border-sm"></span>Memuat pesan…</div></div><button type="button" class="header-read-all" id="headerMessageReadAll"><i class="bi bi-check2-all"></i>Tandai semua sudah dibaca</button></div>
+          </div>
+          <form method="post" action="/profile/language" class="language-switch"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="return_to" value="<%= currentPath %>"><select name="language" onchange="this.form.submit()" aria-label="Language"><option value="id" <%= language==='id'?'selected':'' %>>ID</option><option value="en" <%= language==='en'?'selected':'' %>>EN</option></select></form>
+          <div class="dropdown palette-switcher">
+            <button class="icon-button" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" title="Pilih kombinasi warna" aria-label="Pilih kombinasi warna"><i class="bi bi-palette2"></i></button>
+            <div class="dropdown-menu dropdown-menu-end app-dropdown palette-dropdown p-2"><div class="palette-dropdown-head"><span>WARNA UI</span><small>Pilih kombinasi favorit</small></div><% [['nebula','Nebula'],['ocean','Ocean'],['emerald','Emerald'],['sunset','Sunset'],['rose','Rose'],['ice','Ice']].forEach(p=>{ %><button type="button" class="palette-choice" data-palette-value="<%= p[0] %>"><i data-swatch="<%= p[0] %>"><b></b><b></b></i><span><%= p[1] %></span><em class="bi bi-check2"></em></button><% }) %></div>
+          </div>
+          <button class="icon-button theme-toggle" type="button" data-theme-toggle title="Dark / Light Mode"><i class="bi bi-moon-stars-fill"></i></button>
+          <div class="user-menu dropdown">
+            <button class="user-button dropdown-toggle" data-bs-toggle="dropdown" data-bs-boundary="viewport" data-bs-offset="0,8" aria-expanded="false"><span class="avatar"><% if(user?.profile_photo){ %><img src="/profile/photo/<%= encodeURIComponent(user.profile_photo) %>" alt="Profil"><% } else { %><%= (user?.name || 'A').charAt(0).toUpperCase() %><% } %></span><span class="user-copy d-none d-sm-flex"><strong><%= user?.name || 'Administrator' %></strong><small><%= actualRole || user?.role || 'admin' %></small></span></button>
+            <div class="dropdown-menu dropdown-menu-end app-dropdown p-2 mt-2"><div class="px-3 py-2"><small class="text-secondary"><%= t('signedInAs') %></small><strong class="d-block mt-1"><%= user?.name || 'Administrator' %></strong></div><div class="dropdown-divider"></div><a class="dropdown-item rounded-3" href="/profile"><i class="bi bi-person-circle me-2"></i><%= t('profile') %></a><% if(can('settings')){ %><a class="dropdown-item rounded-3" href="/settings"><i class="bi bi-gear me-2"></i><%= t('settings') %></a><% } %><form method="post" action="/logout"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="dropdown-item rounded-3 text-danger"><i class="bi bi-box-arrow-right me-2"></i><%= t('logout') %></button></form></div>
+          </div>
+        </div>
+      </header>
+
+      <main class="content-wrap">
+        <% if(flash){ %><div class="alert alert-<%= flash.type %> alert-modern alert-dismissible fade show" role="alert"><i class="bi bi-info-circle-fill me-2"></i><%= flash.message %><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><% } %>
+        <div class="page-enter"><%- body %></div>
+        <footer class="app-footer"><span>© <%= new Date().getFullYear() %> Edwin Mohamad · PT INKAMNET NEXERA TECHNOLOGY</span><span>From the Village, Online Everywhere</span></footer>
+      </main>
+    </div>
+  </div>
+
+  <div class="modal fade" id="headerMessageComposeModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><form class="modal-content" id="headerMessageComposeForm"><div class="modal-header"><div><div class="module-kicker">INTERNAL TEAM MESSAGE</div><h5 class="modal-title">Kirim Pesan</h5><small class="text-secondary">Pesan langsung antar-user INKAMNET.</small></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="row g-3"><div class="col-12"><label class="form-label">Penerima</label><select class="form-select" name="recipient_id" id="headerMessageRecipient" required><option value="">Memuat user…</option></select></div><div class="col-12"><label class="form-label">Subjek</label><input class="form-control" name="subject" maxlength="140" placeholder="Subjek singkat"></div><div class="col-12"><label class="form-label">Isi Pesan</label><textarea class="form-control" name="body" rows="5" maxlength="2000" required placeholder="Tulis pesan untuk tim…"></textarea></div></div><div class="header-message-status" id="headerMessageStatus" hidden></div></div><div class="modal-footer"><button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button><button class="btn-tech primary" data-no-loading="true"><i class="bi bi-send-fill"></i>Kirim Pesan</button></div></form></div></div>
+
+  <div class="modal fade" id="headerMessageViewModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><div><div class="module-kicker" id="headerMessageSender">PESAN TIM</div><h5 class="modal-title" id="headerMessageSubject">Pesan</h5><small class="text-secondary" id="headerMessageTime">-</small></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="header-message-body" id="headerMessageBody"></div></div><div class="modal-footer"><button type="button" class="btn-tech" data-bs-dismiss="modal">Tutup</button><button type="button" class="btn-tech primary" id="headerMessageReply"><i class="bi bi-reply-fill"></i>Balas</button></div></div></div></div>
+
+  <!-- v1.20 — shared Arsip vs Hapus Permanen confirmation, reused by any [data-delete-choice] trigger. -->
+  <div class="modal fade" id="deleteChoiceModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content nms-modal">
+        <div class="modal-header"><div><div class="module-kicker">HAPUS DATA</div><h5 class="modal-title">Arsipkan atau Hapus Permanen?</h5><small class="text-secondary" id="deleteChoiceTarget">-</small></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <div class="nms-action-choice">
+            <button type="button" id="deleteChoiceArchiveBtn"><i class="bi bi-archive-fill"></i><span><b>Arsipkan Data (Soft Delete)</b><small>Rekomendasi utama. Status berubah menjadi ARSIP — riwayat keuangan &amp; jurnal kas tetap terjaga untuk audit.</small></span></button>
+            <button type="button" class="danger" id="deleteChoiceHardBtn"><i class="bi bi-trash3-fill"></i><span><b>Hapus Permanen (Hard Delete)</b><small>Hanya diizinkan jika data belum terikat transaksi finansial / jurnal resmi.</small></span></button>
+          </div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button></div>
+        <form method="post" id="deleteChoiceArchiveForm" hidden><input type="hidden" name="_csrf" value="<%= csrfToken %>"></form>
+        <form method="post" id="deleteChoiceHardForm" hidden><input type="hidden" name="_csrf" value="<%= csrfToken %>"></form>
+      </div>
+    </div>
+  </div>
+
+  <!-- v1.20.1 — dedicated danger-only confirmation for the Data Diarsip tab (Section 2 of the revision).
+       Reused by any [data-hard-delete-danger] trigger, per-row or bulk. Distinct from #deleteChoiceModal
+       above: archived rows are already soft-deleted, so the only remaining action is permanent deletion —
+       this modal is deliberately stricter/scarier, never offers the Arsipkan option. -->
+  <div class="modal fade" id="hardDeleteDangerModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content nms-modal">
+        <div class="modal-header"><div><div class="module-kicker text-danger">BAHAYA · HAPUS PERMANEN</div><h5 class="modal-title">Hapus Permanen dari Sistem?</h5><small class="text-secondary" id="hardDeleteDangerTarget">-</small></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <div class="alert alert-danger alert-modern mb-0"><i class="bi bi-exclamation-octagon-fill me-2"></i>Tindakan ini tidak dapat dibatalkan. Seluruh riwayat tagihan dan data terkait akan dihapus bersih dari sistem.</div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button><button type="button" class="btn-tech danger" id="hardDeleteDangerConfirmBtn"><i class="bi bi-trash3-fill"></i>Ya, Hapus Permanen</button></div>
+        <form method="post" id="hardDeleteDangerForm" hidden><input type="hidden" name="_csrf" value="<%= csrfToken %>"></form>
+      </div>
+    </div>
+  </div>
+
+  <!-- v1.21.0 — Section 4 (global delete-button audit): ONE generic, uniform, mobile-responsive delete
+       confirmation modal reused by any [data-simple-delete] trigger (Paket Internet, Site/POP, Router,
+       Tiket Gangguan, bulk Tagihan) that only ever needs a single "Hapus" action — i.e. menus that are
+       NOT customers (which keep the dedicated Arsip-vs-Hapus / danger modals above, since only customers
+       currently has a true soft-delete/Arsip lifecycle). Any server-side "can't delete, still in use"
+       guard is reported back via the normal flash-alert banner after redirect, exactly like the existing
+       clusters/routers guards — this modal only asks "are you sure", it never overrides a backend guard. -->
+  <div class="modal fade" id="simpleDeleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content nms-modal">
+        <div class="modal-header"><div><div class="module-kicker text-danger" id="simpleDeleteKicker">HAPUS DATA</div><h5 class="modal-title" id="simpleDeleteTitle">Hapus data ini?</h5><small class="text-secondary" id="simpleDeleteTarget">-</small></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <div class="alert alert-danger alert-modern mb-0" id="simpleDeleteWarning"><i class="bi bi-exclamation-triangle-fill me-2"></i>Tindakan ini tidak dapat dibatalkan.</div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button><button type="button" class="btn-tech danger" id="simpleDeleteConfirmBtn"><i class="bi bi-trash3-fill" id="simpleDeleteConfirmIcon"></i><span id="simpleDeleteConfirmLabel">Ya, Hapus</span></button></div>
+        <form method="post" id="simpleDeleteForm" hidden><input type="hidden" name="_csrf" value="<%= csrfToken %>"></form>
+      </div>
+    </div>
+  </div>
+
+  <!-- v1.21.1 — "Hapus Paksa" (Force Delete), Master Admin only. Every normal delete guard in this app
+       (tagihan yang sudah punya pembayaran, pelanggan yang sudah punya riwayat tagihan, transaksi kas yang
+       sudah APPROVED) exists specifically to stop financial history from disappearing by accident. Rather
+       than removing those guards outright, this gives Master Admin an explicit, deliberately-slower escape
+       hatch: the confirm button stays disabled until the exact code/number of the record being deleted is
+       retyped into the box below — the same "type the name to confirm" pattern used by GitHub/GitLab for
+       irreversible actions — so a force-delete can never happen from a single accidental click. -->
+  <div class="modal fade" id="forceDeleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content nms-modal">
+        <div class="modal-header"><div><div class="module-kicker text-danger">MASTER ADMIN · HAPUS PAKSA</div><h5 class="modal-title">Hapus Paksa Permanen?</h5><small class="text-secondary" id="forceDeleteTarget">-</small></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <div class="alert alert-danger alert-modern mb-2" id="forceDeleteWarning"><i class="bi bi-exclamation-octagon-fill me-2"></i>Tindakan ini tidak dapat dibatalkan.</div>
+          <label class="form-label">Ketik ulang <b id="forceDeleteMatchLabel">-</b> untuk konfirmasi:</label>
+          <input class="form-control" type="text" id="forceDeleteInput" autocomplete="off" placeholder="Ketik di sini...">
+        </div>
+        <div class="modal-footer"><button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button><button type="button" class="btn-tech danger" id="forceDeleteConfirmBtn" disabled><i class="bi bi-trash3-fill"></i>Hapus Paksa</button></div>
+        <form method="post" id="forceDeleteForm" hidden><input type="hidden" name="_csrf" value="<%= csrfToken %>"></form>
+      </div>
+    </div>
+  </div>
+
+  <div class="command-palette" id="commandPalette" aria-hidden="true">
+    <div class="command-backdrop" data-command-close></div>
+    <div class="command-dialog">
+      <div class="command-search"><i class="bi bi-search"></i><input id="commandInput" placeholder="Cari menu atau aksi..." autocomplete="off"><kbd>ESC</kbd></div>
+      <div class="command-list" id="commandList">
+        <% if(can('customers')){ %><a href="/customers/new" data-keywords="pelanggan baru psb tambah"><i class="bi bi-person-plus-fill"></i><div><strong>Tambah Pelanggan</strong><small>Registrasi PSB baru</small></div><span>→</span></a><% } %>
+        <% if(can('billing')){ %><a href="/invoices" data-keywords="tagihan invoice generate"><i class="bi bi-receipt"></i><div><strong>Buka Tagihan</strong><small>Generate & kelola billing</small></div><span>→</span></a>
+        <a href="/payments" data-keywords="approval pembayaran transaksi kas"><i class="bi bi-shield-check"></i><div><strong>Approval & Transaksi</strong><small>Pembayaran dan approval kas</small></div><span>→</span></a><% if(isAdmin){ %>
+        <a href="/payments/reconciliation" data-keywords="rekonsiliasi setoran cash staff"><i class="bi bi-arrow-repeat"></i><div><strong>Rekonsiliasi Cash</strong><small>Cek uang yang masih di staff</small></div><span>→</span></a><% } %><% } %>
+        <% if(can('support')){ %><a href="/server-duty" data-keywords="piket server jadwal shift"><i class="bi bi-shield-check"></i><div><strong>Piket Server</strong><small>Jadwal piket mingguan</small></div><span>→</span></a>
+        <a href="/tickets" data-keywords="tiket gangguan teknisi"><i class="bi bi-life-preserver"></i><div><strong>Ticketing</strong><small>Keluhan & pekerjaan teknisi</small></div><span>→</span></a>
+        <a href="/team-kpi" data-keywords="kpi tim teknisi staff performance"><i class="bi bi-bar-chart-steps"></i><div><strong>KPI Tim</strong><small>Performa teknisi & staff</small></div><span>→</span></a><% } %>
+        <% if(can('network')){ %><a href="/network/tools" data-keywords="infrastructure proxmox casaos genieacs portainer server"><i class="bi bi-grid-1x2-fill"></i><div><strong>Infrastructure Hub</strong><small>Server, TR-069 & container services</small></div><span>→</span></a><a href="/network/monitor" data-keywords="mikrotik nms network noc monitor router pppoe sync audit rogue"><i class="bi bi-broadcast-pin"></i><div><strong>MikroTik NMS</strong><small>Router, PPPoE & Sync Audit terpusat</small></div><span>→</span></a><% } %>
+        <% if(can('warehouse')){ %><a href="/inventory" data-keywords="gudang stock barang"><i class="bi bi-box-seam-fill"></i><div><strong>Stock Gudang</strong><small>Warehouse control</small></div><span>→</span></a><% } %>
+        <% if(can('finance')){ %><a href="/analytics" data-keywords="analitik finance psb mrr cashflow odp"><i class="bi bi-graph-up-arrow"></i><div><strong>Analitik Keuangan & PSB</strong><small>Executive, finance, PSB & infrastruktur</small></div><span>→</span></a><a href="/cash" data-keywords="kas uang pendapatan pengeluaran"><i class="bi bi-cash-stack"></i><div><strong>Arus Kas</strong><small>Income & expense</small></div><span>→</span></a><% } %>
+        <% if(can('reports')){ %><a href="/reports" data-keywords="laporan report site"><i class="bi bi-bar-chart-line-fill"></i><div><strong>Laporan</strong><small>Billing, finance & site</small></div><span>→</span></a><% } %>
+      </div>
+      <div class="command-footer"><span><i class="bi bi-arrow-return-left"></i> Open</span><span><i class="bi bi-stars"></i> INKAMNET Command Center</span></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="/js/app.js?v=<%= assetVersion %>"></script>
+  <script src="/js/nms.js?v=<%= assetVersion %>"></script>
+</body>
+</html>

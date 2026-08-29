@@ -1,0 +1,269 @@
+<section class="billing-page">
+  <div class="module-head billing-head">
+    <div>
+      <div class="module-kicker">MESIN TAGIHAN</div>
+      <h1>Tagihan Pelanggan</h1>
+      <p>Buat tagihan per bulan atau per pelanggan, pantau status pembayaran, dan tindak lanjuti tagihan dari satu halaman.</p>
+    </div>
+    <div class="module-actions">
+      <a class="btn-tech" href="/reports?view=invoice"><i class="bi bi-file-earmark-text"></i>Faktur</a><a class="btn-tech" href="/payments"><i class="bi bi-wallet2"></i>Pembayaran</a>
+      <% if(isAdmin){ %><button class="btn-tech" type="button" data-bs-toggle="modal" data-bs-target="#invoiceImportModal"><i class="bi bi-cloud-arrow-up-fill"></i>Import XLSX</button><% } %>
+      <a class="btn-tech" href="/invoices/export.xlsx?<%= periodQueryString %>"><i class="bi bi-download"></i>Export XLSX</a>
+      <button class="btn-tech primary" type="button" data-bs-toggle="modal" data-bs-target="#generateInvoiceModal"><i class="bi bi-arrow-repeat"></i>Refresh / Generate Tagihan</button>
+    </div>
+  </div>
+
+  <div class="billing-period-note">
+    <i class="bi bi-info-circle-fill"></i>
+    <div><strong>Periode aktif: <%= monthNames[filters.month-1] %> <%= filters.year %></strong><span>Ringkasan dan tabel di bawah mengikuti periode/filter yang dipilih. Pembuatan tagihan dapat dilakukan untuk semua pelanggan aktif atau satu pelanggan tertentu.</span></div>
+  </div>
+
+  <!-- v1.24.6 — disusutkan dari 8 kartu jadi 4 (UI/UX audit): Pelanggan Aktif, Total Tagihan, Belum
+       Terbit, dan Nominal Terbayar dihapus dari sini karena nilainya turunan/tumpang tindih dengan kartu
+       lain atau sudah tersedia di Dashboard. Data summary.* itu sendiri TIDAK dihapus dari routes/invoices.js
+       (masih dihitung, hanya tidak semuanya ditampilkan di sini) supaya tidak berisiko merusak halaman lain
+       yang mungkin memakai object summary yang sama. -->
+  <div class="billing-stat-grid">
+    <article class="billing-stat"><span class="billing-stat-icon green"><i class="bi bi-receipt"></i></span><div><small>Tagihan Terbit</small><strong><%= summary.issued %></strong></div></article>
+    <article class="billing-stat"><span class="billing-stat-icon green"><i class="bi bi-check2-circle"></i></span><div><small>Tagihan Lunas</small><strong><%= summary.paidCount %></strong></div></article>
+    <article class="billing-stat"><span class="billing-stat-icon red"><i class="bi bi-alarm"></i></span><div><small>Belum Lunas</small><strong><%= summary.unpaidCount %></strong></div></article>
+    <article class="billing-stat"><span class="billing-stat-icon red"><i class="bi bi-hourglass-split"></i></span><div><small>Sisa Tagihan</small><strong><%= formatRupiah(summary.outstanding) %></strong></div></article>
+  </div>
+
+  <% const scopedInvoiceRow=filters.customer?invoices.find(i=>String(i.customer_id)===String(filters.customer)):null;
+     const scopedCustomer=filters.customer?(customers.find(c=>String(c.id)===String(filters.customer))||(scopedInvoiceRow?{name:scopedInvoiceRow.customer_name,customer_code:scopedInvoiceRow.customer_code}:null)):null; %>
+  <form class="billing-filter-panel" method="get" action="/invoices">
+    <div class="billing-filter-head">
+      <div><strong>Filter Tagihan</strong><small>Pilih periode dan data yang ingin ditampilkan. Gunakan kotak Cari untuk menemukan pelanggan tertentu.</small></div>
+      <a href="/invoices" class="ink-text-link"><i class="bi bi-arrow-counterclockwise"></i> Atur Ulang</a>
+    </div>
+    <% if(scopedCustomer){ %><div class="billing-filter-scope"><i class="bi bi-funnel-fill"></i><span>Menampilkan tagihan untuk <strong><%= scopedCustomer.name %></strong> (<%= scopedCustomer.customer_code %>)</span><a href="/invoices?<%= new URLSearchParams({month:filters.month,year:filters.year,status:filters.status,site:filters.site,cluster:filters.cluster,q:filters.q,due_bucket:filters.dueBucket}).toString() %>"><i class="bi bi-x-lg"></i>Hapus</a></div><% } %>
+    <div class="billing-filter-grid">
+      <div class="filter-group"><label>BULAN</label><select class="form-select" name="month"><% monthNames.forEach((m,i)=>{ %><option value="<%= i+1 %>" <%= filters.month===i+1?'selected':'' %>><%= m %></option><% }) %></select></div>
+      <div class="filter-group"><label>TAHUN</label><input class="form-control" name="year" type="number" min="2020" max="2100" value="<%= filters.year %>"></div>
+      <div class="filter-group"><label>STATUS</label><select class="form-select" name="status"><option value="">Semua Status</option><option value="open" <%= filters.status==='open'?'selected':'' %>>Belum Lunas</option><option value="pending_approval" <%= filters.status==='pending_approval'?'selected':'' %>>Menunggu Approval</option><option value="paid" <%= filters.status==='paid'?'selected':'' %>>Lunas</option></select></div>
+      <div class="filter-group"><label>SITE / POP</label><select class="form-select" name="site"><option value="">Semua Site</option><% sites.forEach(s=>{ %><option value="<%= s.code %>" <%= filters.site===s.code?'selected':'' %>><%= s.code %> · <%= s.name %></option><% }) %></select></div>
+      <div class="filter-group"><label>CLUSTER / ODP</label><select class="form-select" name="cluster"><option value="">Semua Cluster</option><% clusters.forEach(c=>{ %><option value="<%= c.id %>" <%= String(filters.cluster)===String(c.id)?'selected':'' %>><%= c.site_code %> · <%= c.name %></option><% }) %></select></div>
+      <div class="filter-group"><label>JATUH TEMPO</label><select class="form-select" name="due_bucket"><option value="">Semua Tanggal</option><option value="due15" <%= filters.dueBucket==='due15'?'selected':'' %>>Jatuh Tempo 15</option><option value="due30" <%= filters.dueBucket==='due30'?'selected':'' %>>Jatuh Tempo 30</option></select></div>
+      <% if(filters.customer){ %><input type="hidden" name="customer" value="<%= filters.customer %>"><% } %>
+      <div class="filter-group billing-filter-search"><label>CARI</label><div class="search-box"><i class="bi bi-search"></i><input name="q" value="<%= filters.q %>" placeholder="Nama, ID pelanggan, faktur, site, cluster..."></div></div>
+      <div class="billing-filter-submit"><button class="btn-tech primary"><i class="bi bi-funnel"></i>Terapkan Filter</button></div>
+    </div>
+  </form>
+
+  <div class="data-card invoice-registry-card action-safe-card">
+    <div class="data-card-head invoice-registry-head">
+      <div><h3>Daftar Tagihan</h3><small><%= invoices.length %> tagihan · <%= monthNames[filters.month-1] %> <%= filters.year %></small></div>
+      <div class="invoice-registry-tools">
+        <% if(isAdmin){ %><div class="invoice-selection-state"><i class="bi bi-check2-square"></i><span><b id="invoiceTableSelectedCount">0</b> dipilih</span></div>
+        <button class="btn-tech success compact" type="button" id="paySelectedInvoices" disabled><i class="bi bi-wallet2"></i>Bayar Dipilih</button><% } %>
+        <div class="legend-inline"><span><i class="dot success"></i>Lunas</span><span><i class="dot warning"></i>Belum Lunas</span></div>
+      </div>
+    </div>
+    <div class="table-responsive action-safe-table">
+      <table class="app-table invoice-table" data-bulk-scope="invoiceDeleteBulkBar">
+        <!-- v1.24.6 — kolom "Kirim Pengingat" dihapus (UI/UX audit): tombolnya sudah ada juga di popover
+             Tindakan setiap baris, jadi tidak perlu kolom tersendiri yang isinya cuma satu tombol/teks
+             "Tidak diperlukan" di sebagian besar baris. -->
+        <thead><tr><% if(isAdmin){ %><th class="invoice-check-col"><input type="checkbox" class="form-check-input" data-select-all aria-label="Pilih semua tagihan"></th><% } %><th>No.</th><th>Pelanggan</th><th>Site</th><th>Periode</th><th>Jatuh Tempo</th><th>Tagihan</th><th>Status</th><% if(isAdmin){ %><th class="invoice-pay-head">Bayar</th><% } %><th class="invoice-action-head">Tindakan</th></tr></thead>
+        <tbody>
+          <% invoices.forEach((i,index)=>{ const wa=String(i.phone||'').replace(/\D/g,'').replace(/^0/,'62').replace(/^8/,'628'); const waValid=/^628[1-9]\d{7,11}$/.test(wa); const reminder=`Halo ${i.customer_name}, kami mengingatkan tagihan INKAMNET periode ${monthNames[i.period_month-1]} ${i.period_year} sebesar ${formatRupiah(i.outstanding)}. No. faktur ${i.invoice_number}. Terima kasih.`; const hasPending=Number(i.pending_payment_count||0)>0; const canPay=Number(i.outstanding)>0 && !hasPending && !['paid','cancelled','refunded'].includes(i.status); %>
+          <tr>
+            <% if(isAdmin){ %><td class="invoice-check-col"><input type="checkbox" class="form-check-input" data-row-check data-can-pay="<%= canPay?'1':'0' %>" value="<%= i.id %>" aria-label="Pilih tagihan <%= i.invoice_number %>"></td><% } %>
+            <td><span class="cell-main"><%= index+1 %></span></td>
+            <td>
+              <div><span class="cell-main"><%= i.customer_name %></span><span class="cell-sub"><%= i.customer_code %></span><% if(i.customer_archived_at){ %><span class="status-badge gray customer-archived-pill" title="Pelanggan ini sudah diarsipkan — riwayat tagihan tetap ditampilkan untuk audit."><i class="bi bi-archive-fill"></i>Diarsipkan</span><% } %></div>
+            </td>
+            <td><span class="cell-main"><%= i.site_code %></span><span class="cell-sub">Cluster <%= i.cluster_name||'-' %></span></td>
+            <td><span class="cell-main"><%= monthNames[i.period_month-1] %> <%= i.period_year %></span><span class="cell-sub"><%= i.is_prorata?'PRORATA':'BULANAN' %></span></td>
+            <td><%= formatDate(i.due_date) %></td>
+            <td class="money"><%= formatRupiah(i.total) %><span class="cell-sub"><%= i.package_name %></span></td>
+            <td><% if(hasPending){ %><span class="status-badge orange"><i class="bi bi-hourglass-split"></i> Menunggu Approval</span><% }else if(i.status==='paid'){ %><span class="status-badge green"><i class="bi bi-check2-circle"></i> Lunas</span><% }else{ %><span class="status-badge red"><i class="bi bi-exclamation-circle"></i> Belum Lunas</span><% } %></td>
+            <% if(isAdmin){ %><td class="invoice-pay-cell"><% if(canPay){ %><button type="button" class="invoice-pay-button" data-bs-toggle="modal" data-bs-target="#paymentModal" data-payment-invoice-id="<%= i.id %>" title="Input pembayaran penuh untuk approval"><i class="bi bi-check2-circle"></i><span>Lunasi</span></button><% } %></td><% } %>
+            <td class="invoice-action-cell">
+              <div class="invoice-inline-actions">
+                <button class="action-menu" type="button" data-action-popover-target="invoiceAction<%= i.id %>" aria-label="Buka tindakan tagihan <%= i.invoice_number %>"><i class="bi bi-three-dots-vertical"></i></button>
+              </div>
+              <div class="ink-action-popover" id="invoiceAction<%= i.id %>" hidden>
+                <div class="ink-action-popover-head"><div><small>TAGIHAN</small><strong><%= i.customer_name %></strong><span><%= i.invoice_number %></span></div></div>
+                <div class="ink-action-popover-body">
+                  <% if(canPay&&isAdmin){ %><button type="button" class="ink-action-item compact success" data-action-close data-bs-toggle="modal" data-bs-target="#paymentModal" data-payment-invoice-id="<%= i.id %>"><i class="bi bi-check2-circle"></i><span><b>Input Pembayaran / Lunas</b><small>Nominal otomatis dikunci sebesar sisa tagihan</small></span></button><% }else if(i.status==='paid'){ %><div class="ink-action-item compact action-complete"><i class="bi bi-patch-check-fill"></i><span><b>Tagihan Sudah Lunas</b><small>Pembayaran baru tidak diperlukan</small></span></div><% } %>
+                  <button type="button" class="ink-action-item compact" data-action-close data-bs-toggle="modal" data-bs-target="#invoiceEditModal" data-invoice-edit-id="<%= i.id %>" data-invoice-edit-number="<%= i.invoice_number %>" data-invoice-edit-customer="<%= i.customer_name %>" data-invoice-edit-date="<%= i.invoice_date_key %>" data-invoice-edit-due="<%= i.due_date_key %>" data-invoice-edit-prorata="<%= i.is_prorata?1:0 %>"><i class="bi bi-pencil-square"></i><span><b>Edit Tagihan</b><small>Tanggal & tipe, bukan nominal</small></span></button>
+                  <% if(isAdmin && !['paid','cancelled','refunded'].includes(i.status)){ %><button type="button" class="ink-action-item compact" data-action-close data-bs-toggle="modal" data-bs-target="#invoiceDiscountModal" data-discount-invoice-id="<%= i.id %>" data-discount-invoice-number="<%= i.invoice_number %>" data-discount-customer="<%= i.customer_name %>" data-discount-subtotal="<%= i.subtotal %>" data-discount-current="<%= i.discount %>"><i class="bi bi-percent"></i><span><b>Tambah Diskon</b><small>Nominal Rp atau persen · total otomatis disesuaikan</small></span></button><% } %>
+                  <% if(isAdmin && (Number(i.paid_amount)>0 || ['paid','partial'].includes(i.status))){ %><form method="post" action="/invoices/<%= i.id %>/reset-unpaid" onsubmit="return confirm('Koreksi tagihan menjadi BELUM LUNAS? Semua pembayaran aktif untuk faktur ini akan dibatalkan dan pendapatan kas terkait otomatis dikurangi. Nominal tagihan tidak berubah.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="return_to" value="/invoices?<%= periodQueryString %>"><button class="ink-action-item compact warning" type="submit"><i class="bi bi-arrow-counterclockwise"></i><span><b>Jadikan Belum Lunas</b><small>Koreksi pembayaran & pendapatan otomatis</small></span></button></form><% } %>
+                  <a class="ink-action-item compact" href="/invoices/<%= i.id %>/pdf" target="_blank"><i class="bi bi-file-earmark-pdf"></i><span><b>Lihat Faktur PDF</b><small>Buka di tab baru</small></span></a>
+                  <a class="ink-action-item compact" href="/invoices/<%= i.id %>/pdf?download=1"><i class="bi bi-download"></i><span><b>Unduh PDF</b><small>Simpan faktur</small></span></a>
+                  <a class="ink-action-item compact" href="/payments?q=<%= encodeURIComponent(i.invoice_number) %>"><i class="bi bi-clock-history"></i><span><b>Riwayat Pembayaran</b><small>Lihat transaksi</small></span></a>
+                  <% if(wa){ %><a class="ink-action-item compact success" target="_blank" rel="noopener" href="https://wa.me/<%= wa %>?text=<%= encodeURIComponent(reminder) %>" data-wa-send data-wa-phone="<%= wa %>" data-wa-message="<%= encodeURIComponent(reminder) %>" data-wa-customer-id="<%= i.customer_id %>" data-wa-invoice-id="<%= i.id %>"><i class="bi bi-whatsapp"></i><span><b>Kirim Pengingat</b><small>WhatsApp pelanggan (via Gateway bila terhubung)</small></span></a><% } %>
+                  <% if(isAdmin && Number(i.active_payment_count||0)===0 && Number(i.payment_count||0)>0 && i.status!=='cancelled'){ %><div class="ink-action-separator"></div><form method="post" action="/invoices/<%= i.id %>/cancel" onsubmit="return confirm('Batalkan tagihan <%= i.invoice_number %>? Tagihan akan dihapus dari outstanding, tetapi histori transaksi tetap disimpan untuk audit.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="return_to" value="/invoices?<%= periodQueryString %>"><button class="ink-action-item compact danger" type="submit"><i class="bi bi-x-octagon"></i><span><b>Hapus / Batalkan Tagihan</b><small>Histori pembayaran tetap aman</small></span></button></form><% } %>
+                  <% if(isAdmin && Number(i.payment_count||0)===0 && Number(i.paid_amount)===0){ %><div class="ink-action-separator"></div><form method="post" action="/invoices/<%= i.id %>/delete" onsubmit="return confirm('Hapus permanen tagihan <%= i.invoice_number %>? Tagihan ini belum pernah memiliki transaksi pembayaran.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="return_to" value="/invoices?<%= periodQueryString %>"><button class="ink-action-item compact danger" type="submit"><i class="bi bi-trash3"></i><span><b>Hapus Tagihan</b><small>Hanya jika belum pernah ada pembayaran</small></span></button></form><% } %>
+                  <% if(isMasterAdmin && (Number(i.payment_count||0)>0 || Number(i.paid_amount)>0)){ %><div class="ink-action-separator"></div><button type="button" class="ink-action-item compact danger" data-force-delete="/invoices/<%= i.id %>/force-delete" data-entity-label="Tagihan <%= i.invoice_number %> - <%= i.customer_name %>" data-force-delete-match="<%= i.invoice_number %>" data-force-delete-warning="Tagihan ini sudah memiliki riwayat pembayaran. Hapus Paksa akan menghapus tagihan INI beserta SELURUH riwayat pembayarannya secara permanen, dan TIDAK dapat dibatalkan."><i class="bi bi-exclamation-octagon-fill"></i><span><b>Hapus Paksa</b><small>Master Admin · hapus beserta riwayat pembayaran</small></span></button><% } %>
+                </div>
+              </div>
+            </td>
+          </tr>
+          <% }) %>
+          <% if(!invoices.length){ %><tr><td colspan="<%= isAdmin?10:8 %>"><div class="empty-state"><i class="bi bi-receipt"></i><strong>Tidak ada tagihan pada filter ini</strong><small>Ubah periode/filter atau gunakan Refresh / Generate Tagihan.</small></div></td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <!-- v1.21.0 — Section 4: bulk Batalkan/Hapus, independent from the bulk-payment checkbox column above.
+       Both post to the same /invoices/bulk endpoint (differing only by data-bulk-action-value); the server
+       re-checks the same per-invoice financial guard as the single-row actions and skips/report anything
+       ineligible, so it's always safe regardless of which rows happen to be checked. -->
+  <% if(isAdmin){ %><div class="customer-bulk-bar" id="invoiceDeleteBulkBar" hidden><span><b data-bulk-count>0</b> tagihan terpilih</span><div class="customer-bulk-buttons"><button type="button" data-bulk-clear class="ghost"><i class="bi bi-x-lg"></i>Batal</button><button type="button" class="success" id="bulkPaySelectedInvoices"><i class="bi bi-wallet2"></i>Lunasi Massal</button><button type="button" data-simple-delete-bulk data-bulk-scope-id="invoiceDeleteBulkBar" data-bulk-url="/invoices/bulk" data-bulk-action-field="action" data-bulk-action-value="cancel" data-bulk-id-field="invoice_ids[]" data-entity-label-plural="tagihan" data-simple-delete-title="Batalkan tagihan terpilih?" data-simple-delete-warning="Tagihan yang masih memiliki pembayaran aktif akan otomatis dilewati. Histori transaksi tetap disimpan untuk audit."><i class="bi bi-x-octagon"></i>Batalkan Massal</button><button type="button" class="danger" data-simple-delete-bulk data-bulk-scope-id="invoiceDeleteBulkBar" data-bulk-url="/invoices/bulk" data-bulk-action-field="action" data-bulk-action-value="delete" data-bulk-id-field="invoice_ids[]" data-entity-label-plural="tagihan" data-simple-delete-title="Hapus permanen tagihan terpilih?" data-simple-delete-warning="Hanya tagihan yang belum pernah memiliki pembayaran yang akan dihapus permanen — sisanya otomatis dilewati."><i class="bi bi-trash3-fill"></i>Hapus Massal</button><% if(isMasterAdmin){ %><button type="button" class="danger" data-force-delete-bulk data-bulk-scope-id="invoiceDeleteBulkBar" data-bulk-url="/invoices/bulk" data-bulk-action-field="action" data-bulk-action-value="force_delete" data-bulk-id-field="invoice_ids[]" data-entity-label-plural="tagihan" data-force-delete-match="HAPUS PAKSA" data-force-delete-warning="Hapus Paksa akan menghapus SEMUA tagihan terpilih beserta SELURUH riwayat pembayarannya secara permanen, termasuk yang sudah LUNAS — dan TIDAK dapat dibatalkan."><i class="bi bi-exclamation-octagon-fill"></i>Hapus Paksa Massal</button><% } %></div></div><% } %>
+</section>
+
+<div class="modal fade" id="generateInvoiceModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <form method="post" action="/invoices/generate" class="modal-content">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <div class="modal-header"><div><div class="module-kicker">PEMBUAT TAGIHAN</div><h5 class="modal-title">Refresh / Buat Tagihan</h5></div><button class="btn-close" type="button" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="generate-note"><i class="bi bi-shield-check"></i><div><strong>Idempotent - aman dijalankan ulang</strong><small>Pilih bulan/tahun lalu jalankan kapan saja untuk menangkap pelanggan baru. Tagihan existing, termasuk yang sudah LUNAS, tidak akan dibuat ulang atau di-reset.</small></div></div>
+        <div class="row g-3 mt-1">
+          <div class="col-md-4"><label class="form-label">Bulan</label><select class="form-select" name="month" required><% monthNames.forEach((m,i)=>{ %><option value="<%= i+1 %>" <%= filters.month===i+1?'selected':'' %>><%= m %></option><% }) %></select></div>
+          <div class="col-md-4"><label class="form-label">Tahun</label><input class="form-control" type="number" name="year" min="2020" max="2100" value="<%= filters.year %>" required></div>
+          <div class="col-md-4"><label class="form-label">Site (opsional)</label><select class="form-select" name="site"><option value="">Semua Site</option><% sites.forEach(s=>{ %><option value="<%= s.code %>" <%= filters.site===s.code?'selected':'' %>><%= s.code %></option><% }) %></select></div>
+          <div class="col-md-4"><label class="form-label">Cluster (opsional)</label><select class="form-select" name="cluster_id"><option value="">Semua Cluster</option><% clusters.forEach(c=>{ %><option value="<%= c.id %>" <%= String(filters.cluster)===String(c.id)?'selected':'' %>><%= c.site_code %> · <%= c.name %></option><% }) %></select></div>
+          <div class="col-12"><label class="form-label">Pelanggan</label><select class="form-select" name="customer_id"><option value="">Semua pelanggan aktif</option><% customers.forEach(c=>{ %><option value="<%= c.id %>"><%= c.site_code %> · Cluster <%= c.cluster_name||'-' %> · <%= c.customer_code %> · <%= c.name %></option><% }) %></select><div class="form-help">Kosongkan untuk refresh seluruh pelanggan aktif. Pelanggan dengan tanggal aktivasi setelah periode yang dipilih tidak akan ditagih.</div></div>
+        </div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button><button class="btn-tech primary"><i class="bi bi-arrow-repeat"></i>Refresh / Generate</button></div>
+    </form>
+  </div>
+</div>
+
+<% if(isAdmin){ %>
+<div class="modal fade" id="invoiceImportModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <form class="modal-content customer-import-modal" method="post" action="/invoices/import" enctype="multipart/form-data">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <div class="modal-header">
+        <div><div class="module-kicker">IMPORT TAGIHAN</div><h5 class="modal-title">Import Tagihan dari Excel</h5><small class="text-secondary">Bisa membuat tagihan baru maupun memperbarui tagihan yang sudah ada.</small></div>
+        <button class="btn-close" type="button" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="customer-import-console">
+          <div class="customer-import-topbar">
+            <label class="customer-import-file">
+              <i class="bi bi-file-earmark-spreadsheet-fill"></i>
+              <input type="file" name="invoice_file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+              <span><b>Pilih file .xlsx</b><small data-file-label>Belum ada file dipilih</small></span>
+            </label>
+            <button class="btn-tech primary" type="submit"><i class="bi bi-cloud-arrow-up-fill"></i>Import</button>
+            <a class="btn-tech customer-template-download" href="/invoices/template.xlsx"><i class="bi bi-file-earmark-arrow-down"></i>Download Format Import</a>
+          </div>
+          <div class="customer-import-warning">
+            <i class="bi bi-exclamation-triangle-fill"></i>
+            <div>
+              <strong>Sebelum melakukan import</strong>
+              <ul>
+                <li>Kosongkan kolom <b>No. Faktur</b> untuk membuat tagihan baru; isi untuk memperbarui tagihan yang sudah ada.</li>
+                <li>Kode Pelanggan harus sudah terdaftar di <a href="/customers" target="_blank">Menu Pelanggan</a>.</li>
+                <li>Tagihan berstatus LUNAS/DIBATALKAN/REFUND tidak akan diubah nominalnya.</li>
+                <li>Kolom <b>Sudah Dibayar</b> TIDAK langsung melunaskan tagihan — sistem membuat catatan pembayaran berstatus Menunggu Approval yang tetap perlu di-approve dari <a href="/payments" target="_blank">Menu Approval</a>.</li>
+              </ul>
+            </div>
+          </div>
+          <div class="customer-import-required">
+            <div class="customer-import-required-head"><span>KOLOM WAJIB</span><small>Jika salah satu kosong, import seluruh file dibatalkan.</small></div>
+            <div class="customer-import-chip-grid">
+              <% ['Kode Pelanggan','Bulan','Tahun','Tanggal Faktur','Jatuh Tempo','Nominal Tagihan (tagihan baru)'].forEach(x=>{ %><span><i class="bi bi-asterisk"></i><%= x %></span><% }) %>
+            </div>
+          </div>
+          <div class="customer-import-rules">
+            <div><i class="bi bi-arrow-repeat"></i><span><b>Insert + Update (upsert)</b><small>Cocok lewat No. Faktur, atau Kode Pelanggan + Bulan + Tahun jika No. Faktur dikosongkan.</small></span></div>
+            <div><i class="bi bi-shield-check"></i><span><b>Validasi atomik</b><small>Semua baris diperiksa dulu. Satu error = tidak ada data setengah masuk.</small></span></div>
+            <div><i class="bi bi-hourglass-split"></i><span><b>Pembayaran tetap lewat approval</b><small>Kolom Sudah Dibayar membuat catatan Menunggu Approval, bukan langsung Lunas.</small></span></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <span class="customer-import-footer-note"><i class="bi bi-info-circle"></i>Format yang disarankan: template terbaru dari tombol Download Format Import.</span>
+      </div>
+    </form>
+  </div>
+</div>
+<% } %>
+
+<div class="modal fade" id="invoiceEditModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" id="invoiceEditForm" method="post">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <input type="hidden" name="return_to" value="/invoices?<%= periodQueryString %>">
+      <div class="modal-header"><div><div class="module-kicker">EDIT TAGIHAN</div><h5 class="modal-title">Perbaiki Metadata Tagihan</h5><small class="text-secondary" id="invoiceEditIdentity">-</small></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="invoice-edit-safety"><i class="bi bi-shield-lock-fill"></i><div><strong>Nominal dikunci</strong><small>Tanggal dan tipe dapat diedit tanpa mengubah nominal. Gunakan aksi “Jadikan Belum Lunas” untuk koreksi pembayaran yang salah.</small></div></div>
+        <div class="row g-3 mt-1"><div class="col-md-6"><label class="form-label">Tanggal Faktur</label><input class="form-control" type="date" name="invoice_date" id="invoiceEditDate" required></div><div class="col-md-6"><label class="form-label">Jatuh Tempo</label><input class="form-control" type="date" name="due_date" id="invoiceEditDue" required></div><div class="col-12"><label class="form-label">Tipe Tagihan</label><select class="form-select" name="is_prorata" id="invoiceEditProrata"><option value="0">Bulanan</option><option value="1">Prorata</option></select></div></div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button><button class="btn-tech primary"><i class="bi bi-check2-circle"></i>Simpan Perubahan</button></div>
+    </form>
+  </div>
+</div>
+
+<div class="modal fade" id="invoiceDiscountModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" id="invoiceDiscountForm" method="post">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <input type="hidden" name="return_to" value="/invoices?<%= periodQueryString %>">
+      <div class="modal-header"><div><div class="module-kicker">DISKON TAGIHAN</div><h5 class="modal-title">Tambah / Ubah Diskon</h5><small class="text-secondary" id="invoiceDiscountIdentity">-</small></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="invoice-edit-safety"><i class="bi bi-shield-lock-fill"></i><div><strong>Total dihitung ulang otomatis</strong><small>Total Akhir = Nominal Tagihan − Diskon. Tidak berlaku untuk tagihan yang sudah lunas/dibatalkan.</small></div></div>
+        <div class="row g-3 mt-1">
+          <div class="col-12"><small class="text-secondary">Nominal Tagihan (sebelum diskon): <strong id="invoiceDiscountSubtotal">-</strong></small></div>
+          <div class="col-md-5"><label class="form-label">Tipe Diskon</label><select class="form-select" name="discount_mode" id="invoiceDiscountMode"><option value="flat">Nominal (Rp)</option><option value="percent">Persentase (%)</option></select></div>
+          <div class="col-md-7"><label class="form-label">Nilai Diskon</label><input class="form-control" type="number" name="discount_value" id="invoiceDiscountValue" min="0" step="1" required></div>
+        </div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button><button class="btn-tech primary"><i class="bi bi-percent"></i>Simpan Diskon</button></div>
+    </form>
+  </div>
+</div>
+
+<% if(isAdmin){ %><%- include('../payments/_payment-modal',{openInvoices,staff,banks,preselectedInvoiceId:null,returnTo:'/invoices?'+periodQueryString,autoOpenPaymentModal:false}) %><% } %>
+
+<script>
+(()=>{
+  // v1.25.3 — the checkbox column previously duplicated selection state: one checkbox in its own
+  // column drove Batalkan/Hapus Massal (via the generic [data-bulk-scope] mechanism in app.js), and a
+  // SECOND, separate checkbox embedded in the Pelanggan cell drove "Bayar Dipilih" — two checkboxes per
+  // row for two different bulk actions, which read as a visual bug. Consolidated to ONE checkbox per
+  // row: [data-row-check] now feeds both mechanisms. "Bayar Dipilih" simply filters the same checked
+  // set down to rows carrying data-can-pay="1" (rows ineligible for payment stay selectable so they can
+  // still be included in Batalkan/Hapus Massal).
+  const invoiceTable=document.querySelector('.invoice-table');
+  const paySelected=document.getElementById('paySelectedInvoices');
+  const bulkPaySelected=document.getElementById('bulkPaySelectedInvoices');
+  const selectedCount=document.getElementById('invoiceTableSelectedCount');
+  const refreshSelection=()=>{
+    const payableIds=[...document.querySelectorAll('[data-row-check]')].filter(x=>x.checked&&x.dataset.canPay==='1').map(x=>String(x.value));
+    if(selectedCount)selectedCount.textContent=payableIds.length;
+    if(paySelected)paySelected.disabled=!payableIds.length;
+    return payableIds;
+  };
+  invoiceTable?.addEventListener('change',event=>{if(event.target.matches('[data-row-check],[data-select-all]'))refreshSelection();});
+  document.getElementById('invoiceDeleteBulkBar')?.querySelector('[data-bulk-clear]')?.addEventListener('click',()=>setTimeout(refreshSelection,0));
+  // Opens the payment modal pre-checking the given invoice IDs — shared by "Bayar Dipilih" (top of the
+  // table) and "Lunasi Massal" (bottom floating bulk bar, added after user feedback that the bulk bar's
+  // Batalkan/Hapus buttons had no bulk-pay option next to them).
+  const openPaymentModalFor=ids=>{
+    const paymentModal=document.getElementById('paymentModal');
+    if(!paymentModal)return;
+    paymentModal.querySelectorAll('.payment-invoice-check').forEach(ch=>{ch.checked=ids.includes(String(ch.value));ch.dispatchEvent(new Event('change',{bubbles:true}));});
+    bootstrap.Modal.getOrCreateInstance(paymentModal).show();
+  };
+  paySelected?.addEventListener('click',()=>{const ids=refreshSelection();if(!ids.length)return;openPaymentModalFor(ids);});
+  bulkPaySelected?.addEventListener('click',()=>{
+    const ids=refreshSelection();
+    if(!ids.length){alert('Tidak ada tagihan terpilih yang bisa langsung dibayar (mungkin sudah lunas atau sedang menunggu approval). Centang tagihan berstatus Belum Lunas terlebih dahulu.');return;}
+    openPaymentModalFor(ids);
+  });
+  const editModal=document.getElementById('invoiceEditModal');
+  editModal?.addEventListener('show.bs.modal',event=>{const b=event.relatedTarget;if(!b)return;document.getElementById('invoiceEditForm').action=`/invoices/${b.dataset.invoiceEditId}/update-meta`;document.getElementById('invoiceEditIdentity').textContent=`${b.dataset.invoiceEditNumber} · ${b.dataset.invoiceEditCustomer}`;document.getElementById('invoiceEditDate').value=b.dataset.invoiceEditDate||'';document.getElementById('invoiceEditDue').value=b.dataset.invoiceEditDue||'';document.getElementById('invoiceEditProrata').value=b.dataset.invoiceEditProrata||'0';});
+  const discountModal=document.getElementById('invoiceDiscountModal');
+  discountModal?.addEventListener('show.bs.modal',event=>{const b=event.relatedTarget;if(!b)return;document.getElementById('invoiceDiscountForm').action=`/invoices/${b.dataset.discountInvoiceId}/discount`;document.getElementById('invoiceDiscountIdentity').textContent=`${b.dataset.discountInvoiceNumber} · ${b.dataset.discountCustomer}`;document.getElementById('invoiceDiscountSubtotal').textContent=new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(Number(b.dataset.discountSubtotal||0));document.getElementById('invoiceDiscountMode').value='flat';document.getElementById('invoiceDiscountValue').value=Number(b.dataset.discountCurrent||0)||'';});
+  refreshSelection();
+})();
+</script>

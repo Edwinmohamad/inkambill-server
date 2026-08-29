@@ -1,0 +1,13 @@
+node_modules
+npm-debug.log
+.env
+.git
+storage/payment-proofs/*
+storage/profile-photos/*
+backups/
+*.sql
+*.sql.gz
+
+storage/cash-proofs/*
+storage/ticket-attachments/*
+storage/server-duty-proofs/*

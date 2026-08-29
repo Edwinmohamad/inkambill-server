@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="id" data-theme="light">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f3f4f6">
+  <title>Login · INKAMNET Control Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet"><link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+  :root{--brand:#603aea;--brand-dark:#4c2bc4;--ink:#17192b}
+  *{box-sizing:border-box}
+  html,body{margin:0;min-height:100%;font-family:Inter,system-ui,sans-serif}
+  body{min-height:100vh;background:#f3f4f7;color:var(--ink);display:flex;align-items:center;justify-content:center;padding:24px}
+  .login-box{width:100%;max-width:400px}
+  .login-logo{display:flex;justify-content:center;margin-bottom:22px}
+  .login-logo img{height:44px;width:auto}
+  .card-plain{background:#fff;border:1px solid #e3e6ec;border-radius:14px;padding:28px 26px;box-shadow:0 1px 3px rgba(20,22,40,.06)}
+  .card-plain h1{font-size:1.15rem;font-weight:700;margin:0 0 4px;color:var(--ink)}
+  .card-plain p.sub{color:#6b7280;font-size:.82rem;margin:0 0 22px}
+  .form-label{font-size:.72rem;font-weight:700;color:#4b5566;margin-bottom:6px}
+  .input-wrap{height:46px;display:flex;align-items:center;border:1px solid #d7dae2;border-radius:9px;background:#fbfbfd;overflow:hidden}
+  .input-wrap:focus-within{border-color:var(--brand);box-shadow:0 0 0 3px rgba(96,58,234,.12)}
+  .input-wrap i{width:42px;text-align:center;color:#8994a6;font-size:.9rem}
+  .input-wrap input{flex:1;height:100%;border:0;outline:0;background:transparent;padding:0 12px 0 0;color:var(--ink);font-size:.85rem}
+  .btn-login{height:46px;border:0;border-radius:9px;background:var(--brand);color:#fff;font-weight:700;font-size:.85rem}
+  .btn-login:hover{background:var(--brand-dark);color:#fff}
+  .secure{margin-top:14px;text-align:center;color:#98a1b0;font-size:.72rem}
+  .foot{text-align:center;color:#9aa2b1;font-size:.72rem;margin-top:18px}
+  .foot b{color:var(--brand)}
+  .loader-line{height:3px;width:0;position:fixed;left:0;top:0;background:var(--brand);z-index:10;transition:.3s}
+  </style>
+</head>
+<body>
+<div class="loader-line" id="loginLoader"></div>
+<div class="login-box">
+  <div class="login-logo"><img src="/img/inkamnet-wordmark-hq.png?v=1.2.1" alt="INKAMNET"></div>
+  <div class="card-plain">
+    <h1>Masuk ke Control Center</h1>
+    <p class="sub">Gunakan akun Anda untuk melanjutkan.</p>
+    
+    <form method="post" action="/login" id="loginForm">
+      <input type="hidden" name="_csrf" value="tok">
+      <div class="mb-3"><label class="form-label">USERNAME</label><div class="input-wrap"><i class="bi bi-person"></i><input name="username" placeholder="Masukkan username" required autofocus></div></div>
+      <div class="mb-4"><label class="form-label">PASSWORD</label><div class="input-wrap"><i class="bi bi-shield-lock"></i><input type="password" name="password" placeholder="Masukkan password" required></div></div>
+      <button class="btn btn-login w-100">Masuk <i class="bi bi-arrow-right ms-2"></i></button>
+    </form>
+    <div class="secure"><i class="bi bi-lock-fill me-1"></i>Akses internal · sesi aman</div>
+  </div>
+  <div class="foot">PT INKAMNET NEXERA TECHNOLOGY · <b>From the Village, Online Everywhere</b></div>
+</div>
+<script>document.getElementById('loginForm')?.addEventListener('submit',()=>{const l=document.getElementById('loginLoader');l.style.width='76%';setTimeout(()=>l.style.width='100%',430)});</script>
+</body></html>

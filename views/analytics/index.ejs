@@ -1,0 +1,344 @@
+<%
+/* ------------------------------------------------------------------------
+   Analitik Keuangan & PSB — dibangun 100% memakai komponen/kelas CSS yang
+   SUDAH ADA di aplikasi (module-head, analytics-v119, app-table, status-badge,
+   btn-tech, approval-button, modal Bootstrap, dsb — lihat public/css/app.css)
+   supaya tampilannya konsisten dengan halaman lain (Dashboard, Payments,
+   MikroTik). Tidak memuat framework CSS tambahan apa pun.
+   ------------------------------------------------------------------------ */
+const monthNames = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+function odpTone(o) {
+  if (Number(o.capacity_ports) === 0) return 'unknown';
+  if (Number(o.remaining_ports) <= 1) return 'critical';
+  if (Number(o.utilization) >= 75) return 'warning';
+  return 'healthy';
+}
+const outstandingTotal = Number(dueDateMatrix.due15.outstanding || 0) + Number(dueDateMatrix.due30.outstanding || 0);
+const psbActivated = (funnel.find(f => f.key === 'active') || {}).value || 0;
+%>
+<section class="analytics-page analytics-v119">
+  <div class="module-head analytics-head">
+    <div>
+      <div class="module-kicker">RT/RW NET BUSINESS INTELLIGENCE</div>
+      <h1>Analitik Keuangan &amp; PSB</h1>
+      <p>Cut-off kas operasional berjalan <b><%= cutoff.label %></b> (tgl 6 s/d tgl 5 bulan berikutnya) · Site: <b><%= selectedSiteName %></b></p>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;align-items:flex-end">
+      <form class="analytics-filter" method="get" data-auto-filter>
+        <select name="site" class="form-select"><option value="">Semua Site</option><% sites.forEach(s => { %><option value="<%= s.code %>" <%= selectedSiteCode === s.code ? 'selected' : '' %>><%= s.code %> · <%= s.name %></option><% }) %></select>
+        <select name="month" class="form-select"><% monthNames.forEach((m, i) => { %><option value="<%= i + 1 %>" <%= month === i + 1 ? 'selected' : '' %>><%= m %></option><% }) %></select>
+        <input class="form-control" type="number" name="year" min="2020" max="2100" value="<%= year %>">
+      </form>
+      <button type="button" class="btn-tech primary" data-bs-toggle="modal" data-bs-target="#analyticsReportModal"><i class="bi bi-file-earmark-bar-graph-fill"></i>Generate Laporan Analitik</button>
+    </div>
+  </div>
+
+  <% if (isDummy) { %>
+  <div class="alert alert-warning d-flex align-items-start gap-2 mb-3" role="alert">
+    <i class="bi bi-exclamation-triangle-fill mt-1"></i>
+    <div><strong>Sumber data belum siap.</strong> Tabel/kolom database yang dibutuhkan analitik ini belum lengkap, sehingga halaman menampilkan <strong>data contoh (mockup)</strong> yang realistis agar tetap dapat digunakan tanpa error.</div>
+  </div>
+  <% } %>
+
+  <nav class="analytics-tabs" aria-label="Analitik">
+    <button class="active" data-analytics-tab="executive"><i class="bi bi-stars"></i>Executive Summary</button>
+    <button data-analytics-tab="finance"><i class="bi bi-graph-up-arrow"></i>Analitik Keuangan</button>
+    <button data-analytics-tab="psb"><i class="bi bi-diagram-3-fill"></i>PSB &amp; Infrastruktur</button>
+  </nav>
+
+  <!-- ===================== TAB 1: EXECUTIVE SUMMARY ===================== -->
+  <div class="analytics-pane active" data-analytics-pane="executive">
+    <div class="analytics-kpi-grid">
+      <article><span>MRR</span><strong><%= formatRupiah(kpis.mrr) %></strong><small>Recurring revenue pelanggan aktif</small><i class="bi bi-cash-stack"></i></article>
+      <article><span>Realisasi Kas Cut-off Tgl 5</span><strong><%= formatRupiah(kpis.cashRealizationCutoff) %></strong><small>Cash basis · <%= cutoff.label %></small><i class="bi bi-wallet2"></i></article>
+      <article><span>Pelanggan Aktif</span><strong><%= kpis.activeCustomers %></strong><small><%= selectedSiteCode || 'Semua site' %></small><i class="bi bi-people-fill"></i></article>
+      <article><span>Churn Rate</span><strong><%= kpis.churnRate %>%</strong><small><%= monthNames[month - 1] %> <%= year %></small><i class="bi bi-person-dash-fill"></i></article>
+      <article><span>Outstanding Piutang</span><strong><%= formatRupiah(outstandingTotal) %></strong><small>Total tagihan 15 &amp; 30 belum lunas</small><i class="bi bi-exclamation-diamond-fill"></i></article>
+      <article><span>PSB Bulan Ini</span><strong><%= psbActivated %></strong><small>Pemasangan teraktivasi</small><i class="bi bi-person-plus-fill"></i></article>
+    </div>
+
+    <article class="analytics-advisory-card">
+      <div class="analytics-section-title"><div><span>SMART ADVISORY ENGINE</span><h2>Saran Otomatis</h2></div><i class="bi bi-lightbulb-fill"></i></div>
+      <div class="analytics-advisory-list">
+        <% advisories.forEach(a => { %>
+        <a class="<%= a.tone %>" href="<%= a.href %>"><i class="bi <%= a.icon %>"></i><div><strong><%= a.title %></strong><small><%= a.detail %></small></div><span class="bi bi-arrow-right"></span></a>
+        <% }) %>
+      </div>
+    </article>
+
+    <article class="analytics-chart-card">
+      <div class="analytics-section-title"><div><span>CASHFLOW STREAM</span><h2>Tren Inflow vs Outflow — 6 Bulan Terakhir</h2></div></div>
+      <div class="analytics-chart"><canvas id="analyticsCashflowChart"></canvas></div>
+    </article>
+  </div>
+
+  <!-- ===================== TAB 2: ANALITIK KEUANGAN ===================== -->
+  <div class="analytics-pane" data-analytics-pane="finance">
+    <div class="analytics-finance-grid">
+      <article class="analytics-chart-card">
+        <div class="analytics-section-title"><div><span>MATRIX JATUH TEMPO</span><h2>Tgl 15 vs Tgl 30 · Closing Kas Tgl 5</h2></div></div>
+        <div class="analytics-chart"><canvas id="analyticsDueMatrixChart"></canvas></div>
+      </article>
+      <article class="analytics-chart-card">
+        <div class="analytics-section-title"><div><span>REKONSILIASI TGL 30</span><h2>Overlap Closing Kas</h2></div></div>
+        <div class="analytics-mini-stats">
+          <div class="safe"><span>Terbayar tgl 1–5 (sebelum closing)</span><strong><%= formatRupiah(dueDateMatrix.due30.withinCutoffAmount) %></strong></div>
+          <div class="warn"><span>Terbayar tgl 6–7 (overlap periode berikutnya)</span><strong><%= formatRupiah(dueDateMatrix.due30.overlapNextCutoffAmount) %></strong></div>
+        </div>
+        <p class="text-secondary mt-3 mb-0" style="font-size:10px;line-height:1.6">
+          Dual-Matrix: Cash Basis <b class="text-body"><%= formatRupiah(dualMatrix.cashBasis.collected) %></b> vs Accrual Basis <b class="text-body"><%= formatRupiah(dualMatrix.accrualBasis.billed) %></b>
+          · Selisih <b class="<%= dualMatrix.variance >= 0 ? 'text-success' : 'text-danger' %>"><%= formatRupiah(dualMatrix.variance) %></b>
+        </p>
+      </article>
+    </div>
+
+    <article class="analytics-aging-card">
+      <div class="analytics-section-title"><div><span>AGING PIUTANG</span><h2>Prioritas Collection</h2></div><a href="/invoices?status=open">Buka Tagihan <i class="bi bi-arrow-right"></i></a></div>
+      <div class="aging-summary">
+        <span><b><%= agingBuckets.h3.length %></b>H-3</span>
+        <span><b><%= agingBuckets.hplus3.length %></b>H+3 s/d 30</span>
+        <span class="danger"><b><%= agingBuckets.over30.length %></b>&gt;30 Hari</span>
+        <span class="danger"><b><%= siapIsolirCount %></b>Siap Isolir</span>
+      </div>
+      <div class="aging-filters" id="agingFilterBar">
+        <button type="button" class="active" data-aging-filter="all">Semua (<%= aging.length %>)</button>
+        <button type="button" data-aging-filter="h3">H-3 (<%= agingBuckets.h3.length %>)</button>
+        <button type="button" data-aging-filter="hplus3">H+3 s/d 30 (<%= agingBuckets.hplus3.length %>)</button>
+        <button type="button" data-aging-filter="over30">&gt;30 Hari (<%= agingBuckets.over30.length %>)</button>
+        <button type="button" class="danger-chip" data-aging-filter="isolir">Siap Isolir (<%= siapIsolirCount %>)</button>
+      </div>
+      <div class="table-responsive">
+        <table class="app-table">
+          <thead><tr><th class="app-seq-col">No.</th><th>Pelanggan</th><th>Site</th><th>Jatuh Tempo</th><th>Umur</th><th>Outstanding</th><th>Status</th><th>Aksi</th></tr></thead>
+          <tbody id="agingTableBody">
+            <% aging.forEach((row, rowIndex) => {
+              const days = Number(row.days_overdue || 0);
+              const bucket = days <= 0 ? 'h3' : days <= 30 ? 'hplus3' : 'over30';
+              const waText = encodeURIComponent(`Halo ${row.customer_name}, ini pengingat tagihan INKAMNET Anda sebesar ${formatRupiah(row.outstanding)} yang ${days > 0 ? `sudah lewat ${days} hari dari jatuh tempo` : 'akan segera jatuh tempo'}. Mohon segera melakukan pembayaran. Terima kasih.`);
+            %>
+            <tr class="aging-row" data-bucket="<%= bucket %>" data-isolir="<%= row.siapIsolir ? '1' : '0' %>">
+              <td><span class="cell-main"><%= rowIndex+1 %></span></td>
+              <td><span class="cell-main"><%= row.customer_name %></span><span class="cell-sub"><%= row.customer_code %></span></td>
+              <td><span class="status-badge purple"><%= row.site_code %></span></td>
+              <td><%= formatDate(row.oldest_due) %></td>
+              <td><%= days > 0 ? `${days} hari overdue` : days < 0 ? `H${days}` : 'Hari ini' %></td>
+              <td class="money"><%= formatRupiah(row.outstanding) %></td>
+              <td>
+                <% if (row.siapIsolir) { %><span class="status-badge red">Siap Isolir</span>
+                <% } else if (days > 30) { %><span class="status-badge red">Review Isolir</span>
+                <% } else if (days > 0) { %><span class="status-badge orange">Follow-up</span>
+                <% } else { %><span class="status-badge green">Reminder H-3</span><% } %>
+              </td>
+              <td>
+                <% if (row.whatsappNumber) { %>
+                <a href="https://wa.me/<%= row.whatsappNumber %>?text=<%= waText %>" target="_blank" rel="noopener" class="approval-button approve"><i class="bi bi-whatsapp"></i>WA Reminder</a>
+                <% } else { %><span class="text-secondary" style="font-size:.55rem">Nomor belum ada</span><% } %>
+              </td>
+            </tr>
+            <% }) %>
+            <% if (!aging.length) { %>
+            <tr><td colspan="8"><div class="empty-state"><i class="bi bi-check2-circle"></i><strong>Tidak ada piutang terbuka</strong></div></td></tr>
+            <% } %>
+          </tbody>
+        </table>
+        <div id="agingEmptyFiltered" class="empty-state d-none"><i class="bi bi-funnel"></i><strong>Tidak ada pelanggan pada kategori filter ini</strong></div>
+      </div>
+    </article>
+  </div>
+
+  <!-- ===================== TAB 3: PSB & INFRASTRUKTUR ===================== -->
+  <div class="analytics-pane" data-analytics-pane="psb">
+    <div class="analytics-psb-grid">
+      <article class="analytics-funnel-card">
+        <div class="analytics-section-title"><div><span>PSB CONVERSION FUNNEL</span><h2>Registrasi → Aktivasi</h2><small>Stage diturunkan dari kelengkapan alamat/cluster, provisioning PPPoE, dan activation date saat ini.</small></div></div>
+        <div class="psb-funnel"><% const base = Math.max(1, Number(funnel[0]?.value || 0)); funnel.forEach((f, index) => { %><div style="--funnel-width:<%= Math.max(38, Math.round(Number(f.value || 0) / base * 100)) %>%"><span><i><%= index + 1 %></i><b><%= f.label %></b><small><%= f.hint %></small></span><strong><%= f.value %></strong></div><% }) %></div>
+      </article>
+      <article class="analytics-sla-card">
+        <span>RATA-RATA SLA PSB</span>
+        <strong><%= sla.avgHours %><small> jam</small></strong>
+        <p>Dari registrasi sampai activation date, dari <%= sla.samples %> pelanggan teraktivasi bulan ini.</p>
+        <i class="bi bi-stopwatch-fill"></i>
+      </article>
+    </div>
+    <article class="analytics-odp-card">
+      <div class="analytics-section-title"><div><span>ODP CAPACITY HEATMAP</span><h2>Kapasitas per Site / ODP</h2></div><a href="/clusters">Kelola ODP <i class="bi bi-arrow-right"></i></a></div>
+      <div class="odp-heatmap">
+        <% odp.forEach(o => { const tone = odpTone(o); %>
+        <a class="<%= tone %>" href="/clusters?site=<%= o.site_code %>"><span><b><%= o.site_code %></b><small><%= o.name %></small></span><strong><%= o.capacity_ports ? `${o.used_ports}/${o.capacity_ports}` : 'N/A' %></strong><em><%= o.capacity_ports ? `${o.remaining_ports} port tersisa` : 'Kapasitas belum diisi' %></em><i style="--odp-use:<%= o.utilization %>%"></i></a>
+        <% }) %>
+        <% if (!odp.length) { %><div class="empty-state"><i class="bi bi-diagram-3"></i><strong>Belum ada data ODP</strong></div><% } %>
+      </div>
+    </article>
+  </div>
+</section>
+
+<!-- ===================== MODAL: GENERATE LAPORAN ANALITIK ===================== -->
+<div class="modal fade" id="analyticsReportModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div><div class="module-kicker">GENERATE LAPORAN ANALITIK</div><h5 class="modal-title">Ringkasan Eksekutif</h5><small class="text-secondary" id="analyticsReportPeriod">Memuat data terbaru…</small></div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+      </div>
+      <div class="modal-body">
+        <div id="analyticsReportLoading" class="analytics-report-loading"><span class="spinner-border spinner-border-sm"></span> Mengambil data analitik terbaru…</div>
+        <div id="analyticsReportContent" class="d-none">
+          <div class="module-kicker">1. Ringkasan Eksekutif Keuangan &amp; Realisasi Kas</div>
+          <div class="analytics-mini-stats mb-3">
+            <div><span>MRR</span><strong data-report-field="mrr">-</strong></div>
+            <div><span>Realisasi Kas Cut-off</span><strong data-report-field="cashRealizationCutoff">-</strong></div>
+            <div><span>Accrual Billed</span><strong data-report-field="accrualBilled">-</strong></div>
+            <div><span>Cash Collected</span><strong data-report-field="cashCollected">-</strong></div>
+            <div><span>Selisih Cash vs Accrual</span><strong data-report-field="variance">-</strong></div>
+            <div><span>Churn Rate</span><strong data-report-field="churnRate">-</strong></div>
+          </div>
+          <div class="module-kicker">2. Matriks Kesehatan Jaringan &amp; SLA PSB</div>
+          <div class="analytics-mini-stats mb-3">
+            <div><span>Avg SLA</span><strong data-report-field="avgSlaHours">-</strong></div>
+            <div><span>Konversi PSB</span><strong data-report-field="psbConversionRate">-</strong></div>
+            <div class="safe"><span>ODP Aman</span><strong data-report-field="odpHealthy">-</strong></div>
+            <div class="danger"><span>ODP Kritis</span><strong data-report-field="odpCritical">-</strong></div>
+          </div>
+          <div class="module-kicker">Smart Advisory</div>
+          <ul id="analyticsReportAdvisories" class="ps-3" style="font-size:11px;color:var(--muted)"></ul>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <a id="analyticsReportDownload" href="#" class="btn-tech"><i class="bi bi-download"></i>Unduh JSON</a>
+        <button type="button" id="analyticsReportPrint" class="btn-tech"><i class="bi bi-printer-fill"></i>Cetak / Download PDF</button>
+        <button type="button" id="analyticsReportWa" class="btn-tech success"><i class="bi bi-whatsapp"></i>Kirim ke Owner</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Sheet cetak tersembunyi, diisi JS tepat sebelum window.print(). -->
+<div id="analyticsPrintSheet" class="d-none bg-white text-dark p-4"></div>
+<style>
+@media print {
+  body * { visibility: hidden !important; }
+  #analyticsPrintSheet, #analyticsPrintSheet * { visibility: visible !important; }
+  #analyticsPrintSheet { display: block !important; position: absolute; top: 0; left: 0; width: 100%; }
+}
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+(() => {
+  const money = v => 'Rp ' + new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(v || 0);
+
+  // ---- Tab switcher (pola sama dengan modul lain di aplikasi) ----
+  document.querySelectorAll('[data-analytics-tab]').forEach(btn => btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-analytics-tab]').forEach(x => x.classList.toggle('active', x === btn));
+    document.querySelectorAll('[data-analytics-pane]').forEach(x => x.classList.toggle('active', x.dataset.analyticsPane === btn.dataset.analyticsTab));
+  }));
+
+  // ---- Filter cepat Aging Piutang (murni client-side, tanpa reload) ----
+  const agingRows = [...document.querySelectorAll('.aging-row')];
+  const filterButtons = document.querySelectorAll('[data-aging-filter]');
+  const emptyFiltered = document.getElementById('agingEmptyFiltered');
+  filterButtons.forEach(btn => btn.addEventListener('click', () => {
+    filterButtons.forEach(x => x.classList.toggle('active', x === btn));
+    const key = btn.dataset.agingFilter;
+    let visible = 0;
+    agingRows.forEach(row => {
+      const match = key === 'all' ? true : key === 'isolir' ? row.dataset.isolir === '1' : row.dataset.bucket === key;
+      row.style.display = match ? '' : 'none';
+      if (match) visible++;
+    });
+    if (emptyFiltered) emptyFiltered.classList.toggle('d-none', visible !== 0 || agingRows.length === 0);
+  }));
+
+  // ---- Charts ----
+  if (typeof Chart !== 'undefined') {
+    const financeSeries = <%- safeJson(financeSeries) %>;
+    const dueDateMatrix = <%- safeJson(dueDateMatrix) %>;
+    const baseOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#8995aa', boxWidth: 10, usePointStyle: true } }, tooltip: { backgroundColor: '#0b1020', padding: 12, callbacks: { label: c => `${c.dataset.label}: ${money(c.raw)}` } } }, scales: { x: { grid: { display: false }, ticks: { color: '#7f8aa0' } }, y: { beginAtZero: true, grid: { color: 'rgba(148,163,184,.08)' }, ticks: { color: '#7f8aa0', callback: v => money(v) } } } };
+
+    const cashCanvas = document.getElementById('analyticsCashflowChart');
+    if (cashCanvas) new Chart(cashCanvas, { type: 'line', data: { labels: financeSeries.labels, datasets: [
+      { label: 'Inflow', data: financeSeries.inflow, borderColor: '#2ed6a1', backgroundColor: 'rgba(46,214,161,.10)', fill: true, tension: .38 },
+      { label: 'Outflow', data: financeSeries.outflow, borderColor: '#ff6969', backgroundColor: 'rgba(255,105,105,.08)', fill: true, tension: .38 }
+    ] }, options: baseOptions });
+
+    const dueCanvas = document.getElementById('analyticsDueMatrixChart');
+    if (dueCanvas) new Chart(dueCanvas, { type: 'bar', data: { labels: ['Jatuh Tempo 15', 'Jatuh Tempo 30'], datasets: [
+      { label: 'Tagihan (Billed)', data: [dueDateMatrix.due15.billed, dueDateMatrix.due30.billed], backgroundColor: 'rgba(244,182,77,.70)', borderRadius: 7 },
+      { label: 'Terbayar (Paid)', data: [dueDateMatrix.due15.paid, dueDateMatrix.due30.paid], backgroundColor: 'rgba(46,214,161,.70)', borderRadius: 7 },
+      { label: 'Outstanding', data: [dueDateMatrix.due15.outstanding, dueDateMatrix.due30.outstanding], backgroundColor: 'rgba(255,105,105,.65)', borderRadius: 7 }
+    ] }, options: baseOptions });
+  }
+
+  // ---- Modal Generate Laporan Analitik ----
+  const modalEl = document.getElementById('analyticsReportModal');
+  const loadingEl = document.getElementById('analyticsReportLoading');
+  const contentEl = document.getElementById('analyticsReportContent');
+  const periodEl = document.getElementById('analyticsReportPeriod');
+  const advisoriesEl = document.getElementById('analyticsReportAdvisories');
+  const downloadBtn = document.getElementById('analyticsReportDownload');
+  const printBtn = document.getElementById('analyticsReportPrint');
+  const waBtn = document.getElementById('analyticsReportWa');
+  const printSheet = document.getElementById('analyticsPrintSheet');
+  const initialReport = <%- safeJson(report) %>;
+  const ownerWhatsapp = <%- safeJson(ownerWhatsapp) %>;
+  const queryString = new URLSearchParams({ site: '<%= selectedSiteCode %>', month: '<%= month %>', year: '<%= year %>' }).toString();
+  let currentReport = null;
+
+  function fillReport(report) {
+    currentReport = report;
+    periodEl.textContent = `${report.site} · ${report.period.cutoffLabel}`;
+    const fields = {
+      mrr: money(report.executive.mrr), cashRealizationCutoff: money(report.executive.cashRealizationCutoff),
+      accrualBilled: money(report.executive.accrualBilled), cashCollected: money(report.executive.cashCollected),
+      variance: money(report.executive.variance), churnRate: report.executive.churnRate + '%',
+      avgSlaHours: report.network.avgSlaHours + ' jam', psbConversionRate: report.network.psbConversionRate + '%',
+      odpHealthy: report.network.odpHealthy, odpCritical: report.network.odpCritical
+    };
+    Object.entries(fields).forEach(([key, value]) => { const el = contentEl.querySelector(`[data-report-field="${key}"]`); if (el) el.textContent = value; });
+    advisoriesEl.innerHTML = report.advisories.map(a => `<li><b>${a.title}</b> — ${a.detail}</li>`).join('');
+    loadingEl.classList.add('d-none');
+    contentEl.classList.remove('d-none');
+    downloadBtn.href = `/analytics/export-report?${queryString}&download=1`;
+  }
+
+  if (modalEl) modalEl.addEventListener('show.bs.modal', () => {
+    loadingEl.classList.remove('d-none');
+    contentEl.classList.add('d-none');
+    fetch(`/analytics/export-report?${queryString}`).then(res => res.json()).then(data => fillReport(data.report)).catch(() => fillReport(initialReport));
+  });
+
+  printBtn?.addEventListener('click', () => {
+    const report = currentReport || initialReport;
+    printSheet.innerHTML = `
+      <h1 style="font-size:20px;font-weight:800;margin-bottom:4px;">Laporan Analitik Keuangan &amp; PSB</h1>
+      <p style="font-size:12px;color:#475569;margin-bottom:16px;">${report.site} · Periode cut-off ${report.period.cutoffLabel} · Dicetak ${new Date(report.generatedAt).toLocaleString('id-ID')}</p>
+      <h2 style="font-size:14px;font-weight:700;margin:12px 0 6px;">1. Ringkasan Eksekutif Keuangan &amp; Realisasi Kas</h2>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <tr><td style="padding:4px 0;">MRR</td><td style="text-align:right;">${money(report.executive.mrr)}</td></tr>
+        <tr><td style="padding:4px 0;">Realisasi Kas Cut-off</td><td style="text-align:right;">${money(report.executive.cashRealizationCutoff)}</td></tr>
+        <tr><td style="padding:4px 0;">Accrual Billed</td><td style="text-align:right;">${money(report.executive.accrualBilled)}</td></tr>
+        <tr><td style="padding:4px 0;">Cash Collected</td><td style="text-align:right;">${money(report.executive.cashCollected)}</td></tr>
+        <tr><td style="padding:4px 0;">Selisih Cash vs Accrual</td><td style="text-align:right;">${money(report.executive.variance)}</td></tr>
+        <tr><td style="padding:4px 0;">Churn Rate</td><td style="text-align:right;">${report.executive.churnRate}%</td></tr>
+      </table>
+      <h2 style="font-size:14px;font-weight:700;margin:16px 0 6px;">2. Matriks Kesehatan Jaringan &amp; SLA PSB</h2>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <tr><td style="padding:4px 0;">Rata-rata SLA Teknisi</td><td style="text-align:right;">${report.network.avgSlaHours} jam</td></tr>
+        <tr><td style="padding:4px 0;">Konversi PSB</td><td style="text-align:right;">${report.network.psbConversionRate}%</td></tr>
+        <tr><td style="padding:4px 0;">ODP Aman / Hampir Penuh / Kritis</td><td style="text-align:right;">${report.network.odpHealthy} / ${report.network.odpWarning} / ${report.network.odpCritical}</td></tr>
+      </table>
+      <h2 style="font-size:14px;font-weight:700;margin:16px 0 6px;">Smart Advisory</h2>
+      <ul style="font-size:12px;padding-left:16px;">${report.advisories.map(a => `<li style="margin-bottom:4px;"><b>${a.title}</b> — ${a.detail}</li>`).join('')}</ul>
+    `;
+    window.print();
+  });
+
+  waBtn?.addEventListener('click', () => {
+    const report = currentReport || initialReport;
+    const text = encodeURIComponent(`*Laporan Analitik INKAMNET*\n${report.site} · Periode cut-off ${report.period.cutoffLabel}\n\nMRR: ${money(report.executive.mrr)}\nRealisasi Kas Cut-off: ${money(report.executive.cashRealizationCutoff)}\nAccrual Billed: ${money(report.executive.accrualBilled)}\nChurn Rate: ${report.executive.churnRate}%\n\nSLA Teknisi: ${report.network.avgSlaHours} jam\nKonversi PSB: ${report.network.psbConversionRate}%\nODP Kritis: ${report.network.odpCritical}\n\nDikirim otomatis dari Analitik Keuangan & PSB.`);
+    const target = ownerWhatsapp || (report.ownerWhatsapp || '');
+    if (!target) { alert('Nomor WhatsApp Owner belum diisi di Pengaturan (Company Phone).'); return; }
+    window.open(`https://wa.me/${target}?text=${text}`, '_blank', 'noopener');
+  });
+})();
+</script>

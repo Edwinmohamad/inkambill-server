@@ -1,0 +1,107 @@
+<section>
+  <div class="module-head">
+    <div>
+      <div class="module-kicker">CASH FLOW CONFIG</div>
+      <h1>Kategori Kas</h1>
+      <p>Semua kategori kas operasional dibuat manual. Kategori internal billing tidak ditampilkan di menu ini.</p>
+    </div>
+    <div class="module-actions"><button class="btn-tech primary" data-bs-toggle="modal" data-bs-target="#categoryModal"><i class="bi bi-plus-lg"></i>Tambah Kategori</button></div>
+  </div>
+
+  <div class="metric-grid">
+    <article class="metric-card green"><div class="metric-top"><span class="metric-label">Pendapatan</span><span class="metric-icon"><i class="bi bi-arrow-down-left-circle-fill"></i></span></div><strong><%= categories.filter(c=>c.type==='income').length %></strong><small>Kategori pemasukan</small></article>
+    <article class="metric-card red"><div class="metric-top"><span class="metric-label">Pengeluaran</span><span class="metric-icon"><i class="bi bi-arrow-up-right-circle-fill"></i></span></div><strong><%= categories.filter(c=>c.type==='expense').length %></strong><small>Kategori pengeluaran manual</small></article>
+  </div>
+
+  <div class="cash-category-guide mb-3"><div><i class="bi bi-lightbulb-fill"></i><strong>Contoh kategori yang bisa kamu buat</strong></div><span>Liability / Pengeluaran Pokok Bulanan</span><span>Petty Cash</span><span>Bandwidth / ISP</span><span>Listrik & Utilitas</span><span>Gaji / Honor</span><span>Transportasi</span><span>Maintenance</span><span>Sewa</span><span>Pajak / Administrasi</span><span>Lain-lain</span><small>Contoh ini hanya referensi — sistem tidak membuat kategori otomatis.</small></div>
+
+  <div class="data-card">
+    <div class="data-card-head"><div><h3>Daftar Kategori Kas</h3><small>Kode kategori menjadi prefix nomor transaksi, contoh OPS-202608-000123.</small></div></div>
+    <div class="table-responsive">
+      <table class="app-table">
+        <thead><tr><th>No.</th><th>Kode</th><th>Nama</th><th>Jenis</th><th>Site</th><th>Keterangan</th><th>Status</th><th class="text-end">Tindakan</th></tr></thead>
+        <tbody>
+          <% categories.forEach((c,catIndex)=>{ %>
+          <tr>
+            <td><span class="cell-main"><%= catIndex+1 %></span></td>
+            <td><code class="cash-category-code"><%= c.code||'-' %></code></td>
+            <td><span class="cell-main"><%= c.name %></span> <% if(c.is_recurring_mandatory){ %><span class="status-badge purple"><i class="bi bi-calendar2-check-fill"></i>Wajib Bulanan</span><% } %></td>
+            <td><span class="status-badge <%= c.type==='income'?'green':'red' %>"><%= c.type==='income'?'Pendapatan':'Pengeluaran' %></span></td>
+            <td><span class="status-badge purple"><%= c.site_code||'GLOBAL' %></span></td>
+            <td><%= c.description||'-' %></td>
+            <td><span class="status-badge <%= c.is_active?'green':'gray' %>"><%= c.is_active?'aktif':'nonaktif' %></span></td>
+            <td class="text-end">
+              <% if(isAdmin){ %>
+                <div class="d-inline-flex gap-1">
+                  <button type="button" class="btn-tech compact" data-bs-toggle="modal" data-bs-target="#editCategory<%= c.id %>"><i class="bi bi-pencil-square"></i>Edit</button>
+                  <form method="post" action="/cash/categories/<%= c.id %>/delete" class="d-inline" onsubmit="return confirm('Hapus kategori ini? Kategori yang sudah dipakai transaksi tidak dapat dihapus.')">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                    <button class="btn-tech danger compact" type="submit"><i class="bi bi-trash3"></i>Hapus</button>
+                  </form>
+                </div>
+              <% } else { %><span class="text-secondary">-</span><% } %>
+            </td>
+          </tr>
+          <% }) %>
+          <% if(!categories.length){ %><tr><td colspan="8"><div class="empty-state"><i class="bi bi-tags"></i><strong>Belum ada kategori kas</strong><small>Klik Tambah Kategori untuk membuat kategori pertama.</small></div></td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<div class="modal fade" id="categoryModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="/cash/categories">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <div class="modal-header"><div><div class="module-kicker">KATEGORI MANUAL</div><h5 class="modal-title">Tambah Kategori Kas</h5></div><button class="btn-close" type="button" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-4"><label class="form-label">Kode</label><input class="form-control text-uppercase" name="code" maxlength="10" placeholder="OPS"><div class="form-help">Boleh kosong, kode dibuat otomatis dari nama.</div></div>
+          <div class="col-8"><label class="form-label">Nama</label><input class="form-control" name="name" required placeholder="Contoh: Liability / Pengeluaran Pokok Bulanan"></div>
+          <div class="col-6"><label class="form-label">Jenis</label><select class="form-select" name="type"><option value="expense" selected>Pengeluaran</option><option value="income">Pendapatan</option></select></div>
+          <div class="col-6"><label class="form-label">Site</label><select class="form-select" name="site_id"><option value="">Global</option><% sites.forEach(s=>{ %><option value="<%= s.id %>"><%= s.code %> · <%= s.name %></option><% }) %></select></div>
+          <div class="col-12"><label class="form-label">Deskripsi</label><textarea class="form-control" name="description" rows="3" placeholder="Keterangan kategori..."></textarea></div>
+          <div class="col-12">
+            <label class="form-check d-flex align-items-center gap-2">
+              <input class="form-check-input" type="checkbox" name="is_recurring_mandatory" value="1">
+              <span>Wajib dicatat setiap bulan <small class="d-block text-secondary">Contoh: Sewa, Listrik, Bandwidth/ISP — akan muncul di checklist Data Kas supaya tidak lupa dicatat tiap bulan.</small></span>
+            </label>
+          </div>
+          <div class="col-6"><label class="form-label">Nominal Tetap (opsional)</label><input class="form-control" type="number" min="0" step="1" name="expected_amount" placeholder="Contoh: 500000"><div class="form-help">Hanya dipakai kalau "Wajib dicatat setiap bulan" dicentang.</div></div>
+          <div class="col-6"><label class="form-label">Tanggal Jatuh Tempo (opsional)</label><input class="form-control" type="number" min="1" max="28" name="due_day" placeholder="Contoh: 5"><div class="form-help">Kalau diisi, checklist Data Kas menandai "Terlambat" setelah tanggal ini terlewat belum dicatat.</div></div>
+        </div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button><button class="btn-tech primary">Simpan Kategori</button></div>
+    </form>
+  </div>
+</div>
+
+<% categories.forEach(c=>{ %>
+<div class="modal fade" id="editCategory<%= c.id %>" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="/cash/categories/<%= c.id %>/edit">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <div class="modal-header"><div><div class="module-kicker">KATEGORI MANUAL</div><h5 class="modal-title">Edit Kategori <%= c.name %></h5></div><button class="btn-close" type="button" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-4"><label class="form-label">Kode</label><input class="form-control text-uppercase" value="<%= c.code||'-' %>" disabled><div class="form-help">Kode tidak bisa diubah — sudah jadi prefix nomor transaksi.</div></div>
+          <div class="col-8"><label class="form-label">Nama</label><input class="form-control" name="name" required value="<%= c.name %>"></div>
+          <div class="col-6"><label class="form-label">Jenis</label><select class="form-select" name="type"><option value="expense" <%= c.type==='expense'?'selected':'' %>>Pengeluaran</option><option value="income" <%= c.type==='income'?'selected':'' %>>Pendapatan</option></select></div>
+          <div class="col-6"><label class="form-label">Site</label><select class="form-select" name="site_id"><option value="">Global</option><% sites.forEach(s=>{ %><option value="<%= s.id %>" <%= String(c.site_id||'')===String(s.id)?'selected':'' %>><%= s.code %> · <%= s.name %></option><% }) %></select></div>
+          <div class="col-12"><label class="form-label">Deskripsi</label><textarea class="form-control" name="description" rows="3"><%= c.description||'' %></textarea></div>
+          <div class="col-12">
+            <label class="form-check d-flex align-items-center gap-2">
+              <input class="form-check-input" type="checkbox" name="is_recurring_mandatory" value="1" <%= c.is_recurring_mandatory?'checked':'' %>>
+              <span>Wajib dicatat setiap bulan <small class="d-block text-secondary">Muncul di checklist Data Kas kalau bulan ini belum ada transaksinya.</small></span>
+            </label>
+          </div>
+          <div class="col-6"><label class="form-label">Nominal Tetap (opsional)</label><input class="form-control" type="number" min="0" step="1" name="expected_amount" value="<%= c.expected_amount||'' %>" placeholder="Contoh: 500000"><div class="form-help">Hanya dipakai kalau "Wajib dicatat setiap bulan" dicentang.</div></div>
+          <div class="col-6"><label class="form-label">Tanggal Jatuh Tempo (opsional)</label><input class="form-control" type="number" min="1" max="28" name="due_day" value="<%= c.due_day||'' %>" placeholder="Contoh: 5"><div class="form-help">Kalau diisi, checklist Data Kas menandai "Terlambat" setelah tanggal ini terlewat belum dicatat.</div></div>
+        </div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button><button class="btn-tech primary"><i class="bi bi-check2"></i>Simpan Perubahan</button></div>
+    </form>
+  </div>
+</div>
+<% }) %>
