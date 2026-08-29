@@ -8,7 +8,16 @@
     <article class="danger"><i class="bi bi-x-octagon-fill"></i><span><small>GAGAL</small><strong><%= summary.failed %></strong></span></article>
   </div>
 
-  <form class="filter-card log-filter" method="get" action="/logs"><div class="search-box"><i class="bi bi-search"></i><input name="q" value="<%= q %>" placeholder="Cari user, aksi, modul, IP, job, atau pesan error..."></div><button class="btn-tech primary"><i class="bi bi-funnel"></i>Cari Log</button><% if(q){ %><a class="btn-tech" href="/logs">Reset</a><% } %></form>
+  <form class="filter-card" method="get" action="/logs">
+    <div class="filter-grid">
+      <div class="filter-group"><label>PENCARIAN</label><input class="form-control" name="q" value="<%= q %>" placeholder="User, aksi, modul, IP, job, pesan error..."></div>
+      <div class="filter-group"><label>DARI TANGGAL</label><input class="form-control" type="date" name="date_from" value="<%= filters.date_from %>"></div>
+      <div class="filter-group"><label>SAMPAI TANGGAL</label><input class="form-control" type="date" name="date_to" value="<%= filters.date_to %>"></div>
+      <div class="filter-group"><label>AKSI (USER)</label><select class="form-select" name="action"><option value="">Semua Aksi</option><% actions.forEach(a=>{ %><option value="<%= a %>" <%= filters.action===a?'selected':'' %>><%= a %></option><% }) %></select></div>
+      <div class="filter-group"><label>STATUS (AUTOMATION)</label><select class="form-select" name="status"><option value="">Semua Status</option><option value="success" <%= filters.status==='success'?'selected':'' %>>Berhasil</option><option value="failed" <%= filters.status==='failed'?'selected':'' %>>Gagal</option></select></div>
+      <div class="filter-group d-flex align-items-end gap-2"><button class="btn-tech primary flex-fill"><i class="bi bi-funnel-fill"></i>Cari Log</button><a class="btn-tech" href="/logs"><i class="bi bi-arrow-counterclockwise"></i></a></div>
+    </div>
+  </form>
 
   <div class="log-tab-shell">
     <div class="log-tabs" role="tablist"><button class="active" type="button" data-log-tab="audit"><i class="bi bi-person-check"></i>Aktivitas Pengguna <b><%= audit.length %></b></button><button type="button" data-log-tab="automation"><i class="bi bi-robot"></i>Automation <b><%= automation.length %></b></button></div>

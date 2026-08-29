@@ -6,6 +6,16 @@ const { requireAdmin }=require('../middleware/auth');
 const { audit }=require('../services/auditService');
 const router=express.Router();
 
+// v1.25.5 (susulan #13) — filter Site/Status/pencarian untuk Router MikroTik. Semua aksi (tambah/edit/
+// hapus/test/bulk) redirect kembali ke /routers membawa filter yang sedang aktif via hidden field
+// return_site/return_status/return_q, direkonstruksi oleh helper ini, supaya user tidak kehilangan
+// konteks filter setelah melakukan aksi.
+function routerReturn(body){
+  const site=body.return_site||'',status=body.return_status||'',q=body.return_q||'';
+  const p=new URLSearchParams();if(site)p.set('site',site);if(status)p.set('status',status);if(q)p.set('q',q);
+  return `/routers${p.toString()?`?${p.toString()}`:''}`;
+}
+
 function routerInput(body,{passwordRequired=false}={}){
   const siteId=Number(body.site_id);
   const name=String(body.name||'').trim().slice(0,120);
@@ -24,11 +34,23 @@ function routerInput(body,{passwordRequired=false}={}){
 }
 
 router.get('/',async(req,res)=>{
-  const [routers]=await db.query(`SELECT r.id,r.site_id,r.name,r.base_url,r.username,r.verify_tls,r.is_active,r.last_status,r.last_error,r.last_seen_at,s.code site_code,
+  // v1.25.5 (susulan #13) — filter Site/Status/pencarian nama & endpoint, agar mudah mencari router
+  // pada daftar yang sudah banyak site-nya. status 'never' berarti router belum pernah di-test (last_status NULL).
+  const site=String(req.query.site||'').trim();
+  const status=['online','offline','never'].includes(req.query.status)?req.query.status:'';
+  const q=String(req.query.q||'').trim();
+  let sql=`SELECT r.id,r.site_id,r.name,r.base_url,r.username,r.verify_tls,r.is_active,r.last_status,r.last_error,r.last_seen_at,s.code site_code,
     (SELECT COUNT(*) FROM customers c WHERE c.router_id=r.id) linked_customers
-    FROM routers r JOIN sites s ON s.id=r.site_id ORDER BY s.code,r.name`);
+    FROM routers r JOIN sites s ON s.id=r.site_id WHERE 1=1`;
+  const params=[];
+  if(site){sql+=` AND s.code=?`;params.push(site);}
+  if(status==='never'){sql+=` AND r.last_status IS NULL`;}
+  else if(status){sql+=` AND r.last_status=?`;params.push(status);}
+  if(q){sql+=` AND (r.name LIKE ? OR r.base_url LIKE ?)`;params.push(`%${q}%`,`%${q}%`);}
+  sql+=` ORDER BY s.code,r.name`;
+  const [routers]=await db.query(sql,params);
   const [sites]=await db.query(`SELECT id,code,name FROM sites WHERE is_active=1 ORDER BY code`);
-  res.render('routers/index',{title:'Router MikroTik',routers,sites});
+  res.render('routers/index',{title:'Router MikroTik',routers,sites,filters:{site,status,q}});
 });
 
 router.post('/',requireAdmin,async(req,res)=>{
@@ -41,7 +63,7 @@ router.post('/',requireAdmin,async(req,res)=>{
     await audit({userId:req.session.user.id,action:'create',entityType:'router',entityId:result.insertId,description:`Tambah router ${b.name}`,ip:req.ip});
     req.session.flash={type:'success',message:'Router tersimpan. Jalankan Test untuk memvalidasi koneksi.'};
   }catch(e){req.session.flash={type:'danger',message:`Router gagal disimpan: ${e.message}`};}
-  res.redirect('/routers');
+  res.redirect(routerReturn(req.body));
 });
 
 router.post('/:id/update',requireAdmin,async(req,res)=>{
@@ -61,7 +83,7 @@ router.post('/:id/update',requireAdmin,async(req,res)=>{
     await audit({userId:req.session.user.id,action:'update',entityType:'router',entityId:id,description:`Ubah router ${current.name} menjadi ${b.name}`,ip:req.ip});
     req.session.flash={type:'success',message:`Router ${b.name} berhasil diperbarui. Jalankan Test untuk memastikan endpoint baru aktif.`};
   }catch(e){req.session.flash={type:'danger',message:`Update router gagal: ${e.message}`};}
-  res.redirect('/routers');
+  res.redirect(routerReturn(req.body));
 });
 
 router.post('/:id/delete',requireAdmin,async(req,res)=>{
@@ -74,7 +96,7 @@ router.post('/:id/delete',requireAdmin,async(req,res)=>{
     await audit({userId:req.session.user.id,action:'delete',entityType:'router',entityId:id,description:`Hapus router ${current.name}`,ip:req.ip});
     req.session.flash={type:'success',message:`Router ${current.name} berhasil dihapus.`};
   }catch(e){req.session.flash={type:'danger',message:`Hapus router gagal: ${e.message}`};}
-  res.redirect('/routers');
+  res.redirect(routerReturn(req.body));
 });
 
 // v1.21.0 — Section 4 (global delete-button audit): per-row delete already existed and was already
@@ -84,8 +106,12 @@ router.post('/:id/delete',requireAdmin,async(req,res)=>{
 router.post('/bulk',requireAdmin,async(req,res)=>{
   const action=String(req.body.action||'').trim();
   const ids=[...new Set([].concat(req.body.router_ids||[]).map(x=>Number(x)).filter(Boolean))];
-  if(!ids.length){req.session.flash={type:'warning',message:'Pilih minimal satu router terlebih dahulu.'};return res.redirect('/routers');}
-  if(ids.length>500){req.session.flash={type:'danger',message:'Maksimal 500 router per aksi massal.'};return res.redirect('/routers');}
+  // v1.25.5 (susulan #13) — return context (site/status/q) arrives via the bulk button's action URL
+  // query string, since the generic bulk-delete JS helper only posts action + id fields (same pattern
+  // already established for Data Kas bulk actions).
+  const returnCtx=routerReturn({...req.query,...req.body});
+  if(!ids.length){req.session.flash={type:'warning',message:'Pilih minimal satu router terlebih dahulu.'};return res.redirect(returnCtx);}
+  if(ids.length>500){req.session.flash={type:'danger',message:'Maksimal 500 router per aksi massal.'};return res.redirect(returnCtx);}
   if(action==='delete'){
     const deleted=[];const skipped=[];
     for(const id of ids){
@@ -98,14 +124,14 @@ router.post('/bulk',requireAdmin,async(req,res)=>{
     }
     if(!deleted.length){
       req.session.flash={type:'danger',message:'Semua router terpilih masih digunakan pelanggan dan tidak dapat dihapus. Pindahkan/unlink pelanggan terlebih dahulu.'};
-      return res.redirect('/routers');
+      return res.redirect(returnCtx);
     }
     await audit({userId:req.session.user.id,action:'bulk_delete',entityType:'router',entityId:null,description:`Hapus massal ${deleted.length} router: ${deleted.map(r=>r.name).slice(0,20).join(', ')}${deleted.length>20?', ...':''}${skipped.length?` (${skipped.length} dilewati karena masih dipakai pelanggan)`:''}`,ip:req.ip});
     req.session.flash={type:'success',message:`${deleted.length} router dihapus permanen.${skipped.length?` ${skipped.length} router dilewati karena masih digunakan pelanggan.`:''}`};
-    return res.redirect('/routers');
+    return res.redirect(returnCtx);
   }
   req.session.flash={type:'danger',message:'Aksi massal tidak dikenali.'};
-  res.redirect('/routers');
+  res.redirect(returnCtx);
 });
 
 router.post('/:id/test',async(req,res)=>{
@@ -119,6 +145,6 @@ router.post('/:id/test',async(req,res)=>{
     await db.execute(`UPDATE routers SET last_status='offline',last_error=? WHERE id=?`,[e.message.slice(0,500),req.params.id]);
     req.session.flash={type:'danger',message:`Koneksi gagal: ${e.message}`};
   }
-  res.redirect('/routers');
+  res.redirect(routerReturn(req.body));
 });
 module.exports=router;
