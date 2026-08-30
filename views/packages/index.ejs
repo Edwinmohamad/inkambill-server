@@ -35,23 +35,31 @@
        ALL four facts (speed/price/profile/subscribers) as small inline chips on one wrapping line, and a
        slim actions row — no boxed icon tiles, no divider borders taking up their own space. Grid density
        raised (auto-fill min 210px, was 270px) so more cards fit per row. -->
-  <div class="plan-grid package-catalog-grid" data-bulk-scope="packagesBulkBar">
+  <div class="plan-grid package-catalog-list" data-bulk-scope="packagesBulkBar">
+    <% if(packages.length){ %>
+    <div class="plan-list-head" aria-hidden="true">
+      <span class="plan-col-check"><input class="form-check-input" type="checkbox" data-select-all aria-label="Pilih semua paket"></span>
+      <span>Paket &amp; Site</span>
+      <span>Bandwidth</span>
+      <span>Harga / Bulan</span>
+      <span>PPP Profile</span>
+      <span>Pelanggan</span>
+      <span>Status</span>
+      <span class="text-end">Aksi</span>
+    </div>
+    <% } %>
     <% packages.forEach((p,index)=>{ %>
       <article class="plan-card reveal-item <%= p.is_active?'':'inactive' %>" style="--enter-delay:<%= Math.min(index*35,250) %>ms">
-        <div class="plan-row-top">
-          <input class="form-check-input package-row-check" type="checkbox" data-row-check value="<%= p.id %>" aria-label="Pilih paket <%= p.name %>">
-          <div class="plan-name">
+        <span class="plan-col-check"><input class="form-check-input package-row-check" type="checkbox" data-row-check value="<%= p.id %>" aria-label="Pilih paket <%= p.name %>"></span>
+        <div class="plan-name">
             <strong><%= p.name %></strong>
             <small><i class="bi bi-geo-alt-fill"></i><%= p.site_code||'GLOBAL' %><%= p.site_name?` · ${p.site_name}`:'' %></small>
-          </div>
-          <span class="status-badge plan-status <%= p.is_active?'green':'gray' %>"><%= p.is_active?'AKTIF':'NONAKTIF' %></span>
         </div>
-        <div class="plan-stats">
-          <span title="Bandwidth"><i class="bi bi-lightning-charge-fill"></i><%= p.speed_label||'-' %></span>
-          <span class="price" title="Harga per bulan"><i class="bi bi-cash-coin"></i><%= formatRupiah(p.price) %><em>/bln</em></span>
-          <span title="PPPoE Profile"><i class="bi bi-hdd-network"></i><%= p.mikrotik_profile||'-' %></span>
-          <span title="Jumlah pelanggan"><i class="bi bi-people-fill"></i><%= p.customer_count||0 %></span>
-        </div>
+        <span class="plan-list-value" data-label="Bandwidth"><i class="bi bi-lightning-charge-fill"></i><%= p.speed_label||'-' %></span>
+        <span class="plan-list-value price" data-label="Harga"><%= formatRupiah(p.price) %></span>
+        <span class="plan-list-value" data-label="PPP Profile"><i class="bi bi-hdd-network"></i><%= p.mikrotik_profile||'-' %></span>
+        <span class="plan-list-value" data-label="Pelanggan"><i class="bi bi-people-fill"></i><%= p.customer_count||0 %></span>
+        <span class="plan-status-cell"><span class="status-badge plan-status <%= p.is_active?'green':'gray' %>"><%= p.is_active?'AKTIF':'NONAKTIF' %></span></span>
         <div class="plan-row-actions">
           <button class="action-pill" type="button" title="Edit Paket" data-bs-toggle="modal" data-bs-target="#editPackage<%= p.id %>"><i class="bi bi-pencil-square"></i></button>
           <form method="post" action="/packages/<%= p.id %>/toggle"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="action-pill" title="Aktif/Nonaktif"><i class="bi bi-power"></i></button></form>
