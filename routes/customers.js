@@ -64,13 +64,12 @@ function customerSql(filters) {
   if(filters.site){sql+=` AND s.code=?`;params.push(filters.site);}
   if(filters.cluster){sql+=` AND c.cluster_id=?`;params.push(Number(filters.cluster));}
   if(filters.sales){sql+=` AND c.sales_id=?`;params.push(Number(filters.sales));}
-  // v1.20: 'archived' is a pure visibility filter on archived_at (Data Diarsip tab), independent of
-  // customer_status. Any OTHER explicit status filter is respected exactly as before (archived rows
-  // included) so existing links/behaviour don't change. Only the truly-default "no filter" view hides
-  // archived rows, keeping the main list free of archived clutter per the Section 4 archive workflow.
+  // Archive is an independent visibility state. Only the dedicated archived view may include rows
+  // whose archived_at is set; default, inactive, and explicit customer-status filters must not mix
+  // archived records back into the operational customer list.
   if(filters.status==='archived'){sql+=` AND c.archived_at IS NOT NULL`;}
-  else if(filters.status==='inactive'){sql+=` AND c.customer_status<>'active'`;}
-  else if(filters.status){sql+=` AND c.customer_status=?`;params.push(filters.status);}
+  else if(filters.status==='inactive'){sql+=` AND c.archived_at IS NULL AND c.customer_status<>'active'`;}
+  else if(filters.status){sql+=` AND c.archived_at IS NULL AND c.customer_status=?`;params.push(filters.status);}
   else {sql+=` AND c.archived_at IS NULL`;}
   if(filters.network==='unlinked'){sql+=` AND (c.pppoe_username IS NULL OR c.router_id IS NULL)`;}else if(filters.network==='problem'){sql+=` AND c.network_status IN ('offline','router_unreachable')`;}else if(['online','offline','isolated','router_unreachable'].includes(filters.network)){sql+=` AND c.network_status=?`;params.push(filters.network);}
   sql+=` ORDER BY c.id DESC`;

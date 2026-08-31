@@ -133,7 +133,11 @@ async function generateMonthlyInvoices(referenceDate = new Date(), force = false
     lockAcquired = true;
     await conn.beginTransaction();
 
-    const where = [`c.customer_status='active'`, `(c.activation_date IS NULL OR c.activation_date<=?)`];
+    // Billing eligibility has two independent guards. `customer_status='active'` alone is not
+    // sufficient because legacy/archive records may still carry an active status while archived_at
+    // is already set. Archived customers must never receive a newly generated invoice, whether this
+    // function is called by cron, the bulk button, or a single-customer action.
+    const where = [`c.customer_status='active'`, `c.archived_at IS NULL`, `(c.activation_date IS NULL OR c.activation_date<=?)`];
     const params = [periodEnd];
     if (options.customerId) {
       where.push('c.id=?');
@@ -166,6 +170,15 @@ async function generateMonthlyInvoices(referenceDate = new Date(), force = false
     eligible = customers.length;
 
     for (const c of customers) {
+      // Current locking read closes the race between the initial eligibility snapshot and archive
+      // action. If the customer was archived while generation was starting, skip before any invoice
+      // number or financial row is created.
+      const [stillEligible] = await conn.execute(
+        `SELECT id FROM customers WHERE id=? AND customer_status='active' AND archived_at IS NULL FOR UPDATE`,
+        [c.id]
+      );
+      if (!stillEligible.length) { skipped++; continue; }
+
       const [exists] = await conn.execute(
         `SELECT id,status,paid_amount,outstanding FROM invoices WHERE customer_id=? AND period_year=? AND period_month=? LIMIT 1`,
         [c.id, year, month]

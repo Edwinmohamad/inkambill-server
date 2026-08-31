@@ -196,14 +196,14 @@ router.get('/',async(req,res)=>{
     FROM invoices i JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id
     WHERE ${commonWhere.join(' AND ')}`,commonParams);
 
-  const customerWhere=[`c.customer_status='active'`];
+  const customerWhere=[`c.customer_status='active'`,`c.archived_at IS NULL`];
   const customerParams=[];
   if(site){customerWhere.push('s.code=?');customerParams.push(site);}
   if(cluster){customerWhere.push('c.cluster_id=?');customerParams.push(Number(cluster));}
   if(customer){customerWhere.push('c.id=?');customerParams.push(Number(customer));}
   const [[activeSummary]]=await db.execute(`SELECT COUNT(*) active_customers FROM customers c JOIN sites s ON s.id=c.site_id WHERE ${customerWhere.join(' AND ')}`,customerParams);
 
-  const [customers]=await db.query(`SELECT c.id,c.customer_code,c.name,s.code site_code,cl.name cluster_name FROM customers c JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id WHERE c.customer_status='active' ORDER BY s.code,cl.name,c.name`);
+  const [customers]=await db.query(`SELECT c.id,c.customer_code,c.name,s.code site_code,cl.name cluster_name FROM customers c JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id WHERE c.customer_status='active' AND c.archived_at IS NULL ORDER BY s.code,cl.name,c.name`);
   const [sites]=await db.query(`SELECT id,code,name FROM sites WHERE is_active=1 ORDER BY code`);
   const [clusters]=await db.query(`SELECT cl.id,cl.name,s.code site_code FROM clusters cl JOIN sites s ON s.id=cl.site_id WHERE cl.status!='inactive' ORDER BY s.code,cl.name`);
   const issued=Number(invoiceSummary.total_invoices||0);
@@ -268,7 +268,7 @@ router.get('/export.xlsx',requireAdmin,async(req,res)=>{
 });
 
 router.get('/template.xlsx',requireAdmin,async(req,res)=>{
-  const [customers]=await db.query(`SELECT c.customer_code FROM customers c WHERE c.customer_status='active' ORDER BY c.customer_code LIMIT 2000`);
+  const [customers]=await db.query(`SELECT c.customer_code FROM customers c WHERE c.customer_status='active' AND c.archived_at IS NULL ORDER BY c.customer_code LIMIT 2000`);
   const wb=new ExcelJS.Workbook();wb.creator='INKAMNET Control Center';wb.created=new Date();
   const ws=wb.addWorksheet('TAGIHAN',{views:[{state:'frozen',ySplit:11}]});
   const widths=[4,20,16,10,10,16,16,14,16,14,16];
