@@ -85,7 +85,9 @@ async function maybeAutoUnisolate(invoiceId){
 async function openInvoiceOptions(site='',cluster=''){
   let sql=`SELECT i.id,i.invoice_number,i.outstanding,c.customer_code,c.name customer_name,s.code site_code,cl.name cluster_name
     FROM invoices i JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id
-    WHERE i.status IN ('unpaid','partial','overdue') AND i.outstanding>0 AND NOT EXISTS (SELECT 1 FROM payments pp WHERE pp.invoice_id=i.id AND pp.status='pending')`;
+    WHERE c.customer_status='active' AND c.archived_at IS NULL
+      AND i.status IN ('unpaid','partial','overdue') AND i.outstanding>0
+      AND NOT EXISTS (SELECT 1 FROM payments pp WHERE pp.invoice_id=i.id AND pp.status='pending')`;
   const params=[];if(site){sql+=` AND s.code=?`;params.push(site);}if(cluster){sql+=` AND c.cluster_id=?`;params.push(Number(cluster));}sql+=` ORDER BY s.code,cl.name,c.name,i.due_date`;
   const [rows]=await db.execute(sql,params);
   return rows;
@@ -162,7 +164,9 @@ router.post('/',requireAdmin,async(req,res)=>{
   try{
     await conn.beginTransaction();
     for(const invoiceId of ids){
-      const [invoiceRows]=await conn.execute(`SELECT id,outstanding,status FROM invoices WHERE id=? FOR UPDATE`,[invoiceId]);
+      const [invoiceRows]=await conn.execute(`SELECT i.id,i.outstanding,i.status
+        FROM invoices i JOIN customers c ON c.id=i.customer_id
+        WHERE i.id=? AND c.customer_status='active' AND c.archived_at IS NULL FOR UPDATE`,[invoiceId]);
       if(!invoiceRows.length)throw new Error(`Faktur #${invoiceId} tidak ditemukan.`);
       const invoice=invoiceRows[0];
       if(['paid','cancelled','refunded'].includes(invoice.status)||Number(invoice.outstanding)<=0)throw new Error(`Faktur #${invoiceId} sudah tidak memiliki sisa tagihan.`);
@@ -227,7 +231,9 @@ router.post('/:id/verify',requireMasterAdmin,async(req,res)=>{
     const [rows]=await conn.execute(`SELECT * FROM payments WHERE id=? FOR UPDATE`,[req.params.id]);
     const p=rows[0];if(!p)throw new Error('Pembayaran tidak ditemukan');
     if(p.status!=='pending')throw new Error('Hanya pembayaran berstatus menunggu yang dapat disetujui.');
-    const [invoiceRows]=await conn.execute(`SELECT outstanding,status FROM invoices WHERE id=? FOR UPDATE`,[p.invoice_id]);
+    const [invoiceRows]=await conn.execute(`SELECT i.outstanding,i.status
+      FROM invoices i JOIN customers c ON c.id=i.customer_id
+      WHERE i.id=? AND c.customer_status='active' AND c.archived_at IS NULL FOR UPDATE`,[p.invoice_id]);
     if(!invoiceRows.length)throw new Error('Faktur pembayaran tidak ditemukan.');
     if(Number(p.amount)>Number(invoiceRows[0].outstanding))throw new Error('Nominal transfer melebihi sisa tagihan saat ini. Periksa pembayaran lain sebelum verifikasi.');
     await conn.execute(`UPDATE payments SET status='confirmed',settlement_status=?,verified_by=?,verified_at=NOW() WHERE id=?`,[p.method==='cash'?'held_by_staff':'not_applicable',req.session.user.id,p.id]);
@@ -260,7 +266,9 @@ router.post('/bulk-verify',requireMasterAdmin,async(req,res)=>{
       const [rows]=await conn.execute(`SELECT * FROM payments WHERE id=? FOR UPDATE`,[id]);
       const p=rows[0];
       if(!p||p.status!=='pending'){await conn.rollback();continue;}
-      const [invoiceRows]=await conn.execute(`SELECT outstanding,status FROM invoices WHERE id=? FOR UPDATE`,[p.invoice_id]);
+      const [invoiceRows]=await conn.execute(`SELECT i.outstanding,i.status
+        FROM invoices i JOIN customers c ON c.id=i.customer_id
+        WHERE i.id=? AND c.customer_status='active' AND c.archived_at IS NULL FOR UPDATE`,[p.invoice_id]);
       if(!invoiceRows.length||Number(p.amount)>Number(invoiceRows[0].outstanding)){await conn.rollback();skipped.push(p);continue;}
       await conn.execute(`UPDATE payments SET status='confirmed',settlement_status=?,verified_by=?,verified_at=NOW() WHERE id=?`,[p.method==='cash'?'held_by_staff':'not_applicable',req.session.user.id,p.id]);
       await refreshInvoiceStatus(conn,p.invoice_id);
@@ -339,10 +347,10 @@ router.post('/:id/settle',requireAdmin,async(req,res)=>{
     const [rows]=await conn.execute(`SELECT * FROM payments WHERE id=? FOR UPDATE`,[req.params.id]);
     const p=rows[0];if(!p)throw new Error('Pembayaran tidak ditemukan');
     if(p.method!=='cash')throw new Error('Hanya pembayaran cash yang perlu disetor');
-    if(p.settlement_status!=='settled'){
-      await conn.execute(`UPDATE payments SET settlement_status='settled',settled_by=?,settled_at=NOW() WHERE id=?`,[req.session.user.id,p.id]);
-      await postCashTransaction(conn,{paymentId:p.id,invoiceId:p.invoice_id,amount:p.amount,reference:p.reference,categoryName:'Setoran Cash Pelanggan',prefix:'Setoran Cash',actorUserId:req.session.user.id});
-    }
+    if(p.status!=='confirmed')throw new Error('Pembayaran cash belum disetujui Master Admin. Setoran belum boleh masuk Data Kas.');
+    if(p.settlement_status!=='held_by_staff')throw new Error('Pembayaran ini sudah disetor atau tidak sedang dipegang staff.');
+    await conn.execute(`UPDATE payments SET settlement_status='settled',settled_by=?,settled_at=NOW() WHERE id=?`,[req.session.user.id,p.id]);
+    await postCashTransaction(conn,{paymentId:p.id,invoiceId:p.invoice_id,amount:p.amount,reference:p.reference,categoryName:'Setoran Cash Pelanggan',prefix:'Setoran Cash',actorUserId:req.session.user.id});
     await conn.commit();
     await audit({userId:req.session.user.id,action:'settle',entityType:'payment',entityId:p.id,description:'Konfirmasi setoran cash staff ke kas perusahaan',ip:req.ip});
     req.session.flash={type:'success',message:'Setoran cash dikonfirmasi dan masuk ke kas perusahaan.'};

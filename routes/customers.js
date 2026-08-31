@@ -546,6 +546,11 @@ router.post('/bulk',requireAdmin,async(req,res)=>{
         await conn.beginTransaction();
         const [[locked]]=await conn.execute(`SELECT id,customer_code,name FROM customers WHERE id=? LIMIT 1 FOR UPDATE`,[c.id]);
         if(!locked){await conn.rollback();continue;}
+        const [linkedPayments]=await conn.execute(`SELECT p.id FROM payments p JOIN invoices i ON i.id=p.invoice_id WHERE i.customer_id=? FOR UPDATE`,[locked.id]);
+        if(linkedPayments.length){
+          const marks=linkedPayments.map(()=>'?').join(',');
+          await conn.execute(`DELETE FROM cash_transactions WHERE source_id IN (${marks}) AND source_type IN ('payment','install_income','install_commission_technician','install_commission_sales')`,linkedPayments.map(p=>p.id));
+        }
         await conn.execute(`DELETE p FROM payments p JOIN invoices i ON i.id=p.invoice_id WHERE i.customer_id=?`,[locked.id]);
         await conn.execute(`DELETE FROM invoices WHERE customer_id=?`,[locked.id]);
         await conn.execute(`DELETE FROM customers WHERE id=?`,[locked.id]);
@@ -649,6 +654,11 @@ router.post('/:id/force-delete',requireMasterAdmin,async(req,res)=>{
     if(!rows.length){await conn.rollback();req.session.flash={type:'warning',message:'Pelanggan tidak ditemukan.'};return res.redirect(returnTarget);}
     customer=rows[0];
     const [[invCount]]=await conn.execute(`SELECT COUNT(*) n FROM invoices WHERE customer_id=?`,[customer.id]);
+    const [linkedPayments]=await conn.execute(`SELECT p.id FROM payments p JOIN invoices i ON i.id=p.invoice_id WHERE i.customer_id=? FOR UPDATE`,[customer.id]);
+    if(linkedPayments.length){
+      const marks=linkedPayments.map(()=>'?').join(',');
+      await conn.execute(`DELETE FROM cash_transactions WHERE source_id IN (${marks}) AND source_type IN ('payment','install_income','install_commission_technician','install_commission_sales')`,linkedPayments.map(p=>p.id));
+    }
     await conn.execute(`DELETE p FROM payments p JOIN invoices i ON i.id=p.invoice_id WHERE i.customer_id=?`,[customer.id]);
     await conn.execute(`DELETE FROM invoices WHERE customer_id=?`,[customer.id]);
     await conn.execute(`DELETE FROM customers WHERE id=?`,[customer.id]);

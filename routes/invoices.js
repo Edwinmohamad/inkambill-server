@@ -120,7 +120,15 @@ async function queryInvoiceList(req){
   const q=String(req.query.q||'').trim();
   const dueBucket=['due15','due30'].includes(req.query.due_bucket)?req.query.due_bucket:'';
 
-  const commonWhere=['i.period_year=?','i.period_month=?'];
+  // Daftar tagihan adalah daftar billing operasional. Invoice historis milik pelanggan
+  // yang sudah diarsipkan tetap tersimpan di database, tetapi tidak boleh ikut muncul
+  // kembali saat periode digenerate ulang (termasuk invoice lama yang sudah lunas).
+  const commonWhere=[
+    'i.period_year=?',
+    'i.period_month=?',
+    `c.customer_status='active'`,
+    'c.archived_at IS NULL'
+  ];
   const commonParams=[year,month];
   if(site){commonWhere.push('s.code=?');commonParams.push(site);}
   if(cluster){commonWhere.push('c.cluster_id=?');commonParams.push(Number(cluster));}
@@ -147,9 +155,6 @@ async function queryInvoiceList(req){
   if(dueBucket==='due15'){listWhere.push('DAY(i.due_date)<=22');}
   else if(dueBucket==='due30'){listWhere.push('DAY(i.due_date)>22');}
 
-  // v1.20.2: c.archived_at exposed so the view can flag "Pelanggan diarsipkan" next to the invoice —
-  // by design invoices from an archived (soft-deleted) customer stay visible here forever (financial
-  // history is never removed by archiving), but that was confusing without any on-screen indicator.
   const [invoices]=await db.execute(`SELECT i.*,DATE_FORMAT(i.invoice_date,'%Y-%m-%d') invoice_date_key,DATE_FORMAT(i.due_date,'%Y-%m-%d') due_date_key,GREATEST(DATEDIFF(CURDATE(),i.due_date),0) days_overdue,c.customer_code,c.name customer_name,c.phone,c.whatsapp_status,c.due_day,c.archived_at customer_archived_at,p.name package_name,s.code site_code,cl.name cluster_name,
       (SELECT COUNT(*) FROM payments px WHERE px.invoice_id=i.id) payment_count,
       (SELECT COUNT(*) FROM payments pa WHERE pa.invoice_id=i.id AND pa.status IN ('confirmed','pending')) active_payment_count,
@@ -220,7 +225,10 @@ router.get('/',async(req,res)=>{
   };
   const [openInvoices]=await db.query(`SELECT i.id,i.invoice_number,i.outstanding,c.customer_code,c.name customer_name,s.code site_code,cl.name cluster_name
     FROM invoices i JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id
-    WHERE i.status IN ('unpaid','partial','overdue') AND i.outstanding>0 AND NOT EXISTS (SELECT 1 FROM payments pp WHERE pp.invoice_id=i.id AND pp.status='pending') ORDER BY s.code,cl.name,c.name,i.due_date`);
+    WHERE c.customer_status='active' AND c.archived_at IS NULL
+      AND i.status IN ('unpaid','partial','overdue') AND i.outstanding>0
+      AND NOT EXISTS (SELECT 1 FROM payments pp WHERE pp.invoice_id=i.id AND pp.status='pending')
+    ORDER BY s.code,cl.name,c.name,i.due_date`);
   const [staff]=await db.query(`SELECT id,name,role FROM users WHERE is_active=1 ORDER BY name`);
   const [banks]=await db.query(`SELECT id,bank_name,account_name,account_number,type FROM banks WHERE is_active=1 AND type IN ('bank_transfer','virtual_account','other') ORDER BY bank_name,account_number`);
   res.render('invoices/index',{title:'Tagihan',invoices,summary,customers,sites,clusters,openInvoices,staff,banks,filters,monthNames:MONTH_NAMES,periodQueryString:periodQuery(filters)});
@@ -593,7 +601,9 @@ router.post('/:id/reset-unpaid',requireAdmin,async(req,res)=>{
     reversedCount=payments.length;
     if(ids.length){
       const marks=ids.map(()=>'?').join(',');
-      await conn.execute(`DELETE FROM cash_transactions WHERE source_type='payment' AND source_id IN (${marks})`,ids);
+      // Semua jurnal otomatis yang bersumber dari payment harus ikut dibalik. Ini termasuk
+      // pendapatan billing biasa serta jurnal pemasangan baru/komisi yang memakai payment id sama.
+      await conn.execute(`DELETE FROM cash_transactions WHERE source_id IN (${marks}) AND source_type IN ('payment','install_income','install_commission_technician','install_commission_sales')`,ids);
       const correction=`[KOREKSI ADMIN ${new Date().toISOString().slice(0,19).replace('T',' ')}] Pembayaran dibatalkan agar tagihan kembali belum lunas.`;
       await conn.execute(`UPDATE payments SET status='failed',settlement_status='not_applicable',notes=CONCAT_WS('\\n',NULLIF(notes,''),?) WHERE id IN (${marks})`,[correction,...ids]);
     }
@@ -667,7 +677,12 @@ router.post('/:id/force-delete',requireMasterAdmin,async(req,res)=>{
     const [rows]=await conn.execute(`SELECT id,invoice_number,period_year,period_month FROM invoices WHERE id=? LIMIT 1 FOR UPDATE`,[req.params.id]);
     if(!rows.length){await conn.rollback();req.session.flash={type:'danger',message:'Tagihan tidak ditemukan.'};return res.redirect('/invoices');}
     invoice=rows[0];
-    const [[payCount]]=await conn.execute(`SELECT COUNT(*) n FROM payments WHERE invoice_id=?`,[invoice.id]);
+    const [linkedPayments]=await conn.execute(`SELECT id FROM payments WHERE invoice_id=? FOR UPDATE`,[invoice.id]);
+    const payCount={n:linkedPayments.length};
+    if(linkedPayments.length){
+      const marks=linkedPayments.map(()=>'?').join(',');
+      await conn.execute(`DELETE FROM cash_transactions WHERE source_id IN (${marks}) AND source_type IN ('payment','install_income','install_commission_technician','install_commission_sales')`,linkedPayments.map(p=>p.id));
+    }
     await conn.execute(`DELETE FROM payments WHERE invoice_id=?`,[invoice.id]);
     await conn.execute(`DELETE FROM invoices WHERE id=?`,[invoice.id]);
     await conn.commit();
@@ -746,6 +761,11 @@ router.post('/bulk',requireAdmin,async(req,res)=>{
         const [rows]=await conn.execute(`SELECT id,invoice_number FROM invoices WHERE id=? LIMIT 1 FOR UPDATE`,[id]);
         if(!rows.length){await conn.rollback();continue;}
         const invoice=rows[0];
+        const [linkedPayments]=await conn.execute(`SELECT id FROM payments WHERE invoice_id=? FOR UPDATE`,[invoice.id]);
+        if(linkedPayments.length){
+          const marks=linkedPayments.map(()=>'?').join(',');
+          await conn.execute(`DELETE FROM cash_transactions WHERE source_id IN (${marks}) AND source_type IN ('payment','install_income','install_commission_technician','install_commission_sales')`,linkedPayments.map(p=>p.id));
+        }
         await conn.execute(`DELETE FROM payments WHERE invoice_id=?`,[invoice.id]);
         await conn.execute(`DELETE FROM invoices WHERE id=?`,[invoice.id]);
         await conn.commit();
