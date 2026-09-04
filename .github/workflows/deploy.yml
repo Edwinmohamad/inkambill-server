@@ -1,0 +1,31 @@
+name: Deploy INKAMBILLING
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: inkambilling-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 20
+    steps:
+      - name: Update production source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /opt/inkambilling
+          git fetch origin main
+          git pull --ff-only origin main
+
+      - name: Rebuild and restart application
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /opt/inkambilling
+          docker compose up -d --build
+          docker compose ps
