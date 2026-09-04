@@ -204,6 +204,7 @@ app.use('/packages', requireAuth, requirePermission('customers'), require('./rou
 app.use('/invoices', requireAuth, requirePermission('billing'), require('./routes/invoices'));
 app.use('/payments', requireAuth, requirePermission('billing'), require('./routes/payments'));
 app.use('/reports', requireAuth, requirePermission('reports'), require('./routes/reports'));
+app.use('/closing', requireAuth, require('./routes/closing'));
 app.use('/routers', requireAuth, requirePermission('network'), require('./routes/routers'));
 app.use('/network', requireAuth, requirePermission('network'), require('./routes/network'));
 app.use('/settings', requireAuth, requirePermission('settings'), require('./routes/settings'));
