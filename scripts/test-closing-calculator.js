@@ -1,4 +1,5 @@
 const assert = require('assert');
+const fs = require('fs');
 const { buildClosingCalculation } = require('../services/closingCalculator');
 
 const data = buildClosingCalculation({
@@ -43,4 +44,17 @@ assert.equal(aliases.blocks.krwclm.revenue, 500000, 'KRW harus masuk CDS');
 assert.equal(aliases.blocks.krwclm.expense, 100000, 'CLM harus tetap masuk total biaya CDS');
 assert.equal(aliases.salaryByOwner.edwin + aliases.salaryByOwner.jon + aliases.salaryByOwner.bopung, 1, 'Pembagian gaji harus tepat tanpa selisih pembulatan');
 assert.equal(aliases.blocks.other.revenue, 0, 'Alias lokasi yang dikenal tidak boleh masuk lokasi belum dipetakan');
-console.log('Closing calculator validation OK: cluster revenue, combined expenses, salary, cash, router, and per-location adjustments reconcile without double counting.');
+
+// Closing must remain a true manual calculator. Guard the route itself so a
+// future edit cannot quietly reintroduce billing/payment/cash synchronisation.
+const closingRoute = fs.readFileSync(require.resolve('../routes/closing'), 'utf8');
+const loadStart = closingRoute.indexOf('async function loadClosing');
+const loadEnd = closingRoute.indexOf('async function ensureDraftPeriod');
+assert(loadStart >= 0 && loadEnd > loadStart, 'loadClosing route section is missing');
+const loadSource = closingRoute.slice(loadStart, loadEnd);
+assert(!/FROM\s+payments\b/i.test(loadSource), 'Closing tidak boleh membaca payments');
+assert(!/FROM\s+cash_transactions\b/i.test(loadSource), 'Closing tidak boleh membaca cash_transactions');
+assert(!/settlement_status/i.test(loadSource), 'Closing tidak boleh memakai status settlement billing');
+assert(loadSource.includes('FROM closing_entries'), 'Closing harus memakai closing_entries sebagai sumber angka manual');
+assert(closingRoute.includes("mode: 'manual'"), 'Mode Closing harus dipaksa manual');
+console.log('Closing calculator validation OK: manual-only source, cluster revenue, combined expenses, salary, cash, router, and per-location adjustments reconcile without double counting.');

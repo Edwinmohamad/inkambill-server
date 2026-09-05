@@ -61,9 +61,11 @@ function buildClosingCalculation({ payments = [], expenses = [], heldCash = [], 
     blocks[blockKey].expenseByCategory[category] = (blocks[blockKey].expenseByCategory[category] || 0) + amount;
   });
 
-  // These legacy correction fields remain supported for old periods. New
-  // transactions should use closing_entries so every amount has a category.
-  if (selectedMode === 'manual') {
+  // Keep old manual totals readable for legacy periods that have no detailed
+  // rows yet. Once a period has closing_entries, the visible manual rows are
+  // the single source of truth so hidden legacy fields cannot double count.
+  const hasDetailedManualRows = Array.isArray(lineItems) && lineItems.length > 0;
+  if (selectedMode === 'manual' && !hasDetailedManualRows) {
     blocks.krwclm.revenue += money(closing.manual_revenue);
     blocks.krwclm.expense += money(closing.manual_expense);
     if (money(closing.manual_revenue)) blocks.krwclm.clusterRevenue.LAINNYA = (blocks.krwclm.clusterRevenue.LAINNYA || 0) + money(closing.manual_revenue);

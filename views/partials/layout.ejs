@@ -82,7 +82,7 @@
             <div class="sidebar-subnav"><a class="<%= currentPath.startsWith('/cash/categories') ? 'active' : '' %>" href="/cash/categories"><%= t('cashCategories') %></a><a class="<%= currentPath === '/cash' ? 'active' : '' %>" href="/cash"><%= t('cashData') %></a></div>
           </div><% } %>
           <% if(can('reports')){ %><a class="sidebar-link <%= currentPath.startsWith('/reports') ? 'active' : '' %>" href="/reports"><i class="bi bi-bar-chart-line-fill"></i><span><%= t('reports') %></span></a><% } %>
-          <% if(canClosing){ %><a class="sidebar-link <%= currentPath.startsWith('/closing') ? 'active' : '' %>" href="/closing"><i class="bi bi-lock-fill"></i><span>Closing</span><em>NEW</em></a><% } %>
+          <% if(canClosing){ %><a class="sidebar-link <%= currentPath.startsWith('/closing') ? 'active' : '' %>" href="/closing"><i class="bi bi-calculator-fill"></i><span>Closing</span><em>NEW</em></a><% } %>
         </nav>
         <% } %>
 

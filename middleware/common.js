@@ -14,9 +14,10 @@ function commonLocals(req,res,next){
   const sessionUser=req.session?.user||null;
   res.locals.isAdmin=isAdminRole(sessionUser?.role);
   res.locals.isMasterAdmin=isMasterAdminRole(sessionUser?.role);
-  const closingUsername=String(sessionUser?.username||'').trim().toLowerCase();
-  const closingName=String(sessionUser?.name||'').trim().toLowerCase();
-  res.locals.canClosing=res.locals.isMasterAdmin && (closingUsername==='superadmin' || closingUsername==='edwin' || closingUsername.includes('edwin') || closingName.includes('edwin'));
+  // Closing is protected by both the Master Admin role and its separate PIN.
+  // Do not key access off a username: the seeded account is `masteradminn`,
+  // while installations may rename it or use another Master Admin account.
+  res.locals.canClosing=res.locals.isMasterAdmin;
   res.locals.actualRole=sessionUser?.role||null;
   res.locals.defaultTheme=req.session?.uiTheme||'dark';
   res.locals.defaultUiPalette=req.session?.uiPalette||'nebula';

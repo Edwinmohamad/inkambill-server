@@ -1289,3 +1289,115 @@ html[data-theme="dark"] .text-muted,html[data-theme="dark"] .text-secondary{colo
   .dashboard-v119 .dashboard-widgets-v121{gap:8px}
   .dashboard-v119 .dashboard-dense-core,.dashboard-v119 .dashboard-customer-watch-grid,.dashboard-v119 .command-main-grid{gap:8px}
 }
+
+/* v1.27 — Closing manual-only layout. Keep the calculator focused on five
+   actions: choose a period, enter amounts, review adjustments, inspect shares,
+   and lock/export. */
+.closing-manual-only{display:grid;gap:12px}
+.closing-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin:0}
+.closing-head h1{margin:4px 0 5px;font-family:var(--font-display);font-size:1.35rem;line-height:1.2;color:var(--text)}
+.closing-head p{font-size:.7rem;line-height:1.5}
+.closing-period-form{display:grid;grid-template-columns:repeat(2,minmax(125px,1fr)) auto;gap:8px;align-items:end;min-width:min(100%,440px);padding:10px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel-2)}
+.closing-field,.closing-form-grid label,.closing-settings-grid label,.closing-adjustment-grid label,.closing-router-grid label{display:flex;flex-direction:column;gap:5px;min-width:0}
+.closing-field>span,.closing-form-grid label>span,.closing-settings-grid label>span,.closing-adjustment-grid label>span,.closing-router-grid label>span{color:var(--muted);font-size:.55rem;font-weight:750}
+.closing-period-submit{min-height:40px}
+.closing-toggle{grid-column:1/-1;display:flex;align-items:center;gap:7px;color:var(--muted);font-size:.55rem;line-height:1.4;cursor:pointer}
+.closing-toggle i{color:var(--brand);margin-right:4px}
+.closing-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.closing-toolbar>.badge{padding:7px 9px;font-size:.55rem}
+.closing-pdf-actions{display:flex;gap:6px;flex-wrap:wrap}
+.closing-mode-banner{margin:0!important;border-radius:var(--radius);padding:11px 13px}
+.closing-result-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.closing-result-card{margin:0!important}
+.closing-result-card .card-body{padding:16px}
+.closing-result-head,.closing-section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.closing-result-head h2,.closing-section-head h2{margin:3px 0 0;font-family:var(--font-display);font-size:1rem;color:var(--text)}
+.closing-result-head>i{width:32px;height:32px;display:grid;place-items:center;border-radius:8px;background:rgba(var(--brand-rgb),.1);color:var(--brand)}
+.closing-result-lines{display:grid;gap:7px;margin-top:14px}
+.closing-result-lines>div{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:.68rem}
+.closing-result-lines>div strong{font-size:.76rem}
+.closing-result-lines>small{color:var(--muted);font-size:.55rem}
+.closing-result-lines .closing-result-profit{margin-top:3px;padding-top:9px;border-top:1px solid var(--line)}
+.closing-result-lines .closing-result-profit strong{color:var(--success);font-size:.9rem}
+.closing-section-head{align-items:center}
+.closing-section-head>div{min-width:0}
+.closing-section-head small{display:block;margin-top:5px;font-size:.58rem;line-height:1.5}
+.closing-count{flex:none;padding:5px 8px;border:1px solid var(--line);border-radius:999px;background:var(--panel-3);color:var(--muted);font-size:.52rem;font-weight:750;white-space:nowrap}
+.closing-input-card{margin:0!important}
+.closing-entry-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px}
+.closing-entry-box{padding:14px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel-3)}
+.closing-entry-form{display:flex;flex-direction:column;gap:12px}
+.closing-entry-title{display:flex;align-items:center;gap:7px;margin:0;color:var(--text);font-size:.72rem;font-weight:800}
+.closing-entry-title i{color:var(--brand);font-size:.9rem}
+.closing-form-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.closing-form-grid .span-2{grid-column:span 2}.closing-form-grid .span-3{grid-column:1/-1}
+.closing-entry-form>.btn{align-self:flex-start}
+.closing-settings-grid{display:grid;grid-template-columns:repeat(3,minmax(110px,1fr)) minmax(180px,1.7fr) auto;gap:9px;align-items:end;margin-top:10px;padding:12px;border:1px solid var(--line);border-radius:var(--radius);background:rgba(var(--brand-rgb),.035)}
+.closing-settings-grid>button{min-height:38px}
+.closing-help{display:block;margin-top:8px;font-size:.55rem;line-height:1.5}
+.closing-locked-note{display:flex;align-items:center;gap:8px;margin-top:14px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;color:var(--muted);font-size:.6rem}
+.closing-locked-note i{color:var(--success)}
+.closing-table{min-width:720px}
+.closing-table form{margin:0}
+.closing-table .badge{font-size:.5rem}
+.closing-adjustment-grid{display:grid;grid-template-columns:repeat(5,minmax(105px,1fr)) minmax(180px,1.5fr) auto;gap:9px;align-items:end}
+.closing-adjustment-description{min-width:180px}
+.closing-adjustment-grid>button{min-height:38px;white-space:nowrap}
+.closing-lower-grid{display:grid;grid-template-columns:minmax(260px,.65fr) minmax(0,1.35fr);gap:10px}
+.closing-lower-grid>.closing-card{margin:0!important}
+.closing-salary-list{display:grid;gap:8px;margin:14px 0}
+.closing-salary-list>div{display:flex;justify-content:space-between;gap:10px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel-3);font-size:.65rem}
+.closing-salary-list strong{color:var(--text)}
+.closing-router-grid{display:grid;grid-template-columns:minmax(150px,1.4fr) repeat(5,minmax(84px,1fr)) auto;gap:8px;align-items:end}
+.closing-router-grid>button{min-height:38px;white-space:nowrap}
+.closing-router-status-form{min-width:250px}
+.closing-lock-card{margin:0!important}
+
+/* Keep form labels and controls readable in the dark theme. Bootstrap's light
+   defaults must never turn a Closing field into black text on a dark surface. */
+html[data-theme="dark"] .closing-manual-only .closing-field>span,
+html[data-theme="dark"] .closing-manual-only .closing-form-grid label>span,
+html[data-theme="dark"] .closing-manual-only .closing-settings-grid label>span,
+html[data-theme="dark"] .closing-manual-only .closing-adjustment-grid label>span,
+html[data-theme="dark"] .closing-manual-only .closing-router-grid label>span{color:var(--muted)!important}
+html[data-theme="dark"] .closing-manual-only .form-control,
+html[data-theme="dark"] .closing-manual-only .form-select{color:var(--text)!important;background:var(--panel-2)!important;border-color:var(--line)!important}
+html[data-theme="dark"] .closing-manual-only .form-control::placeholder{color:var(--muted-2)!important}
+html[data-theme="dark"] .closing-manual-only option{color:var(--text);background:var(--panel-2)}
+html[data-theme="dark"] .closing-manual-only .closing-section-head h2,
+html[data-theme="dark"] .closing-manual-only .closing-result-head h2,
+html[data-theme="dark"] .closing-manual-only .closing-entry-title,
+html[data-theme="dark"] .closing-manual-only .closing-table td{color:var(--text)}
+
+@media(max-width:1100px){
+  .closing-head{flex-direction:column}
+  .closing-period-form{width:100%;min-width:0;max-width:620px}
+  .closing-settings-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .closing-settings-grid .closing-notes-field{grid-column:1/-1}
+  .closing-settings-grid>button{grid-column:1/-1;justify-self:start}
+  .closing-adjustment-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .closing-adjustment-description{grid-column:1/-1}
+  .closing-adjustment-grid>button{justify-self:start}
+  .closing-router-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .closing-router-grid>button{justify-self:start}
+}
+
+@media(max-width:767.98px){
+  .closing-period-form{grid-template-columns:1fr 1fr}
+  .closing-period-submit{grid-column:1/-1}
+  .closing-result-grid,.closing-entry-grid,.closing-lower-grid{grid-template-columns:1fr}
+  .closing-result-card .card-body,.closing-card .card-body{padding:14px}
+  .closing-section-head{align-items:flex-start}
+  .closing-section-head h2{font-size:.92rem}
+  .closing-form-grid,.closing-settings-grid,.closing-adjustment-grid,.closing-router-grid{grid-template-columns:1fr 1fr}
+  .closing-form-grid .span-2,.closing-form-grid .span-3,.closing-settings-grid .closing-notes-field,.closing-adjustment-description{grid-column:1/-1}
+  .closing-settings-grid>button,.closing-adjustment-grid>button,.closing-router-grid>button{grid-column:1/-1;width:100%}
+  .closing-pdf-actions{width:100%;display:grid;grid-template-columns:1fr 1fr}
+  .closing-pdf-actions .btn{width:100%}
+}
+
+@media(max-width:479.98px){
+  .closing-period-form,.closing-form-grid,.closing-settings-grid,.closing-adjustment-grid,.closing-router-grid{grid-template-columns:1fr}
+  .closing-toggle,.closing-period-submit,.closing-form-grid .span-2,.closing-form-grid .span-3,.closing-settings-grid .closing-notes-field,.closing-adjustment-description,.closing-settings-grid>button,.closing-adjustment-grid>button,.closing-router-grid>button{grid-column:auto}
+  .closing-pdf-actions{grid-template-columns:1fr}
+}
