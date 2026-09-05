@@ -36,7 +36,7 @@ Setiap PDF memuat pendapatan pelanggan/pemasukan, pengeluaran lengkap beserta ka
 ## Keamanan
 
 - Route Closing hanya dapat dibuka oleh Master Admin yang akunnya `superadmin` atau identitas Edwin.
-- Setelah login, PIN Closing tetap diperlukan. PIN awal: `684217`.
+- Setelah login, PIN Closing tetap diperlukan. PIN awal: `121224`.
 - Lima kesalahan PIN mengunci akses selama 15 menit; sesi PIN berlaku 30 menit.
 - Untuk mengganti PIN, isi hash SHA-256 di `.env` produksi:
 

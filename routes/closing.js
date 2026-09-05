@@ -5,7 +5,7 @@ const { createReportPdf, rupiah } = require('../services/reportPdf');
 const { money, personKey, siteBlock, locationText, buildClosingCalculation } = require('../services/closingCalculator');
 
 const router = express.Router();
-const DEFAULT_CLOSING_PIN_SHA256 = '8473ca7eb3c627759eb71312bb23245d76174f1f572d81163c98f7408448cf54';
+const DEFAULT_CLOSING_PIN_SHA256 = 'cc819c3e680dd46370437a0224ea316438d27b869e090347a4b9af058d75886c';
 const pinHash = () => String(process.env.CLOSING_PIN_SHA256 || DEFAULT_CLOSING_PIN_SHA256).trim().toLowerCase();
 const pinTtlMs = () => {
   const configured = Number(process.env.CLOSING_PIN_TTL_MINUTES || 30);
