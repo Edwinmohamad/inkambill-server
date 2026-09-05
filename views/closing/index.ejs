@@ -1,10 +1,88 @@
-<div class="page-header d-flex justify-content-between align-items-end flex-wrap gap-3">
-  <div><h1><i class="bi bi-lock-fill me-2"></i>Closing</h1><p class="text-muted mb-0">Periode: <%= start %> s/d <%= end %></p></div>
-  <div class="d-flex gap-2"><form class="d-flex gap-2" method="get"><input class="form-control form-control-sm" type="date" name="from" value="<%= start %>"><input class="form-control form-control-sm" type="date" name="to" value="<%= end %>"><button class="btn btn-primary btn-sm">Tampilkan</button></form><a class="btn btn-outline-secondary btn-sm" href="/closing/pdf?from=<%= start %>&to=<%= end %>" target="_blank" rel="noopener">PDF</a></div>
+<div class="closing-page">
+  <div class="page-header d-flex justify-content-between align-items-end flex-wrap gap-3">
+    <div>
+      <div class="closing-eyebrow">INKAMNET CONTROL CENTER · CLOSING TERKUNCI PIN</div>
+      <h1><i class="bi bi-lock-fill me-2"></i>Closing</h1>
+      <p class="text-muted mb-0">Periode transaksi: <%= start %> s/d <%= end %> <% if (lockedSnapshot) { %>· snapshot terkunci<% } %></p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap align-items-center">
+      <form class="d-flex gap-2 flex-wrap" method="get" action="/closing">
+        <input class="form-control form-control-sm" type="date" name="from" value="<%= start %>" aria-label="Tanggal mulai">
+        <input class="form-control form-control-sm" type="date" name="to" value="<%= end %>" aria-label="Tanggal akhir">
+        <select class="form-select form-select-sm closing-mode-select" name="mode" aria-label="Mode perhitungan">
+          <option value="auto" <%= mode === 'auto' ? 'selected' : '' %>>Otomatis dari billing</option>
+          <option value="manual" <%= mode === 'manual' ? 'selected' : '' %>>Manual + koreksi</option>
+        </select>
+        <button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-arrow-repeat me-1"></i>Tampilkan</button>
+      </form>
+      <a class="btn btn-outline-secondary btn-sm" href="/closing/pdf?from=<%= start %>&to=<%= end %>&mode=<%= mode %>" target="_blank" rel="noopener"><i class="bi bi-file-earmark-pdf me-1"></i>PDF</a>
+    </div>
+  </div>
+
+  <div class="closing-mode-banner <%= mode === 'auto' ? 'is-auto' : 'is-manual' %> mt-3">
+    <i class="bi <%= mode === 'auto' ? 'bi-lightning-charge-fill' : 'bi-pencil-square' %>"></i>
+    <div>
+      <strong><%= mode === 'auto' ? 'Mode otomatis aktif' : 'Mode manual + koreksi aktif' %></strong>
+      <span><%= mode === 'auto' ? 'Pendapatan dibaca dari pembayaran confirmed dan pengeluaran dari kas approved sesuai tanggal periode. Koreksi manual tidak ikut dijumlahkan.' : 'Data billing/kas tetap menjadi dasar, lalu koreksi manual, carry-over, dan catatan tersimpan ikut dihitung.' %></span>
+    </div>
+  </div>
+
+  <div class="card closing-card mt-3">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+        <div><h5 class="mb-1">Penyesuaian manual</h5><small class="text-muted">Dipakai saat memilih mode Manual + koreksi. Gaji tetap menjadi beban sesuai aturan pembagian.</small></div>
+        <span class="badge <%= closing.status === 'LOCKED' ? 'text-bg-success' : 'text-bg-warning' %>"><%= closing.status === 'LOCKED' ? 'TERKUNCI' : 'DRAFT' %></span>
+      </div>
+      <% if (closing.status !== 'LOCKED') { %>
+      <form class="row g-2 mt-2" method="post" action="/closing/save">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="mode" value="manual">
+        <div class="col-md-3"><label class="form-label small">Pendapatan tambahan</label><input class="form-control" type="number" min="0" step="1" name="manual_revenue" value="<%= closing.manual_revenue || 0 %>"></div>
+        <div class="col-md-3"><label class="form-label small">Pengeluaran tambahan</label><input class="form-control" type="number" min="0" step="1" name="manual_expense" value="<%= closing.manual_expense || 0 %>"></div>
+        <div class="col-md-3"><label class="form-label small">Saldo carry-over</label><input class="form-control" type="number" step="1" name="manual_carry" value="<%= closing.manual_carry || 0 %>"></div>
+        <div class="col-md-3"><label class="form-label small">Gaji Agung</label><input class="form-control" type="number" min="0" step="1" name="manual_salary_agung" value="<%= closing.manual_salary_agung || 500000 %>"></div>
+        <div class="col-md-3"><label class="form-label small">Gaji Padilah</label><input class="form-control" type="number" min="0" step="1" name="manual_salary_padilah" value="<%= closing.manual_salary_padilah || 1000000 %>"></div>
+        <div class="col-md-6"><label class="form-label small">Catatan</label><input class="form-control" name="notes" maxlength="2000" value="<%= closing.notes || '' %>"></div>
+        <div class="col-md-3 d-flex align-items-end"><button class="btn btn-primary w-100" type="submit"><i class="bi bi-save2 me-1"></i>Simpan koreksi</button></div>
+      </form>
+      <form class="mt-2" method="post" action="/closing/lock" onsubmit="return confirm('Kunci periode ini? Setelah dikunci, koreksi tidak dapat diubah.')">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="mode" value="<%= mode %>">
+        <button class="btn btn-outline-danger btn-sm" type="submit"><i class="bi bi-lock-fill me-1"></i>Kunci Closing</button>
+      </form>
+      <% } else { %><small class="text-muted d-block mt-3">Periode sudah dikunci. Data tetap dapat dilihat dan diunduh sebagai PDF.</small><% } %>
+    </div>
+  </div>
+
+  <div class="row g-3 mt-3">
+    <% [blocks.krwclm, blocks.kbg].forEach(block => { %>
+      <div class="col-md-6"><div class="card closing-card h-100"><div class="card-body">
+        <div class="closing-card-kicker"><%= block.label %></div><h4 class="mb-3">Ringkasan profit</h4>
+        <div class="d-flex justify-content-between"><span>Pembayaran masuk</span><strong>Rp <%= money(block.revenue).toLocaleString('id-ID') %></strong></div>
+        <div class="d-flex justify-content-between"><span>Pengeluaran</span><strong>Rp <%= money(block.expense).toLocaleString('id-ID') %></strong></div>
+        <hr><div class="d-flex justify-content-between"><span>Laba bersih</span><strong class="closing-profit">Rp <%= money(block.profit).toLocaleString('id-ID') %></strong></div>
+      </div></div></div>
+    <% }) %>
+  </div>
+
+  <div class="card closing-card mt-3"><div class="card-body"><div class="d-flex justify-content-between align-items-center gap-3 flex-wrap"><div><h5 class="mb-1">Pembagian hasil</h5><small class="text-muted">KRW + CLM: Edwin 50%, Jon 25%, Bopung 25%. KBG: Mang Ali 35%, sisa 65% dibagi internal.</small></div><span class="badge text-bg-info">Data periode saja</span></div>
+    <div class="table-responsive mt-3"><table class="table table-sm align-middle"><thead><tr><th>Lokasi</th><th>Penerima</th><th>%</th><th class="text-end">Kotor</th><th class="text-end">Bersih</th></tr></thead><tbody>
+      <% [blocks.krwclm, blocks.kbg].forEach(block => block.shares.forEach(share => { %><tr><td><%= block.label %></td><td><strong><%= share.name %></strong></td><td><%= share.percent %>%</td><td class="text-end">Rp <%= money(share.gross).toLocaleString('id-ID') %></td><td class="text-end"><strong>Rp <%= money(share.amount).toLocaleString('id-ID') %></strong></td></tr><% })) %>
+    </tbody></table></div>
+  </div></div>
+
+  <div class="row g-3 mt-3">
+    <div class="col-lg-7"><div class="card closing-card h-100"><div class="card-body"><h5>Cash belum disetor</h5><small class="text-muted">Nominal ini otomatis mengurangi bagian pemegangnya.</small><div class="table-responsive mt-2"><table class="table table-sm align-middle"><thead><tr><th>Tanggal</th><th>Pelanggan</th><th>Pemegang</th><th class="text-end">Nominal</th></tr></thead><tbody>
+      <% if (!heldCash.length) { %><tr><td colspan="4" class="text-muted text-center py-3">Tidak ada cash tertahan pada periode ini.</td></tr><% } %>
+      <% heldCash.forEach(row => { %><tr><td><%= row.paid_date %></td><td><%= row.customer_name %></td><td><%= row.holder_name %></td><td class="text-end text-danger">Rp <%= money(row.amount).toLocaleString('id-ID') %></td></tr><% }) %>
+    </tbody></table></div></div></div></div>
+    <div class="col-lg-5"><div class="card closing-card h-100"><div class="card-body"><h5>Gaji</h5><% salaryRows.forEach(row => { %><div class="d-flex justify-content-between"><span><%= row.name %></span><strong>Rp <%= money(row.amount).toLocaleString('id-ID') %></strong></div><% }) %><hr><small class="text-muted">Beban pembagian: Edwin 50%, Jon 25%, Bopung 25%.</small></div></div></div>
+  </div>
+
+  <div class="card closing-card mt-3"><div class="card-body"><div class="d-flex justify-content-between align-items-start gap-3 flex-wrap"><div><h5 class="mb-1">INVEST ROUTER</h5><p class="small text-muted mb-0">Rp20.000 per router aktif per bulan. Router rusak/diganti tidak dihitung setelah statusnya diperbarui.</p></div><span class="badge text-bg-secondary">Manual register</span></div>
+    <form class="row g-2 mt-3" method="post" action="/closing/router-assets"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="mode" value="manual"><div class="col-md-3"><input class="form-control form-control-sm" name="customer_name" placeholder="Nama pelanggan" required></div><div class="col-md-2"><select class="form-select form-select-sm" name="site_code"><option>CLM</option><option>KRW</option><option>KBG</option></select></div><div class="col-md-2"><input class="form-control form-control-sm" name="owner_name" placeholder="Jon/Bopung" required></div><div class="col-md-1"><input class="form-control form-control-sm" type="number" name="units" min="1" max="100" value="1" required></div><div class="col-md-2"><input class="form-control form-control-sm" type="date" name="active_from" value="<%= start %>" required></div><div class="col-md-2"><button class="btn btn-outline-primary btn-sm w-100" type="submit"><i class="bi bi-plus-lg me-1"></i>Tambah</button></div></form>
+    <div class="table-responsive mt-3"><table class="table table-sm align-middle"><thead><tr><th>Pelanggan</th><th>Lokasi</th><th>Pemilik</th><th>Unit</th><th>Status</th><th>Aktif mulai</th><th>Aksi</th></tr></thead><tbody>
+      <% if (!routerAssets.length) { %><tr><td colspan="7" class="text-muted text-center py-3">Belum ada data router pribadi.</td></tr><% } %>
+      <% routerAssets.forEach(row => { %><tr><td><%= row.customer_name %></td><td><%= row.site_code %></td><td><%= row.owner_name %></td><td><%= row.units %></td><td><span class="badge text-bg-<%= row.status === 'ACTIVE' ? 'success' : 'secondary' %>"><%= row.status %></span></td><td><%= row.active_from %></td><td><form class="closing-router-status-form" method="post" action="/closing/router-assets/<%= row.id %>/status"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><select class="form-select form-select-sm" name="status" aria-label="Status router"><option value="ACTIVE" <%= row.status === 'ACTIVE' ? 'selected' : '' %>>Aktif</option><option value="BROKEN" <%= row.status === 'BROKEN' ? 'selected' : '' %>>Rusak</option><option value="REPLACED" <%= row.status === 'REPLACED' ? 'selected' : '' %>>Diganti</option><option value="INACTIVE" <%= row.status === 'INACTIVE' ? 'selected' : '' %>>Tidak aktif</option></select><input class="form-control form-control-sm" type="date" name="active_until" value="<%= row.active_until || '' %>" aria-label="Tanggal berakhir"><button class="btn btn-outline-secondary btn-sm" type="submit">Update</button></form></td></tr><% }) %>
+    </tbody></table></div>
+  </div></div>
 </div>
-<div class="card border-0 shadow-sm mt-3"><div class="card-body"><div class="d-flex justify-content-between"><div><h5>Penyesuaian manual</h5><small class="text-muted">Data otomatis tetap menjadi dasar.</small></div><span class="badge <%= closing.status==='LOCKED'?'text-bg-success':'text-bg-warning' %>"><%= closing.status==='LOCKED'?'TERKUNCI':'DRAFT' %></span></div>
-<% if(closing.status!=='LOCKED'){ %><form class="row g-2 mt-2" method="post" action="/closing/save"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><div class="col-md-3"><label class="form-label small">Pendapatan tambahan</label><input class="form-control" type="number" min="0" name="manual_revenue" value="<%= closing.manual_revenue||0 %>"></div><div class="col-md-3"><label class="form-label small">Pengeluaran tambahan</label><input class="form-control" type="number" min="0" name="manual_expense" value="<%= closing.manual_expense||0 %>"></div><div class="col-md-3"><label class="form-label small">Saldo carry-over</label><input class="form-control" type="number" name="manual_carry" value="<%= closing.manual_carry||0 %>"></div><div class="col-md-3"><label class="form-label small">Gaji Agung</label><input class="form-control" type="number" min="0" name="manual_salary_agung" value="<%= closing.manual_salary_agung||500000 %>"></div><div class="col-md-3"><label class="form-label small">Gaji Padilah</label><input class="form-control" type="number" min="0" name="manual_salary_padilah" value="<%= closing.manual_salary_padilah||1000000 %>"></div><div class="col-md-6"><label class="form-label small">Catatan</label><input class="form-control" name="notes" maxlength="2000" value="<%= closing.notes||'' %>"></div><div class="col-md-3 d-flex align-items-end"><button class="btn btn-primary w-100">Simpan</button></div></form><form class="mt-2" method="post" action="/closing/lock" onsubmit="return confirm('Kunci periode ini?')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><button class="btn btn-outline-danger btn-sm">Kunci Closing</button></form><% } else { %><small class="text-muted d-block mt-3">Periode sudah dikunci.</small><% } %></div></div>
-<div class="row g-3 mt-3"><% [blocks.krwclm,blocks.kbg].forEach(block=>{ %><div class="col-md-6"><div class="card border-0 shadow-sm h-100"><div class="card-body"><h5><%= block.label %></h5><div class="d-flex justify-content-between"><span>Pembayaran masuk</span><strong>Rp <%= money(block.revenue).toLocaleString('id-ID') %></strong></div><div class="d-flex justify-content-between"><span>Pengeluaran</span><strong>Rp <%= money(block.expense).toLocaleString('id-ID') %></strong></div><hr><div class="d-flex justify-content-between"><span>Laba bersih</span><strong>Rp <%= money(block.profit).toLocaleString('id-ID') %></strong></div></div></div></div><% }) %></div>
-<div class="card border-0 shadow-sm mt-3"><div class="card-body"><h5>Pembagian hasil</h5><div class="table-responsive"><table class="table table-sm"><thead><tr><th>Lokasi</th><th>Penerima</th><th>%</th><th class="text-end">Kotor</th><th class="text-end">Bersih</th></tr></thead><tbody><% [blocks.krwclm,blocks.kbg].forEach(block=>block.shares.forEach(share=>{ %><tr><td><%= block.label %></td><td><%= share.name %></td><td><%= share.percent %>%</td><td class="text-end">Rp <%= money(share.gross).toLocaleString('id-ID') %></td><td class="text-end"><strong>Rp <%= money(share.amount).toLocaleString('id-ID') %></strong></td></tr><% })) %></tbody></table></div></div></div>
-<div class="row g-3 mt-3"><div class="col-lg-6"><div class="card border-0 shadow-sm"><div class="card-body"><h5>Cash belum disetor</h5><div class="table-responsive"><table class="table table-sm"><thead><tr><th>Tanggal</th><th>Pelanggan</th><th>Pemegang</th><th class="text-end">Nominal</th></tr></thead><tbody><% heldCash.forEach(row=>{ %><tr><td><%= row.paid_date %></td><td><%= row.customer_name %></td><td><%= row.holder_name %></td><td class="text-end text-danger">Rp <%= money(row.amount).toLocaleString('id-ID') %></td></tr><% }) %></tbody></table></div></div></div></div><div class="col-lg-6"><div class="card border-0 shadow-sm"><div class="card-body"><h5>Gaji</h5><% salaryRows.forEach(row=>{ %><div class="d-flex justify-content-between"><span><%= row.name %></span><strong>Rp <%= money(row.amount).toLocaleString('id-ID') %></strong></div><% }) %><small class="text-muted">Beban Edwin 50%, Jon 25%, Bopung 25%.</small></div></div></div></div>
-<div class="card border-0 shadow-sm mt-3"><div class="card-body"><h5>INVEST ROUTER</h5><p class="small text-muted">Rp20.000 per router aktif per bulan.</p><form class="row g-2 mb-3" method="post" action="/closing/router-assets"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><div class="col-md-3"><input class="form-control form-control-sm" name="customer_name" placeholder="Nama pelanggan" required></div><div class="col-md-2"><select class="form-select form-select-sm" name="site_code"><option>CLM</option><option>KRW</option><option>KBG</option></select></div><div class="col-md-2"><input class="form-control form-control-sm" name="owner_name" placeholder="Jon/Bopung" required></div><div class="col-md-1"><input class="form-control form-control-sm" type="number" name="units" min="1" value="1" required></div><div class="col-md-2"><input class="form-control form-control-sm" type="date" name="active_from" value="<%= start %>" required></div><div class="col-md-2"><button class="btn btn-outline-primary btn-sm w-100">Tambah</button></div></form><div class="table-responsive"><table class="table table-sm"><thead><tr><th>Pelanggan</th><th>Lokasi</th><th>Pemilik</th><th>Unit</th><th>Status</th></tr></thead><tbody><% routerAssets.forEach(row=>{ %><tr><td><%= row.customer_name %></td><td><%= row.site_code %></td><td><%= row.owner_name %></td><td><%= row.units %></td><td><%= row.status %></td></tr><% }) %></tbody></table></div></div></div>

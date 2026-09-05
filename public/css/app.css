@@ -1110,6 +1110,35 @@ form[data-auto-filter].is-auto-submitting{opacity:.7;pointer-events:none}.cash-c
 .package-distribution-row b{font-size:.6rem;color:var(--text);text-align:right}
 .package-distribution-row em{font-style:normal;font-size:.54rem;color:var(--muted);text-align:right}
 
+/* v1.26 — Closing: deliberately uses the existing dark design tokens so the
+   closing dashboard remains readable even when the rest of the application is
+   switched to light mode. */
+.closing-page{color:var(--text);min-width:0}
+.closing-card{background:var(--panel-2);border:1px solid var(--line)!important;color:var(--text);box-shadow:none!important}
+.closing-card .card-body{padding:16px}
+.closing-card h4,.closing-card h5{font-family:var(--font-display);font-weight:800}
+.closing-card-kicker,.closing-eyebrow{font-size:.49rem;font-weight:850;letter-spacing:.12em;text-transform:uppercase;color:#b5a7ee}
+.closing-card-kicker{margin-bottom:4px}
+.closing-card hr{border-color:var(--line);opacity:1}
+.closing-profit{color:var(--success)}
+.closing-card .table{--bs-table-bg:transparent;--bs-table-color:var(--text);--bs-table-border-color:var(--line);margin-bottom:0}
+.closing-card .table thead th{background:var(--panel-3);color:var(--muted-2);font-size:.48rem;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+.closing-card .table tbody td{font-size:.58rem;color:var(--text)}
+.closing-router-status-form{display:flex;align-items:center;gap:5px;min-width:260px}.closing-router-status-form .form-select{min-width:92px}.closing-router-status-form .form-control{min-width:124px}
+.closing-card .form-label{color:var(--muted-2);font-size:.52rem;font-weight:750}
+.closing-card .form-control,.closing-card .form-select,.closing-mode-select{background:var(--panel-3);border-color:var(--line);color:var(--text)}
+.closing-card .form-control::placeholder{color:var(--muted)}
+.closing-card .form-control:focus,.closing-card .form-select:focus,.closing-mode-select:focus{border-color:rgba(var(--brand-rgb),.5);box-shadow:0 0 0 .2rem rgba(var(--brand-rgb),.14)}
+.closing-mode-banner{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border:1px solid var(--line);border-radius:3px;background:var(--panel-2);color:var(--muted);font-size:.57rem;line-height:1.5}
+.closing-mode-banner>i{font-size:1rem;margin-top:1px;color:var(--brand)}
+.closing-mode-banner strong,.closing-mode-banner span{display:block}.closing-mode-banner strong{color:var(--text);font-size:.63rem}.closing-mode-banner.is-manual>i{color:var(--warning)}
+.closing-unlock-page{min-height:58vh;display:grid;place-items:center;padding:30px 0}
+.closing-unlock-shell{width:min(430px,100%);padding:28px;border:1px solid var(--line);border-radius:5px;background:var(--panel-2);box-shadow:0 20px 70px rgba(0,0,0,.25);text-align:center}
+.closing-unlock-icon{width:56px;height:56px;margin:0 auto 14px;border-radius:50%;display:grid;place-items:center;background:rgba(var(--brand-rgb),.15);color:#b9a9ef;font-size:1.35rem}
+.closing-unlock-shell h1{font-family:var(--font-display);font-size:1.25rem;margin:6px 0}.closing-unlock-shell p{font-size:.61rem;line-height:1.55}.closing-unlock-form{text-align:left;margin-top:20px}.closing-pin-input{font-family:var(--font-display);font-size:1.35rem;letter-spacing:.38em;background:var(--panel-3);border-color:var(--line);color:var(--text)}
+.closing-pin-input:focus{background:var(--panel-3);color:var(--text);border-color:rgba(var(--brand-rgb),.55);box-shadow:0 0 0 .2rem rgba(var(--brand-rgb),.14)}
+@media(max-width:767.98px){.closing-page .page-header .d-flex{width:100%}.closing-page .page-header form{width:100%}.closing-page .page-header form>*{flex:1 1 130px}.closing-page .page-header .closing-mode-select{min-width:190px}.closing-unlock-shell{padding:22px}}
+
 .wa-gateway-body{display:flex;flex-direction:column;gap:10px}
 .wa-gateway-status{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;padding:5px 10px;border-radius:99px;font-size:.55rem;font-weight:800;letter-spacing:.04em}
 .wa-gateway-status.connected{background:rgba(46,214,161,.12);color:var(--success)}

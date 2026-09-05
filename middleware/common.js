@@ -14,9 +14,9 @@ function commonLocals(req,res,next){
   const sessionUser=req.session?.user||null;
   res.locals.isAdmin=isAdminRole(sessionUser?.role);
   res.locals.isMasterAdmin=isMasterAdminRole(sessionUser?.role);
-  const identity=String(sessionUser?.username||sessionUser?.name||'').trim().toLowerCase();
   const closingUsername=String(sessionUser?.username||'').trim().toLowerCase();
-  res.locals.canClosing=res.locals.isMasterAdmin && (closingUsername==='superadmin' || closingUsername==='edwin' || identity.includes('edwin'));
+  const closingName=String(sessionUser?.name||'').trim().toLowerCase();
+  res.locals.canClosing=res.locals.isMasterAdmin && (closingUsername==='superadmin' || closingUsername==='edwin' || closingUsername.includes('edwin') || closingName.includes('edwin'));
   res.locals.actualRole=sessionUser?.role||null;
   res.locals.defaultTheme=req.session?.uiTheme||'dark';
   res.locals.defaultUiPalette=req.session?.uiPalette||'nebula';
