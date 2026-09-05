@@ -204,7 +204,7 @@ app.use('/packages', requireAuth, requirePermission('customers'), require('./rou
 app.use('/invoices', requireAuth, requirePermission('billing'), require('./routes/invoices'));
 app.use('/payments', requireAuth, requirePermission('billing'), require('./routes/payments'));
 app.use('/reports', requireAuth, requirePermission('reports'), require('./routes/reports'));
-app.use('/closing', requireAuth, requireMasterAdmin, (req,res,next)=>{const u=req.session?.user||{};const id=String(u.username||u.name||'').toLowerCase();if(!id.includes('edwin'))return res.status(403).send('Akses Closing hanya tersedia untuk Edwin.');next();}, require('./routes/closing'));
+app.use('/closing', requireAuth, requireMasterAdmin, (req,res,next)=>{const u=req.session?.user||{};const username=String(u.username||'').trim().toLowerCase();const name=String(u.name||'').trim().toLowerCase();const allowed=username==='superadmin'||username==='edwin'||name.includes('edwin');if(!allowed)return res.status(403).send('Akses Closing hanya tersedia untuk Edwin.');next();}, require('./routes/closing'));
 app.use('/routers', requireAuth, requirePermission('network'), require('./routes/routers'));
 app.use('/network', requireAuth, requirePermission('network'), require('./routes/network'));
 app.use('/settings', requireAuth, requirePermission('settings'), require('./routes/settings'));
