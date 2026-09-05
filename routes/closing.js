@@ -24,7 +24,8 @@ function closingUnlocked(req) {
 const money = (value) => { const numeric = Number(value); return Number.isFinite(numeric) ? Math.round(numeric) : 0; };
 const validDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
 const dateOr = (value, fallback) => validDate(value) ? String(value) : fallback;
-const siteBlock = (code) => { const value = String(code || '').trim().toUpperCase(); if (value === 'KBG' || value.includes('KUBANG')) return 'kbg'; if (value === 'KRW' || value === 'CLM') return 'krwclm'; return 'other'; };
+const siteBlock = (...parts) => { const values = parts.map((part) => String(part || '').trim().toUpperCase()); if (values.some((value) => value === 'KBG' || value.includes('KUBANG'))) return 'kbg'; if (values.some((value) => value === 'CDS' || value === 'KRW' || value === 'CLM' || value.includes('CENTRAL DIGITAL'))) return 'krwclm'; return 'other'; };
+const locationText = (row) => { let site = String(row.site_code || row.site_name || '-').trim().toUpperCase(); if (site === 'KRW' || site === 'CLM') site = 'CDS'; const cluster = String(row.cluster_name || '').trim(); return cluster && site === 'CDS' ? `CDS / ${cluster}` : site; };
 const personKey = (value) => { const name = String(value || '').trim().toLowerCase(); if (name.includes('edwin')) return 'edwin'; if (name.includes('jon') || name.includes('roni')) return 'jon'; if (name.includes('bopung') || name.includes('eko')) return 'bopung'; if (name.includes('ali')) return 'mang ali'; return name; };
 
 async function loadClosing(start, end, mode = 'auto') {
@@ -38,18 +39,28 @@ async function loadClosing(start, end, mode = 'auto') {
     try {
       const snapshot = JSON.parse(period.snapshot_json);
       if (snapshot && snapshot.blocks && Array.isArray(snapshot.payments) && Array.isArray(snapshot.expenses)) {
-        return { ...snapshot, closing: period, period, lockedSnapshot: true };
+        return {
+          ...snapshot,
+          payments: snapshot.payments,
+          expenses: snapshot.expenses,
+          heldCash: Array.isArray(snapshot.heldCash) ? snapshot.heldCash : [],
+          routerAssets: Array.isArray(snapshot.routerAssets) ? snapshot.routerAssets : [],
+          salaryRows: Array.isArray(snapshot.salaryRows) ? snapshot.salaryRows : [],
+          closing: period,
+          period,
+          lockedSnapshot: true
+        };
       }
     } catch (err) { console.error('Snapshot Closing tidak valid, memakai data live:', err.message); }
   }
-  const [payments] = await db.execute(`SELECT DATE(p.paid_at) paid_date,c.name customer_name,c.customer_code,s.code site_code,p.amount,p.method FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id WHERE p.status='confirmed' AND DATE(p.paid_at) BETWEEN ? AND ? ORDER BY p.paid_at DESC,p.id DESC`, [start, end]);
-  const [expenses] = await db.execute(`SELECT ct.transaction_date,ct.name,cc.name category,COALESCE(s.code,'-') site_code,ct.amount,ct.notes FROM cash_transactions ct JOIN cash_categories cc ON cc.id=ct.category_id LEFT JOIN sites s ON s.id=ct.site_id WHERE cc.type='expense' AND COALESCE(ct.approval_status,'APPROVED')='APPROVED' AND ct.transaction_date BETWEEN ? AND ? ORDER BY ct.transaction_date DESC,ct.id DESC`, [start, end]);
-  const [heldCash] = await db.execute(`SELECT DATE(p.paid_at) paid_date,c.name customer_name,s.code site_code,p.amount,COALESCE(u.name,'Belum diketahui') holder_name FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id LEFT JOIN users u ON u.id=COALESCE(p.collector_user_id,p.received_by) WHERE p.status='confirmed' AND p.method='cash' AND p.settlement_status='held_by_staff' AND DATE(p.paid_at) BETWEEN ? AND ? ORDER BY p.paid_at DESC,p.id DESC`, [start, end]);
-  const [routerAssets] = await db.execute(`SELECT id,customer_name,site_code,owner_name,units,status,active_from,active_until,notes FROM closing_router_assets WHERE active_from<=? AND (active_until IS NULL OR active_until>=?) AND status IN ('ACTIVE','BROKEN','REPLACED') ORDER BY site_code,customer_name`, [end, start]);
+  const [payments] = await db.execute(`SELECT DATE(p.paid_at) paid_date,c.name customer_name,c.customer_code,s.code site_code,s.name site_name,cl.name cluster_name,p.amount,p.method FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id WHERE p.status='confirmed' AND DATE(p.paid_at) BETWEEN ? AND ? ORDER BY p.paid_at DESC,p.id DESC`, [start, end]);
+  const [expenses] = await db.execute(`SELECT ct.transaction_date,ct.name,cc.name category,COALESCE(s.code,'-') site_code,COALESCE(s.name,'-') site_name,ct.amount,ct.notes FROM cash_transactions ct JOIN cash_categories cc ON cc.id=ct.category_id LEFT JOIN sites s ON s.id=ct.site_id WHERE cc.type='expense' AND COALESCE(ct.approval_status,'APPROVED')='APPROVED' AND ct.transaction_date BETWEEN ? AND ? ORDER BY ct.transaction_date DESC,ct.id DESC`, [start, end]);
+  const [heldCash] = await db.execute(`SELECT DATE(p.paid_at) paid_date,c.name customer_name,s.code site_code,s.name site_name,cl.name cluster_name,p.amount,COALESCE(u.name,'Belum diketahui') holder_name FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id LEFT JOIN users u ON u.id=COALESCE(p.collector_user_id,p.received_by) WHERE p.status='confirmed' AND p.method='cash' AND p.settlement_status='held_by_staff' AND DATE(p.paid_at) BETWEEN ? AND ? ORDER BY p.paid_at DESC,p.id DESC`, [start, end]);
+  const [routerAssets] = await db.execute(`SELECT id,customer_name,site_code,cluster_name,owner_name,units,status,active_from,active_until,notes FROM closing_router_assets WHERE active_from<=? AND (active_until IS NULL OR active_until>=?) AND status IN ('ACTIVE','BROKEN','REPLACED') ORDER BY site_code,cluster_name,customer_name`, [end, start]);
   const [adjustments] = period ? await db.execute('SELECT * FROM closing_adjustments WHERE closing_id=? ORDER BY id', [period.id]) : [[]];
-  const blocks = { krwclm: { label: 'KRW + CLM', revenue: 0, expense: 0 }, kbg: { label: 'KBG', revenue: 0, expense: 0 }, other: { label: 'Lokasi belum dipetakan', revenue: 0, expense: 0, shares: [] } };
-  payments.forEach((row) => { blocks[siteBlock(row.site_code)].revenue += money(row.amount); });
-  expenses.forEach((row) => { blocks[siteBlock(row.site_code)].expense += money(row.amount); });
+  const blocks = { krwclm: { label: 'CDS', revenue: 0, expense: 0 }, kbg: { label: 'KBG', revenue: 0, expense: 0 }, other: { label: 'Lokasi belum dipetakan', revenue: 0, expense: 0, shares: [] } };
+  payments.forEach((row) => { blocks[siteBlock(row.site_code, row.cluster_name, row.site_name)].revenue += money(row.amount); });
+  expenses.forEach((row) => { blocks[siteBlock(row.site_code, row.site_name)].expense += money(row.amount); });
   // Automatic mode is deliberately read-only from billing/cash. Manual mode
   // adds only the saved corrections, preventing accidental double counting.
   if (manualMode) {
@@ -70,7 +81,7 @@ async function loadClosing(start, end, mode = 'auto') {
 }
 
 function localDateKey(value) { if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) return value.slice(0, 10); const date = value instanceof Date ? value : new Date(value); const pad = (number) => String(number).padStart(2, '0'); return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`; }
-function selectedPeriod(req) { const now = new Date(); const requestedMode = String(req.query.mode || req.body?.mode || 'auto').toLowerCase(); const previousStart = localDateKey(new Date(now.getFullYear(), now.getMonth() - 1, 1)); const previousEnd = localDateKey(new Date(now.getFullYear(), now.getMonth(), 0)); return { start: dateOr(req.query.from || req.body?.from, previousStart), end: dateOr(req.query.to || req.body?.to, previousEnd), mode: requestedMode === 'manual' ? 'manual' : 'auto' }; }
+function selectedPeriod(req) { const now = new Date(); const requestedMode = String(req.query.mode || req.body?.mode || 'auto').toLowerCase(); const previousStart = localDateKey(new Date(now.getFullYear(), now.getMonth() - 1, 1)); const previousEnd = localDateKey(new Date(now.getFullYear(), now.getMonth(), 0)); return { start: dateOr(req.query.from || req.body?.from, previousStart), end: dateOr(req.query.to || req.body?.to, previousEnd), mode: requestedMode === 'manual' ? 'manual' : 'auto', hideEdwin: String(req.query.hide_edwin || req.body?.hide_edwin || '') === '1' }; }
 
 router.get('/unlock', (req, res) => {
   if (closingUnlocked(req)) return res.redirect(localNext(req.query.next));
@@ -105,11 +116,11 @@ router.use((req, res, next) => {
   return res.redirect(`/closing/unlock?next=${encodeURIComponent(localNext(req.originalUrl))}`);
 });
 
-router.get('/', async (req, res, next) => { try { const { start, end, mode } = selectedPeriod(req); if (start > end) return res.status(400).send('Periode tidak valid.'); const data = await loadClosing(start, end, mode); res.render('closing/index', { title: 'Closing', pageTitle: 'Closing', pageSubtitle: `${start} s/d ${end}`, start, end, mode, money, ...data }); } catch (err) { next(err); } });
+router.get('/', async (req, res, next) => { try { const { start, end, mode, hideEdwin } = selectedPeriod(req); if (start > end) return res.status(400).send('Periode tidak valid.'); const data = await loadClosing(start, end, mode); res.render('closing/index', { title: 'Closing', pageTitle: 'Closing', pageSubtitle: `${start} s/d ${end}`, start, end, mode, hideEdwin, money, ...data }); } catch (err) { next(err); } });
 
 router.post('/save', async (req, res, next) => { try { const { start, end } = selectedPeriod(req); if (start > end) return res.status(400).send('Periode tidak valid.'); const n = (v, fallback = 0) => Number.isFinite(Number(v)) ? Number(v) : fallback; const [[old]] = await db.execute('SELECT id,status FROM closing_periods WHERE period_start=? AND period_end=? LIMIT 1', [start, end]); if (old?.status === 'LOCKED') return res.status(409).send('Closing sudah dikunci.'); const values = [Math.max(0,n(req.body.manual_revenue)), Math.max(0,n(req.body.manual_expense)), n(req.body.manual_carry), Math.max(0,n(req.body.manual_salary_agung,500000)), Math.max(0,n(req.body.manual_salary_padilah,1000000)), String(req.body.notes || '').slice(0,2000)]; if (old) await db.execute('UPDATE closing_periods SET manual_revenue=?,manual_expense=?,manual_carry=?,manual_salary_agung=?,manual_salary_padilah=?,notes=? WHERE id=?', [...values, old.id]); else await db.execute('INSERT INTO closing_periods(period_start,period_end,closing_date,manual_revenue,manual_expense,manual_carry,manual_salary_agung,manual_salary_padilah,notes,created_by) VALUES(?,?,CURDATE(),?,?,?,?,?,?,?)', [start,end,...values,req.session.user.id]); req.session.flash={type:'success',message:'Penyesuaian Closing tersimpan.'}; res.redirect(`/closing?from=${start}&to=${end}&mode=manual`); } catch (err) { next(err); } });
 
-router.post('/router-assets', async (req, res, next) => { try { const { start, end }=selectedPeriod(req); const name=String(req.body.customer_name||'').trim().slice(0,180); const owner=String(req.body.owner_name||'').trim().slice(0,100); const date=validDate(req.body.active_from)?req.body.active_from:''; const site=String(req.body.site_code||'CLM').trim().toUpperCase().slice(0,30); const rawUnits=Number(req.body.units); const units=Number.isFinite(rawUnits)?Math.max(1,Math.min(100,Math.floor(rawUnits))):1; if(!name||!owner||!date)return res.status(400).send('Nama pelanggan, pemilik, dan tanggal mulai wajib diisi.'); await db.execute('INSERT INTO closing_router_assets(customer_name,site_code,owner_name,units,active_from,status,notes,created_by) VALUES(?,?,?,?,?,?,?,?)',[name,site,owner,units,date,'ACTIVE',String(req.body.notes||'').slice(0,500),req.session.user.id]); req.session.flash={type:'success',message:'Data INVEST ROUTER tersimpan.'}; res.redirect(`/closing?from=${start}&to=${end}&mode=manual`); } catch(err){next(err);} });
+router.post('/router-assets', async (req, res, next) => { try { const { start, end }=selectedPeriod(req); const name=String(req.body.customer_name||'').trim().slice(0,180); const owner=String(req.body.owner_name||'').trim().slice(0,100); const date=validDate(req.body.active_from)?req.body.active_from:''; const rawSite=String(req.body.site_code||'CDS').trim().toUpperCase().slice(0,30); const legacyCluster=['KRW','CLM'].includes(rawSite)?rawSite:''; const site=rawSite==='KRW'||rawSite==='CLM'?'CDS':rawSite; const clusterInput=String(req.body.cluster_name||'').trim().toUpperCase(); const cluster=site==='CDS'?(legacyCluster||(['KRW','CLM'].includes(clusterInput)?clusterInput:null)):(site==='KBG'?'KBG':null); const rawUnits=Number(req.body.units); const units=Number.isFinite(rawUnits)?Math.max(1,Math.min(100,Math.floor(rawUnits))):1; if(!name||!owner||!date||!['CDS','KBG'].includes(site))return res.status(400).send('Nama pelanggan, site, dan tanggal mulai wajib diisi.'); await db.execute('INSERT INTO closing_router_assets(customer_name,site_code,cluster_name,owner_name,units,active_from,status,notes,created_by) VALUES(?,?,?,?,?,?,?,?,?)',[name,site,cluster,owner,units,date,'ACTIVE',String(req.body.notes||'').slice(0,500),req.session.user.id]); req.session.flash={type:'success',message:'Data INVEST ROUTER tersimpan.'}; res.redirect(`/closing?from=${start}&to=${end}&mode=manual`); } catch(err){next(err);} });
 
 router.post('/router-assets/:id/status', async (req, res, next) => { try { const id = Number(req.params.id); const { start, end } = selectedPeriod(req); const allowed = new Set(['ACTIVE', 'BROKEN', 'REPLACED', 'INACTIVE']); const status = String(req.body.status || '').trim().toUpperCase(); const until = validDate(req.body.active_until) ? req.body.active_until : null; if (!Number.isInteger(id) || id < 1 || !allowed.has(status)) return res.status(400).send('Status router tidak valid.'); const [[asset]] = await db.execute('SELECT id,active_from FROM closing_router_assets WHERE id=? LIMIT 1', [id]); if (!asset) return res.status(404).send('Data router tidak ditemukan.'); if (until && until < localDateKey(asset.active_from)) return res.status(400).send('Tanggal berakhir tidak boleh sebelum tanggal mulai.'); await db.execute('UPDATE closing_router_assets SET status=?,active_until=? WHERE id=?', [status, status === 'ACTIVE' ? until : (until || localDateKey(new Date())), id]); req.session.flash = { type: 'success', message: `Status router diperbarui menjadi ${status}.` }; res.redirect(`/closing?from=${start}&to=${end}&mode=manual`); } catch (err) { next(err); } });
 
@@ -146,20 +157,36 @@ router.post('/lock', async (req, res, next) => {
 
 router.get('/pdf', async (req, res, next) => {
   try {
-    const { start, end, mode } = selectedPeriod(req);
+    const { start, end, mode, hideEdwin: requestedHideEdwin } = selectedPeriod(req);
     if (start > end) return res.status(400).send('Periode tidak valid.');
     const data = await loadClosing(start, end, mode);
     const effectiveMode = data.mode || mode;
+    const requestedReport = String(req.query.report || 'cds').trim().toLowerCase();
+    const report = ['cds', 'kbg-ali', 'kbg-internal'].includes(requestedReport) ? requestedReport : 'cds';
+    const block = report === 'cds' ? data.blocks.krwclm : data.blocks.kbg;
+    if (!block) return res.status(409).send('Snapshot Closing tidak memiliki blok lokasi yang lengkap.');
+    const hideEdwin = requestedHideEdwin || report !== 'cds';
+    const inScope = (row) => report === 'cds' ? siteBlock(row.site_code, row.cluster_name, row.site_name) === 'krwclm' : siteBlock(row.site_code, row.cluster_name, row.site_name) === 'kbg';
+    const shares = Array.isArray(block.shares) ? block.shares : [];
+    const shareRows = report === 'cds' ? shares.filter((share) => !hideEdwin || personKey(share.name) !== 'edwin') : report === 'kbg-ali' ? shares.filter((share) => personKey(share.name) === 'mang ali') : shares.filter((share) => ['jon', 'bopung'].includes(personKey(share.name)));
+    const reportLabel = report === 'cds' ? 'CDS' : report === 'kbg-ali' ? 'KBG · Mang Ali' : 'KBG · Jon + Bopung';
     const rows = [];
-    Object.values(data.blocks).forEach((block) => rows.push({ type: 'RINGKASAN', lokasi: block.label, penerima: '', detail: `Pendapatan ${rupiah(block.revenue)} · Pengeluaran ${rupiah(block.expense)}`, nominal: rupiah(block.profit) }));
-    Object.values(data.blocks).forEach((block) => (block.shares || []).forEach((share) => rows.push({ type: 'PEMBAGIAN', lokasi: block.label, penerima: share.name, detail: `${share.percent}% · Kotor ${rupiah(share.gross)}`, nominal: rupiah(share.amount) })));
-    rows.push(...data.payments.map((row) => ({ type: 'PEMBAYARAN', lokasi: row.site_code, penerima: row.customer_name, detail: `${row.paid_date} · ${row.method || '-'}`, nominal: rupiah(row.amount) })));
-    rows.push(...data.expenses.map((row) => ({ type: 'PENGELUARAN', lokasi: row.site_code, penerima: row.name, detail: `${row.transaction_date} · ${row.category}${row.notes ? ` · ${row.notes}` : ''}`, nominal: rupiah(row.amount) })));
-    rows.push(...data.heldCash.map((row) => ({ type: 'CASH BELUM SETOR', lokasi: row.site_code, penerima: row.holder_name, detail: `${row.paid_date} · ${row.customer_name}`, nominal: `- ${rupiah(row.amount)}` })));
-    rows.push(...data.routerAssets.map((row) => ({ type: 'INVEST ROUTER', lokasi: row.site_code, penerima: row.owner_name, detail: `${row.customer_name} · ${row.units} unit · ${row.status}`, nominal: rupiah(Number(row.units || 0) * 20000) })));
-    rows.push(...data.salaryRows.map((row) => ({ type: 'GAJI', lokasi: 'KRW + CLM', penerima: row.name, detail: 'Beban pembagian Edwin 50% · Jon 25% · Bopung 25%', nominal: rupiah(row.amount) })));
-    if (effectiveMode === 'manual') rows.push({ type: 'KOREKSI MANUAL', lokasi: 'KRW + CLM', penerima: 'Penyesuaian tersimpan', detail: `Pendapatan +${rupiah(data.closing.manual_revenue)} · Pengeluaran +${rupiah(data.closing.manual_expense)} · Carry ${rupiah(data.closing.manual_carry)}`, nominal: rupiah(money(data.closing.manual_revenue) - money(data.closing.manual_expense) + money(data.closing.manual_carry)) });
-    createReportPdf(res, { title: 'Closing INKAMNET', subtitle: `Periode transaksi ${start} s/d ${end} · Mode ${effectiveMode === 'manual' ? 'manual + koreksi' : 'otomatis dari billing'}`, filename: `closing-${start}-${end}-${effectiveMode}.pdf`, summaryItems: Object.values(data.blocks).map((block) => ({ label: `${block.label} · Laba Bersih`, value: rupiah(block.profit), color: block.profit >= 0 ? '#18A979' : '#FF433E' })), columns: [{ label: 'Jenis', key: 'type', width: 1.1 }, { label: 'Lokasi', key: 'lokasi', width: 1 }, { label: 'Penerima/Keterangan', key: 'penerima', width: 2 }, { label: 'Detail', key: 'detail', width: 2.4 }, { label: 'Nominal', key: 'nominal', width: 1.2, align: 'right' }], rows });
+    rows.push({ type: 'RINGKASAN', lokasi: block.label, penerima: '', detail: `Pendapatan ${rupiah(block.revenue)} · Pengeluaran ${rupiah(block.expense)}`, nominal: rupiah(block.profit) });
+    if (report === 'kbg-internal') rows.push({ type: 'POOL INTERNAL', lokasi: 'KBG', penerima: 'INKAMNET 65%', detail: 'Pool internal sebelum pembagian penerima', nominal: rupiah(block.profit * .65) });
+    shareRows.forEach((share) => rows.push({ type: 'PEMBAGIAN', lokasi: block.label, penerima: share.name, detail: `${share.percent}% · Kotor ${rupiah(share.gross)}`, nominal: rupiah(share.amount) }));
+    rows.push(...(Array.isArray(data.payments) ? data.payments : []).filter(inScope).map((row) => ({ type: 'PEMBAYARAN', lokasi: locationText(row), penerima: row.customer_name, detail: `${row.paid_date} · ${row.method || '-'}`, nominal: rupiah(row.amount) })));
+    rows.push(...(Array.isArray(data.expenses) ? data.expenses : []).filter(inScope).map((row) => ({ type: 'PENGELUARAN', lokasi: locationText(row), penerima: row.name, detail: `${row.transaction_date} · ${row.category}${row.notes ? ` · ${row.notes}` : ''}`, nominal: rupiah(row.amount) })));
+    rows.push(...(Array.isArray(data.heldCash) ? data.heldCash : []).filter(inScope).map((row) => ({ type: 'CASH BELUM SETOR', lokasi: locationText(row), penerima: row.holder_name, detail: `${row.paid_date} · ${row.customer_name}`, nominal: `- ${rupiah(row.amount)}` })));
+    rows.push(...(Array.isArray(data.routerAssets) ? data.routerAssets : []).filter(inScope).map((row) => {
+      const routerValue = Math.max(0, Number(row.units || 0)) * 20000;
+      const active = String(row.status || '').toUpperCase() === 'ACTIVE';
+      return { type: active ? 'INVEST ROUTER' : 'PENYESUAIAN ROUTER', lokasi: locationText(row), penerima: row.owner_name, detail: `${row.customer_name} · ${row.units} unit · ${row.status}${active ? '' : ' · tidak dihitung'}`, nominal: active ? rupiah(routerValue) : `- ${rupiah(routerValue)}` };
+    }));
+    if (report === 'cds') {
+      rows.push(...(Array.isArray(data.salaryRows) ? data.salaryRows : []).map((row) => ({ type: 'GAJI', lokasi: 'CDS', penerima: row.name, detail: 'Beban pembagian Edwin 50% · Jon 25% · Bopung 25%', nominal: rupiah(row.amount) })));
+      if (effectiveMode === 'manual') rows.push({ type: 'KOREKSI MANUAL', lokasi: 'CDS', penerima: 'Penyesuaian tersimpan', detail: `Pendapatan +${rupiah(data.closing.manual_revenue)} · Pengeluaran +${rupiah(data.closing.manual_expense)} · Carry ${rupiah(data.closing.manual_carry)}`, nominal: rupiah(money(data.closing.manual_revenue) - money(data.closing.manual_expense) + money(data.closing.manual_carry)) });
+    }
+    createReportPdf(res, { title: `Closing ${reportLabel}`, subtitle: `Periode transaksi ${start} s/d ${end} · ${effectiveMode === 'manual' ? 'manual + koreksi' : 'otomatis dari billing'}${hideEdwin ? ' · bagian Edwin disembunyikan' : ''}`, filename: `closing-${report}-${start}-${end}-${effectiveMode}.pdf`, summaryItems: [{ label: `${block.label} · Laba Bersih`, value: rupiah(block.profit), color: block.profit >= 0 ? '#18A979' : '#FF433E' }], columns: [{ label: 'Jenis', key: 'type', width: 1.1 }, { label: 'Lokasi', key: 'lokasi', width: 1.2 }, { label: 'Penerima/Keterangan', key: 'penerima', width: 2 }, { label: 'Detail', key: 'detail', width: 2.4 }, { label: 'Nominal', key: 'nominal', width: 1.2, align: 'right' }], rows });
   } catch (err) { next(err); }
 });
 
