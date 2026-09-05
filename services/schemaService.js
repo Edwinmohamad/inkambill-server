@@ -542,4 +542,9 @@ async function ensureV36Schema() {
   await db.query(`ALTER TABLE closing_router_assets ALTER COLUMN site_code SET DEFAULT 'CDS'`);
 }
 
-module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema };
+async function ensureV37Schema() {
+  await db.query(`ALTER TABLE closing_adjustments ADD COLUMN IF NOT EXISTS site_code VARCHAR(30) NULL AFTER adjustment_type`);
+  await db.query(`CREATE TABLE IF NOT EXISTS closing_entries (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,closing_id BIGINT UNSIGNED NOT NULL,entry_type ENUM('INCOME','EXPENSE') NOT NULL,site_code VARCHAR(30) NOT NULL,cluster_name VARCHAR(80) NULL,category VARCHAR(120) NOT NULL,amount DECIMAL(14,2) NOT NULL DEFAULT 0,entry_date DATE NOT NULL,description VARCHAR(255) NULL,created_by BIGINT UNSIGNED NULL,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,INDEX idx_closing_entries_period(closing_id,entry_type),INDEX idx_closing_entries_site(closing_id,site_code,cluster_name),INDEX idx_closing_entries_date(entry_date))`);
+}
+
+module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema };

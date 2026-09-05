@@ -25,7 +25,7 @@ const { requireAuth, loadPermissions, requirePermission, requireMasterAdmin } = 
 const { generateMonthlyInvoices } = require('./services/invoiceService');
 const { runAutoIsolation } = require('./services/networkService');
 const { purgeOldLogs } = require('./services/logRetentionService');
-const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema } = require('./services/schemaService');
+const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema } = require('./services/schemaService');
 const { startGateway, hasSavedSession, processQueue, runAutoReminderSweep } = require('./services/whatsappGatewayService');
 
 const app = express();
@@ -261,6 +261,7 @@ async function bootstrap() {
   await ensureV34Schema();
   await ensureV35Schema();
   await ensureV36Schema();
+  await ensureV37Schema();
   const [rows] = await db.query('SELECT COUNT(*) total FROM users');
   if (Number(rows[0].total) === 0) {
     const username = process.env.DEFAULT_ADMIN_USERNAME || 'admin';
