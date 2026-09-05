@@ -21,11 +21,11 @@ const cashProofUpload = require('./middleware/cashProofUpload');
 const ticketPhotoUpload = require('./middleware/ticketPhotoUpload');
 const dutyProofUpload = require('./middleware/dutyProofUpload');
 const invoiceLogoUpload = require('./middleware/invoiceLogoUpload');
-const { requireAuth, loadPermissions, requirePermission } = require('./middleware/auth');
+const { requireAuth, loadPermissions, requirePermission, requireMasterAdmin } = require('./middleware/auth');
 const { generateMonthlyInvoices } = require('./services/invoiceService');
 const { runAutoIsolation } = require('./services/networkService');
 const { purgeOldLogs } = require('./services/logRetentionService');
-const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema } = require('./services/schemaService');
+const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema } = require('./services/schemaService');
 const { startGateway, hasSavedSession, processQueue, runAutoReminderSweep } = require('./services/whatsappGatewayService');
 
 const app = express();
@@ -204,7 +204,7 @@ app.use('/packages', requireAuth, requirePermission('customers'), require('./rou
 app.use('/invoices', requireAuth, requirePermission('billing'), require('./routes/invoices'));
 app.use('/payments', requireAuth, requirePermission('billing'), require('./routes/payments'));
 app.use('/reports', requireAuth, requirePermission('reports'), require('./routes/reports'));
-app.use('/closing', requireAuth, require('./routes/closing'));
+app.use('/closing', requireAuth, requireMasterAdmin, (req,res,next)=>{const u=req.session?.user||{};const id=String(u.username||u.name||'').toLowerCase();if(!id.includes('edwin'))return res.status(403).send('Akses Closing hanya tersedia untuk Edwin.');next();}, require('./routes/closing'));
 app.use('/routers', requireAuth, requirePermission('network'), require('./routes/routers'));
 app.use('/network', requireAuth, requirePermission('network'), require('./routes/network'));
 app.use('/settings', requireAuth, requirePermission('settings'), require('./routes/settings'));
@@ -259,6 +259,7 @@ async function bootstrap() {
   await ensureV32Schema();
   await ensureV33Schema();
   await ensureV34Schema();
+  await ensureV35Schema();
   const [rows] = await db.query('SELECT COUNT(*) total FROM users');
   if (Number(rows[0].total) === 0) {
     const username = process.env.DEFAULT_ADMIN_USERNAME || 'admin';
