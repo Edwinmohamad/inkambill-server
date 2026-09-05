@@ -1263,3 +1263,29 @@ html[data-theme="dark"] .text-muted,html[data-theme="dark"] .text-secondary{colo
   .closing-page .page-header h1{font-size:1.2rem}
   .closing-page .closing-card .card-body{padding:14px}
 }
+
+/* v1.26.2 — Dashboard density: keep the operational overview compact without
+   squeezing the content inside each widget. The dashboard is one flow, so the
+   outer grid controls the vertical rhythm and individual cards retain their own
+   internal padding. */
+.dashboard-v119{gap:10px}
+.dashboard-v119>.command-hero{margin-bottom:0}
+.dashboard-v119>.command-telemetry-rail{margin:-1px 0 0}
+.dashboard-v119>.dashboard-user-ticker,.dashboard-v119>.command-kpis,.dashboard-v119>.psb-hero-v119,.dashboard-v119>.command-pulse-grid,.dashboard-v119>.dashboard-widgets-v121,.dashboard-v119>.dashboard-dense-core,.dashboard-v119>.dashboard-customer-watch-grid,.dashboard-v119>.command-main-grid{margin-bottom:0}
+.dashboard-v119 .command-kpis-v19{gap:8px}
+.dashboard-v119 .command-pulse-grid{gap:8px}
+.dashboard-v119 .dashboard-widgets-v121{gap:10px;margin-top:0}
+.dashboard-v119 .dashboard-dense-core,.dashboard-v119 .dashboard-customer-watch-grid,.dashboard-v119 .command-main-grid,.dashboard-v119 .dashboard-v19-grid{gap:10px}
+.dashboard-v119 .psb-hero-v119{gap:12px}
+.dashboard-v119 .dashboard-dense-core .command-panel-head{min-height:52px;padding:9px 11px}
+
+@media(max-width:900px){
+  .dashboard-v119{gap:9px}
+  .dashboard-v119 .dashboard-dense-core,.dashboard-v119 .dashboard-customer-watch-grid,.dashboard-v119 .command-main-grid{gap:9px}
+}
+
+@media(max-width:600px){
+  .dashboard-v119{gap:8px}
+  .dashboard-v119 .dashboard-widgets-v121{gap:8px}
+  .dashboard-v119 .dashboard-dense-core,.dashboard-v119 .dashboard-customer-watch-grid,.dashboard-v119 .command-main-grid{gap:8px}
+}
