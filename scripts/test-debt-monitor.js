@@ -11,6 +11,7 @@ const layout = fs.readFileSync(path.join(root, 'views/partials/layout.ejs'), 'ut
 const checks = [
   [schema.includes('async function ensureV40Schema()'), 'schema V40'],
   [schema.includes('finance_debts') && schema.includes('finance_debt_payments'), 'tabel hutang dan pembayaran'],
+  [schema.includes('finance_debt_items') && schema.includes('installment_months'), 'rincian pembelian dan durasi cicilan'],
   [app.includes("app.use('/debts', requireAuth, requirePermission('finance')"), 'route wajib login dan izin finance'],
   [app.includes('await ensureV40Schema()'), 'bootstrap schema'],
   [layout.includes('Hutang & Piutang') && layout.includes('href="/debts"'), 'navigasi keuangan'],
@@ -19,6 +20,8 @@ const checks = [
   [route.includes("router.post('/:id/payments/:paymentId/delete'") && route.includes('await refreshStatus(conn, id)'), 'koreksi pembayaran dan hitung ulang'],
   [route.includes("status='ARCHIVED'"), 'arsip non-destruktif'],
   [view.includes('Sisa hutang') && view.includes('Sisa piutang') && view.includes('Terlambat'), 'ringkasan monitoring'],
+  [route.includes('function installmentSchedule(record)') && view.includes('Rincian & jadwal cicilan'), 'jadwal cicilan otomatis'],
+  [view.includes('debtItemTemplate') && view.includes('Total otomatis'), 'input rincian item dinamis'],
   [view.includes('tidak otomatis masuk ke Closing'), 'proteksi hitung ganda']
 ];
 

@@ -756,6 +756,18 @@ async function ensureV40Schema() {
     INDEX idx_finance_debt_payment(debt_id,payment_date),
     CONSTRAINT fk_finance_debt_payment FOREIGN KEY (debt_id) REFERENCES finance_debts(id) ON DELETE CASCADE
   )`);
+  await db.query(`ALTER TABLE finance_debts ADD COLUMN IF NOT EXISTS installment_months SMALLINT UNSIGNED NOT NULL DEFAULT 1 AFTER payment_method`);
+  await db.query(`CREATE TABLE IF NOT EXISTS finance_debt_items (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    debt_id BIGINT UNSIGNED NOT NULL,
+    item_name VARCHAR(255) NOT NULL,
+    quantity DECIMAL(12,2) NOT NULL DEFAULT 1,
+    unit_price DECIMAL(16,2) NOT NULL,
+    notes VARCHAR(500) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_finance_debt_item(debt_id,id),
+    CONSTRAINT fk_finance_debt_item FOREIGN KEY (debt_id) REFERENCES finance_debts(id) ON DELETE CASCADE
+  )`);
 }
 
 module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema };

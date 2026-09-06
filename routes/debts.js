@@ -12,6 +12,33 @@ const localDate = () => {
   const shifted = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return shifted.toISOString().slice(0, 10);
 };
+const dateKey = (value) => {
+  if (typeof value === 'string') return value.slice(0, 10);
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
+};
+const addMonths = (dateValue, months) => {
+  const [year, month, day] = dateKey(dateValue).split('-').map(Number);
+  const target = new Date(Date.UTC(year, month - 1 + months, 1));
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  target.setUTCDate(Math.min(day, lastDay));
+  return target.toISOString().slice(0, 10);
+};
+function installmentSchedule(record) {
+  const months = record.payment_method === 'INSTALLMENT' ? Math.max(1, Math.min(60, Number(record.installment_months || 1))) : 1;
+  const principal = amount(record.principal_amount);
+  const base = Math.floor(principal / months);
+  let paidLeft = amount(record.paid_amount);
+  const firstDue = dateKey(record.due_date || record.issue_date);
+  return Array.from({ length: months }, (_, index) => {
+    const target = index === months - 1 ? principal - (base * (months - 1)) : base;
+    const applied = Math.min(target, Math.max(0, paidLeft));
+    paidLeft -= applied;
+    const dueDate = addMonths(firstDue, index);
+    const status = applied >= target ? 'PAID' : applied > 0 ? 'PARTIAL' : dueDate < localDate() ? 'OVERDUE' : 'UPCOMING';
+    return { number: index + 1, dueDate, target, paid: applied, remaining: target - applied, status };
+  });
+}
 
 async function refreshStatus(conn, id) {
   await conn.execute(`UPDATE finance_debts d
@@ -44,12 +71,25 @@ router.get('/', async (req, res, next) => {
       const ids = records.map((row) => Number(row.id));
       const placeholders = ids.map(() => '?').join(',');
       const [payments] = await db.execute(`SELECT id,debt_id,payment_date,amount,notes,created_at FROM finance_debt_payments WHERE debt_id IN (${placeholders}) ORDER BY payment_date DESC,id DESC`, ids);
+      const [items] = await db.execute(`SELECT id,debt_id,item_name,quantity,unit_price,notes FROM finance_debt_items WHERE debt_id IN (${placeholders}) ORDER BY debt_id,id`, ids);
       const grouped = new Map();
+      const groupedItems = new Map();
       payments.forEach((payment) => {
         if (!grouped.has(Number(payment.debt_id))) grouped.set(Number(payment.debt_id), []);
         grouped.get(Number(payment.debt_id)).push(payment);
       });
-      records.forEach((record) => { record.payments = grouped.get(Number(record.id)) || []; });
+      items.forEach((item) => {
+        if (!groupedItems.has(Number(item.debt_id))) groupedItems.set(Number(item.debt_id), []);
+        groupedItems.get(Number(item.debt_id)).push(item);
+      });
+      records.forEach((record) => {
+        record.payments = grouped.get(Number(record.id)) || [];
+        record.items = groupedItems.get(Number(record.id)) || [];
+        record.installments = installmentSchedule(record);
+        const nextInstallment = record.installments.find((item) => item.status !== 'PAID');
+        record.next_installment = nextInstallment || null;
+        record.is_overdue = record.installments.some((item) => item.status === 'OVERDUE');
+      });
     }
     const [summaryRows] = await db.query(`SELECT d.record_type,
       SUM(GREATEST(d.principal_amount-COALESCE(x.paid,0),0)) remaining,
@@ -64,25 +104,41 @@ router.get('/', async (req, res, next) => {
 });
 
 router.post('/', async (req, res, next) => {
+  let conn;
   try {
     const type = String(req.body.record_type || '').toUpperCase();
     const site = String(req.body.site_code || '').toUpperCase();
     const method = String(req.body.payment_method || '').toUpperCase();
     const party = String(req.body.party_name || '').trim().slice(0, 160);
     const purpose = String(req.body.purpose || '').trim().slice(0, 255);
-    const principal = amount(req.body.principal_amount);
+    const itemNames = Array.isArray(req.body.item_name) ? req.body.item_name : [req.body.item_name];
+    const quantities = Array.isArray(req.body.item_quantity) ? req.body.item_quantity : [req.body.item_quantity];
+    const unitPrices = Array.isArray(req.body.item_unit_price) ? req.body.item_unit_price : [req.body.item_unit_price];
+    const itemNotes = Array.isArray(req.body.item_notes) ? req.body.item_notes : [req.body.item_notes];
+    const items = itemNames.map((name, index) => ({
+      name: String(name || '').trim().slice(0, 255),
+      quantity: Math.round(Math.max(0, Number(quantities[index] || 0)) * 100) / 100,
+      unitPrice: amount(unitPrices[index]),
+      notes: String(itemNotes[index] || '').trim().slice(0, 500) || null
+    })).filter((item) => item.name && item.quantity > 0 && item.unitPrice > 0);
+    const principal = items.reduce((total, item) => total + Math.round(item.quantity * item.unitPrice), 0);
     const issueDate = validDate(req.body.issue_date) ? req.body.issue_date : '';
     const dueDate = validDate(req.body.due_date) ? req.body.due_date : null;
     const responsible = String(req.body.responsible_name || '').trim().slice(0, 160) || null;
     const notes = String(req.body.notes || '').trim().slice(0, 2000) || null;
+    const installmentMonths = method === 'INSTALLMENT' ? Math.max(2, Math.min(60, Number.parseInt(req.body.installment_months, 10) || 2)) : 1;
     if (!['DEBT', 'RECEIVABLE'].includes(type) || !['GLOBAL', 'CDS', 'KBG'].includes(site) || !['ONCE', 'INSTALLMENT'].includes(method)) return res.status(400).send('Jenis, lokasi, atau metode pembayaran tidak valid.');
-    if (!party || !purpose || principal <= 0 || !issueDate) return res.status(400).send('Pihak, keperluan, tanggal, dan nominal wajib diisi dengan benar.');
+    if (!party || !purpose || principal <= 0 || !issueDate || !items.length) return res.status(400).send('Pihak, keperluan, tanggal, dan minimal satu rincian pembelian wajib diisi.');
     if (dueDate && dueDate < issueDate) return res.status(400).send('Jatuh tempo tidak boleh sebelum tanggal pencatatan.');
-    await db.execute(`INSERT INTO finance_debts(record_type,party_name,purpose,site_code,principal_amount,issue_date,due_date,payment_method,responsible_name,notes,created_by)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?)`, [type, party, purpose, site, principal, issueDate, dueDate, method, responsible, notes, req.session.user.id]);
+    conn = await db.getConnection();
+    await conn.beginTransaction();
+    const [created] = await conn.execute(`INSERT INTO finance_debts(record_type,party_name,purpose,site_code,principal_amount,issue_date,due_date,payment_method,installment_months,responsible_name,notes,created_by)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, [type, party, purpose, site, principal, issueDate, dueDate, method, installmentMonths, responsible, notes, req.session.user.id]);
+    for (const item of items) await conn.execute('INSERT INTO finance_debt_items(debt_id,item_name,quantity,unit_price,notes) VALUES(?,?,?,?,?)', [created.insertId, item.name, item.quantity, item.unitPrice, item.notes]);
+    await conn.commit();
     req.session.flash = { type: 'success', message: `${type === 'DEBT' ? 'Hutang' : 'Piutang'} berhasil dicatat.` };
     res.redirect('/debts');
-  } catch (err) { next(err); }
+  } catch (err) { if (conn) await conn.rollback(); next(err); } finally { if (conn) conn.release(); }
 });
 
 router.post('/:id/payments', async (req, res, next) => {

@@ -66,3 +66,8 @@ BACA-DULU-*.txt
 
 # Claude local config
 .claude/
+
+# Android signing secrets — never commit these files.
+android/*.jks
+android/*github-secrets*.txt
+storage/mobile-releases/*.apk

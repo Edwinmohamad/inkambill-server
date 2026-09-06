@@ -1,0 +1,13 @@
+const fs=require('fs');
+const path=require('path');
+const {formatCashExpenseName}=require('../services/cashNamingService');
+const root=path.resolve(__dirname,'..');
+const route=fs.readFileSync(path.join(root,'routes/finance.js'),'utf8');
+const view=fs.readFileSync(path.join(root,'views/finance/cash.ejs'),'utf8');
+const example=formatCashExpenseName({categoryCode:'PETTY',categoryName:'Pettycash',rawName:'pembelian router 6pcs',shopName:'wisnu pandawa'});
+if(example!=='PTC_Pembelian Router 6Pcs_WisnuPandawa')throw new Error(`Format contoh salah: ${example}`);
+const repeated=formatCashExpenseName({categoryCode:'PETTY',categoryName:'Pettycash',rawName:example,shopName:'wisnu pandawa'});
+if(repeated!==example)throw new Error(`Formatter tidak idempoten: ${repeated}`);
+if(!route.includes('formatCashExpenseName')||!route.includes('formattedName'))throw new Error('Formatter belum dipakai saat tambah/edit Data Kas.');
+if(!view.includes('otomatis dirapikan')||!view.includes('PTC_Pembelian Router 6Pcs_WisnuPandawa'))throw new Error('Petunjuk format belum tampil.');
+console.log('Cash naming validation passed: example, idempotency, create/edit and UI hint.');

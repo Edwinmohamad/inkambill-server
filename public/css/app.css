@@ -1372,6 +1372,7 @@ html[data-theme="light"] .dashboard-v119 .command-kpi,html[data-theme="light"] .
 .debt-create-form label{min-width:0}.debt-create-form label>span{display:block;margin-bottom:4px;color:var(--muted-2);font-size:.52rem;font-weight:750}
 .debt-create-form .span-2{grid-column:span 2}.debt-create-form .span-4{grid-column:1/-1}
 .debt-form-action{display:flex;justify-content:flex-end;padding-top:2px}
+.debt-items-editor{padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--panel-3)}.debt-items-head,.debt-items-total{display:flex;align-items:center;justify-content:space-between;gap:10px}.debt-items-head>span{color:var(--text);font-size:.56rem;font-weight:800}.debt-item-input{display:grid;grid-template-columns:minmax(150px,1.5fr) 70px 130px minmax(120px,1fr) auto 90px;align-items:center;gap:6px;padding:7px 0;border-bottom:1px solid var(--line)}.debt-item-input:last-child{border-bottom:0}.debt-item-subtotal{text-align:right;color:var(--text);font-size:.52rem}.debt-items-total{padding-top:8px;border-top:1px solid var(--line);color:var(--muted);font-size:.52rem}.debt-items-total strong{color:var(--brand);font-size:.68rem}
 .debt-page .form-control,.debt-page .form-select{background:var(--panel-3);border-color:var(--line);color:var(--text)}
 .debt-page .form-control::placeholder{color:var(--muted)}
 .debt-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
@@ -1391,14 +1392,43 @@ html[data-theme="light"] .dashboard-v119 .command-kpi,html[data-theme="light"] .
 .debt-meta{display:flex;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:.48rem}.debt-meta span{display:flex;align-items:center;gap:4px}
 .debt-amount{text-align:right}.debt-amount span,.debt-amount small{display:block;color:var(--muted);font-size:.48rem}.debt-amount strong{display:block;margin:1px 0;color:var(--text);font-size:.78rem}
 .debt-progress{height:4px;margin:10px 0 8px;border-radius:999px;background:var(--panel-3);overflow:hidden}.debt-progress span{display:block;height:100%;border-radius:inherit;background:var(--brand)}
+.debt-breakdown{margin:0 0 8px;border:1px solid var(--line);border-radius:9px;background:var(--panel-3)}.debt-breakdown>summary{display:flex;align-items:center;justify-content:space-between;padding:7px 9px;list-style:none;cursor:pointer;color:var(--muted-2);font-size:.52rem;font-weight:750}.debt-breakdown>summary::-webkit-details-marker{display:none}.debt-breakdown>summary span{display:flex;gap:6px}.debt-breakdown[open]>summary>i{transform:rotate(180deg)}.debt-breakdown-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:10px;border-top:1px solid var(--line)}.debt-breakdown-grid h4{margin:0 0 5px;color:var(--text);font-size:.56rem}.debt-breakdown-line,.debt-installment-line{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px dashed var(--line);font-size:.5rem}.debt-breakdown-line:last-child,.debt-installment-line:last-child{border-bottom:0}.debt-breakdown-line span small,.debt-installment-line strong small{display:block;margin-top:2px;color:var(--muted);font-size:.44rem}.debt-installment-line span{display:flex;align-items:center;gap:6px}.debt-installment-line span b{display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:var(--panel-2);color:var(--muted)}.debt-installment-line.status-paid strong small{color:var(--success)}.debt-installment-line.status-overdue strong small{color:var(--danger)}.debt-installment-line.status-partial strong small{color:var(--warning)}
 .debt-item-foot{display:flex;align-items:center;justify-content:flex-end;gap:8px;color:var(--muted);font-size:.5rem}.debt-item-foot>span{margin-right:auto}
 .debt-pay{position:relative}.debt-pay>summary{list-style:none;cursor:pointer}.debt-pay>summary::-webkit-details-marker{display:none}
 .debt-pay form{position:absolute;z-index:10;right:0;top:calc(100% + 6px);display:grid;grid-template-columns:130px 150px minmax(160px,1fr) auto;gap:7px;width:min(620px,calc(100vw - 60px));padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--panel-3);box-shadow:var(--shadow)}
 .debt-history{position:relative}.debt-history>summary{list-style:none;cursor:pointer}.debt-history>summary::-webkit-details-marker{display:none}.debt-history-list{position:absolute;z-index:11;right:0;top:calc(100% + 6px);width:min(340px,calc(100vw - 60px));padding:7px;border:1px solid var(--line);border-radius:10px;background:var(--panel-3);box-shadow:var(--shadow)}.debt-history-list>div{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px;border-bottom:1px solid var(--line)}.debt-history-list>div:last-child{border-bottom:0}.debt-history-list span,.debt-history-list small{display:block}.debt-history-list strong{color:var(--text);font-size:.56rem}.debt-history-list small{margin-top:2px;color:var(--muted);font-size:.46rem}
 .debt-empty{display:grid;place-items:center;gap:4px;padding:38px;border:1px dashed var(--line);border-radius:12px;background:var(--panel-2);color:var(--muted);font-size:.58rem}.debt-empty i{font-size:1.5rem;color:var(--brand)}.debt-empty strong{color:var(--text);font-size:.7rem}
 .debt-note{display:flex;gap:8px;align-items:flex-start;padding:9px 11px;border:1px solid rgba(var(--brand-rgb),.2);border-radius:10px;background:rgba(var(--brand-rgb),.06);color:var(--muted-2);font-size:.52rem}
-@media(max-width:991.98px){.closing-share-rules{grid-template-columns:1fr}.debt-create-form{grid-template-columns:repeat(2,minmax(0,1fr))}.debt-filter{grid-template-columns:repeat(3,1fr)}.debt-filter input{grid-column:span 2}.debt-pay form{grid-template-columns:1fr 1fr}}
-@media(max-width:767.98px){.closing-steps{grid-template-columns:1fr 1fr}.debt-head{align-items:stretch;flex-direction:column}.debt-create-panel>summary{width:100%;text-align:center}.debt-create-form{position:static;width:100%;margin-top:8px;grid-template-columns:1fr}.debt-create-form .span-2,.debt-create-form .span-4{grid-column:auto}.debt-summary{grid-template-columns:1fr}.debt-filter{grid-template-columns:1fr 1fr}.debt-filter input{grid-column:1/-1}.debt-filter .btn{justify-content:center}.debt-item-main{grid-template-columns:auto minmax(0,1fr)}.debt-amount{grid-column:1/-1;padding-top:7px;border-top:1px solid var(--line);text-align:left}.debt-item-foot{align-items:stretch;flex-wrap:wrap}.debt-item-foot>span{width:100%}.debt-pay form{position:static;width:100%;margin-top:6px;grid-template-columns:1fr}.debt-pay{flex:1}.debt-pay>summary{width:100%;text-align:center}}
+@media(max-width:991.98px){.closing-share-rules{grid-template-columns:1fr}.debt-create-form{grid-template-columns:repeat(2,minmax(0,1fr))}.debt-filter{grid-template-columns:repeat(3,1fr)}.debt-filter input{grid-column:span 2}.debt-pay form{grid-template-columns:1fr 1fr}.debt-item-input{grid-template-columns:minmax(140px,1fr) 65px 120px auto}.debt-item-input input:nth-of-type(4){grid-column:1/4}.debt-breakdown-grid{grid-template-columns:1fr}}
+@media(max-width:767.98px){.closing-steps{grid-template-columns:1fr 1fr}.debt-head{align-items:stretch;flex-direction:column}.debt-create-panel>summary{width:100%;text-align:center}.debt-create-form{position:static;width:100%;margin-top:8px;grid-template-columns:1fr}.debt-create-form .span-2,.debt-create-form .span-4{grid-column:auto}.debt-summary{grid-template-columns:1fr}.debt-filter{grid-template-columns:1fr 1fr}.debt-filter input{grid-column:1/-1}.debt-filter .btn{justify-content:center}.debt-item-input{grid-template-columns:minmax(0,1fr) 60px}.debt-item-input input:nth-of-type(3),.debt-item-input input:nth-of-type(4){grid-column:1/-1}.debt-item-subtotal{grid-column:1/2;text-align:left}.debt-item-main{grid-template-columns:auto minmax(0,1fr)}.debt-amount{grid-column:1/-1;padding-top:7px;border-top:1px solid var(--line);text-align:left}.debt-item-foot{align-items:stretch;flex-wrap:wrap}.debt-item-foot>span{width:100%}.debt-pay form{position:static;width:100%;margin-top:6px;grid-template-columns:1fr}.debt-pay{flex:1}.debt-pay>summary{width:100%;text-align:center}}
+
+/* Compact dashboard rhythm: dense enough for daily operations while retaining
+   a consistent visual separator between every widget. */
+.dashboard-v119{gap:7px!important}
+.dashboard-v119 .command-hero{min-height:128px!important;padding:15px 18px!important}
+.dashboard-v119 .command-welcome-line{margin-top:8px;gap:12px}
+.dashboard-v119 .dashboard-user-ticker{min-height:42px}
+.dashboard-v119 .command-kpis-v19{gap:7px!important}
+.dashboard-v119 .command-kpi{min-height:68px!important;padding:8px 9px!important}
+.dashboard-v119 .command-kpi-icon{width:30px;height:30px}
+.dashboard-v119 .psb-hero-v119{min-height:164px!important;padding:12px 14px!important;gap:9px!important;margin-bottom:0!important}
+.dashboard-v119 .psb-hero-icon{width:42px;height:42px;flex-basis:42px}
+.dashboard-v119 .psb-hero-chart{height:132px}
+.dashboard-v119 .psb-hero-metrics button{padding:9px 10px}
+.dashboard-v119 .psb-hero-metrics strong{font-size:24px}
+.dashboard-v119 .command-pulse{min-height:50px!important;padding:7px 9px!important}
+.dashboard-v119 .dashboard-widgets-v121{gap:7px!important}
+.dashboard-v119 .dashboard-widgets-v121 .command-panel{gap:7px}
+.dashboard-v119 .command-panel-head{min-height:44px;padding:8px 10px}
+.dashboard-v119 .dashboard-dense-core,.dashboard-v119 .dashboard-customer-watch-grid,.dashboard-v119 .command-main-grid,.dashboard-v119 .dashboard-v19-grid{gap:7px!important}
+.dashboard-v119 .dashboard-dense-core .command-panel-head{min-height:44px!important;padding:8px 10px!important}
+.dashboard-v119 .dashboard-dense-core .invoice-kpi-layout{padding:8px;gap:7px}
+.dashboard-v119 .dashboard-dense-core .invoice-kpi-chart{height:120px}
+.dashboard-v119 .site-condition-chart{height:120px}
+.dashboard-v119 .customer-state-list{max-height:140px}
+.dashboard-v119 .dashboard-traffic-panel{min-height:290px}
+.dashboard-v119 .dashboard-traffic-panel .command-chart{height:225px}
+@media(max-width:900px){.dashboard-v119{gap:8px!important}.dashboard-v119 .command-hero{min-height:0!important}.dashboard-v119 .psb-hero-v119{min-height:0!important}.dashboard-v119 .psb-hero-chart{height:145px}.dashboard-v119 .command-panel-head{min-height:46px}}
 .closing-input-card{margin:0!important}
 .closing-entry-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px}
 .closing-entry-box{padding:14px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel-3)}

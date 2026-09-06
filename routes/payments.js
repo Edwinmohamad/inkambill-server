@@ -194,6 +194,43 @@ router.post('/',requireAdmin,async(req,res)=>{
   res.redirect(localReturn(req.body.return_to,'/payments'));
 });
 
+// Koreksi administratif yang aman: transfer/QRIS yang salah input dapat
+// dipindahkan menjadi cash. Untuk pembayaran confirmed, jurnal transfer
+// otomatis dibatalkan dan nominal kembali tercatat sebagai cash di collector.
+router.post('/:id/method-to-cash',requireMasterAdmin,async(req,res)=>{
+  const paymentId=Number(req.params.id);
+  const collectorId=Number(req.body.collector_user_id);
+  const reason=String(req.body.reason||'').trim().slice(0,500);
+  const returnTo=localReturn(req.body.return_to,'/payments');
+  if(!Number.isInteger(paymentId)||paymentId<1){req.session.flash={type:'danger',message:'Pembayaran tidak valid.'};return res.redirect(returnTo);}
+  if(!Number.isInteger(collectorId)||collectorId<1){req.session.flash={type:'danger',message:'Pilih admin/collector yang menerima cash.'};return res.redirect(returnTo);}
+  if(reason.length<3){req.session.flash={type:'danger',message:'Alasan koreksi wajib diisi minimal 3 karakter.'};return res.redirect(returnTo);}
+  const conn=await db.getConnection();
+  let auditDescription='';
+  try{
+    await conn.beginTransaction();
+    const [rows]=await conn.execute(`SELECT p.id,p.method,p.status,p.settlement_status,p.reference,p.amount,p.invoice_id,u.name collector_name
+      FROM payments p LEFT JOIN users u ON u.id=? WHERE p.id=? FOR UPDATE`,[collectorId,paymentId]);
+    const payment=rows[0];
+    if(!payment)throw new Error('Pembayaran tidak ditemukan.');
+    if(!['transfer','qris'].includes(payment.method))throw new Error('Hanya pembayaran transfer atau QRIS yang dapat dikoreksi menjadi cash.');
+    if(!['pending','confirmed'].includes(payment.status))throw new Error('Pembayaran yang ditolak tidak dapat dikoreksi.');
+    const [staffRows]=await conn.execute('SELECT id,name FROM users WHERE id=? AND is_active=1 LIMIT 1',[collectorId]);
+    if(!staffRows.length)throw new Error('Admin/collector tidak ditemukan atau sudah tidak aktif.');
+    if(payment.status==='confirmed'){
+      await conn.execute("DELETE FROM cash_transactions WHERE source_type='payment' AND source_id=?",[payment.id]);
+    }
+    await conn.execute(`UPDATE payments SET method='cash',bank_name=NULL,collector_user_id=?,settlement_status=? WHERE id=?`,[
+      collectorId,payment.status==='confirmed'?'held_by_staff':'not_applicable',payment.id
+    ]);
+    await conn.commit();
+    auditDescription=`Koreksi metode ${payment.method} menjadi cash untuk ${payment.reference||`#${payment.id}`} · collector ${staffRows[0].name} · alasan: ${reason}`;
+    await audit({userId:req.session.user.id,action:'correct_payment_method',entityType:'payment',entityId:payment.id,description:auditDescription,ip:req.ip});
+    req.session.flash={type:'success',message:`Metode pembayaran berhasil diubah menjadi cash. ${payment.status==='confirmed'?'Jurnal transfer dibatalkan dan nominal masuk Cash Masih di Tim.':'Pembayaran tetap menunggu approval.'}`};
+  }catch(e){await conn.rollback();req.session.flash={type:'danger',message:`Koreksi gagal: ${e.message}`};}finally{conn.release();}
+  res.redirect(returnTo);
+});
+
 router.get('/:id/proof',async(req,res)=>{
   const [rows]=await db.execute(`SELECT proof_path,proof_original_name,proof_mime FROM payments WHERE id=? LIMIT 1`,[req.params.id]);
   const p=rows[0];if(!p?.proof_path)return res.status(404).send('Bukti pembayaran tidak ditemukan.');

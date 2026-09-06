@@ -20,6 +20,26 @@ function calcProrata(price, activationDate, year, monthIndex) {
   return Math.round((Number(price) / days) * billableDays);
 }
 
+function currentInvoiceAmounts(customer, year, monthIndex) {
+  let subtotal = Number(customer.package_price);
+  let isProrata = 0;
+  if (customer.prorata_enabled && customer.activation_date && !customer.is_new_install) {
+    const active = new Date(customer.activation_date);
+    if (active.getFullYear() === year && active.getMonth() === monthIndex) {
+      subtotal = calcProrata(subtotal, customer.activation_date, year, monthIndex);
+      isProrata = 1;
+    }
+  }
+  let discount = 0;
+  if (customer.discount_id && Number(customer.discount_is_active) === 1) {
+    discount = customer.discount_type === 'percent'
+      ? Math.round(subtotal * Number(customer.discount_rule_amount || 0) / 100)
+      : Number(customer.discount_rule_amount || 0);
+    discount = Math.max(0, Math.min(discount, subtotal));
+  }
+  return { subtotal, discount, total: subtotal - discount, isProrata };
+}
+
 // v1.25.5 (susulan #9/#10) — "Komisi Pemasangan Baru". Called right after a customer's FIRST-EVER invoice
 // is inserted (guarded by the caller checking this really is invoice #1 for this customer_id — not just
 // "no invoice this period", since a customer could in theory be created mid-cycle and this must still
@@ -107,7 +127,8 @@ async function nextInvoiceNumber(conn, siteCode, year, monthIndex) {
 /**
  * Generate/refresh tagihan bulanan secara idempotent.
  * - Satu customer hanya boleh memiliki satu invoice per periode (DB unique key + application check).
- * - Invoice yang sudah ada, termasuk PAID, tidak pernah di-reset / dibuat ulang.
+ * - Invoice terbuka tanpa pembayaran disegarkan dari paket/diskon pelanggan terkini.
+ * - Invoice PAID/PARTIAL atau yang memiliki pembayaran pending/confirmed tidak diubah.
  * - force=true hanya melewati batas hari generate, bukan melewati proteksi duplicate.
  * - Pelanggan yang aktivasi setelah akhir periode tidak akan dibuatkan tagihan periode lama.
  */
@@ -124,6 +145,7 @@ async function generateMonthlyInvoices(referenceDate = new Date(), force = false
   let eligible = 0;
   let existingPaid = 0;
   let existingOpen = 0;
+  let refreshed = 0;
   let skippedSchedule = 0;
   let lockAcquired = false;
 
@@ -179,49 +201,42 @@ async function generateMonthlyInvoices(referenceDate = new Date(), force = false
       );
       if (!stillEligible.length) { skipped++; continue; }
 
+      const dueDay = Math.min(Number(c.effective_due_day), lastDayOfMonth(year, monthIndex));
+      const dueDate = new Date(year, monthIndex, dueDay);
+      const calculated = currentInvoiceAmounts(c, year, monthIndex);
+
       const [exists] = await conn.execute(
         `SELECT id,status,paid_amount,outstanding FROM invoices WHERE customer_id=? AND period_year=? AND period_month=? LIMIT 1`,
         [c.id, year, month]
       );
       if (exists.length) {
-        skipped++;
-        if (exists[0].status === 'paid' || Number(exists[0].outstanding) <= 0) existingPaid++;
-        else existingOpen++;
+        const invoice = exists[0];
+        if (invoice.status === 'paid' || Number(invoice.outstanding) <= 0) {
+          existingPaid++;
+          skipped++;
+        }
+        else {
+          const [[paymentState]] = await conn.execute(`SELECT COUNT(*) total FROM payments WHERE invoice_id=? AND status IN ('pending','confirmed')`, [invoice.id]);
+          if (Number(paymentState.total) === 0 && ['unpaid','overdue'].includes(invoice.status) && Number(invoice.paid_amount || 0) === 0) {
+            await conn.execute(`UPDATE invoices SET due_date=?,subtotal=?,discount=?,total=?,outstanding=?,is_prorata=?,status=CASE WHEN ?<CURDATE() THEN 'overdue' ELSE 'unpaid' END WHERE id=?`,
+              [toSqlDate(dueDate), calculated.subtotal, calculated.discount, calculated.total, calculated.total, calculated.isProrata, toSqlDate(dueDate), invoice.id]);
+            refreshed++;
+          } else {
+            existingOpen++;
+            skipped++;
+          }
+        }
         continue;
       }
 
-      const dueDay = Math.min(Number(c.effective_due_day), lastDayOfMonth(year, monthIndex));
-      const dueDate = new Date(year, monthIndex, dueDay);
       const generateFrom = new Date(dueDate);
       generateFrom.setDate(generateFrom.getDate() - Number(c.generate_days || 3));
       if (!force && todayOnly < generateFrom) { skipped++; skippedSchedule++; continue; }
 
-      let amount = Number(c.package_price);
-      let isProrata = 0;
-      // v1.25.5 (susulan) — a "Pemasangan Baru" customer's first payment is a fixed, full-price amount
-      // collected in cash at install time and split 100% into technician+sales commission (see
-      // settleNewInstallCommission below); it is never prorated by day-of-month like a normal recurring
-      // subscription invoice, regardless of which day in the month they activated.
-      if (c.prorata_enabled && c.activation_date && !c.is_new_install) {
-        const a = new Date(c.activation_date);
-        if (a.getFullYear() === year && a.getMonth() === monthIndex) {
-          amount = calcProrata(amount, c.activation_date, year, monthIndex);
-          isProrata = 1;
-        }
-      }
-
-      // v1.25.1 — optional per-customer discount (customers.discount_id, set via the customer form's
-      // "Diskon" field) recurs on every monthly invoice generated for that customer, as long as the
-      // discount rule is still active. Computed against the (post-prorata) subtotal, clamped so total
-      // never goes below 0, and stored on invoices.discount so it prints on the invoice like before.
-      let discountAmount = 0;
-      if (c.discount_id && Number(c.discount_is_active) === 1) {
-        discountAmount = c.discount_type === 'percent'
-          ? Math.round(amount * Number(c.discount_rule_amount || 0) / 100)
-          : Number(c.discount_rule_amount || 0);
-        discountAmount = Math.max(0, Math.min(discountAmount, amount));
-      }
-      const total = amount - discountAmount;
+      const amount = calculated.subtotal;
+      const discountAmount = calculated.discount;
+      const total = calculated.total;
+      const isProrata = calculated.isProrata;
 
       const invoiceNumber = await nextInvoiceNumber(conn, c.site_code, year, monthIndex);
       let insertedInvoiceId = null;
@@ -254,9 +269,9 @@ async function generateMonthlyInvoices(referenceDate = new Date(), force = false
     await conn.commit();
     await db.execute(
       `INSERT INTO automation_logs (job_name, status, message) VALUES ('generate_monthly_invoices','success',?)`,
-      [`Period ${year}-${String(month).padStart(2,'0')} · created ${created}, skipped ${skipped}, paid preserved ${existingPaid}, open preserved ${existingOpen}, schedule skipped ${skippedSchedule}, eligible ${eligible}${options.customerId?` · customer ${options.customerId}`:''}${options.siteCode?` · site ${options.siteCode}`:''}${options.clusterId?` · cluster ${options.clusterId}`:''}`]
+      [`Period ${year}-${String(month).padStart(2,'0')} · created ${created}, refreshed ${refreshed}, skipped ${skipped}, paid preserved ${existingPaid}, open with payment preserved ${existingOpen}, schedule skipped ${skippedSchedule}, eligible ${eligible}${options.customerId?` · customer ${options.customerId}`:''}${options.siteCode?` · site ${options.siteCode}`:''}${options.clusterId?` · cluster ${options.clusterId}`:''}`]
     );
-    return { created, skipped, eligible, existingPaid, existingOpen, skippedSchedule };
+    return { created, refreshed, skipped, eligible, existingPaid, existingOpen, skippedSchedule };
   } catch (err) {
     try { await conn.rollback(); } catch (_) {}
     await db.execute(
