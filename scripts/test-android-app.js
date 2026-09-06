@@ -61,7 +61,11 @@ const checks = [
   [mobileRoute.includes("router.get('/.well-known/assetlinks.json'"), 'Android App Links'],
   [mobileRoute.includes("router.post('/api/mobile/crash'"), 'API crash report'],
   [mobileRoute.includes("router.post('/api/mobile/push-token'"), 'registrasi push token'],
-  [csrf.includes("'/api/mobile/crash','/api/mobile/push-token'") && csrf.includes("x-inkamnet-go"), 'CSRF mobile terbatas'],
+  [csrf.includes('/api/mobile/crash')
+    && csrf.includes('/api/mobile/push-token')
+    && csrf.includes("req.get('x-inkamnet-go')")
+    && csrf.includes('req.session?.user')
+    && csrf.includes("req.is('application/json')"), 'CSRF mobile terbatas'],
   [workflow.includes('apksigner') && workflow.includes('android-emulator-runner'), 'signature dan emulator CI'],
   [security.includes('cleartextTrafficPermitted="false"'), 'network security HTTPS-only'],
   [!activity.includes('handler.proceed()'), 'tidak melewati error SSL'],
