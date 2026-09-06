@@ -49,8 +49,8 @@ import androidx.core.content.ContextCompat;
 import androidx.fragment.app.FragmentActivity;
 
 public final class MainActivity extends FragmentActivity {
-    private static final String HOME_URL = "https://inkamnetbilling.edwinpxmx.my.id/";
-    private static final String APP_HOST = "inkamnetbilling.edwinpxmx.my.id";
+    private static final String HOME_URL = "https://inkambill.edwinpxmx.my.id/";
+    private static final String APP_HOST = "inkambill.edwinpxmx.my.id";
     private static final int FILE_CHOOSER_REQUEST = 4101;
     private static final int STORAGE_PERMISSION_REQUEST = 4102;
     private static final int NOTIFICATION_PERMISSION_REQUEST = 4103;

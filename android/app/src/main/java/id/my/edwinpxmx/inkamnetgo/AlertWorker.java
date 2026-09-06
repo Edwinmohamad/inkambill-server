@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit;
 
 public final class AlertWorker extends Worker {
     private static final String WORK_NAME = "inkamnet-go-alert-sync";
-    private static final String ALERT_URL = "https://inkamnetbilling.edwinpxmx.my.id/communication/header";
+    private static final String ALERT_URL = "https://inkambill.edwinpxmx.my.id/communication/header";
 
     public AlertWorker(@NonNull Context context, @NonNull WorkerParameters params) {
         super(context, params);

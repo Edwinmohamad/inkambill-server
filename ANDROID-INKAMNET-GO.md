@@ -2,7 +2,7 @@
 
 INKAMNET GO adalah aplikasi Android resmi untuk INKAMNET Control Center pada:
 
-`https://inkamnetbilling.edwinpxmx.my.id`
+`https://inkambill.edwinpxmx.my.id`
 
 ## Fitur yang sudah disiapkan
 

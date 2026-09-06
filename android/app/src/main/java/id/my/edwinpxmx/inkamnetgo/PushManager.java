@@ -18,7 +18,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 final class PushManager {
-    private static final String REGISTER_URL = "https://inkamnetbilling.edwinpxmx.my.id/api/mobile/push-token";
+    private static final String REGISTER_URL = "https://inkambill.edwinpxmx.my.id/api/mobile/push-token";
 
     private PushManager() {}
 

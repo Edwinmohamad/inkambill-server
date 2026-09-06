@@ -16,7 +16,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 final class UpdateChecker {
-    private static final String VERSION_URL = "https://inkamnetbilling.edwinpxmx.my.id/api/mobile/version";
+    private static final String VERSION_URL = "https://inkambill.edwinpxmx.my.id/api/mobile/version";
     private static boolean checked;
 
     private UpdateChecker() {}

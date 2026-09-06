@@ -21,7 +21,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 final class CrashReporter {
-    private static final String REPORT_URL = "https://inkamnetbilling.edwinpxmx.my.id/api/mobile/crash";
+    private static final String REPORT_URL = "https://inkambill.edwinpxmx.my.id/api/mobile/crash";
     private static final String PREFS = "inkamnet_go";
     private static final String PENDING = "pending_crash";
     private static boolean installed;

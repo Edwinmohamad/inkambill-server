@@ -14,7 +14,7 @@ import androidx.core.app.NotificationCompat;
 
 final class NotificationHelper {
     private static final String CHANNEL_ID = "inkamnet_operations";
-    private static final String APP_ORIGIN = "https://inkamnetbilling.edwinpxmx.my.id";
+    private static final String APP_ORIGIN = "https://inkambill.edwinpxmx.my.id";
 
     private NotificationHelper() {}
 
@@ -60,7 +60,7 @@ final class NotificationHelper {
                 return Uri.parse(APP_ORIGIN + href);
             }
             if ("https".equalsIgnoreCase(candidate.getScheme())
-                    && "inkamnetbilling.edwinpxmx.my.id".equalsIgnoreCase(candidate.getHost())) return candidate;
+                    && "inkambill.edwinpxmx.my.id".equalsIgnoreCase(candidate.getHost())) return candidate;
         } catch (Exception ignored) {}
         return Uri.parse(APP_ORIGIN + "/");
     }

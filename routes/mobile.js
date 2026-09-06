@@ -17,8 +17,8 @@ const safeHttpsUrl = value => {
 };
 
 router.get('/api/mobile/version', (req, res) => {
-  const productionDownload = req.hostname === 'inkamnetbilling.edwinpxmx.my.id'
-    ? 'https://inkamnetbilling.edwinpxmx.my.id/api/mobile/download' : '';
+  const productionDownload = req.hostname === 'inkambill.edwinpxmx.my.id'
+    ? 'https://inkambill.edwinpxmx.my.id/api/mobile/download' : '';
   const releaseDirectory = path.dirname(path.resolve(process.env.MOBILE_ANDROID_APK_PATH || path.join(__dirname, '../storage/mobile-releases/INKAMNET-GO.apk')));
   let releaseMeta = {};
   try { releaseMeta = JSON.parse(fs.readFileSync(path.join(releaseDirectory, 'version.json'), 'utf8')); }
