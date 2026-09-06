@@ -9,6 +9,7 @@
   const waGatewayConnectedGlobal = document.querySelector('meta[name="wa-gateway-connected"]')?.content === '1';
   const loader = document.getElementById('appLoader');
   const progress = document.getElementById('pageProgress');
+  const operationLoader = document.getElementById('operationLoader');
 
   const updateClock = () => {
     const formatter = new Intl.DateTimeFormat('id-ID', {
@@ -65,18 +66,33 @@
   // v1.17: pointer-following spotlight and 3D lighting intentionally disabled.
   // Static hover/reveal animations remain, but nothing follows the mouse cursor.
 
+  const startProgress=()=>{if(!progress)return;progress.style.transition='none';progress.style.opacity='1';progress.style.width='18%';requestAnimationFrame(()=>{progress.style.transition='';progress.style.width='72%'});};
+  const startOperationLoading=(message='Memproses data…')=>{
+    startProgress();
+    if(!operationLoader)return;
+    const strong=operationLoader.querySelector('strong');if(strong)strong.textContent=message;
+    operationLoader.hidden=false;
+    requestAnimationFrame(()=>operationLoader.classList.add('show'));
+  };
+  window.inkamnetStartLoading=startOperationLoading;
+
   document.querySelectorAll('form').forEach(form => form.addEventListener('submit', event => {
+    if(event.defaultPrevented)return;
     const button = event.submitter;
-    if (!button || button.dataset.noLoading === 'true') return;
+    // Form tanpa method/action ditangani controller AJAX halaman (mis. NMS) dan memiliki loading sendiri.
+    if (!button || button.dataset.noLoading === 'true' || (!form.hasAttribute('method')&&!form.hasAttribute('action'))) return;
+    if(form.dataset.submitting==='true'){event.preventDefault();return;}
+    form.dataset.submitting='true';form.setAttribute('aria-busy','true');
     button.classList.add('is-loading');
     if (!button.dataset.originalHtml) button.dataset.originalHtml = button.innerHTML;
-    setTimeout(() => { if (button.classList.contains('is-loading')) button.innerHTML = `<span class="spinner-border spinner-border-sm"></span><span>${html.lang==='en'?'Processing...':'Memproses...'}</span>`; }, 100);
+    button.style.minWidth=`${Math.ceil(button.getBoundingClientRect().width)}px`;
+    button.innerHTML = `<span class="spinner-border spinner-border-sm"></span><span>${html.lang==='en'?'Processing...':'Memproses...'}</span>`;
+    button.setAttribute('aria-disabled','true');
+    startOperationLoading(html.lang==='en'?'Processing data…':'Memproses data…');
   }));
 
   // Shared "something is happening" cue for both link navigation and instant filters,
   // so a filter change gets the exact same immediate feedback a link click already had.
-  const startProgress=()=>{if(!progress)return;progress.style.transition='none';progress.style.opacity='1';progress.style.width='18%';requestAnimationFrame(()=>{progress.style.transition='';progress.style.width='72%'});};
-
   // GET filters react immediately to select/date/year changes; text search still submits with Enter.
   document.querySelectorAll('form[method="get"],form[method="GET"]').forEach(form=>{
     let submitting=false;
@@ -98,7 +114,7 @@
     if (link.origin !== location.origin) return;
     startProgress();
   });
-  window.addEventListener('pageshow',()=>{if(!progress)return;progress.style.width='100%';setTimeout(()=>{progress.style.opacity='0';progress.style.width='0'},180)});
+  window.addEventListener('pageshow',()=>{document.querySelectorAll('form[data-submitting="true"]').forEach(form=>{delete form.dataset.submitting;form.removeAttribute('aria-busy')});if(operationLoader){operationLoader.classList.remove('show');operationLoader.hidden=true}if(!progress)return;progress.style.width='100%';setTimeout(()=>{progress.style.opacity='0';progress.style.width='0'},180)});
 
 
   // Bootstrap modals are moved to <body> to avoid stacking-context bugs caused by animated page containers.
