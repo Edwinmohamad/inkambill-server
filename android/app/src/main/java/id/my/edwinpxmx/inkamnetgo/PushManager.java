@@ -74,6 +74,7 @@ final class PushManager {
                     .edit().putString("pending_push_token", token).apply();
             return;
         }
+        final String sessionCookie = cookie;
         String previous = context.getSharedPreferences("inkamnet_go", Context.MODE_PRIVATE)
                 .getString("registered_push_token", "");
         if (token.equals(previous)) return;
@@ -93,7 +94,7 @@ final class PushManager {
                 connection.setDoOutput(true);
                 connection.setInstanceFollowRedirects(false);
                 connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-                connection.setRequestProperty("Cookie", cookie);
+                connection.setRequestProperty("Cookie", sessionCookie);
                 connection.setRequestProperty("X-INKAMNET-GO", "1");
                 connection.setFixedLengthStreamingMode(bytes.length);
                 try (OutputStream output = connection.getOutputStream()) { output.write(bytes); }
