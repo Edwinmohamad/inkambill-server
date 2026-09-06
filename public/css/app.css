@@ -1343,6 +1343,62 @@ html[data-theme="light"] .dashboard-v119 .command-kpi,html[data-theme="light"] .
 .closing-section-head>div{min-width:0}
 .closing-section-head small{display:block;margin-top:5px;font-size:.58rem;line-height:1.5}
 .closing-count{flex:none;padding:5px 8px;border:1px solid var(--line);border-radius:999px;background:var(--panel-3);color:var(--muted);font-size:.52rem;font-weight:750;white-space:nowrap}
+.closing-share-rules{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);gap:12px}
+.closing-share-rule{padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--panel-3)}
+.closing-share-rule-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.closing-share-site{display:block;margin-bottom:2px;color:var(--brand);font-size:.52rem;font-weight:850;letter-spacing:.1em}
+.closing-share-rule h3{margin:0;color:var(--text);font-family:var(--font-display);font-size:.78rem;font-weight:800}
+.closing-total-pill{padding:4px 7px;border-radius:999px;background:rgba(var(--brand-rgb),.12);color:var(--brand);font-size:.5rem;white-space:nowrap}
+.closing-share-caption{margin:11px 0 5px;color:var(--muted-2);font-size:.5rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
+.closing-share-lines{display:grid;gap:0}
+.closing-share-lines>div{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 2px;border-bottom:1px dashed var(--line);color:var(--text);font-size:.6rem}
+.closing-share-lines>div:last-child{border-bottom:0}
+.closing-share-lines strong{color:var(--text);font-size:.65rem}
+.closing-share-lines small{display:block;margin-top:2px;color:var(--muted);font-size:.48rem;font-weight:600}
+.closing-pool-lines strong{text-align:right;color:var(--brand)}
+.closing-steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0 0 12px}
+.closing-steps span{display:flex;align-items:center;gap:7px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2);color:var(--muted-2)}
+.closing-steps b{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:rgba(var(--brand-rgb),.15);color:var(--brand);font-size:.55rem}
+.closing-steps small{font-size:.52rem;font-weight:750}
+
+/* Minimal finance debt and receivable monitor */
+.debt-page{display:grid;gap:12px;color:var(--text)}
+.debt-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:0}
+.debt-head h1{margin:2px 0 3px;font-family:var(--font-display);font-size:1.25rem}
+.debt-eyebrow{color:var(--brand);font-size:.5rem;font-weight:850;letter-spacing:.12em}
+.debt-create-panel{position:relative;flex:none}
+.debt-create-panel>summary{list-style:none;cursor:pointer}.debt-create-panel>summary::-webkit-details-marker{display:none}
+.debt-create-form{position:absolute;z-index:20;top:calc(100% + 8px);right:0;display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:10px;width:min(760px,calc(100vw - 52px));padding:15px;border:1px solid var(--line);border-radius:12px;background:var(--panel-2);box-shadow:var(--shadow)}
+.debt-create-form label{min-width:0}.debt-create-form label>span{display:block;margin-bottom:4px;color:var(--muted-2);font-size:.52rem;font-weight:750}
+.debt-create-form .span-2{grid-column:span 2}.debt-create-form .span-4{grid-column:1/-1}
+.debt-form-action{display:flex;justify-content:flex-end;padding-top:2px}
+.debt-page .form-control,.debt-page .form-select{background:var(--panel-3);border-color:var(--line);color:var(--text)}
+.debt-page .form-control::placeholder{color:var(--muted)}
+.debt-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.debt-summary article{display:flex;align-items:center;gap:11px;padding:13px;border:1px solid var(--line);border-radius:12px;background:var(--panel-2)}
+.debt-summary article>i{display:grid;place-items:center;width:32px;height:32px;border-radius:9px;background:rgba(var(--brand-rgb),.12);color:var(--brand)}
+.debt-summary .is-alert>i{background:rgba(255,91,110,.12);color:#ff7183}
+.debt-summary span,.debt-summary small{display:block;color:var(--muted);font-size:.5rem}.debt-summary strong{display:block;margin:2px 0;color:var(--text);font-size:.82rem}
+.debt-filter{display:grid;grid-template-columns:135px 125px 115px minmax(180px,1fr) auto;gap:8px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--panel-2)}
+.debt-filter .btn{display:flex;align-items:center;gap:6px}
+.debt-list{display:grid;gap:8px}
+.debt-item{padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--panel-2)}
+.debt-item.is-overdue{border-color:rgba(255,91,110,.4)}
+.debt-item-main{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px}
+.debt-item-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:9px;background:var(--panel-3);color:var(--brand)}
+.debt-item-title{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.debt-item-title strong{font-size:.68rem}.debt-item-title .badge,.debt-site{font-size:.45rem}.debt-site{padding:3px 5px;border:1px solid var(--line);border-radius:999px;color:var(--muted)}
+.debt-item-copy p{margin:3px 0 5px;color:var(--muted-2);font-size:.58rem}
+.debt-meta{display:flex;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:.48rem}.debt-meta span{display:flex;align-items:center;gap:4px}
+.debt-amount{text-align:right}.debt-amount span,.debt-amount small{display:block;color:var(--muted);font-size:.48rem}.debt-amount strong{display:block;margin:1px 0;color:var(--text);font-size:.78rem}
+.debt-progress{height:4px;margin:10px 0 8px;border-radius:999px;background:var(--panel-3);overflow:hidden}.debt-progress span{display:block;height:100%;border-radius:inherit;background:var(--brand)}
+.debt-item-foot{display:flex;align-items:center;justify-content:flex-end;gap:8px;color:var(--muted);font-size:.5rem}.debt-item-foot>span{margin-right:auto}
+.debt-pay{position:relative}.debt-pay>summary{list-style:none;cursor:pointer}.debt-pay>summary::-webkit-details-marker{display:none}
+.debt-pay form{position:absolute;z-index:10;right:0;top:calc(100% + 6px);display:grid;grid-template-columns:130px 150px minmax(160px,1fr) auto;gap:7px;width:min(620px,calc(100vw - 60px));padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--panel-3);box-shadow:var(--shadow)}
+.debt-history{position:relative}.debt-history>summary{list-style:none;cursor:pointer}.debt-history>summary::-webkit-details-marker{display:none}.debt-history-list{position:absolute;z-index:11;right:0;top:calc(100% + 6px);width:min(340px,calc(100vw - 60px));padding:7px;border:1px solid var(--line);border-radius:10px;background:var(--panel-3);box-shadow:var(--shadow)}.debt-history-list>div{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px;border-bottom:1px solid var(--line)}.debt-history-list>div:last-child{border-bottom:0}.debt-history-list span,.debt-history-list small{display:block}.debt-history-list strong{color:var(--text);font-size:.56rem}.debt-history-list small{margin-top:2px;color:var(--muted);font-size:.46rem}
+.debt-empty{display:grid;place-items:center;gap:4px;padding:38px;border:1px dashed var(--line);border-radius:12px;background:var(--panel-2);color:var(--muted);font-size:.58rem}.debt-empty i{font-size:1.5rem;color:var(--brand)}.debt-empty strong{color:var(--text);font-size:.7rem}
+.debt-note{display:flex;gap:8px;align-items:flex-start;padding:9px 11px;border:1px solid rgba(var(--brand-rgb),.2);border-radius:10px;background:rgba(var(--brand-rgb),.06);color:var(--muted-2);font-size:.52rem}
+@media(max-width:991.98px){.closing-share-rules{grid-template-columns:1fr}.debt-create-form{grid-template-columns:repeat(2,minmax(0,1fr))}.debt-filter{grid-template-columns:repeat(3,1fr)}.debt-filter input{grid-column:span 2}.debt-pay form{grid-template-columns:1fr 1fr}}
+@media(max-width:767.98px){.closing-steps{grid-template-columns:1fr 1fr}.debt-head{align-items:stretch;flex-direction:column}.debt-create-panel>summary{width:100%;text-align:center}.debt-create-form{position:static;width:100%;margin-top:8px;grid-template-columns:1fr}.debt-create-form .span-2,.debt-create-form .span-4{grid-column:auto}.debt-summary{grid-template-columns:1fr}.debt-filter{grid-template-columns:1fr 1fr}.debt-filter input{grid-column:1/-1}.debt-filter .btn{justify-content:center}.debt-item-main{grid-template-columns:auto minmax(0,1fr)}.debt-amount{grid-column:1/-1;padding-top:7px;border-top:1px solid var(--line);text-align:left}.debt-item-foot{align-items:stretch;flex-wrap:wrap}.debt-item-foot>span{width:100%}.debt-pay form{position:static;width:100%;margin-top:6px;grid-template-columns:1fr}.debt-pay{flex:1}.debt-pay>summary{width:100%;text-align:center}}
 .closing-input-card{margin:0!important}
 .closing-entry-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px}
 .closing-entry-box{padding:14px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel-3)}
@@ -1421,3 +1477,31 @@ html[data-theme="dark"] .closing-manual-only .closing-table td{color:var(--text)
   .closing-toggle,.closing-period-submit,.closing-form-grid .span-2,.closing-form-grid .span-3,.closing-settings-grid .closing-notes-field,.closing-adjustment-description,.closing-settings-grid>button,.closing-adjustment-grid>button,.closing-router-grid>button{grid-column:auto}
   .closing-pdf-actions{grid-template-columns:1fr}
 }
+
+/* INKAMNET GO — denser native-app rhythm without changing desktop/browser UI. */
+@media(max-width:767.98px){
+  body.inkamnet-go-app{overscroll-behavior-y:none;-webkit-tap-highlight-color:transparent}
+  body.inkamnet-go-app .topbar{min-height:58px;padding-top:max(0px,env(safe-area-inset-top));background:color-mix(in srgb,var(--panel) 94%,transparent);backdrop-filter:blur(16px)}
+  body.inkamnet-go-app .content-wrap{padding:14px 12px calc(26px + env(safe-area-inset-bottom))}
+  body.inkamnet-go-app .module-head{margin-bottom:16px}
+  body.inkamnet-go-app .module-head h1{font-size:1.12rem}
+  body.inkamnet-go-app .data-card,
+  body.inkamnet-go-app .filter-card,
+  body.inkamnet-go-app .form-card,
+  body.inkamnet-go-app .metric-card,
+  body.inkamnet-go-app .ink-panel,
+  body.inkamnet-go-app .command-panel{border-radius:12px!important}
+  body.inkamnet-go-app .btn-tech,
+  body.inkamnet-go-app .form-control,
+  body.inkamnet-go-app .form-select,
+  body.inkamnet-go-app .icon-button{min-height:44px}
+  body.inkamnet-go-app .app-footer{display:none}
+  body.inkamnet-go-app .sidebar{padding-bottom:env(safe-area-inset-bottom)}
+}
+
+/* Mobile crash observability tab. */
+.log-summary-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
+.log-table details summary{cursor:pointer;color:var(--accent-text);font-weight:750}
+.log-table details pre{max-width:620px;max-height:220px;overflow:auto;white-space:pre-wrap;word-break:break-word;color:var(--muted);font-size:.52rem}
+@media(max-width:1199.98px){.log-summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:767.98px){.log-summary-grid{grid-template-columns:1fr}}

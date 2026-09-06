@@ -677,4 +677,85 @@ async function ensureV38Schema() {
   )`);
 }
 
-module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema };
+async function ensureV39Schema() {
+  // Mobile diagnostics are deliberately small and sanitized by the route.
+  // They make Android failures visible without embedding a third-party tracker.
+  await db.query(`CREATE TABLE IF NOT EXISTS mobile_crash_reports (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NULL,
+    app_version VARCHAR(40) NULL,
+    android_version VARCHAR(40) NULL,
+    device_model VARCHAR(160) NULL,
+    exception_class VARCHAR(240) NULL,
+    message VARCHAR(1000) NULL,
+    stack_trace TEXT NULL,
+    occurred_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_mobile_crash_user_time(user_id,created_at),
+    INDEX idx_mobile_crash_created(created_at)
+  )`);
+  await db.query(`CREATE TABLE IF NOT EXISTS mobile_push_tokens (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NOT NULL,
+    token VARCHAR(500) NOT NULL,
+    platform VARCHAR(20) NOT NULL DEFAULT 'android',
+    device_model VARCHAR(160) NULL,
+    app_version VARCHAR(40) NULL,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_mobile_push_token(token),
+    INDEX idx_mobile_push_user(user_id,is_active)
+  )`);
+  await db.query(`CREATE TABLE IF NOT EXISTS mobile_push_deliveries (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    notification_id BIGINT UNSIGNED NOT NULL,
+    token_id BIGINT UNSIGNED NOT NULL,
+    status ENUM('pending','sent','failed') NOT NULL DEFAULT 'pending',
+    attempt_count INT UNSIGNED NOT NULL DEFAULT 0,
+    response_code INT NULL,
+    error_message VARCHAR(1000) NULL,
+    sent_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_mobile_push_delivery(notification_id,token_id),
+    INDEX idx_mobile_push_status(status,updated_at)
+  )`);
+  await db.query(`ALTER TABLE mobile_push_deliveries ADD COLUMN IF NOT EXISTS attempt_count INT UNSIGNED NOT NULL DEFAULT 0 AFTER status`);
+}
+
+async function ensureV40Schema() {
+  await db.query(`CREATE TABLE IF NOT EXISTS finance_debts (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    record_type ENUM('DEBT','RECEIVABLE') NOT NULL DEFAULT 'DEBT',
+    party_name VARCHAR(160) NOT NULL,
+    purpose VARCHAR(255) NOT NULL,
+    site_code ENUM('GLOBAL','CDS','KBG') NOT NULL DEFAULT 'GLOBAL',
+    principal_amount DECIMAL(16,2) NOT NULL,
+    issue_date DATE NOT NULL,
+    due_date DATE NULL,
+    payment_method ENUM('ONCE','INSTALLMENT') NOT NULL DEFAULT 'ONCE',
+    responsible_name VARCHAR(160) NULL,
+    notes TEXT NULL,
+    status ENUM('ACTIVE','PAID','ARCHIVED') NOT NULL DEFAULT 'ACTIVE',
+    created_by BIGINT UNSIGNED NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_finance_debt_status(status,record_type,due_date),
+    INDEX idx_finance_debt_site(site_code,status)
+  )`);
+  await db.query(`CREATE TABLE IF NOT EXISTS finance_debt_payments (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    debt_id BIGINT UNSIGNED NOT NULL,
+    payment_date DATE NOT NULL,
+    amount DECIMAL(16,2) NOT NULL,
+    notes VARCHAR(500) NULL,
+    created_by BIGINT UNSIGNED NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_finance_debt_payment(debt_id,payment_date),
+    CONSTRAINT fk_finance_debt_payment FOREIGN KEY (debt_id) REFERENCES finance_debts(id) ON DELETE CASCADE
+  )`);
+}
+
+module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema };

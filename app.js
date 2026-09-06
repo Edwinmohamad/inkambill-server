@@ -26,8 +26,9 @@ const { generateMonthlyInvoices } = require('./services/invoiceService');
 const { runAutoIsolation } = require('./services/networkService');
 const { captureAllNmsTelemetry, backupAllRouters } = require('./services/nmsTelemetryService');
 const { scanLowStock } = require('./services/inventoryService');
+const { deliverMobilePushes } = require('./services/mobilePushService');
 const { purgeOldLogs } = require('./services/logRetentionService');
-const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema } = require('./services/schemaService');
+const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema } = require('./services/schemaService');
 const { requireN8nToken } = require('./middleware/n8n');
 const { startGateway, hasSavedSession, processQueue, runAutoReminderSweep } = require('./services/whatsappGatewayService');
 
@@ -188,6 +189,7 @@ app.use('/settings/invoice-branding', requireAuth, (req, res, next) => {
   next();
 });
 app.use(csrf);
+app.use(require('./routes/mobile'));
 
 // Token-protected server-to-server entrypoint for the versioned n8n workflows.
 // It is intentionally mounted after the JSON parser and before browser routes.
@@ -211,6 +213,7 @@ app.use('/packages', requireAuth, requirePermission('customers'), require('./rou
 app.use('/invoices', requireAuth, requirePermission('billing'), require('./routes/invoices'));
 app.use('/payments', requireAuth, requirePermission('billing'), require('./routes/payments'));
 app.use('/reports', requireAuth, requirePermission('reports'), require('./routes/reports'));
+app.use('/debts', requireAuth, requirePermission('finance'), require('./routes/debts'));
 app.use('/closing', requireAuth, requireMasterAdmin, require('./routes/closing'));
 app.use('/routers', requireAuth, requirePermission('network'), require('./routes/routers'));
 app.use('/network', requireAuth, requirePermission('network'), require('./routes/network'));
@@ -270,6 +273,8 @@ async function bootstrap() {
   await ensureV36Schema();
   await ensureV37Schema();
   await ensureV38Schema();
+  await ensureV39Schema();
+  await ensureV40Schema();
   const [rows] = await db.query('SELECT COUNT(*) total FROM users');
   if (Number(rows[0].total) === 0) {
     const username = process.env.DEFAULT_ADMIN_USERNAME || 'admin';
@@ -302,6 +307,13 @@ async function bootstrap() {
       const result = await runAutoReminderSweep();
       if (result.ran) console.log('WA Gateway auto-reminder sweep:', result);
     } catch (err) { console.error('WA Gateway auto-reminder sweep gagal:', err.message); }
+  }, { timezone: 'Asia/Jakarta' });
+
+  cron.schedule('* * * * *', async () => {
+    try {
+      const result = await deliverMobilePushes();
+      if (result.configured && (result.sent || result.failed)) console.log('INKAMNET GO push:', result);
+    } catch (err) { console.error('INKAMNET GO push gagal:', err.message); }
   }, { timezone: 'Asia/Jakarta' });
 
   cron.schedule('30 3 * * 0', async () => {

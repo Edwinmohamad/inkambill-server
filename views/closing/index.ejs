@@ -28,6 +28,10 @@
     <div><strong>Mode manual penuh</strong><span>Closing tidak mengambil data billing, pembayaran, kas, atau cash tim. Semua pendapatan, pengeluaran, potongan, gaji, cash belum setor, dan router diisi dari kolom di bawah.</span></div>
   </div>
 
+  <nav class="closing-steps" aria-label="Tahapan closing">
+    <span><b>1</b><small>Periode</small></span><span><b>2</b><small>Pendapatan & pengeluaran</small></span><span><b>3</b><small>Potongan tim</small></span><span><b>4</b><small>Hasil & PDF</small></span>
+  </nav>
+
   <section class="closing-result-grid" aria-label="Ringkasan hasil closing">
     <% [blocks.krwclm, blocks.kbg].forEach(block => { %>
       <article class="card closing-card closing-result-card">
@@ -50,7 +54,7 @@
 
   <section class="card closing-card closing-input-card">
     <div class="card-body">
-      <div class="closing-section-head"><div><span class="closing-card-kicker">INPUT UTAMA</span><h2>Angka pendapatan dan pengeluaran</h2><small class="text-muted">Satu baris = satu angka yang ingin dibagi. Pengeluaran CDS boleh diberi cluster hanya sebagai keterangan.</small></div><span class="closing-count"><%= lineItems.length %> baris</span></div>
+      <div class="closing-section-head"><div><span class="closing-card-kicker">LANGKAH 2 · INPUT UTAMA</span><h2>Pendapatan dan pengeluaran</h2><small class="text-muted">Isi nominal per lokasi. Pengeluaran CDS boleh diberi cluster hanya sebagai keterangan.</small></div><span class="closing-count"><%= lineItems.length %> baris</span></div>
       <% if (closing.status !== 'LOCKED') { %>
         <div class="closing-entry-grid">
           <form class="closing-entry-box closing-entry-form" method="post" action="/closing/entries">
@@ -109,7 +113,7 @@
 
   <section class="card closing-card">
     <div class="card-body">
-      <div class="closing-section-head"><div><span class="closing-card-kicker">PENYESUAIAN</span><h2>Potongan, cash belum setor, dan tambahan</h2><small class="text-muted">Semua diisi manual per orang dan lokasi. Cash belum setor otomatis menjadi potongan penerima.</small></div><span class="closing-count"><%= adjustments.length %> baris</span></div>
+      <div class="closing-section-head"><div><span class="closing-card-kicker">LANGKAH 3 · PENYESUAIAN</span><h2>Potongan dan tambahan per orang</h2><small class="text-muted">Cash belum setor otomatis mengurangi hak penerima.</small></div><span class="closing-count"><%= adjustments.length %> baris</span></div>
       <% if (closing.status !== 'LOCKED') { %>
         <form class="closing-adjustment-grid mt-3" method="post" action="/closing/adjustments">
           <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="mode" value="manual">
@@ -131,7 +135,31 @@
 
   <section class="card closing-card">
     <div class="card-body">
-      <div class="closing-section-head"><div><span class="closing-card-kicker">HASIL PEMBAGIAN</span><h2>Pembagian hasil per lokasi</h2><small class="text-muted">CDS 50% / 25% / 25% · KBG Mang Ali 35% dan pool internal 65%.</small></div><span class="closing-count">Kalkulator</span></div>
+      <div class="closing-section-head"><div><span class="closing-card-kicker">LANGKAH 4 · HASIL PEMBAGIAN</span><h2>Pembagian hasil per lokasi</h2><small class="text-muted">Persentase berikut digunakan untuk menghitung laba bersih setelah pengeluaran lokasi.</small></div><span class="closing-count">Kalkulator</span></div>
+      <div class="closing-share-rules mt-3">
+        <article class="closing-share-rule">
+          <div class="closing-share-rule-head"><div><span class="closing-share-site">CDS</span><h3>Gabungan KRW dan CLM</h3></div><strong class="closing-total-pill">Total 100%</strong></div>
+          <div class="closing-share-lines">
+            <div><span>Edwin</span><strong>50%</strong></div>
+            <div><span>Jon</span><strong>25%</strong></div>
+            <div><span>Bopung</span><strong>25%</strong></div>
+          </div>
+        </article>
+        <article class="closing-share-rule closing-share-rule-kbg">
+          <div class="closing-share-rule-head"><div><span class="closing-share-site">KBG</span><h3>Pembagian dua tahap</h3></div><strong class="closing-total-pill">Total 100%</strong></div>
+          <p class="closing-share-caption">Tahap 1 — laba bersih KBG</p>
+          <div class="closing-share-lines compact">
+            <div><span>Mang Ali</span><strong>35%</strong></div>
+            <div><span>Pool INKAMNET</span><strong>65%</strong></div>
+          </div>
+          <p class="closing-share-caption">Tahap 2 — pembagian pool INKAMNET 65%</p>
+          <div class="closing-share-lines closing-pool-lines">
+            <div><span>Edwin <small>63,72% dari pool</small></span><strong>41,418% <small>dari laba KBG</small></strong></div>
+            <div><span>Jon <small>18,14% dari pool</small></span><strong>11,791% <small>dari laba KBG</small></strong></div>
+            <div><span>Bopung <small>18,14% dari pool</small></span><strong>11,791% <small>dari laba KBG</small></strong></div>
+          </div>
+        </article>
+      </div>
       <div class="table-responsive mt-3"><table class="table table-sm align-middle closing-table"><thead><tr><th>Lokasi</th><th>Penerima</th><th>%</th><th class="text-end">Kotor</th><th class="text-end">Bersih</th></tr></thead><tbody><% [blocks.krwclm, blocks.kbg].forEach(block => (block.shares || []).forEach(share => { %><tr><td><%= block.label %></td><td><strong><%= share.name %></strong></td><td><%= share.percent %>%</td><td class="text-end">Rp <%= money(share.gross).toLocaleString('id-ID') %></td><td class="text-end"><strong>Rp <%= money(share.amount).toLocaleString('id-ID') %></strong></td></tr><% })) %></tbody></table></div>
     </div>
   </section>
