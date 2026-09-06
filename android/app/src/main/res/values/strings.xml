@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">INKAMNET GO</string>
+    <string name="offline_title">Koneksi terputus</string>
+    <string name="offline_body">Periksa internet lalu coba kembali.</string>
+    <string name="retry">Coba lagi</string>
+</resources>

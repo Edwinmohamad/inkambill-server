@@ -1,4 +1,4 @@
-<section class="nms-page nms-compact-v118" id="nmsApp" data-nms-v2="1" data-csrf="<%= csrfToken %>" data-admin="<%= isAdmin?'1':'0' %>">
+<section class="nms-page nms-compact-v118" id="nmsApp" data-nms-v2="1" data-csrf="<%= csrfToken %>" data-admin="<%= isAdmin?'1':'0' %>" data-master="<%= isMasterAdmin?'1':'0' %>">
   <select id="nmsRouterCatalog" hidden aria-hidden="true">
     <% routers.forEach(r=>{ %><option value="<%= r.id %>" data-site="<%= r.site_code %>" data-name="<%= r.name %>" data-status="<%= r.last_status||'unknown' %>"><%= r.site_code %> · <%= r.name %></option><% }) %>
   </select>
@@ -15,6 +15,7 @@
         <button class="btn-tech success" id="nmsSmartSync"><i class="bi bi-stars"></i><span>Smart Sync Aman</span></button>
         <button class="btn-tech" id="nmsOpenSync"><i class="bi bi-link-45deg"></i><span>Sinkron Manual</span></button>
         <button class="btn-tech primary" id="nmsAddSecret"><i class="bi bi-person-plus-fill"></i><span>Secret Baru</span></button>
+        <% if(isMasterAdmin){ %><button class="btn-tech" id="nmsBackup"><i class="bi bi-cloud-arrow-down"></i><span>Backup Router</span></button><% } %>
       <% } %>
     </div>
   </div>
@@ -37,6 +38,7 @@
   <nav class="nms-content-tabs" role="tablist" aria-label="Modul MikroTik NMS">
     <button class="active" data-nms-tab="router"><i class="bi bi-hdd-rack-fill"></i>Monitoring Router</button>
     <button data-nms-tab="pppoe"><i class="bi bi-router-fill"></i>PPPoE Config &amp; Aktif</button>
+    <button data-nms-tab="telemetry"><i class="bi bi-activity"></i>Traffic &amp; Uptime</button>
     <button data-nms-tab="sync"><i class="bi bi-arrow-repeat"></i>Sync &amp; Audit</button>
   </nav>
 
@@ -54,7 +56,7 @@
       </article>
     </div>
 
-    <div class="nms-secondary-head"><div><span class="module-kicker">ROUTER SYSTEM MONITORING</span><h3>CPU · Memory · Disk · Uptime · RouterOS</h3><small>Widget Live Traffic per-interface sudah dihapus agar polling NMS lebih ringan untuk server maupun router.</small></div></div>
+    <div class="nms-secondary-head"><div><span class="module-kicker">ROUTER SYSTEM MONITORING</span><h3>CPU · Memory · Disk · Uptime · RouterOS</h3><small>Traffic interface dan histori uptime tersedia di tab Traffic &amp; Uptime; sampel disimpan setiap lima menit.</small></div></div>
     <div class="nms-site-grid" id="nmsSiteGrid">
       <% routers.forEach((r,index)=>{ %>
         <article class="nms-router-card loading" data-router="<%= r.id %>" data-site="<%= r.site_code %>" style="--delay:<%= index*60 %>ms">
@@ -78,7 +80,21 @@
     </div>
   </div>
 
-  <!-- ===================== TAB 3: PPPoE SYNCHRONIZATION CENTER (AUDIT) ===================== -->
+  <!-- ===================== TAB 3: PERSISTED TRAFFIC & UPTIME ===================== -->
+  <div class="nms-content-pane" data-nms-pane="telemetry">
+    <div class="nms-focus-grid">
+      <article class="nms-focus-card">
+        <div class="nms-focus-head"><div><span>TRAFFIC HISTORY</span><h3>Interface Router</h3></div><label class="nms-tools"><select id="nmsTelemetryRouter"><option value="">Semua router</option><% routers.forEach(r=>{ %><option value="<%= r.id %>"><%= r.site_code %> · <%= r.name %></option><% }) %></select></label></div>
+        <div class="table-responsive"><table class="app-table nms-table"><thead><tr><th>Waktu</th><th>Router / Interface</th><th>RX</th><th>TX</th><th>Status</th></tr></thead><tbody id="nmsTrafficRows"><tr><td colspan="5"><div class="nms-loading-state"><i class="bi bi-activity"></i><strong>Belum ada sampel</strong><small>Telemetry berjalan setiap lima menit.</small></div></td></tr></tbody></table></div>
+      </article>
+      <article class="nms-focus-card">
+        <div class="nms-focus-head"><div><span>PPPOE SESSION HISTORY</span><h3>Uptime &amp; Downtime Terakhir</h3></div><span class="nms-sync-grade good">7 HARI</span></div>
+        <div class="table-responsive"><table class="app-table nms-table"><thead><tr><th>Secret</th><th>Router</th><th>Mulai</th><th>Terakhir terlihat</th><th>Status</th></tr></thead><tbody id="nmsSessionRows"><tr><td colspan="5"><div class="nms-loading-state"><i class="bi bi-clock-history"></i><strong>Belum ada sesi</strong><small>Riwayat akan tampil setelah polling pertama.</small></div></td></tr></tbody></table></div>
+      </article>
+    </div>
+  </div>
+
+  <!-- ===================== TAB 4: PPPoE SYNCHRONIZATION CENTER (AUDIT) ===================== -->
   <div class="nms-content-pane" data-nms-pane="sync">
     <div class="nms-audit-badges">
       <div class="synced"><i class="bi bi-check-circle-fill"></i><span><small>SYNCED</small><b id="nmsAuditSynced">0</b></span></div>

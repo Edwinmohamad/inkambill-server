@@ -1,10 +1,11 @@
 const express = require('express');
 const db = require('../config/db');
-const { requireAdmin } = require('../middleware/auth');
+const { requireAdmin, requireMasterAdmin } = require('../middleware/auth');
 const { checkCustomer, isolateCustomer, unisolateCustomer } = require('../services/networkService');
 const { allSnapshots, saveSecret, syncSecret, removeSecret, disconnectSecret, customersForRouter, customersForSync, smartSyncPlan, applySmartSync } = require('../services/nmsService');
 const { audit } = require('../services/auditService');
 const { proxyInfrastructure } = require('../services/infrastructureProxy');
+const { captureAllNmsTelemetry, getTrafficTrend, getSessionHistory, runRouterBackup, backupAllRouters } = require('../services/nmsTelemetryService');
 const router = express.Router();
 
 const INFRA_GROUPS=[
@@ -49,6 +50,60 @@ router.get('/monitor', async (req,res) => {
 router.get('/api/snapshot', async (req,res) => {
   try { res.set('Cache-Control','no-store').json({ok:true,generatedAt:new Date().toISOString(),snapshots:await allSnapshots()}); }
   catch (error) { res.status(502).json({ok:false,error:error.message}); }
+});
+
+router.get('/api/discovery', requireAdmin, async (req, res) => {
+  try {
+    const snapshots = await allSnapshots();
+    res.set('Cache-Control', 'no-store').json({ ok: true, discoveredAt: new Date().toISOString(), routers: snapshots.map(row => ({ id: row.id, name: row.name, siteCode: row.siteCode, online: !!row.ok, latencyMs: row.latencyMs || null, error: row.error || null })) });
+  } catch (error) { res.status(502).json({ ok: false, error: error.message }); }
+});
+
+// Persisted traffic and session history endpoints. They never call a router
+// directly, so charts stay fast even when one device is unreachable.
+router.get('/api/traffic', async (req, res) => {
+  try {
+    const rows = await getTrafficTrend({ routerId: req.query.router_id, interfaceName: req.query.interface, hours: req.query.hours });
+    res.set('Cache-Control', 'no-store').json({ ok: true, rows });
+  } catch (error) { res.status(400).json({ ok: false, error: error.message }); }
+});
+
+router.get('/api/session-history', async (req, res) => {
+  try {
+    const rows = await getSessionHistory({ customerId: req.query.customer_id, routerId: req.query.router_id, hours: req.query.hours });
+    res.set('Cache-Control', 'no-store').json({ ok: true, rows });
+  } catch (error) { res.status(400).json({ ok: false, error: error.message }); }
+});
+
+router.post('/api/telemetry/capture', requireAdmin, async (req, res) => {
+  try { res.json({ ok: true, result: await captureAllNmsTelemetry() }); }
+  catch (error) { res.status(502).json({ ok: false, error: error.message }); }
+});
+
+router.post('/api/auto-isolate', requireAdmin, async (req, res) => {
+  try {
+    if (req.body?.apply !== true && String(req.body?.apply || '') !== '1') return res.json({ ok: true, dryRun: true, message: 'Preview aman. Kirim apply=1 untuk menjalankan isolasi otomatis.' });
+    const { runAutoIsolation } = require('../services/networkService');
+    const result = await runAutoIsolation();
+    await audit({ userId: req.session.user.id, action: 'auto_isolate', entityType: 'network', description: `Auto-isolate: ${result.isolated || 0} berhasil, ${result.failed || 0} gagal`, ip: req.ip });
+    res.json({ ok: true, result });
+  } catch (error) { res.status(400).json({ ok: false, error: error.message }); }
+});
+
+router.post('/api/backups', requireMasterAdmin, async (req, res) => {
+  try {
+    const types = Array.isArray(req.body?.types) ? req.body.types : ['rsc', 'backup'];
+    const result = req.body?.router_id ? await runRouterBackup(req.body.router_id, types) : await backupAllRouters(types);
+    await audit({ userId: req.session.user.id, action: 'backup', entityType: 'router', description: `Backup NMS dijalankan: ${result.length} job`, ip: req.ip });
+    res.json({ ok: true, result });
+  } catch (error) { res.status(400).json({ ok: false, error: error.message }); }
+});
+
+router.get('/api/backups', requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await db.query(`SELECT b.*,r.name router_name,s.code site_code FROM nms_router_backups b JOIN routers r ON r.id=b.router_id LEFT JOIN sites s ON s.id=r.site_id WHERE (? IS NULL OR b.router_id=?) ORDER BY b.id DESC LIMIT 200`, [req.query.router_id ? Number(req.query.router_id) : null, req.query.router_id ? Number(req.query.router_id) : null]);
+    res.json({ ok: true, rows });
+  } catch (error) { res.status(400).json({ ok: false, error: error.message }); }
 });
 
 router.get('/api/routers/:routerId/customers', requireAdmin, async (req,res) => {

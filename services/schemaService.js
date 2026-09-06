@@ -547,4 +547,182 @@ async function ensureV37Schema() {
   await db.query(`CREATE TABLE IF NOT EXISTS closing_entries (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,closing_id BIGINT UNSIGNED NOT NULL,entry_type ENUM('INCOME','EXPENSE') NOT NULL,site_code VARCHAR(30) NOT NULL,cluster_name VARCHAR(80) NULL,category VARCHAR(120) NOT NULL,amount DECIMAL(14,2) NOT NULL DEFAULT 0,entry_date DATE NOT NULL,description VARCHAR(255) NULL,created_by BIGINT UNSIGNED NULL,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,INDEX idx_closing_entries_period(closing_id,entry_type),INDEX idx_closing_entries_site(closing_id,site_code,cluster_name),INDEX idx_closing_entries_date(entry_date))`);
 }
 
-module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema };
+// v1.28 — operational intelligence foundation.  These tables are deliberately
+// additive and avoid foreign keys so an older production database can be
+// upgraded without locking or breaking existing billing history.
+async function ensureV38Schema() {
+  await db.query(`CREATE TABLE IF NOT EXISTS nms_interface_samples (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    router_id BIGINT UNSIGNED NOT NULL,
+    interface_name VARCHAR(180) NOT NULL,
+    sampled_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    rx_bytes BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    tx_bytes BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    rx_bps BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    tx_bps BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    running TINYINT(1) NOT NULL DEFAULT 0,
+    INDEX idx_nms_interface_router_time(router_id,interface_name,sampled_at),
+    INDEX idx_nms_interface_time(sampled_at)
+  )`);
+  await db.query(`CREATE TABLE IF NOT EXISTS nms_pppoe_sessions (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    router_id BIGINT UNSIGNED NOT NULL,
+    secret_name VARCHAR(180) NOT NULL,
+    session_id VARCHAR(180) NULL,
+    customer_id BIGINT UNSIGNED NULL,
+    address VARCHAR(80) NULL,
+    caller_id VARCHAR(180) NULL,
+    started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ended_at DATETIME NULL,
+    last_uptime_seconds BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    status ENUM('online','offline') NOT NULL DEFAULT 'online',
+    INDEX idx_nms_session_router_name(router_id,secret_name,last_seen_at),
+    INDEX idx_nms_session_customer(customer_id,last_seen_at),
+    INDEX idx_nms_session_status(status,last_seen_at)
+  )`);
+  await db.query(`CREATE TABLE IF NOT EXISTS nms_auto_isolate_logs (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    customer_id BIGINT UNSIGNED NULL,
+    router_id BIGINT UNSIGNED NULL,
+    action VARCHAR(30) NOT NULL,
+    idempotency_key VARCHAR(190) NOT NULL UNIQUE,
+    reason VARCHAR(500) NULL,
+    error_message VARCHAR(1000) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_nms_isolate_customer(customer_id,created_at),
+    INDEX idx_nms_isolate_router(router_id,created_at)
+  )`);
+  await db.query(`CREATE TABLE IF NOT EXISTS nms_router_backups (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    router_id BIGINT UNSIGNED NOT NULL,
+    backup_type ENUM('rsc','backup') NOT NULL,
+    file_path VARCHAR(500) NULL,
+    file_size BIGINT UNSIGNED NULL,
+    sha256 CHAR(64) NULL,
+    status ENUM('success','failed','skipped') NOT NULL DEFAULT 'skipped',
+    error_message VARCHAR(1000) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_nms_backup_router_time(router_id,created_at)
+  )`);
+
+  await db.query(`CREATE TABLE IF NOT EXISTS inventory_categories (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(120) NOT NULL,
+    slug VARCHAR(140) NOT NULL UNIQUE,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    created_by BIGINT UNSIGNED NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_inventory_category_active(is_active,name)
+  )`);
+  await db.query(`ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS deleted_at DATETIME NULL`);
+  await db.query(`ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS barcode VARCHAR(120) NULL`);
+  await db.query(`ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS qr_payload TEXT NULL`);
+  await db.query(`ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS category_id BIGINT UNSIGNED NULL`);
+  await db.query(`ALTER TABLE inventory_items ADD INDEX IF NOT EXISTS idx_inventory_deleted(deleted_at)`);
+  await db.query(`ALTER TABLE inventory_items ADD INDEX IF NOT EXISTS idx_inventory_barcode(barcode)`);
+  await db.query(`ALTER TABLE inventory_items ADD INDEX IF NOT EXISTS idx_inventory_category(category_id)`);
+
+  // Existing free-text categories become managed categories once, without
+  // overwriting the original text (which remains the reporting fallback).
+  const [legacyCategories] = await db.query(`SELECT DISTINCT TRIM(category) name FROM inventory_items WHERE category IS NOT NULL AND TRIM(category)<>''`);
+  for (const row of legacyCategories) {
+    const name = String(row.name || '').trim();
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 130) || `kategori-${Date.now()}`;
+    await db.execute(`INSERT IGNORE INTO inventory_categories(name,slug) VALUES(?,?)`, [name, slug]);
+  }
+  await db.query(`UPDATE inventory_items i JOIN inventory_categories c ON LOWER(TRIM(c.name))=LOWER(TRIM(i.category)) SET i.category_id=c.id WHERE i.category_id IS NULL AND i.category IS NOT NULL`);
+
+  await db.query(`CREATE TABLE IF NOT EXISTS inventory_stock_alerts (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    item_id BIGINT UNSIGNED NOT NULL,
+    current_qty DECIMAL(14,2) NOT NULL DEFAULT 0,
+    min_stock DECIMAL(14,2) NOT NULL DEFAULT 0,
+    severity ENUM('low','critical') NOT NULL DEFAULT 'low',
+    resolved_at DATETIME NULL,
+    last_notified_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_inventory_alert_item(item_id,resolved_at),
+    INDEX idx_inventory_alert_open(resolved_at,updated_at)
+  )`);
+
+  await db.query(`CREATE TABLE IF NOT EXISTS piket_proofs (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NULL,
+    technician_name VARCHAR(150) NULL,
+    proof_date DATE NOT NULL,
+    site_id BIGINT UNSIGNED NULL,
+    file_path VARCHAR(500) NOT NULL,
+    file_url VARCHAR(500) NULL,
+    mime_type VARCHAR(100) NULL,
+    file_size BIGINT UNSIGNED NULL,
+    caption VARCHAR(500) NULL,
+    source VARCHAR(40) NOT NULL DEFAULT 'n8n',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_piket_proof_date(proof_date),
+    INDEX idx_piket_proof_site(site_id,proof_date)
+  )`);
+  await db.query(`CREATE TABLE IF NOT EXISTS n8n_webhook_events (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    event_key VARCHAR(190) NOT NULL UNIQUE,
+    event_type VARCHAR(80) NOT NULL,
+    payload_json LONGTEXT NULL,
+    status ENUM('processed','failed','ignored') NOT NULL DEFAULT 'processed',
+    error_message VARCHAR(1000) NULL,
+    processed_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_n8n_event_type_time(event_type,created_at)
+  )`);
+}
+
+async function ensureV39Schema() {
+  // Mobile diagnostics are deliberately small and sanitized by the route.
+  // They make Android failures visible without embedding a third-party tracker.
+  await db.query(`CREATE TABLE IF NOT EXISTS mobile_crash_reports (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NULL,
+    app_version VARCHAR(40) NULL,
+    android_version VARCHAR(40) NULL,
+    device_model VARCHAR(160) NULL,
+    exception_class VARCHAR(240) NULL,
+    message VARCHAR(1000) NULL,
+    stack_trace TEXT NULL,
+    occurred_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_mobile_crash_user_time(user_id,created_at),
+    INDEX idx_mobile_crash_created(created_at)
+  )`);
+  await db.query(`CREATE TABLE IF NOT EXISTS mobile_push_tokens (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NOT NULL,
+    token VARCHAR(500) NOT NULL,
+    platform VARCHAR(20) NOT NULL DEFAULT 'android',
+    device_model VARCHAR(160) NULL,
+    app_version VARCHAR(40) NULL,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_mobile_push_token(token),
+    INDEX idx_mobile_push_user(user_id,is_active)
+  )`);
+  await db.query(`CREATE TABLE IF NOT EXISTS mobile_push_deliveries (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    notification_id BIGINT UNSIGNED NOT NULL,
+    token_id BIGINT UNSIGNED NOT NULL,
+    status ENUM('pending','sent','failed') NOT NULL DEFAULT 'pending',
+    attempt_count INT UNSIGNED NOT NULL DEFAULT 0,
+    response_code INT NULL,
+    error_message VARCHAR(1000) NULL,
+    sent_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_mobile_push_delivery(notification_id,token_id),
+    INDEX idx_mobile_push_status(status,updated_at)
+  )`);
+  await db.query(`ALTER TABLE mobile_push_deliveries ADD COLUMN IF NOT EXISTS attempt_count INT UNSIGNED NOT NULL DEFAULT 0 AFTER status`);
+}
+
+module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema };

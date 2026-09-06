@@ -1,0 +1,11 @@
+{
+  "name": "INKAMBILLING - Inventory Movement",
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "nodes": [
+    { "parameters": { "httpMethod": "POST", "path": "inkambilling/inventory-movement", "responseMode": "responseNode" }, "id": "inventory-webhook", "name": "Inventory Webhook", "type": "n8n-nodes-base.webhook", "typeVersion": 2, "position": [260, 300], "webhookId": "inkambilling-inventory-movement" },
+    { "parameters": { "method": "POST", "url": "={{$env.INKAMBILLING_URL}}/api/n8n/inventory/movement", "sendHeaders": true, "headerParameters": { "parameters": [ { "name": "X-N8N-TOKEN", "value": "={{$env.INKAMBILLING_N8N_TOKEN}}" }, { "name": "X-Idempotency-Key", "value": "={{$json.event_key || $execution.id}}" } ] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{$json}}", "options": {} }, "id": "inventory-http", "name": "Catat ke INKAMBILLING", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [520, 300] },
+    { "parameters": { "respondWith": "json", "responseBody": "={{$json}}", "options": {} }, "id": "inventory-response", "name": "Response", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1.1, "position": [780, 300] }
+  ],
+  "connections": { "Inventory Webhook": { "main": [ [ { "node": "Catat ke INKAMBILLING", "type": "main", "index": 0 } ] ] }, "Catat ke INKAMBILLING": { "main": [ [ { "node": "Response", "type": "main", "index": 0 } ] ] } }
+}

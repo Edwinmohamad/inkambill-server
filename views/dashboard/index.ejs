@@ -23,14 +23,6 @@
     <div class="command-orbit" aria-hidden="true"><span></span><span></span><i class="bi bi-broadcast-pin"></i></div>
   </div>
 
-  <div class="command-telemetry-rail" aria-label="Live telemetry">
-    <a href="<%= networkTarget %>"><span class="telemetry-signal online"></span><small>NOC STATUS</small><strong>ONLINE</strong></a>
-    <a href="/customers?<%= customerSiteQuery %>"><span class="telemetry-signal purple"></span><small>SCOPE</small><strong><%= selectedSiteCode||'ALL SITES' %></strong></a>
-    <a href="<%= networkTarget %>"><span class="telemetry-signal blue"></span><small>ROUTER HEALTH</small><strong><%= routerRate %>%</strong></a>
-    <a href="/customers?<%= customerSiteQuery %><%= customerSiteQuery?'&':'' %>status=active&network=online"><span class="telemetry-signal green"></span><small>CUSTOMER ONLINE</small><strong><%= Number(network.online||0) %></strong></a>
-    <div class="telemetry-stream"><i></i><i></i><i></i><span>LIVE DATA STREAM</span></div>
-  </div>
-
   <div class="dashboard-user-ticker" aria-label="Aktivitas user terbaru">
     <div class="dashboard-user-ticker-label"><i class="bi bi-person-workspace"></i><span><b>AKTIVITAS USER</b><small>Frequent & last login</small></span></div>
     <div class="dashboard-user-ticker-viewport"><div class="dashboard-user-ticker-track">
@@ -57,7 +49,6 @@
   <div class="command-pulse-grid dashboard-ops-pulse-v119">
     <% if(can('billing')){ %><a class="command-pulse collection-pulse" href="/collection-analysis?site=<%= selectedSiteCode %>&month=<%= selectedMonth %>&year=<%= selectedYear %>"><div><span>COLLECTION RATE</span><strong><%= collectionRate %>%</strong><em>Buka analisa pelanggan →</em></div><i class="bi bi-graph-up-arrow"></i></a><% }else{ %><article class="command-pulse"><div><span>COLLECTION RATE</span><strong><%= collectionRate %>%</strong></div><i class="bi bi-graph-up-arrow"></i></article><% } %>
     <a href="<%= ticketTarget %>" class="command-pulse <%= Number(noc.tickets_open||0)>0?'warn':'ok' %>"><div><span>TICKET AKTIF</span><strong><%= Number(noc.tickets_open||0) %></strong><em>Buka daftar tiket →</em></div><i class="bi bi-life-preserver"></i></a>
-    <a href="<%= networkTarget %>" class="command-pulse <%= routerRate<100?'warn':'ok' %>"><div><span>ROUTER HEALTH</span><strong><%= Number(noc.routers_online||0) %>/<%= Number(noc.routers_total||0) %></strong><em>Buka monitor →</em></div><i class="bi bi-router-fill"></i></a>
   </div>
 
   <!-- v1.21.0 — Section 1 widgets, placed right under the existing pulse row so the whole "operational
@@ -127,7 +118,6 @@
       <div class="priority-list priority-grid-v19">
         <a href="<%= cashTarget %>" class="priority-row <%= Number(noc.cash_held||0)>0?'attention':'clear' %>"><span><i class="bi bi-person-vcard"></i></span><div><strong>Cash di Tim</strong><small>Perlu rekonsiliasi</small></div><b><%= formatRupiah(noc.cash_held||0) %></b></a>
         <a href="/invoices?month=<%= selectedMonth %>&year=<%= selectedYear %>&status=overdue" class="priority-row <%= Number(noc.overdue_customers||0)>0?'danger':'clear' %>"><span><i class="bi bi-exclamation-triangle"></i></span><div><strong>Terlambat</strong><small>Pelanggan perlu follow-up</small></div><b><%= Number(noc.overdue_customers||0) %></b></a>
-        <a href="<%= networkTarget %>" class="priority-row <%= Number(noc.routers_total||0)>Number(noc.routers_online||0)?'danger':'clear' %>"><span><i class="bi bi-router"></i></span><div><strong>Router Offline</strong><small>Periksa health jaringan</small></div><b><%= Math.max(0,Number(noc.routers_total||0)-Number(noc.routers_online||0)) %></b></a>
         <a href="<%= ticketTarget %>" class="priority-row <%= Number(noc.tickets_open||0)>0?'attention':'clear' %>"><span><i class="bi bi-life-preserver"></i></span><div><strong>Tiket Aktif</strong><small>Terbuka / diproses / menunggu</small></div><b><%= Number(noc.tickets_open||0) %></b></a>
       </div>
     </article>

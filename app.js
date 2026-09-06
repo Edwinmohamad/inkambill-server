@@ -24,8 +24,12 @@ const invoiceLogoUpload = require('./middleware/invoiceLogoUpload');
 const { requireAuth, loadPermissions, requirePermission, requireMasterAdmin } = require('./middleware/auth');
 const { generateMonthlyInvoices } = require('./services/invoiceService');
 const { runAutoIsolation } = require('./services/networkService');
+const { captureAllNmsTelemetry, backupAllRouters } = require('./services/nmsTelemetryService');
+const { scanLowStock } = require('./services/inventoryService');
+const { deliverMobilePushes } = require('./services/mobilePushService');
 const { purgeOldLogs } = require('./services/logRetentionService');
-const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema } = require('./services/schemaService');
+const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema } = require('./services/schemaService');
+const { requireN8nToken } = require('./middleware/n8n');
 const { startGateway, hasSavedSession, processQueue, runAutoReminderSweep } = require('./services/whatsappGatewayService');
 
 const app = express();
@@ -185,6 +189,11 @@ app.use('/settings/invoice-branding', requireAuth, (req, res, next) => {
   next();
 });
 app.use(csrf);
+app.use(require('./routes/mobile'));
+
+// Token-protected server-to-server entrypoint for the versioned n8n workflows.
+// It is intentionally mounted after the JSON parser and before browser routes.
+app.use('/api/n8n', requireN8nToken, require('./routes/n8n'));
 
 // Lightweight health endpoint used by Docker/operations monitoring.
 app.get('/healthz', async (req, res) => {
@@ -262,6 +271,8 @@ async function bootstrap() {
   await ensureV35Schema();
   await ensureV36Schema();
   await ensureV37Schema();
+  await ensureV38Schema();
+  await ensureV39Schema();
   const [rows] = await db.query('SELECT COUNT(*) total FROM users');
   if (Number(rows[0].total) === 0) {
     const username = process.env.DEFAULT_ADMIN_USERNAME || 'admin';
@@ -294,6 +305,27 @@ async function bootstrap() {
       const result = await runAutoReminderSweep();
       if (result.ran) console.log('WA Gateway auto-reminder sweep:', result);
     } catch (err) { console.error('WA Gateway auto-reminder sweep gagal:', err.message); }
+  }, { timezone: 'Asia/Jakarta' });
+
+  cron.schedule('* * * * *', async () => {
+    try {
+      const result = await deliverMobilePushes();
+      if (result.configured && (result.sent || result.failed)) console.log('INKAMNET GO push:', result);
+    } catch (err) { console.error('INKAMNET GO push gagal:', err.message); }
+  }, { timezone: 'Asia/Jakarta' });
+
+  cron.schedule('30 3 * * 0', async () => {
+    try { const result = await backupAllRouters(['rsc', 'backup']); console.log('NMS backup mingguan:', result.filter(row => row.status === 'success').length, 'berhasil'); }
+    catch (err) { console.error('NMS backup gagal:', err.message); }
+  }, { timezone: 'Asia/Jakarta' });
+
+  // NMS telemetry and stock alerts are deliberately low-frequency. The public
+  // monitor page remains responsive because it reads the persisted samples,
+  // while router polling happens in one bounded Promise.all batch.
+  cron.schedule('*/5 * * * *', async () => {
+    try { const result = await captureAllNmsTelemetry(); console.log('NMS telemetry:', result.routers, 'router(s)'); }
+    catch (err) { console.error('NMS telemetry gagal:', err.message); }
+    try { await scanLowStock(); } catch (err) { console.error('Stock alert gagal:', err.message); }
   }, { timezone: 'Asia/Jakarta' });
 
   // If a WA Gateway session was already linked before this restart, reconnect silently (no QR needed —

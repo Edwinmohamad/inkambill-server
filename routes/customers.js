@@ -5,7 +5,15 @@ const { audit } = require('../services/auditService');
 const { requireAdmin, requireMasterAdmin, isMasterAdminRole } = require('../middleware/auth');
 const { validateWhatsapp } = require('../services/whatsappService');
 const { syncCustomerDiscountToOpenInvoices } = require('../services/invoiceService');
+const { isolateCustomer } = require('../services/networkService');
 const router = express.Router();
+
+async function isolateAfterStatusChange(customerId, reason='status_change') {
+  const [[customer]] = await db.query(`SELECT id,customer_status,network_status,router_id,pppoe_username FROM customers WHERE id=? LIMIT 1`, [customerId]);
+  if (!customer || customer.customer_status === 'active' || !customer.router_id || !customer.pppoe_username || customer.network_status === 'isolated') return { attempted: false };
+  try { await isolateCustomer(customer.id, reason); return { attempted: true, ok: true }; }
+  catch (error) { return { attempted: true, ok: false, error: error.message }; }
+}
 
 async function options() {
   const [sites] = await db.query(`SELECT id, code, name FROM sites WHERE is_active=1 ORDER BY code`);
@@ -482,8 +490,10 @@ router.post('/bulk',requireAdmin,async(req,res)=>{
     if(!rows.length){req.session.flash={type:'warning',message:'Tidak ada pelanggan terpilih yang bisa diarsipkan (mungkin sudah diarsipkan).'};return res.redirect('/customers');}
     const rowIds=rows.map(r=>r.id);const rowPlaceholders=rowIds.map(()=>'?').join(',');
     await db.execute(`UPDATE customers SET status_changed_at=NOW(),customer_status='terminated',network_status='offline',archived_at=NOW() WHERE id IN (${rowPlaceholders})`,rowIds);
+    const isolationResults=await Promise.all(rows.map(row=>isolateAfterStatusChange(row.id,'bulk_archive')));
+    const isolationFailed=isolationResults.filter(result=>result.attempted&&!result.ok).length;
     await audit({userId:req.session.user.id,action:'bulk_archive',entityType:'customer',entityId:null,description:`Arsip massal ${rows.length} pelanggan: ${rows.map(r=>r.customer_code).slice(0,20).join(', ')}${rows.length>20?', ...':''}`,ip:req.ip});
-    req.session.flash={type:'success',message:`${rows.length} pelanggan berhasil diarsipkan. Riwayat keuangan tetap aman.`};
+    req.session.flash={type:isolationFailed?'warning':'success',message:`${rows.length} pelanggan berhasil diarsipkan. Riwayat keuangan tetap aman.${isolationFailed?` ${isolationFailed} PPPoE gagal diisolir dan perlu dicek di NMS.`:''}`};
     return res.redirect('/customers');
   }
   // v1.20.1 — Section 1/2 of the revision: bulk "Hapus Permanen" from both the active list (via the
@@ -588,7 +598,7 @@ router.post('/:id',async(req,res)=>{
   // customer row update and the resync of their open invoices commit/rollback together; the resync only
   // fires when discount_id actually changed, and only ever touches invoices that are NOT paid/cancelled/
   // refunded, so already-settled historical invoices are never altered.
-  const [[before]]=await db.execute(`SELECT discount_id FROM customers WHERE id=? LIMIT 1`,[req.params.id]);
+  const [[before]]=await db.execute(`SELECT discount_id,customer_status FROM customers WHERE id=? LIMIT 1`,[req.params.id]);
   const previousDiscountId=before?before.discount_id:null;
   const conn=await db.getConnection();
   let resynced=0;
@@ -601,7 +611,8 @@ router.post('/:id',async(req,res)=>{
     await conn.commit();
   }catch(e){await conn.rollback();throw e;}finally{conn.release();}
   await audit({userId:req.session.user.id,action:'update',entityType:'customer',entityId:req.params.id,description:`Update ${customerCode} - ${b.name}${resynced?` · diskon disesuaikan otomatis pada ${resynced} tagihan berjalan`:''}`,ip:req.ip});
-  req.session.flash={type:'success',message:`Data pelanggan diperbarui.${resynced?` Diskon otomatis disesuaikan pada ${resynced} tagihan berjalan milik pelanggan ini (tagihan yang sudah lunas/dibatalkan tidak diubah).`:''}`};
+  const isolation = ['suspended','terminated'].includes(String(b.customer_status||'').toLowerCase()) && String(before?.customer_status||'') !== String(b.customer_status||'') ? await isolateAfterStatusChange(req.params.id,'customer_status') : { attempted:false };
+  req.session.flash={type:isolation.attempted&&!isolation.ok?'warning':'success',message:`Data pelanggan diperbarui.${resynced?` Diskon otomatis disesuaikan pada ${resynced} tagihan berjalan milik pelanggan ini (tagihan yang sudah lunas/dibatalkan tidak diubah).`:''}${isolation.attempted?(isolation.ok?' PPPoE langsung diisolir.':` Status tersimpan, tetapi isolir MikroTik gagal: ${isolation.error}`):''}`};
   res.redirect('/customers');
 });
 router.post('/:id/delete',requireAdmin,async(req,res)=>{
@@ -611,8 +622,9 @@ router.post('/:id/delete',requireAdmin,async(req,res)=>{
   // v1.20: Archive is a pure visibility toggle (archived_at) on top of the pre-existing terminate
   // lifecycle — financial/journal history is never touched, satisfying the Arsip vs Hapus Permanen rule.
   await db.execute(`UPDATE customers SET status_changed_at=NOW(),customer_status='terminated',network_status='offline',archived_at=NOW() WHERE id=?`,[c.id]);
+  const isolation = await isolateAfterStatusChange(c.id,'archive');
   await audit({userId:req.session.user.id,action:'archive',entityType:'customer',entityId:c.id,description:`Arsip pelanggan ${c.customer_code} - ${c.name}`,ip:req.ip});
-  req.session.flash={type:'success',message:`Pelanggan ${c.name} diarsipkan. Riwayat tagihan dan pembayaran tetap aman, dan dapat dipulihkan dari tab Data Diarsip.`};
+  req.session.flash={type:isolation.attempted&&!isolation.ok?'warning':'success',message:`Pelanggan ${c.name} diarsipkan. Riwayat tagihan dan pembayaran tetap aman, dan dapat dipulihkan dari tab Data Diarsip.${isolation.attempted?(isolation.ok?' PPPoE langsung diisolir.':` Isolir MikroTik gagal: ${isolation.error}`):''}`};
   res.redirect('/customers');
 });
 router.post('/:id/restore',requireAdmin,async(req,res)=>{

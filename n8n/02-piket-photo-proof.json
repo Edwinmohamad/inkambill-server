@@ -1,0 +1,12 @@
+{
+  "name": "INKAMBILLING - Piket Photo Proof",
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "nodes": [
+    { "parameters": { "httpMethod": "POST", "path": "inkambilling/piket-proof", "responseMode": "responseNode" }, "id": "piket-webhook", "name": "Form Foto Piket", "type": "n8n-nodes-base.webhook", "typeVersion": 2, "position": [240, 300], "webhookId": "inkambilling-piket-proof" },
+    { "parameters": { "fileName": "=/data/piket/{{$now.toFormat('yyyy-MM-dd_HH-mm-ss')}}_{{$binary.data.fileName}}", "dataPropertyName": "data" }, "id": "piket-save", "name": "Simpan Foto ke Volume", "type": "n8n-nodes-base.writeBinaryFile", "typeVersion": 1, "position": [500, 300] },
+    { "parameters": { "method": "POST", "url": "={{$env.INKAMBILLING_URL}}/api/n8n/piket-proof", "sendHeaders": true, "headerParameters": { "parameters": [ { "name": "X-N8N-TOKEN", "value": "={{$env.INKAMBILLING_N8N_TOKEN}}" }, { "name": "X-Idempotency-Key", "value": "=piket:{{$json.proof_date}}:{{$json.technician_name}}:{{$execution.id}}" } ] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ { event_key: 'piket:' + $execution.id, proof_date: $json.proof_date || $now.toFormat('yyyy-MM-dd'), technician_name: $json.technician_name, site_id: $json.site_id, file_path: '/data/piket/' + $binary.data.fileName, mime_type: $binary.data.mimeType, file_size: $binary.data.fileSize, caption: $json.caption, source: 'n8n' } }}" }, "id": "piket-http", "name": "Catat Metadata Piket", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [760, 300] },
+    { "parameters": { "respondWith": "json", "responseBody": "={{$json}}", "options": {} }, "id": "piket-response", "name": "Response", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1.1, "position": [1020, 300] }
+  ],
+  "connections": { "Form Foto Piket": { "main": [ [ { "node": "Simpan Foto ke Volume", "type": "main", "index": 0 } ] ] }, "Simpan Foto ke Volume": { "main": [ [ { "node": "Catat Metadata Piket", "type": "main", "index": 0 } ] ] }, "Catat Metadata Piket": { "main": [ [ { "node": "Response", "type": "main", "index": 0 } ] ] } }
+}

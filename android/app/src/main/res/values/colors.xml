@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="inkamnet_ink">#090D18</color>
+    <color name="inkamnet_purple">#6C4BFF</color>
+    <color name="inkamnet_red">#FF4D5B</color>
+    <color name="inkamnet_soft">#AEB8D0</color>
+    <color name="white">#FFFFFF</color>
+</resources>

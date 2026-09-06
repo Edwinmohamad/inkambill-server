@@ -29,6 +29,14 @@ function cutoffWindow(month, year) {
 function nextMonthOf(month, year) {
   return month >= 12 ? { month: 1, year: year + 1 } : { month: month + 1, year };
 }
+function buildProjection(financeSeries = {}) {
+  const inflow = (financeSeries.inflow || []).map(num);
+  const outflow = (financeSeries.outflow || []).map(num);
+  const recentIn = inflow.slice(-3), recentOut = outflow.slice(-3);
+  const avg = rows => rows.length ? Math.round(rows.reduce((a, b) => a + b, 0) / rows.length) : 0;
+  const projectedInflow = avg(recentIn), projectedOutflow = avg(recentOut);
+  return { horizon: 'bulan berikutnya', projectedInflow, projectedOutflow, projectedNet: projectedInflow - projectedOutflow, method: 'rata-rata tiga bulan terakhir' };
+}
 
 // ---------------------------------------------------------------------------
 // Business-shape builders (used by both the real query path and the dummy
@@ -129,6 +137,7 @@ function buildReportSummary(data) {
       odpCritical, odpWarning, odpHealthy
     },
     advisories: data.advisories.map(a => ({ tone: a.tone, title: a.title, detail: a.detail })),
+    projection: data.projection,
     ownerWhatsapp: data.ownerWhatsapp || null
   };
 }
@@ -212,6 +221,8 @@ async function fetchAnalytics({ siteCode = '', month, year }) {
   const months = lastMonths(6, now);
   const cashMap = new Map(cashRows.map(x => [x.month_key, x]));
   const financeSeries = { labels: months.map(x => x.label), inflow: months.map(x => num(cashMap.get(x.key)?.inflow)), outflow: months.map(x => num(cashMap.get(x.key)?.outflow)) };
+  const [churnReasonRows] = await db.execute(`SELECT COALESCE(NULLIF(TRIM(c.isolation_reason),''),'Tidak dicatat') reason,COUNT(*) total FROM customers c WHERE c.customer_status IN ('inactive','terminated','suspended') AND c.status_changed_at IS NOT NULL AND MONTH(c.status_changed_at)=? AND YEAR(c.status_changed_at)=?${customerScope} GROUP BY reason ORDER BY total DESC`, [month, year, ...customerParams]);
+  const churnReasons = churnReasonRows.map(row => ({ reason: row.reason, total: num(row.total) }));
 
   // --- Aging piutang (with WhatsApp reminder number + "siap isolir" flag) ----
   const [agingRaw] = await db.execute(`SELECT c.id,c.customer_code,c.name customer_name,c.phone,s.code site_code,MIN(i.due_date) oldest_due,COALESCE(SUM(i.outstanding),0) outstanding,MAX(DATEDIFF(CURDATE(),i.due_date)) days_overdue FROM invoices i JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id WHERE i.status IN ('unpaid','partial','overdue') AND i.outstanding>0${customerScope} GROUP BY c.id,c.customer_code,c.name,c.phone,s.code ORDER BY days_overdue DESC,outstanding DESC LIMIT 150`, customerParams);
@@ -243,7 +254,7 @@ async function fetchAnalytics({ siteCode = '', month, year }) {
 
   const result = {
     sites, selectedSiteCode: selected?.code || '', selectedSiteName: selected?.name || 'Semua Site',
-    month, year, cutoff, kpis, dualMatrix, dueDateMatrix, advisories, financeSeries,
+    month, year, cutoff, kpis, dualMatrix, dueDateMatrix, advisories, financeSeries, projection: buildProjection(financeSeries), churnReasons,
     aging, agingBuckets, siapIsolirCount,
     funnel: buildFunnel(funnelRow),
     sla: { avgHours: num(slaRow.avg_hours), samples: num(slaRow.samples) },
@@ -266,6 +277,7 @@ function buildDummyAnalytics({ siteCode = '', month, year } = {}) {
   const months = lastMonths(6, now);
   const wave = (base, amp, phase = 0) => months.map((_, i) => Math.max(0, Math.round(base + amp * Math.sin((i + phase) / 2))));
   const financeSeries = { labels: months.map(x => x.label), inflow: wave(38000000, 9000000), outflow: wave(24000000, 6000000, 1.4) };
+  const churnReasons = [{ reason: 'Tidak dicatat', total: 4 }, { reason: 'Pindah rumah', total: 2 }];
   const dummySites = [{ id: 0, code: 'HQ', name: 'Kantor Pusat (contoh)' }];
   const selectedName = siteCode ? `${siteCode} (contoh)` : 'Semua Site (contoh)';
 
@@ -295,7 +307,7 @@ function buildDummyAnalytics({ siteCode = '', month, year } = {}) {
 
   const result = {
     sites: dummySites, selectedSiteCode: siteCode || '', selectedSiteName: selectedName,
-    month, year, cutoff, kpis, dualMatrix, dueDateMatrix, advisories, financeSeries,
+    month, year, cutoff, kpis, dualMatrix, dueDateMatrix, advisories, financeSeries, projection: buildProjection(financeSeries), churnReasons,
     aging, agingBuckets, siapIsolirCount, funnel,
     sla: { avgHours: 26.4, samples: 22 }, odp, ownerWhatsapp: null, isDummy: true
   };
@@ -312,4 +324,4 @@ async function getAnalytics(params = {}) {
   }
 }
 
-module.exports = { getAnalytics, buildAdvisories, buildFunnel, lastMonths, buildDummyAnalytics, buildReportSummary, cutoffWindow };
+module.exports = { getAnalytics, buildAdvisories, buildFunnel, lastMonths, buildDummyAnalytics, buildReportSummary, cutoffWindow, buildProjection };

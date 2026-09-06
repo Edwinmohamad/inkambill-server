@@ -37,22 +37,23 @@ html[data-theme="dark"]{
   --card:var(--panel);
 }
 html[data-theme="light"]{
-  --bg:#f3f5f9;
-  --bg-2:#eef1f7;
-  --panel:#ffffff;
-  --panel-2:#f9fafc;
-  --panel-3:#f1f4f9;
+  /* Soft neutral light mode: no pure white canvas and no high-glare cards. */
+  --bg:#e3e6eb;
+  --bg-2:#dce1e8;
+  --panel:#edf0f4;
+  --panel-2:#e7ebf0;
+  --panel-3:#dde2e9;
   --sidebar-bg:#ffffff;
   --sidebar-bg2:#f8f9fc;
-  --topbar:rgba(255,255,255,.88);
-  --line:#e7ebf2;
-  --line-2:#dce2eb;
-  --text:#172033;
-  --muted:#68758c;
-  --muted-2:#96a0b0;
-  --input:#fff;
-  --shadow:0 20px 55px rgba(22,32,51,.08);
-  --shadow-soft:0 10px 30px rgba(22,32,51,.06);
+  --topbar:rgba(232,235,240,.95);
+  --line:#cbd2dc;
+  --line-2:#b9c2ce;
+  --text:#253047;
+  --muted:#5f6b7e;
+  --muted-2:#7b8798;
+  --input:#e8ecf1;
+  --shadow:0 20px 55px rgba(38,48,70,.12);
+  --shadow-soft:0 8px 22px rgba(38,48,70,.09);
   --glow:rgba(var(--brand-rgb),.09);
   --border:var(--line);
   --card:var(--panel);
@@ -1264,6 +1265,25 @@ html[data-theme="dark"] .text-muted,html[data-theme="dark"] .text-secondary{colo
   .closing-page .closing-card .card-body{padding:14px}
 }
 
+/* v1.28 — calm light mode and compact business dashboards.  Keep the dark
+   sidebar as an anchor, but make the workspace a low-contrast paper surface
+   so long finance/inventory sessions do not feel like staring at a white page. */
+html[data-theme="light"] body{background:var(--bg);color:var(--text)}
+html[data-theme="light"] .data-card,html[data-theme="light"] .metric-card,html[data-theme="light"] .command-panel,html[data-theme="light"] .ink-panel,html[data-theme="light"] .form-card{box-shadow:0 7px 20px rgba(38,48,70,.07)}
+html[data-theme="light"] .app-table thead th{background:#d7dde5;color:#4e5b70}
+html[data-theme="light"] .app-table tbody tr:hover{background:#e2e6ec}
+html[data-theme="light"] .btn-tech{background:#e8ecf1;color:#29364c;border-color:#c5ccd6}
+html[data-theme="light"] .btn-tech:hover{background:#dde3ea;border-color:#b6c0cc}
+html[data-theme="light"] .form-control,html[data-theme="light"] .form-select,html[data-theme="light"] .search-box,html[data-theme="light"] .ink-period-filter select{background:#e8ecf1;color:#263349;border-color:#c4ccd6}
+html[data-theme="light"] .module-head p,html[data-theme="light"] .data-card-head small,html[data-theme="light"] .form-help{color:#5f6b7e}
+html[data-theme="light"] .modal-content{box-shadow:0 18px 44px rgba(38,48,70,.18)}
+html[data-theme="light"] .command-hero,html[data-theme="light"] .psb-hero-v119{background:#e8ecf1;border-color:#c7ced8}
+html[data-theme="light"] .dashboard-v119 .command-kpi,html[data-theme="light"] .dashboard-v119 .command-pulse{box-shadow:0 6px 16px rgba(38,48,70,.07)}
+.inventory-page .data-card-body{padding-bottom:10px}.inventory-page .warehouse-tabs{display:flex;gap:6px;flex-wrap:wrap}.inventory-page .warehouse-tabs a{padding:6px 8px;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:var(--muted);font-size:.58rem}.inventory-page .warehouse-tabs a.active{background:var(--brand);border-color:var(--brand);color:#fff}
+.nms-telemetry-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.dashboard-v119{gap:10px!important}.dashboard-v119 .command-kpis,.dashboard-v119 .command-pulse-grid,.dashboard-v119 .dashboard-widgets-v121,.dashboard-v119 .dashboard-dense-core,.dashboard-v119 .dashboard-customer-watch-grid,.dashboard-v119 .command-main-grid{gap:8px!important}.dashboard-v119 .command-hero,.dashboard-v119 .psb-hero-v119{margin-bottom:10px!important}
+@media(max-width:900px){.nms-telemetry-grid{grid-template-columns:1fr}}
+
 /* v1.26.2 — Dashboard density: keep the operational overview compact without
    squeezing the content inside each widget. The dashboard is one flow, so the
    outer grid controls the vertical rhythm and individual cards retain their own
@@ -1401,3 +1421,31 @@ html[data-theme="dark"] .closing-manual-only .closing-table td{color:var(--text)
   .closing-toggle,.closing-period-submit,.closing-form-grid .span-2,.closing-form-grid .span-3,.closing-settings-grid .closing-notes-field,.closing-adjustment-description,.closing-settings-grid>button,.closing-adjustment-grid>button,.closing-router-grid>button{grid-column:auto}
   .closing-pdf-actions{grid-template-columns:1fr}
 }
+
+/* INKAMNET GO — denser native-app rhythm without changing desktop/browser UI. */
+@media(max-width:767.98px){
+  body.inkamnet-go-app{overscroll-behavior-y:none;-webkit-tap-highlight-color:transparent}
+  body.inkamnet-go-app .topbar{min-height:58px;padding-top:max(0px,env(safe-area-inset-top));background:color-mix(in srgb,var(--panel) 94%,transparent);backdrop-filter:blur(16px)}
+  body.inkamnet-go-app .content-wrap{padding:14px 12px calc(26px + env(safe-area-inset-bottom))}
+  body.inkamnet-go-app .module-head{margin-bottom:16px}
+  body.inkamnet-go-app .module-head h1{font-size:1.12rem}
+  body.inkamnet-go-app .data-card,
+  body.inkamnet-go-app .filter-card,
+  body.inkamnet-go-app .form-card,
+  body.inkamnet-go-app .metric-card,
+  body.inkamnet-go-app .ink-panel,
+  body.inkamnet-go-app .command-panel{border-radius:12px!important}
+  body.inkamnet-go-app .btn-tech,
+  body.inkamnet-go-app .form-control,
+  body.inkamnet-go-app .form-select,
+  body.inkamnet-go-app .icon-button{min-height:44px}
+  body.inkamnet-go-app .app-footer{display:none}
+  body.inkamnet-go-app .sidebar{padding-bottom:env(safe-area-inset-bottom)}
+}
+
+/* Mobile crash observability tab. */
+.log-summary-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
+.log-table details summary{cursor:pointer;color:var(--accent-text);font-weight:750}
+.log-table details pre{max-width:620px;max-height:220px;overflow:auto;white-space:pre-wrap;word-break:break-word;color:var(--muted);font-size:.52rem}
+@media(max-width:1199.98px){.log-summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:767.98px){.log-summary-grid{grid-template-columns:1fr}}

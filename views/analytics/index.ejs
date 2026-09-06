@@ -29,7 +29,7 @@ const psbActivated = (funnel.find(f => f.key === 'active') || {}).value || 0;
         <select name="month" class="form-select"><% monthNames.forEach((m, i) => { %><option value="<%= i + 1 %>" <%= month === i + 1 ? 'selected' : '' %>><%= m %></option><% }) %></select>
         <input class="form-control" type="number" name="year" min="2020" max="2100" value="<%= year %>">
       </form>
-      <button type="button" class="btn-tech primary" data-bs-toggle="modal" data-bs-target="#analyticsReportModal"><i class="bi bi-file-earmark-bar-graph-fill"></i>Generate Laporan Analitik</button>
+      <div class="module-actions"><button type="button" class="btn-tech primary" data-bs-toggle="modal" data-bs-target="#analyticsReportModal"><i class="bi bi-file-earmark-bar-graph-fill"></i>Ringkasan</button><a class="btn-tech" href="/analytics/export.pdf?site=<%= encodeURIComponent(selectedSiteCode) %>&month=<%= month %>&year=<%= year %>"><i class="bi bi-filetype-pdf"></i>PDF</a><a class="btn-tech" href="/analytics/export.xlsx?site=<%= encodeURIComponent(selectedSiteCode) %>&month=<%= month %>&year=<%= year %>"><i class="bi bi-file-earmark-spreadsheet"></i>Excel</a></div>
     </div>
   </div>
 
@@ -70,6 +70,10 @@ const psbActivated = (funnel.find(f => f.key === 'active') || {}).value || 0;
       <div class="analytics-section-title"><div><span>CASHFLOW STREAM</span><h2>Tren Inflow vs Outflow — 6 Bulan Terakhir</h2></div></div>
       <div class="analytics-chart"><canvas id="analyticsCashflowChart"></canvas></div>
     </article>
+    <div class="analytics-finance-grid analytics-forecast-grid">
+      <article class="analytics-chart-card"><div class="analytics-section-title"><div><span>FORECAST</span><h2>Proyeksi Bulan Berikutnya</h2></div></div><div class="analytics-mini-stats"><div class="safe"><span>Proyeksi inflow</span><strong><%= formatRupiah(projection?.projectedInflow||0) %></strong></div><div class="warn"><span>Proyeksi outflow</span><strong><%= formatRupiah(projection?.projectedOutflow||0) %></strong></div><div><span>Proyeksi net</span><strong class="<%= Number(projection?.projectedNet||0)>=0?'text-success':'text-danger' %>"><%= formatRupiah(projection?.projectedNet||0) %></strong></div></div><small class="text-secondary">Metode: <%= projection?.method||'rata-rata historis' %>.</small></article>
+      <article class="analytics-chart-card"><div class="analytics-section-title"><div><span>CHURN REASONS</span><h2>Alasan Pelanggan Berhenti</h2></div></div><div class="analytics-mini-stats"><% (churnReasons||[]).slice(0,6).forEach(row=>{ %><div><span><%= row.reason %></span><strong><%= row.total %></strong></div><% }) %><% if(!(churnReasons||[]).length){ %><div><span>Belum ada data alasan</span><strong>0</strong></div><% } %></div></article>
+    </div>
   </div>
 
   <!-- ===================== TAB 2: ANALITIK KEUANGAN ===================== -->

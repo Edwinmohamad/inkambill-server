@@ -1,0 +1,13 @@
+{
+  "name": "INKAMBILLING - Ticket Lifecycle",
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "nodes": [
+    { "parameters": { "httpMethod": "POST", "path": "inkambilling/ticket-lifecycle", "responseMode": "responseNode" }, "id": "ticket-webhook", "name": "Ticket Event", "type": "n8n-nodes-base.webhook", "typeVersion": 2, "position": [260, 300], "webhookId": "inkambilling-ticket-lifecycle" },
+    { "parameters": { "conditions": { "string": [ { "value1": "={{$json.event_type}}", "operation": "equals", "value2": "update" } ] } }, "id": "ticket-if", "name": "Event Type?", "type": "n8n-nodes-base.if", "typeVersion": 2.2, "position": [480, 300] },
+    { "parameters": { "method": "POST", "url": "={{$env.INKAMBILLING_URL}}/api/n8n/tickets", "sendHeaders": true, "headerParameters": { "parameters": [ { "name": "X-N8N-TOKEN", "value": "={{$env.INKAMBILLING_N8N_TOKEN}}" }, { "name": "X-Idempotency-Key", "value": "={{$json.event_key || $execution.id}}" } ] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{$json}}" }, "id": "ticket-http", "name": "Create Ticket", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [740, 400] },
+    { "parameters": { "method": "PATCH", "url": "={{$env.INKAMBILLING_URL}}/api/n8n/tickets/{{$json.ticket_id}}", "sendHeaders": true, "headerParameters": { "parameters": [ { "name": "X-N8N-TOKEN", "value": "={{$env.INKAMBILLING_N8N_TOKEN}}" }, { "name": "X-Idempotency-Key", "value": "={{$json.event_key || $execution.id}}" } ] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{$json}}" }, "id": "ticket-update-http", "name": "Update Status / SLA", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [740, 200] },
+    { "parameters": { "respondWith": "json", "responseBody": "={{$json}}", "options": {} }, "id": "ticket-response", "name": "Response", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1.1, "position": [800, 300] }
+  ],
+  "connections": { "Ticket Event": { "main": [ [ { "node": "Event Type?", "type": "main", "index": 0 } ] ] }, "Event Type?": { "main": [ [ { "node": "Update Status / SLA", "type": "main", "index": 0 } ], [ { "node": "Create Ticket", "type": "main", "index": 0 } ] ] }, "Create Ticket": { "main": [ [ { "node": "Response", "type": "main", "index": 0 } ] ] }, "Update Status / SLA": { "main": [ [ { "node": "Response", "type": "main", "index": 0 } ] ] } }
+}

@@ -1,0 +1,30 @@
+const fs = require('fs');
+const path = require('path');
+
+const root = path.join(__dirname, '..');
+const read = file => fs.readFileSync(path.join(root, file), 'utf8');
+const assert = (condition, message) => { if (!condition) throw new Error(message); };
+
+const app = read('app.js');
+assert(app.includes('ensureV38Schema'), 'Bootstrap schema V38 belum dipanggil.');
+assert(app.includes("app.use('/api/n8n', requireN8nToken"), 'Route n8n belum dipasang dengan token.');
+const schema = read('services/schemaService.js');
+for (const marker of ['nms_interface_samples', 'nms_pppoe_sessions', 'nms_router_backups', 'inventory_categories', 'inventory_stock_alerts', 'piket_proofs', 'n8n_webhook_events']) assert(schema.includes(marker), `Schema ${marker} belum ada.`);
+const csrf = read('middleware/csrf.js');
+assert(csrf.includes('n8nWebhook') && csrf.includes('!n8nWebhook'), 'Pengecualian CSRF n8n tidak aman/tidak lengkap.');
+const n8nMiddleware = read('middleware/n8n.js');
+assert(n8nMiddleware.includes('timingSafeEqual') && n8nMiddleware.includes('N8N_API_TOKEN'), 'Token n8n tidak memakai perbandingan aman.');
+const inventory = read('routes/inventory.js');
+for (const marker of ["/:id/delete", "'/:id/qr", 'inventory_categories', 'syncStockAlert']) assert(inventory.includes(marker), `Fitur inventory ${marker} belum ada.`);
+const analytics = read('routes/analytics.js');
+assert(analytics.includes("/export.pdf") && analytics.includes("/export.xlsx") && analytics.includes('createReportPdf'), 'Export analytics PDF/Excel belum lengkap.');
+const telemetry = read('services/nmsTelemetryService.js');
+assert(telemetry.includes('captureInterfaceTraffic') && telemetry.includes('capturePppoeSessions') && telemetry.includes('runRouterBackup'), 'Telemetry NMS belum lengkap.');
+const dashboard = read('views/dashboard/index.ejs');
+assert(!dashboard.includes('class="command-telemetry-rail"'), 'Rail telemetry teknis masih tampil di dashboard utama.');
+const css = read('public/css/app.css');
+assert(css.includes('--bg:#e3e6eb') && css.includes('Soft neutral light mode'), 'Palet light mode lembut belum diterapkan.');
+const workflowFiles = fs.readdirSync(path.join(root, 'n8n')).filter(file => file.endsWith('.json'));
+assert(workflowFiles.length >= 5, 'Lima workflow n8n belum tersedia.');
+for (const file of workflowFiles) JSON.parse(read(`n8n/${file}`));
+console.log(`v1.28 feature validation OK: ${workflowFiles.length} workflow n8n, schema V38, NMS telemetry, inventory controls, exports, and soft light theme.`);

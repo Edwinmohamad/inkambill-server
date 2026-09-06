@@ -47,7 +47,7 @@ async function runAutoIsolation() {
   if (!settings?.auto_isolate) return {enabled:false,isolated:0,failed:0};
   await db.query(`UPDATE invoices SET status='overdue' WHERE status IN ('unpaid','partial') AND due_date<CURDATE()`);
   const [rows]=await db.query(`
-    SELECT DISTINCT c.id,c.customer_code
+    SELECT DISTINCT c.id,c.customer_code,c.router_id
     FROM invoices i JOIN customers c ON c.id=i.customer_id
     JOIN sites s ON s.id=c.site_id
     CROSS JOIN settings st
@@ -58,7 +58,7 @@ async function runAutoIsolation() {
   `);
   let isolated=0,failed=0;
   for(const row of rows){
-    try { await isolateCustomer(row.id,'billing'); isolated++; }
+    try { await isolateCustomer(row.id,'billing'); isolated++; await db.execute(`INSERT IGNORE INTO nms_auto_isolate_logs(customer_id,router_id,action,idempotency_key,reason) VALUES(?,?,?,?,?)`,[row.id,row.router_id,'isolate',`billing:${row.id}:${new Date().toISOString().slice(0,10)}`,'invoice overdue + grace period']); }
     catch(e){ failed++; await db.execute(`INSERT INTO automation_logs(job_name,status,message) VALUES('auto_isolate','failed',?)`,[`${row.customer_code}: ${e.message}`.slice(0,1000)]); }
   }
   await db.execute(`INSERT INTO automation_logs(job_name,status,message) VALUES('auto_isolate','success',?)`,[`isolated=${isolated}, failed=${failed}`]);

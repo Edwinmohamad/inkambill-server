@@ -1,0 +1,10 @@
+{
+  "name": "INKAMBILLING - Auto Billing Reminder",
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "nodes": [
+    { "parameters": { "triggerTimes": { "item": [ { "mode": "everyDay", "hour": 9, "minute": 0 } ] } }, "id": "reminder-cron", "name": "Setiap Hari 09:00", "type": "n8n-nodes-base.cron", "typeVersion": 1, "position": [260, 300] },
+    { "parameters": { "method": "POST", "url": "={{$env.INKAMBILLING_URL}}/api/n8n/billing/reminder", "sendHeaders": true, "headerParameters": { "parameters": [ { "name": "X-N8N-TOKEN", "value": "={{$env.INKAMBILLING_N8N_TOKEN}}" }, { "name": "X-Idempotency-Key", "value": "=billing-reminder:{{$now.toFormat('yyyy-MM-dd')}}" } ] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ { event_key: 'billing-reminder:' + $now.toFormat('yyyy-MM-dd') } }}" }, "id": "reminder-http", "name": "Queue WA Reminder", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [540, 300] }
+  ],
+  "connections": { "Setiap Hari 09:00": { "main": [ [ { "node": "Queue WA Reminder", "type": "main", "index": 0 } ] ] } }
+}
