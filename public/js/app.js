@@ -1,9 +1,6 @@
 (() => {
   const html = document.documentElement;
   const body = document.body;
-  // Native Android shell marker. This is presentation-only; authentication and
-  // permissions continue to be enforced by the server.
-  if (navigator.userAgent.includes('INKAMNET-GO/')) body.classList.add('inkamnet-go-app');
   // v1.23 — WA Gateway connection flag, read once from the layout's <meta> tag (see middleware/common.js
   // res.locals.waGatewayConnected). Declared at the top of this IIFE so every block below can use it.
   const waGatewayConnectedGlobal = document.querySelector('meta[name="wa-gateway-connected"]')?.content === '1';

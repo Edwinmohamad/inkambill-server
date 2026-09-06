@@ -27,16 +27,10 @@ router.get('/',async(req,res)=>{
   if(status){automationWhere+=' AND status=?';automationParams.push(status);}
   const [automation]=await db.execute(`SELECT * FROM automation_logs WHERE ${automationWhere} ORDER BY id DESC LIMIT 250`,automationParams);
 
-  const crashParams=[];let crashWhere='1=1';
-  if(q){const like=`%${q}%`;crashWhere+=' AND (m.exception_class LIKE ? OR m.message LIKE ? OR m.device_model LIKE ? OR u.name LIKE ?)';crashParams.push(like,like,like,like);}
-  if(dateFrom){crashWhere+=' AND DATE(m.created_at)>=?';crashParams.push(dateFrom);}
-  if(dateTo){crashWhere+=' AND DATE(m.created_at)<=?';crashParams.push(dateTo);}
-  const [mobileCrashes]=await db.execute(`SELECT m.*,u.name user_name FROM mobile_crash_reports m LEFT JOIN users u ON u.id=m.user_id WHERE ${crashWhere} ORDER BY m.id DESC LIMIT 150`,crashParams);
-
   const [actionRows]=await db.execute(`SELECT DISTINCT action FROM audit_logs WHERE action IS NOT NULL AND action<>'' ORDER BY action`);
   const actions=actionRows.map(r=>r.action);
 
-  const summary={audit:audit.length,automation:automation.length,failed:automation.filter(x=>x.status==='failed').length,success:automation.filter(x=>x.status==='success').length,mobileCrashes:mobileCrashes.length};
-  res.render('logs/index',{title:'Log Aktivitas',audit,automation,mobileCrashes,summary,q,actions,filters:{date_from:dateFrom,date_to:dateTo,action,status}});
+  const summary={audit:audit.length,automation:automation.length,failed:automation.filter(x=>x.status==='failed').length,success:automation.filter(x=>x.status==='success').length};
+  res.render('logs/index',{title:'Log Aktivitas',audit,automation,summary,q,actions,filters:{date_from:dateFrom,date_to:dateTo,action,status}});
 });
 module.exports=router;

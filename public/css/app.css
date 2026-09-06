@@ -1421,31 +1421,3 @@ html[data-theme="dark"] .closing-manual-only .closing-table td{color:var(--text)
   .closing-toggle,.closing-period-submit,.closing-form-grid .span-2,.closing-form-grid .span-3,.closing-settings-grid .closing-notes-field,.closing-adjustment-description,.closing-settings-grid>button,.closing-adjustment-grid>button,.closing-router-grid>button{grid-column:auto}
   .closing-pdf-actions{grid-template-columns:1fr}
 }
-
-/* INKAMNET GO — denser native-app rhythm without changing desktop/browser UI. */
-@media(max-width:767.98px){
-  body.inkamnet-go-app{overscroll-behavior-y:none;-webkit-tap-highlight-color:transparent}
-  body.inkamnet-go-app .topbar{min-height:58px;padding-top:max(0px,env(safe-area-inset-top));background:color-mix(in srgb,var(--panel) 94%,transparent);backdrop-filter:blur(16px)}
-  body.inkamnet-go-app .content-wrap{padding:14px 12px calc(26px + env(safe-area-inset-bottom))}
-  body.inkamnet-go-app .module-head{margin-bottom:16px}
-  body.inkamnet-go-app .module-head h1{font-size:1.12rem}
-  body.inkamnet-go-app .data-card,
-  body.inkamnet-go-app .filter-card,
-  body.inkamnet-go-app .form-card,
-  body.inkamnet-go-app .metric-card,
-  body.inkamnet-go-app .ink-panel,
-  body.inkamnet-go-app .command-panel{border-radius:12px!important}
-  body.inkamnet-go-app .btn-tech,
-  body.inkamnet-go-app .form-control,
-  body.inkamnet-go-app .form-select,
-  body.inkamnet-go-app .icon-button{min-height:44px}
-  body.inkamnet-go-app .app-footer{display:none}
-  body.inkamnet-go-app .sidebar{padding-bottom:env(safe-area-inset-bottom)}
-}
-
-/* Mobile crash observability tab. */
-.log-summary-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
-.log-table details summary{cursor:pointer;color:var(--accent-text);font-weight:750}
-.log-table details pre{max-width:620px;max-height:220px;overflow:auto;white-space:pre-wrap;word-break:break-word;color:var(--muted);font-size:.52rem}
-@media(max-width:1199.98px){.log-summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media(max-width:767.98px){.log-summary-grid{grid-template-columns:1fr}}
