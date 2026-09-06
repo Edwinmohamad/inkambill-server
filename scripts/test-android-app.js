@@ -67,6 +67,8 @@ const checks = [
     && csrf.includes('req.session?.user')
     && csrf.includes("req.is('application/json')"), 'CSRF mobile terbatas'],
   [workflow.includes('apksigner') && workflow.includes('android-emulator-runner'), 'signature dan emulator CI'],
+  [workflow.includes('test -s "${GITHUB_WORKSPACE}/android-artifact/INKAMNET-GO-v1.1.0.apk"')
+    && !workflow.includes('APK_PATH="${GITHUB_WORKSPACE}/android-artifact'), 'path APK emulator tidak bergantung pada shell sebelumnya'],
   [security.includes('cleartextTrafficPermitted="false"'), 'network security HTTPS-only'],
   [!activity.includes('handler.proceed()'), 'tidak melewati error SSL'],
   [!activity.includes('addJavascriptInterface'), 'tidak ada JS bridge berisiko']

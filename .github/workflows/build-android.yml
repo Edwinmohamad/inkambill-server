@@ -32,10 +32,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -91,7 +91,7 @@ jobs:
           cp android/app/build/reports/lint-results-debug.html android/app/build/outputs/final/lint-results-debug.html
 
       - name: Upload installable APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: INKAMNET-GO-APK
           path: android/app/build/outputs/final/*
@@ -110,10 +110,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download APK artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: INKAMNET-GO-APK
           path: android-artifact
@@ -126,18 +126,16 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
-            APK_PATH="${GITHUB_WORKSPACE}/android-artifact/INKAMNET-GO-v1.1.0.apk"
-            APK_PACKAGE="$(cat "${GITHUB_WORKSPACE}/android-artifact/package-name.txt")"
-            test -s "${APK_PATH}"
-            adb install -r "${APK_PATH}"
-            adb shell am start -W -n "${APK_PACKAGE}/id.my.edwinpxmx.inkamnetgo.MainActivity" | tee "emulator-launch-${{ matrix.api }}.txt"
+            test -s "${GITHUB_WORKSPACE}/android-artifact/INKAMNET-GO-v1.1.0.apk"
+            adb install -r "${GITHUB_WORKSPACE}/android-artifact/INKAMNET-GO-v1.1.0.apk"
+            adb shell am start -W -n "$(cat "${GITHUB_WORKSPACE}/android-artifact/package-name.txt")/id.my.edwinpxmx.inkamnetgo.MainActivity" | tee "emulator-launch-${{ matrix.api }}.txt"
             sleep 8
-            adb shell pidof "${APK_PACKAGE}"
+            adb shell pidof "$(cat "${GITHUB_WORKSPACE}/android-artifact/package-name.txt")"
             grep -q "Status: ok" "emulator-launch-${{ matrix.api }}.txt"
             adb exec-out screencap -p > "emulator-smoke-${{ matrix.api }}.png"
 
       - name: Upload emulator evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: INKAMNET-GO-emulator-Android-${{ matrix.api }}
           path: |
@@ -154,7 +152,7 @@ jobs:
 
     steps:
       - name: Download verified APK
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: INKAMNET-GO-APK
           path: mobile-release
