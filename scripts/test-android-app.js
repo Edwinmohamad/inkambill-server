@@ -18,6 +18,7 @@ const required = [
   'android/app/src/main/java/id/my/edwinpxmx/inkamnetgo/GoFirebaseMessagingService.java',
   'android/app/src/main/java/id/my/edwinpxmx/inkamnetgo/InkamnetGoApplication.java',
   'android/generate-release-signing.sh',
+  'scripts/android-emulator-smoke.sh',
   'routes/mobile.js',
   '.github/workflows/build-android.yml'
 ];
@@ -33,6 +34,7 @@ const security = fs.readFileSync(path.join(root, 'android/app/src/main/res/xml/n
 const workflow = fs.readFileSync(path.join(root, '.github/workflows/build-android.yml'), 'utf8');
 const mobileRoute = fs.readFileSync(path.join(root, 'routes/mobile.js'), 'utf8');
 const csrf = fs.readFileSync(path.join(root, 'middleware/csrf.js'), 'utf8');
+const emulatorSmoke = fs.readFileSync(path.join(root, 'scripts/android-emulator-smoke.sh'), 'utf8');
 
 const checks = [
   [manifest.includes('android:label="INKAMNET GO"'), 'label aplikasi'],
@@ -67,8 +69,11 @@ const checks = [
     && csrf.includes('req.session?.user')
     && csrf.includes("req.is('application/json')"), 'CSRF mobile terbatas'],
   [workflow.includes('apksigner') && workflow.includes('android-emulator-runner'), 'signature dan emulator CI'],
-  [workflow.includes('test -s "${GITHUB_WORKSPACE}/android-artifact/INKAMNET-GO-v1.1.0.apk"')
-    && !workflow.includes('APK_PATH="${GITHUB_WORKSPACE}/android-artifact'), 'path APK emulator tidak bergantung pada shell sebelumnya'],
+  [workflow.includes('bash scripts/android-emulator-smoke.sh')
+    && emulatorSmoke.includes('adb wait-for-device')
+    && emulatorSmoke.includes('sys.boot_completed')
+    && emulatorSmoke.includes('adb install -r -g')
+    && emulatorSmoke.includes('dumpsys activity activities'), 'smoke test emulator persisten dan menunggu boot'],
   [security.includes('cleartextTrafficPermitted="false"'), 'network security HTTPS-only'],
   [!activity.includes('handler.proceed()'), 'tidak melewati error SSL'],
   [!activity.includes('addJavascriptInterface'), 'tidak ada JS bridge berisiko']

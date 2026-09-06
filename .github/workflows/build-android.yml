@@ -125,22 +125,17 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: |
-            test -s "${GITHUB_WORKSPACE}/android-artifact/INKAMNET-GO-v1.1.0.apk"
-            adb install -r "${GITHUB_WORKSPACE}/android-artifact/INKAMNET-GO-v1.1.0.apk"
-            adb shell am start -W -n "$(cat "${GITHUB_WORKSPACE}/android-artifact/package-name.txt")/id.my.edwinpxmx.inkamnetgo.MainActivity" | tee "emulator-launch-${{ matrix.api }}.txt"
-            sleep 8
-            adb shell pidof "$(cat "${GITHUB_WORKSPACE}/android-artifact/package-name.txt")"
-            grep -q "Status: ok" "emulator-launch-${{ matrix.api }}.txt"
-            adb exec-out screencap -p > "emulator-smoke-${{ matrix.api }}.png"
+          script: bash scripts/android-emulator-smoke.sh "${{ matrix.api }}" "${GITHUB_WORKSPACE}/android-artifact"
 
       - name: Upload emulator evidence
+        if: always()
         uses: actions/upload-artifact@v5
         with:
           name: INKAMNET-GO-emulator-Android-${{ matrix.api }}
           path: |
             emulator-launch-${{ matrix.api }}.txt
             emulator-smoke-${{ matrix.api }}.png
+            emulator-logcat-${{ matrix.api }}.txt
           if-no-files-found: error
           retention-days: 14
 
