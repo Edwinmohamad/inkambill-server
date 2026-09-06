@@ -1,7 +1,8 @@
 const express = require('express');
 const crypto = require('crypto');
+const ExcelJS = require('exceljs');
 const db = require('../config/db');
-const { createReportPdf, rupiah } = require('../services/reportPdf');
+const { createClosingReportPdf, rupiah, date } = require('../services/reportPdf');
 const { money, personKey, siteBlock, locationText, buildClosingCalculation } = require('../services/closingCalculator');
 
 const router = express.Router();
@@ -103,24 +104,17 @@ async function loadClosing(start, end) {
   const [[period]] = await db.execute('SELECT * FROM closing_periods WHERE period_start=? AND period_end=? LIMIT 1', [start, end]);
   const closing = period || { status: 'DRAFT', manual_revenue: 0, manual_expense: 0, manual_carry: 0, manual_salary_agung: 500000, manual_salary_padilah: 1000000, notes: '' };
 
-  if (period?.status === 'LOCKED' && period.snapshot_json) {
-    try {
-      const snapshot = JSON.parse(period.snapshot_json);
-      if (snapshot && snapshot.blocks && Array.isArray(snapshot.payments) && Array.isArray(snapshot.expenses)) {
-        return { ...snapshot, payments: snapshot.payments, expenses: snapshot.expenses, heldCash: Array.isArray(snapshot.heldCash) ? snapshot.heldCash : [], routerAssets: Array.isArray(snapshot.routerAssets) ? snapshot.routerAssets : [], adjustments: Array.isArray(snapshot.adjustments) ? snapshot.adjustments : [], lineItems: Array.isArray(snapshot.lineItems) ? snapshot.lineItems : [], salaryRows: Array.isArray(snapshot.salaryRows) ? snapshot.salaryRows : [], salaryByOwner: snapshot.salaryByOwner || {}, closing: period, period, lockedSnapshot: true };
-      }
-    } catch (err) { console.error('Snapshot Closing tidak valid, memakai data live:', err.message); }
-  }
-
+  // v1.29 — Closing is fully flexible now: every period always recalculates from
+  // the live rows below (no more frozen snapshot_json / LOCKED short-circuit), so
+  // edits made after a period was previously marked LOCKED show up immediately.
   // Manual-only source: Closing never reads billing, payments, cash journals,
   // or staff-held cash. Every amount must be entered in this module.
-  const [routerAssets] = await db.execute(`SELECT id,customer_name,site_code,cluster_name,owner_name,units,status,active_from,active_until,notes FROM closing_router_assets WHERE active_from<=? AND (active_until IS NULL OR active_until>=?) ORDER BY site_code,cluster_name,customer_name`, [end, start]);
   const [adjustments] = period ? await db.execute('SELECT * FROM closing_adjustments WHERE closing_id=? ORDER BY id', [period.id]) : [[]];
   const [lineItems] = period ? await db.execute('SELECT * FROM closing_entries WHERE closing_id=? ORDER BY entry_date DESC,id DESC', [period.id]) : [[]];
   const manualPayments = lineItems.filter((row) => row.entry_type === 'INCOME').map(manualIncomeRow);
   const manualExpenses = lineItems.filter((row) => row.entry_type === 'EXPENSE').map(manualExpenseRow);
-  const calculated = buildClosingCalculation({ payments: manualPayments, expenses: manualExpenses, heldCash: [], routerAssets, adjustments, closing, mode: selectedMode, lineItems });
-  return { ...calculated, closing, period, payments: manualPayments, expenses: manualExpenses, heldCash: [], routerAssets, lockedSnapshot: false };
+  const calculated = buildClosingCalculation({ payments: manualPayments, expenses: manualExpenses, heldCash: [], adjustments, closing, mode: selectedMode, lineItems });
+  return { ...calculated, closing, period, payments: manualPayments, expenses: manualExpenses, heldCash: [] };
 }
 
 async function ensureDraftPeriod(conn, start, end, userId) {
@@ -163,12 +157,35 @@ router.use((req, res, next) => {
   return res.redirect(`/closing/unlock?next=${encodeURIComponent(localNext(req.originalUrl))}`);
 });
 
+// v1.29 — informational only: never joined into buildClosingCalculation, so it
+// can never change Pendapatan/Bersih. Purely a reminder of who still owes money
+// as of the end of this closing period, scoped to the same CDS/KBG sites.
+async function loadUnpaidCustomers(end) {
+  try {
+    const [rows] = await db.execute(`SELECT c.id,c.customer_code,c.name,s.code site_code,cl.name cluster_name,
+        COUNT(i.id) invoice_count, COALESCE(SUM(i.outstanding),0) outstanding
+      FROM invoices i
+      JOIN customers c ON c.id=i.customer_id
+      JOIN sites s ON s.id=c.site_id
+      LEFT JOIN clusters cl ON cl.id=c.cluster_id
+      WHERE i.status IN ('unpaid','partial','overdue') AND i.outstanding>0 AND i.due_date<=? AND s.code IN ('CDS','KBG')
+      GROUP BY c.id,c.customer_code,c.name,s.code,cl.name
+      ORDER BY outstanding DESC LIMIT 100`, [end]);
+    const outstanding = rows.reduce((a, r) => a + Number(r.outstanding || 0), 0);
+    return { unpaidCustomers: rows, unpaidSummary: { count: rows.length, outstanding } };
+  } catch (err) {
+    console.error('Gagal memuat pelanggan belum lunas untuk Closing:', err.message);
+    return { unpaidCustomers: [], unpaidSummary: { count: 0, outstanding: 0 } };
+  }
+}
+
 router.get('/', async (req, res, next) => {
   try {
     const { start, end, mode, hideEdwin } = selectedPeriod(req);
     if (start > end) return res.status(400).send('Periode tidak valid.');
     const data = await loadClosing(start, end);
-    res.render('closing/index', { title: 'Closing', pageTitle: 'Closing', pageSubtitle: `${start} s/d ${end}`, start, end, mode, hideEdwin, money, locationText, ...data });
+    const unpaid = await loadUnpaidCustomers(end);
+    res.render('closing/index', { title: 'Closing', pageTitle: 'Closing', pageSubtitle: `${start} s/d ${end}`, start, end, mode, hideEdwin, money, locationText, ...data, ...unpaid });
   } catch (err) { next(err); }
 });
 
@@ -178,7 +195,8 @@ router.post('/save', async (req, res, next) => {
     if (start > end) return res.status(400).send('Periode tidak valid.');
     const n = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
     const [[old]] = await db.execute('SELECT id,status,manual_revenue,manual_expense,manual_salary_agung,manual_salary_padilah FROM closing_periods WHERE period_start=? AND period_end=? LIMIT 1', [start, end]);
-    if (old?.status === 'LOCKED') return res.status(409).send('Closing sudah dikunci.');
+    // v1.29 — Closing is always editable now; the previous LOCKED 409 guard here
+    // (and on every entries/adjustments route below) has been removed on purpose.
     // The simplified manual form no longer sends legacy total fields. Preserve
     // those values when an older draft is edited so saving salary/notes cannot
     // silently erase a previous manual total. Detailed rows remain authoritative
@@ -214,7 +232,6 @@ router.post('/entries', async (req, res, next) => {
     conn = await db.getConnection();
     await conn.beginTransaction();
     const period = await ensureDraftPeriod(conn, start, end, req.session.user.id);
-    if (period.status === 'LOCKED') { await conn.rollback(); return res.status(409).send('Closing sudah dikunci.'); }
     await conn.execute('INSERT INTO closing_entries(closing_id,entry_type,site_code,cluster_name,category,amount,entry_date,description,created_by) VALUES(?,?,?,?,?,?,?,?,?)', [period.id, entryType, site.site, site.cluster, category, amount, entryDate, description, req.session.user.id]);
     await conn.commit();
     req.session.flash = { type: 'success', message: `${entryType === 'INCOME' ? 'Pendapatan' : 'Pengeluaran'} ditambahkan ke kalkulator.` };
@@ -222,14 +239,35 @@ router.post('/entries', async (req, res, next) => {
   } catch (err) { if (conn) await conn.rollback(); next(err); } finally { if (conn) conn.release(); }
 });
 
+router.post('/entries/:id/update', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const { start, end } = selectedPeriod(req);
+    if (!Number.isInteger(id) || id < 1) return res.status(400).send('Transaksi tidak valid.');
+    const [[entry]] = await db.execute('SELECT id,entry_type FROM closing_entries WHERE id=? LIMIT 1', [id]);
+    if (!entry) return res.status(404).send('Transaksi tidak ditemukan.');
+    const site = normalizeSiteCluster(req.body.site_code, req.body.cluster_name);
+    if (!site) return res.status(400).send('Lokasi hanya boleh CDS atau KBG.');
+    const entryDate = validDate(req.body.entry_date) ? req.body.entry_date : '';
+    if (!entryDate) return res.status(400).send('Tanggal tidak valid.');
+    const amount = money(req.body.amount);
+    if (amount <= 0) return res.status(400).send('Nominal harus lebih besar dari nol.');
+    const category = String(req.body.category || (entry.entry_type === 'INCOME' ? 'Pendapatan pelanggan' : '')).trim().slice(0, 120);
+    if (!category) return res.status(400).send('Kategori wajib diisi.');
+    const description = String(req.body.description || '').trim().slice(0, 255) || null;
+    await db.execute('UPDATE closing_entries SET site_code=?,cluster_name=?,category=?,amount=?,entry_date=?,description=? WHERE id=?', [site.site, site.cluster, category, amount, entryDate, description, id]);
+    req.session.flash = { type: 'success', message: 'Baris kalkulator diperbarui.' };
+    res.redirect(`/closing?from=${start}&to=${end}&mode=manual`);
+  } catch (err) { next(err); }
+});
+
 router.post('/entries/:id/delete', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const { start, end } = selectedPeriod(req);
     if (!Number.isInteger(id) || id < 1) return res.status(400).send('Transaksi tidak valid.');
-    const [[entry]] = await db.execute('SELECT ce.id,cp.status FROM closing_entries ce JOIN closing_periods cp ON cp.id=ce.closing_id WHERE ce.id=? LIMIT 1', [id]);
+    const [[entry]] = await db.execute('SELECT id FROM closing_entries WHERE id=? LIMIT 1', [id]);
     if (!entry) return res.status(404).send('Transaksi tidak ditemukan.');
-    if (entry.status === 'LOCKED') return res.status(409).send('Closing sudah dikunci.');
     await db.execute('DELETE FROM closing_entries WHERE id=?', [id]);
     req.session.flash = { type: 'success', message: 'Baris kalkulator dihapus.' };
     res.redirect(`/closing?from=${start}&to=${end}&mode=manual`);
@@ -255,7 +293,6 @@ router.post('/adjustments', async (req, res, next) => {
     conn = await db.getConnection();
     await conn.beginTransaction();
     const period = await ensureDraftPeriod(conn, start, end, req.session.user.id);
-    if (period.status === 'LOCKED') { await conn.rollback(); return res.status(409).send('Closing sudah dikunci.'); }
     await conn.execute('INSERT INTO closing_adjustments(closing_id,adjustment_type,site_code,recipient_name,amount,direction,description,created_by) VALUES(?,?,?,?,?,?,?,?)', [period.id, adjustmentType, site.site, recipient, amount, direction, description, req.session.user.id]);
     await conn.commit();
     req.session.flash = { type: 'success', message: 'Potongan/penyesuaian per orang tersimpan.' };
@@ -263,83 +300,42 @@ router.post('/adjustments', async (req, res, next) => {
   } catch (err) { if (conn) await conn.rollback(); next(err); } finally { if (conn) conn.release(); }
 });
 
+router.post('/adjustments/:id/update', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const { start, end } = selectedPeriod(req);
+    if (!Number.isInteger(id) || id < 1) return res.status(400).send('Penyesuaian tidak valid.');
+    const [[adjustment]] = await db.execute('SELECT id FROM closing_adjustments WHERE id=? LIMIT 1', [id]);
+    if (!adjustment) return res.status(404).send('Penyesuaian tidak ditemukan.');
+    const recipient = String(req.body.recipient_name || '').trim();
+    const direction = String(req.body.direction || '').trim().toUpperCase();
+    const adjustmentType = ['CASH_HOLD', 'MANUAL'].includes(String(req.body.adjustment_type || '').trim().toUpperCase())
+      ? String(req.body.adjustment_type).trim().toUpperCase()
+      : 'MANUAL';
+    const site = normalizeSiteCluster(req.body.site_code, '');
+    const amount = money(req.body.amount);
+    const description = String(req.body.description || '').trim().slice(0, 255) || null;
+    if (!['Edwin', 'Jon', 'Bopung', 'Mang Ali'].includes(recipient)) return res.status(400).send('Penerima potongan tidak valid.');
+    if (!['ADD', 'DEDUCT'].includes(direction)) return res.status(400).send('Arah penyesuaian tidak valid.');
+    if (adjustmentType === 'CASH_HOLD' && direction !== 'DEDUCT') return res.status(400).send('Cash belum setor harus menjadi potongan.');
+    if (!site || amount <= 0) return res.status(400).send('Lokasi dan nominal penyesuaian wajib valid.');
+    await db.execute('UPDATE closing_adjustments SET adjustment_type=?,site_code=?,recipient_name=?,amount=?,direction=?,description=? WHERE id=?', [adjustmentType, site.site, recipient, amount, direction, description, id]);
+    req.session.flash = { type: 'success', message: 'Penyesuaian diperbarui.' };
+    res.redirect(`/closing?from=${start}&to=${end}&mode=manual`);
+  } catch (err) { next(err); }
+});
+
 router.post('/adjustments/:id/delete', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const { start, end } = selectedPeriod(req);
     if (!Number.isInteger(id) || id < 1) return res.status(400).send('Penyesuaian tidak valid.');
-    const [[adjustment]] = await db.execute('SELECT ca.id,cp.status FROM closing_adjustments ca JOIN closing_periods cp ON cp.id=ca.closing_id WHERE ca.id=? LIMIT 1', [id]);
+    const [[adjustment]] = await db.execute('SELECT id FROM closing_adjustments WHERE id=? LIMIT 1', [id]);
     if (!adjustment) return res.status(404).send('Penyesuaian tidak ditemukan.');
-    if (adjustment.status === 'LOCKED') return res.status(409).send('Closing sudah dikunci.');
     await db.execute('DELETE FROM closing_adjustments WHERE id=?', [id]);
     req.session.flash = { type: 'success', message: 'Penyesuaian dihapus.' };
     res.redirect(`/closing?from=${start}&to=${end}&mode=manual`);
   } catch (err) { next(err); }
-});
-
-router.post('/router-assets', async (req, res, next) => {
-  try {
-    const { start, end } = selectedPeriod(req);
-    const name = String(req.body.customer_name || '').trim().slice(0, 180);
-    const owner = String(req.body.owner_name || '').trim().slice(0, 100);
-    const date = validDate(req.body.active_from) ? req.body.active_from : '';
-    const site = normalizeSiteCluster(req.body.site_code, req.body.cluster_name);
-    const rawUnits = Number(req.body.units);
-    const units = Number.isFinite(rawUnits) ? Math.max(1, Math.min(100, Math.floor(rawUnits))) : 1;
-    if (!name || !owner || !date || !site) return res.status(400).send('Nama pelanggan, site, dan tanggal mulai wajib diisi.');
-    if (date > end) return res.status(400).send('Tanggal mulai router tidak boleh setelah akhir periode closing.');
-    await db.execute('INSERT INTO closing_router_assets(customer_name,site_code,cluster_name,owner_name,units,active_from,status,notes,created_by) VALUES(?,?,?,?,?,?,?,?,?)', [name, site.site, site.cluster, owner, units, date, 'ACTIVE', String(req.body.notes || '').slice(0, 500), req.session.user.id]);
-    req.session.flash = { type: 'success', message: 'Data INVEST ROUTER tersimpan.' };
-    res.redirect(`/closing?from=${start}&to=${end}&mode=manual`);
-  } catch (err) { next(err); }
-});
-
-router.post('/router-assets/:id/status', async (req, res, next) => {
-  try {
-    const id = Number(req.params.id);
-    const { start, end } = selectedPeriod(req);
-    if (!Number.isInteger(id) || id < 1) return res.status(400).send('ID router tidak valid.');
-    const allowed = new Set(['ACTIVE', 'BROKEN', 'REPLACED', 'INACTIVE']);
-    const status = String(req.body.status || '').trim().toUpperCase();
-    const until = validDate(req.body.active_until) ? req.body.active_until : null;
-    if (!Number.isInteger(id) || id < 1 || !allowed.has(status)) return res.status(400).send('Status router tidak valid.');
-    const [[asset]] = await db.execute('SELECT id,active_from FROM closing_router_assets WHERE id=? LIMIT 1', [id]);
-    if (!asset) return res.status(404).send('Data router tidak ditemukan.');
-    if (until && until < localDateKey(asset.active_from)) return res.status(400).send('Tanggal berakhir tidak boleh sebelum tanggal mulai.');
-    await db.execute('UPDATE closing_router_assets SET status=?,active_until=? WHERE id=?', [status, status === 'ACTIVE' ? until : (until || localDateKey(new Date())), id]);
-    req.session.flash = { type: 'success', message: `Status router diperbarui menjadi ${status}.` };
-    res.redirect(`/closing?from=${start}&to=${end}&mode=manual`);
-  } catch (err) { next(err); }
-});
-
-router.post('/lock', async (req, res, next) => {
-  const { start, end, mode } = selectedPeriod(req);
-  let conn;
-  let committed = false;
-  try {
-    if (start > end) return res.status(400).send('Periode tidak valid.');
-    const [[existing]] = await db.execute('SELECT id,status FROM closing_periods WHERE period_start=? AND period_end=? LIMIT 1', [start, end]);
-    if (existing?.status === 'LOCKED') return res.redirect(`/closing?from=${start}&to=${end}&mode=${mode}`);
-    const preview = await loadClosing(start, end);
-    const unknown = preview.blocks.other || {};
-    if (money(unknown.revenue) !== 0 || money(unknown.expense) !== 0) return res.status(409).send('Closing belum dapat dikunci: masih ada data lokasi belum dipetakan.');
-    const snapshot = JSON.stringify({ mode: preview.mode, payments: preview.payments, expenses: preview.expenses, heldCash: preview.heldCash, routerAssets: preview.routerAssets, adjustments: preview.adjustments, lineItems: preview.lineItems, blocks: preview.blocks, salaryTotal: preview.salaryTotal, salaryByOwner: preview.salaryByOwner, salaryRows: preview.salaryRows, manualApplied: preview.manualApplied });
-    conn = await db.getConnection();
-    await conn.beginTransaction();
-    let [rows] = await conn.execute('SELECT * FROM closing_periods WHERE period_start=? AND period_end=? FOR UPDATE', [start, end]);
-    if (!rows.length) {
-      const [created] = await conn.execute('INSERT INTO closing_periods(period_start,period_end,closing_date,manual_salary_agung,manual_salary_padilah,created_by) VALUES(?,?,CURDATE(),?,?,?)', [start, end, 500000, 1000000, req.session.user.id]);
-      [rows] = await conn.execute('SELECT * FROM closing_periods WHERE id=? FOR UPDATE', [created.insertId]);
-    }
-    if (rows[0].status === 'LOCKED') { await conn.rollback(); return res.redirect(`/closing?from=${start}&to=${end}&mode=${mode}`); }
-    await conn.execute("UPDATE closing_periods SET status='LOCKED',locked_by=?,locked_at=NOW() WHERE id=?", [req.session.user.id, rows[0].id]);
-    await conn.execute('UPDATE closing_periods SET snapshot_json=? WHERE id=?', [snapshot, rows[0].id]);
-    await conn.execute('INSERT INTO closing_audit_logs(closing_id,action,details_json,actor_id) VALUES(?,?,?,?)', [rows[0].id, 'LOCK', JSON.stringify({ start, end, mode }), req.session.user.id]);
-    await conn.commit();
-    committed = true;
-    req.session.flash = { type: 'success', message: 'Closing berhasil dikunci.' };
-    res.redirect(`/closing?from=${start}&to=${end}&mode=${mode}`);
-  } catch (err) { if (conn && !committed) await conn.rollback(); next(err); } finally { if (conn) conn.release(); }
 });
 
 const PEOPLE = {
@@ -358,23 +354,38 @@ function recipientShare(block, key) {
   return (Array.isArray(block?.shares) ? block.shares : []).find((share) => personKey(share.name) === key) || null;
 }
 
-function addPersonDetailRows(rows, data, recipient, allowedBlocks = null) {
+// v1.29 — replaces the old flat addPersonDetailRows()/rows[] builder. Builds the
+// structured {blocks, adjustmentRows, transactionRows} shape the redesigned
+// createClosingReportPdf() renders as separate sections instead of one long table.
+function buildAdjustmentRows(data, recipient, allowedBlocks) {
   const key = recipient.key;
-  (data.heldCash || []).filter((row) => personKey(row.holder_name) === key && (!allowedBlocks || allowedBlocks.has(siteBlock(row.site_code, row.cluster_name, row.site_name)))).forEach((row) => rows.push({ type: 'POTONGAN CASH', lokasi: locationText(row), penerima: recipient.name, detail: `${row.paid_date} · ${row.customer_name} · cash belum setor`, nominal: `- ${rupiah(row.amount)}` }));
-  (data.routerAssets || []).filter((row) => personKey(row.owner_name) === key && (!allowedBlocks || allowedBlocks.has(siteBlock(row.site_code, row.cluster_name)))).forEach((row) => {
-    const value = Math.max(0, Number(row.units || 0)) * 20000;
-    const active = String(row.status || '').toUpperCase() === 'ACTIVE';
-    rows.push({ type: active ? 'INVEST ROUTER' : 'ROUTER TIDAK DIHITUNG', lokasi: locationText(row), penerima: recipient.name, detail: `${row.customer_name} · ${row.units} unit · ${row.status}`, nominal: active ? rupiah(value) : rupiah(0) });
-  });
+  const rows = [];
   const salary = money(data.salaryByOwner?.[key] || 0);
-  if (salary) rows.push({ type: 'POTONGAN GAJI', lokasi: 'CDS', penerima: recipient.name, detail: 'Beban Agung + Padilah sesuai persentase', nominal: `- ${rupiah(salary)}` });
-  (data.adjustments || []).filter((item) => personKey(item.recipient_name) === key && (!allowedBlocks || allowedBlocks.has(siteBlock(item.site_code || 'CDS')))).forEach((item) => {
+  if (salary && allowedBlocks.has('krwclm')) rows.push({ jenis: 'Potongan gaji', lokasi: 'CDS', keterangan: 'Beban Agung + Padilah sesuai persentase', nominal: -salary });
+  (data.adjustments || []).filter((item) => personKey(item.recipient_name) === key && allowedBlocks.has(siteBlock(item.site_code || 'CDS'))).forEach((item) => {
     const deduct = String(item.direction || '').toUpperCase() === 'DEDUCT';
-    const type = String(item.adjustment_type || '').toUpperCase() === 'CASH_HOLD'
-      ? 'POTONGAN CASH'
-      : (deduct ? 'POTONGAN MANUAL' : 'TAMBAHAN MANUAL');
-    rows.push({ type, lokasi: String(item.site_code || 'CDS').toUpperCase(), penerima: recipient.name, detail: item.description || (type === 'POTONGAN CASH' ? 'Cash belum disetor' : 'Penyesuaian manual'), nominal: `${deduct ? '- ' : ''}${rupiah(item.amount)}` });
+    const jenis = String(item.adjustment_type || '').toUpperCase() === 'CASH_HOLD'
+      ? 'Cash belum setor'
+      : (deduct ? 'Potongan manual' : 'Tambahan manual');
+    rows.push({ jenis, lokasi: String(item.site_code || 'CDS').toUpperCase(), keterangan: item.description || (jenis === 'Cash belum setor' ? 'Cash belum disetor' : 'Penyesuaian manual'), nominal: deduct ? -money(item.amount) : money(item.amount) });
   });
+  return rows;
+}
+function buildTransactionRows(data, allowedBlocks) {
+  const rows = [];
+  (data.payments || []).forEach((row) => {
+    const blockKey = siteBlock(row.site_code, row.cluster_name, row.site_name);
+    if (!allowedBlocks.has(blockKey)) return;
+    const manual = row.source_type === 'closing_manual';
+    rows.push({ tanggal: date(row.paid_date), lokasi: locationText(row), jenis: 'Pendapatan', keterangan: manual ? `${row.category || 'Manual'}${row.notes ? ` · ${row.notes}` : ''}` : (row.method || '-'), nominal: money(row.amount) });
+  });
+  (data.expenses || []).forEach((row) => {
+    const blockKey = siteBlock(row.site_code, row.site_name, row.cluster_name);
+    if (!allowedBlocks.has(blockKey)) return;
+    rows.push({ tanggal: date(row.transaction_date), lokasi: locationText(row), jenis: 'Pengeluaran', keterangan: `${row.category}${row.notes ? ` · ${row.notes}` : ''}`, nominal: money(row.amount) });
+  });
+  rows.sort((a, b) => (a.tanggal < b.tanggal ? 1 : a.tanggal > b.tanggal ? -1 : 0));
+  return rows;
 }
 
 router.get('/pdf', async (req, res, next) => {
@@ -385,57 +396,99 @@ router.get('/pdf', async (req, res, next) => {
     if (!recipient) return res.status(400).send('Penerima PDF tidak valid.');
     const data = await loadClosing(start, end);
     const effectiveMode = data.mode || mode;
-    const rows = [];
     let grossTotal = 0;
     let netTotal = 0;
     const allowedBlocks = recipient.key === 'mang ali' ? new Set(['kbg']) : new Set(['krwclm', 'kbg']);
+    const blocks = [];
     [['krwclm', data.blocks.krwclm], ['kbg', data.blocks.kbg]].forEach(([blockKey, block]) => {
-      if (!allowedBlocks.has(blockKey)) return;
-      if (!block) return;
-      rows.push({ type: 'RINGKASAN', lokasi: block.label, penerima: '', detail: `Pendapatan ${rupiah(block.revenue)} · Pengeluaran gabungan ${rupiah(block.expense)}`, nominal: rupiah(block.profit) });
-      if (blockKey === 'krwclm') Object.entries(block.clusterRevenue || {}).forEach(([cluster, amount]) => rows.push({ type: 'SUBTOTAL CLUSTER', lokasi: `CDS / ${cluster}`, penerima: recipient.name, detail: 'Subtotal pendapatan cluster (bukan transaksi tambahan)', nominal: rupiah(amount) }));
+      if (!allowedBlocks.has(blockKey) || !block) return;
       const share = recipientShare(block, recipient.key);
-      if (share) {
-        grossTotal += money(share.gross);
-        netTotal += money(share.amount);
-        rows.push({ type: 'PEMBAGIAN', lokasi: block.label, penerima: recipient.name, detail: `${share.percent}% · Kotor ${rupiah(share.gross)} · Bersih setelah penyesuaian`, nominal: rupiah(share.amount) });
-      } else rows.push({ type: 'PEMBAGIAN', lokasi: block.label, penerima: recipient.name, detail: 'Tidak ada alokasi untuk penerima ini pada lokasi tersebut', nominal: rupiah(0) });
+      if (share) { grossTotal += money(share.gross); netTotal += money(share.amount); }
+      blocks.push({ label: block.label, revenue: block.revenue, expense: block.expense, profit: block.profit, share });
     });
-    const unknownBlock = data.blocks.other;
-    if (unknownBlock && (money(unknownBlock.revenue) !== 0 || money(unknownBlock.expense) !== 0)) {
-      rows.push({ type: 'PERLU PEMETAAN', lokasi: unknownBlock.label, penerima: '', detail: 'Data ini tidak dihitung ke pembagian dan harus dipetakan sebelum closing dikunci', nominal: rupiah(unknownBlock.revenue - unknownBlock.expense) });
-    }
-    (data.payments || []).forEach((row) => {
-      const blockKey = siteBlock(row.site_code, row.cluster_name, row.site_name);
-      if (blockKey === 'other') {
-        rows.push({ type: 'PENDAPATAN BELUM DIPETAKAN', lokasi: locationText(row), penerima: row.customer_name, detail: `${row.paid_date} · perbaiki site sebelum lock`, nominal: rupiah(row.amount) });
-        return;
-      }
-      if (!allowedBlocks.has(blockKey)) return;
-      const manual = row.source_type === 'closing_manual';
-      rows.push({ type: 'PENDAPATAN', lokasi: locationText(row), penerima: row.customer_name, detail: manual ? `${row.paid_date} · ${row.category || 'Manual'}${row.notes ? ` · ${row.notes}` : ''}` : `${row.paid_date} · ${row.method || '-'}`, nominal: rupiah(row.amount) });
-    });
-    (data.expenses || []).forEach((row) => {
-      const blockKey = siteBlock(row.site_code, row.site_name, row.cluster_name);
-      if (blockKey === 'other') {
-        rows.push({ type: 'PENGELUARAN BELUM DIPETAKAN', lokasi: locationText(row), penerima: row.name, detail: `${row.transaction_date} · perbaiki site sebelum lock`, nominal: rupiah(row.amount) });
-        return;
-      }
-      if (!allowedBlocks.has(blockKey)) return;
-      rows.push({ type: 'PENGELUARAN', lokasi: locationText(row), penerima: row.name, detail: `${row.transaction_date} · ${row.category}${row.notes ? ` · ${row.notes}` : ''}`, nominal: rupiah(row.amount) });
-    });
-    addPersonDetailRows(rows, data, recipient, allowedBlocks);
+    const adjustmentRows = buildAdjustmentRows(data, recipient, allowedBlocks);
+    const transactionRows = buildTransactionRows(data, allowedBlocks);
     const adjustmentTotal = netTotal - grossTotal;
     const hiddenNote = hideEdwin && recipient.key !== 'edwin' ? ' · bagian Edwin disembunyikan sesuai opsi' : '';
-    createReportPdf(res, {
+    createClosingReportPdf(res, {
       title: `Closing ${recipient.name}`,
       subtitle: `Periode transaksi ${start} s/d ${end} · input manual · rincian penerima${hiddenNote}`,
       filename: `closing-${recipient.reportKey}-${start}-${end}-${effectiveMode}.pdf`,
       watermark: recipient.watermark,
-      summaryItems: [{ label: 'Total Bruto', value: rupiah(grossTotal), color: '#3478F6' }, { label: 'Penyesuaian Bersih', value: rupiah(adjustmentTotal), color: adjustmentTotal < 0 ? '#FF433E' : '#F4B64D' }, { label: 'TOTAL DITERIMA', value: rupiah(netTotal), color: netTotal >= 0 ? '#18A979' : '#FF433E' }],
-      columns: [{ label: 'Jenis', key: 'type', width: 1.25 }, { label: 'Lokasi', key: 'lokasi', width: 1.25 }, { label: 'Penerima/Keterangan', key: 'penerima', width: 1.8 }, { label: 'Detail', key: 'detail', width: 2.45 }, { label: 'Nominal', key: 'nominal', width: 1.25, align: 'right' }],
-      rows
+      recipientName: recipient.name,
+      summaryItems: [{ label: 'Total Bruto', value: rupiah(grossTotal), color: '#3478F6' }, { label: 'Penyesuaian Bersih', value: `${adjustmentTotal < 0 ? '- ' : '+ '}${rupiah(Math.abs(adjustmentTotal))}`, color: adjustmentTotal < 0 ? '#FF433E' : '#18A979' }, { label: 'TOTAL DITERIMA', value: rupiah(netTotal), color: netTotal >= 0 ? '#18A979' : '#FF433E' }],
+      blocks,
+      adjustmentRows,
+      transactionRows
     });
+  } catch (err) { next(err); }
+});
+
+// v1.29 — monthly recap/monitoring: lists every closing period (filterable by
+// year/month) with its computed totals, so past months can be reviewed without
+// re-opening each one individually.
+router.get('/history', async (req, res, next) => {
+  try {
+    const now = new Date();
+    const year = Number(req.query.year) || now.getFullYear();
+    const month = req.query.month ? Number(req.query.month) : null;
+    const [periods] = await db.execute('SELECT id,period_start,period_end FROM closing_periods ORDER BY period_start DESC LIMIT 200');
+    const filtered = periods.filter((p) => {
+      const key = localDateKey(p.period_start);
+      const y = Number(key.slice(0, 4));
+      const m = Number(key.slice(5, 7));
+      return y === year && (!month || m === month);
+    });
+    const rows = [];
+    for (const p of filtered) {
+      const start = localDateKey(p.period_start);
+      const end = localDateKey(p.period_end);
+      const data = await loadClosing(start, end);
+      const totalRevenue = money(data.blocks.krwclm.revenue) + money(data.blocks.kbg.revenue);
+      const totalExpense = money(data.blocks.krwclm.expense) + money(data.blocks.kbg.expense);
+      const totalProfit = money(data.blocks.krwclm.profit) + money(data.blocks.kbg.profit);
+      rows.push({ start, end, totalRevenue, totalExpense, totalProfit, entryCount: data.lineItems.length });
+    }
+    res.render('closing/history', { title: 'Rekap Closing', pageTitle: 'Rekap Bulanan Closing', money, year, month, rows });
+  } catch (err) { next(err); }
+});
+
+// v1.29 — income/expense export for a period, filterable by type/category, so
+// the numbers can be shared outside the app (e.g. reporting to partners).
+router.get('/export.xlsx', async (req, res, next) => {
+  try {
+    const { start, end } = selectedPeriod(req);
+    if (start > end) return res.status(400).send('Periode tidak valid.');
+    const category = String(req.query.category || '').trim();
+    const type = String(req.query.type || '').trim().toUpperCase();
+    const [[period]] = await db.execute('SELECT id FROM closing_periods WHERE period_start=? AND period_end=? LIMIT 1', [start, end]);
+    let rows = [];
+    if (period) {
+      let sql = 'SELECT entry_type,site_code,cluster_name,category,amount,entry_date,description FROM closing_entries WHERE closing_id=?';
+      const params = [period.id];
+      if (['INCOME', 'EXPENSE'].includes(type)) { sql += ' AND entry_type=?'; params.push(type); }
+      if (category) { sql += ' AND category=?'; params.push(category); }
+      sql += ' ORDER BY entry_date DESC,id DESC';
+      [rows] = await db.execute(sql, params);
+    }
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Closing');
+    ws.columns = [
+      { header: 'Tanggal', key: 'entry_date', width: 14 },
+      { header: 'Jenis', key: 'entry_type', width: 14 },
+      { header: 'Lokasi', key: 'site_code', width: 10 },
+      { header: 'Cluster', key: 'cluster_name', width: 10 },
+      { header: 'Kategori', key: 'category', width: 28 },
+      { header: 'Keterangan', key: 'description', width: 40 },
+      { header: 'Nominal', key: 'amount', width: 18 }
+    ];
+    ws.getRow(1).font = { bold: true };
+    rows.forEach((r) => ws.addRow({ ...r, entry_type: r.entry_type === 'INCOME' ? 'Pendapatan' : 'Pengeluaran', entry_date: String(r.entry_date).slice(0, 10), cluster_name: r.cluster_name || '' }));
+    ws.getColumn('amount').numFmt = '#,##0';
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="closing-${start}-${end}.xlsx"`);
+    await wb.xlsx.write(res);
+    res.end();
   } catch (err) { next(err); }
 });
 

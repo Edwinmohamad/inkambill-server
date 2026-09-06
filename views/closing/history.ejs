@@ -1,0 +1,46 @@
+<div class="closing-page">
+  <header class="closing-head page-header">
+    <div>
+      <div class="closing-eyebrow">INKAMNET CONTROL CENTER · KALKULATOR MANUAL</div>
+      <h1><i class="bi bi-clock-history me-2"></i>Rekap Closing</h1>
+      <p class="text-muted mb-0">Monitoring seluruh periode closing yang pernah diisi, per bulan.</p>
+    </div>
+    <form class="closing-period-form" method="get" action="/closing/history">
+      <label class="closing-field"><span>Tahun</span><input class="form-control form-control-sm" type="number" name="year" value="<%= year %>" min="2020" max="2100" required></label>
+      <label class="closing-field"><span>Bulan</span>
+        <select class="form-select form-select-sm" name="month">
+          <option value="">Semua bulan</option>
+          <% ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'].forEach((label,i) => { %>
+            <option value="<%= i+1 %>" <%= Number(month)===i+1 ? 'selected' : '' %>><%= label %></option>
+          <% }) %>
+        </select>
+      </label>
+      <button class="btn btn-primary btn-sm closing-period-submit" type="submit"><i class="bi bi-arrow-repeat me-1"></i>Filter</button>
+    </form>
+  </header>
+
+  <section class="card closing-card">
+    <div class="card-body">
+      <div class="closing-section-head"><div><span class="closing-card-kicker">REKAP <%= year %></span><h2>Ringkasan per periode</h2></div><span class="closing-count"><%= rows.length %> periode</span></div>
+      <div class="table-responsive mt-3"><table class="table table-sm align-middle closing-table">
+        <thead><tr><th>Periode</th><th>Baris input</th><th class="text-end">Pendapatan</th><th class="text-end">Pengeluaran</th><th class="text-end">Laba Bersih</th><th>Aksi</th></tr></thead>
+        <tbody>
+          <% if (!rows.length) { %><tr><td colspan="6" class="text-muted text-center py-3">Belum ada closing untuk filter ini.</td></tr><% } %>
+          <% rows.forEach(row => { %>
+          <tr>
+            <td><strong><%= row.start %></strong> s/d <%= row.end %></td>
+            <td><%= row.entryCount %></td>
+            <td class="text-end">Rp <%= money(row.totalRevenue).toLocaleString('id-ID') %></td>
+            <td class="text-end">Rp <%= money(row.totalExpense).toLocaleString('id-ID') %></td>
+            <td class="text-end"><strong>Rp <%= money(row.totalProfit).toLocaleString('id-ID') %></strong></td>
+            <td>
+              <a class="btn btn-outline-primary btn-sm" href="/closing?from=<%= row.start %>&to=<%= row.end %>&mode=manual"><i class="bi bi-box-arrow-up-right me-1"></i>Buka</a>
+              <a class="btn btn-outline-secondary btn-sm" href="/closing/export.xlsx?from=<%= row.start %>&to=<%= row.end %>"><i class="bi bi-file-earmark-spreadsheet"></i></a>
+            </td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table></div>
+    </div>
+  </section>
+</div>

@@ -75,18 +75,17 @@ function buildClosingCalculation({ payments = [], expenses = [], heldCash = [], 
   Object.values(blocks).forEach((block) => { block.profit = block.revenue - block.expense; });
   if (selectedMode === 'manual') blocks.krwclm.profit += money(closing.manual_carry);
 
-  // Cash held and router rewards belong to the block where the transaction or
-  // router is installed. They must never be applied to both CDS and KBG.
+  // Cash held belongs to the block where the transaction is installed. It must
+  // never be applied to both CDS and KBG.
+  // v1.29 — INVEST ROUTER auto-reward removed: router ownership no longer adds
+  // Rp20.000/unit automatically. Any reward for owning a router now has to be
+  // entered explicitly as a per-person adjustment (Langkah 3), same as any other
+  // manual potongan/tambahan, so the paid-out "Bersih" always traces back to a
+  // visible line the recipient can check instead of a hidden auto-calculation.
   const heldByBlock = new Map();
   heldCash.forEach((row) => {
     const blockKey = siteBlock(row.site_code, row.cluster_name, row.site_name);
     mapAdd(heldByBlock, `${blockKey}:${personKey(row.holder_name)}`, row.amount);
-  });
-  const routerByOwnerBlock = new Map();
-  routerAssets.forEach((row) => {
-    if (String(row.status || '').toUpperCase() !== 'ACTIVE') return;
-    const blockKey = siteBlock(row.site_code, row.cluster_name);
-    mapAdd(routerByOwnerBlock, `${blockKey}:${personKey(row.owner_name)}`, Math.max(0, Number(row.units || 0)) * 20000);
   });
 
   const salaryTotal = money(closing.manual_salary_agung) + money(closing.manual_salary_padilah);
@@ -107,7 +106,6 @@ function buildClosingCalculation({ payments = [], expenses = [], heldCash = [], 
   const adjusted = (name, blockKey, gross, includeSalary = false) => {
     const key = personKey(name);
     let value = gross;
-    value += routerByOwnerBlock.get(`${blockKey}:${key}`) || 0;
     value -= heldByBlock.get(`${blockKey}:${key}`) || 0;
     if (includeSalary && blockKey === 'krwclm') value -= salaryByOwner[key] || 0;
     value += adjustmentByBlock.get(`${blockKey}:${key}`) || 0;
@@ -121,10 +119,14 @@ function buildClosingCalculation({ payments = [], expenses = [], heldCash = [], 
   ];
 
   const pool = blocks.kbg.profit * .65;
+  // v1.29 — Jon & Bopung's blended percent-of-KBG-profit (11.791%) confused them
+  // because it doesn't match the "18,14% dari pool" figure shown right next to it.
+  // `displayPercent` lets the UI/PDF show the simpler pool-relative number for their
+  // rows while keeping `percent` (blended) intact for anything that still needs it.
   blocks.kbg.shares = [
     { name: 'Edwin', percent: 41.418, gross: money(pool * .6372), amount: adjusted('Edwin', 'kbg', pool * .6372) },
-    { name: 'Jon', percent: 11.791, gross: money(pool * .1814), amount: adjusted('Jon', 'kbg', pool * .1814) },
-    { name: 'Bopung', percent: 11.791, gross: money(pool * .1814), amount: adjusted('Bopung', 'kbg', pool * .1814) },
+    { name: 'Jon', percent: 11.791, displayPercent: 18.14, gross: money(pool * .1814), amount: adjusted('Jon', 'kbg', pool * .1814) },
+    { name: 'Bopung', percent: 11.791, displayPercent: 18.14, gross: money(pool * .1814), amount: adjusted('Bopung', 'kbg', pool * .1814) },
     { name: 'Mang Ali', percent: 35, gross: money(blocks.kbg.profit * .35), amount: adjusted('Mang Ali', 'kbg', blocks.kbg.profit * .35) }
   ];
 

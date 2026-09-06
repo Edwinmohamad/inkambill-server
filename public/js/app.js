@@ -58,7 +58,7 @@
   document.querySelectorAll('input[name="ui_palette"]').forEach(input=>input.addEventListener('change',()=>applyPalette(input.value)));
 
   document.querySelectorAll('.metric-card,.data-card,.filter-card,.ink-kpi,.ink-panel').forEach((el,index)=>{
-    el.style.setProperty('--enter-delay', `${Math.min(index*38,280)}ms`); el.classList.add('reveal-item');
+    el.style.setProperty('--enter-delay', `${Math.min(index*26,150)}ms`); el.classList.add('reveal-item');
   });
 
 
@@ -73,10 +73,21 @@
     setTimeout(() => { if (button.classList.contains('is-loading')) button.innerHTML = `<span class="spinner-border spinner-border-sm"></span><span>${html.lang==='en'?'Processing...':'Memproses...'}</span>`; }, 100);
   }));
 
+  // Shared "something is happening" cue for both link navigation and instant filters,
+  // so a filter change gets the exact same immediate feedback a link click already had.
+  const startProgress=()=>{if(!progress)return;progress.style.transition='none';progress.style.opacity='1';progress.style.width='18%';requestAnimationFrame(()=>{progress.style.transition='';progress.style.width='72%'});};
+
   // GET filters react immediately to select/date/year changes; text search still submits with Enter.
   document.querySelectorAll('form[method="get"],form[method="GET"]').forEach(form=>{
     let submitting=false;
-    const submit=()=>{if(submitting)return;submitting=true;try{sessionStorage.setItem('inkamnet-instant-filter','1')}catch(_){}form.setAttribute('aria-busy','true');HTMLFormElement.prototype.submit.call(form);};
+    const submit=()=>{
+      if(submitting)return;submitting=true;
+      try{sessionStorage.setItem('inkamnet-instant-filter','1')}catch(_){}
+      form.setAttribute('aria-busy','true');
+      form.classList.add('is-filtering');
+      startProgress();
+      HTMLFormElement.prototype.submit.call(form);
+    };
     form.querySelectorAll('select,input[type="date"],input[type="month"],input[type="number"],input[type="radio"],input[type="checkbox"]').forEach(field=>field.addEventListener('change',submit));
     if(form.hasAttribute('data-auto-filter'))form.classList.add('auto-filter-enabled');
   });
@@ -85,9 +96,7 @@
     const link = event.target.closest('a[href]');
     if (!link || link.target === '_blank' || link.hasAttribute('download') || link.href.startsWith('javascript:') || link.getAttribute('href').startsWith('#')) return;
     if (link.origin !== location.origin) return;
-    if(!progress)return;
-    progress.style.opacity='1';progress.style.width='18%';
-    requestAnimationFrame(()=>{progress.style.width='72%'});
+    startProgress();
   });
   window.addEventListener('pageshow',()=>{if(!progress)return;progress.style.width='100%';setTimeout(()=>{progress.style.opacity='0';progress.style.width='0'},180)});
 

@@ -27,6 +27,24 @@
     <article class="cash-summary-card expense"><div><span>Pengeluaran</span><strong><%= formatRupiah(summary.expense) %></strong></div><i class="bi bi-graph-down-arrow"></i></article>
   </div>
 
+  <!-- v1.25.6 — fixes reported bug: transaksi kas yang baru disubmit (PENDING_APPROVAL) tidak pernah
+       terlihat di widget Pendapatan/Pengeluaran/Saldo maupun chart di atas (memang sengaja, ringkasan
+       hanya menghitung APPROVED), TAPI halaman ini sebelumnya tidak punya penanda apa pun yang menjelaskan
+       ke user bahwa transaksinya sebenarnya sudah tersimpan dan sedang menunggu approval — sehingga
+       terlihat seperti data hilang/bug. `approvalSummary` (pending_count/pending_total) sudah dihitung di
+       routes/finance.js sejak lama tapi tidak pernah dirender di sini, dan CSS `.cash-pending-note` di
+       public/css/app.css juga sudah lama ada tapi tidak dipakai di mana pun — keduanya disatukan di sini. -->
+  <% if(Number(approvalSummary.pending_count||0)>0){ %>
+  <div class="cash-pending-note">
+    <i class="bi bi-hourglass-split"></i>
+    <span>
+      <strong><%= Number(approvalSummary.pending_count||0) %> transaksi kas (<%= formatRupiah(approvalSummary.pending_total||0) %>) sedang menunggu approval</strong>
+      <small>Transaksi PENDING_APPROVAL sudah tersimpan di tabel Data Kas di bawah, tapi belum dihitung pada Pendapatan/Pengeluaran/Saldo maupun chart di atas sampai disetujui Master Admin.</small>
+    </span>
+    <a href="/payments#cash-approval">Buka Approval &amp; Transaksi <i class="bi bi-arrow-right"></i></a>
+  </div>
+  <% } %>
+
   <div class="cash-chart-grid">
     <article class="data-card cash-chart-card"><div class="data-card-head"><div><h3>Komposisi Pengeluaran</h3><small>Distribusi biaya per kategori pada periode terpilih</small></div><i class="bi bi-pie-chart-fill"></i></div><div class="cash-chart-body"><canvas id="cashExpenseChart"></canvas><div class="cash-chart-empty" id="cashExpenseEmpty" hidden>Belum ada pengeluaran.</div></div></article>
     <article class="data-card cash-chart-card"><div class="data-card-head"><div><h3>Arus Kas Harian</h3><small>Pemasukan dibanding pengeluaran setiap hari</small></div><i class="bi bi-graph-up-arrow"></i></div><div class="cash-chart-body"><canvas id="cashDailyChart"></canvas></div></article>

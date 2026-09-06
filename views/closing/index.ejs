@@ -3,7 +3,7 @@
     <div>
       <div class="closing-eyebrow">INKAMNET CONTROL CENTER · KALKULATOR MANUAL</div>
       <h1><i class="bi bi-calculator-fill me-2"></i>Closing</h1>
-      <p class="text-muted mb-0">Isi semua angka secara manual untuk periode <strong><%= start %> s/d <%= end %></strong><% if (lockedSnapshot) { %> · snapshot terkunci<% } %>.</p>
+      <p class="text-muted mb-0">Isi semua angka secara manual untuk periode <strong><%= start %> s/d <%= end %></strong>. Semua baris selalu bisa diedit/dihapus kapan saja.</p>
     </div>
     <form class="closing-period-form" method="get" action="/closing">
       <label class="closing-field"><span>Mulai</span><input class="form-control form-control-sm" type="date" name="from" value="<%= start %>" required></label>
@@ -15,8 +15,9 @@
   </header>
 
   <div class="closing-toolbar">
-    <span class="badge <%= closing.status === 'LOCKED' ? 'text-bg-success' : 'text-bg-warning' %>"><i class="bi <%= closing.status === 'LOCKED' ? 'bi-lock-fill' : 'bi-pencil-square' %> me-1"></i><%= closing.status === 'LOCKED' ? 'TERKUNCI' : 'DRAFT' %></span>
     <div class="closing-pdf-actions">
+      <a class="btn btn-outline-primary btn-sm" href="/closing/history"><i class="bi bi-clock-history me-1"></i>Rekap Bulanan</a>
+      <a class="btn btn-outline-primary btn-sm" href="/closing/export.xlsx?from=<%= start %>&to=<%= end %>"><i class="bi bi-file-earmark-spreadsheet me-1"></i>Export Excel</a>
       <% [['edwin','Edwin'],['jon','Jon'],['bopung','Bopung'],['mang-ali','Mang Ali']].forEach(([key,label]) => { %>
         <a class="btn btn-outline-secondary btn-sm" href="/closing/pdf?from=<%= start %>&to=<%= end %>&mode=manual&report=<%= key %><%= hideEdwin ? '&hide_edwin=1' : '' %>" target="_blank" rel="noopener"><i class="bi bi-file-earmark-pdf me-1"></i><%= label %></a>
       <% }) %>
@@ -25,8 +26,18 @@
 
   <div class="closing-mode-banner is-manual">
     <i class="bi bi-pencil-square"></i>
-    <div><strong>Mode manual penuh</strong><span>Closing tidak mengambil data billing, pembayaran, kas, atau cash tim. Semua pendapatan, pengeluaran, potongan, gaji, cash belum setor, dan router diisi dari kolom di bawah.</span></div>
+    <div><strong>Mode manual penuh · selalu fleksibel</strong><span>Closing tidak mengambil data billing, pembayaran, kas, atau cash tim. Semua pendapatan, pengeluaran, dan potongan diisi dari kolom di bawah, dan tetap bisa diedit/dihapus/ditambah kapan saja — tidak ada penguncian periode.</span></div>
   </div>
+
+  <% if (typeof unpaidSummary !== 'undefined' && unpaidSummary && unpaidSummary.count > 0) { %>
+  <div class="closing-unmapped-alert closing-unpaid-note">
+    <i class="bi bi-info-circle-fill"></i>
+    <div>
+      <strong><%= unpaidSummary.count %> pelanggan belum lunas periode ini (Rp <%= money(unpaidSummary.outstanding).toLocaleString('id-ID') %>)</strong>
+      <span>Informasi saja — tidak memengaruhi Pendapatan/Bersih di atas. Rincian per lokasi ada di bagian bawah halaman.</span>
+    </div>
+  </div>
+  <% } %>
 
   <nav class="closing-steps" aria-label="Tahapan closing">
     <span><b>1</b><small>Periode</small></span><span><b>2</b><small>Pendapatan & pengeluaran</small></span><span><b>3</b><small>Potongan tim</small></span><span><b>4</b><small>Hasil & PDF</small></span>
@@ -55,7 +66,6 @@
   <section class="card closing-card closing-input-card">
     <div class="card-body">
       <div class="closing-section-head"><div><span class="closing-card-kicker">LANGKAH 2 · INPUT UTAMA</span><h2>Pendapatan dan pengeluaran</h2><small class="text-muted">Isi nominal per lokasi. Pengeluaran CDS boleh diberi cluster hanya sebagai keterangan.</small></div><span class="closing-count"><%= lineItems.length %> baris</span></div>
-      <% if (closing.status !== 'LOCKED') { %>
         <div class="closing-entry-grid">
           <form class="closing-entry-box closing-entry-form" method="post" action="/closing/entries">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="entry_type" value="INCOME"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="mode" value="manual">
@@ -95,18 +105,32 @@
           <button class="btn btn-outline-primary btn-sm" type="submit"><i class="bi bi-save2 me-1"></i>Simpan pengaturan</button>
         </form>
         <small class="text-muted closing-help">Gaji Agung dan Padilah menjadi potongan CDS: Edwin 50%, Jon 25%, Bopung 25%. Mang Ali tidak dibebani.</small>
-      <% } else { %>
-        <div class="closing-locked-note"><i class="bi bi-lock-fill"></i>Periode sudah dikunci. Semua input menjadi snapshot tetap.</div>
-      <% } %>
     </div>
   </section>
+
+  <div class="modal fade" id="editEntryModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog"><form class="modal-content" method="post" id="editEntryForm">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="mode" value="manual">
+    <div class="modal-header"><h5 class="modal-title">Edit Baris Manual</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body closing-form-grid">
+      <label><span>Lokasi</span><select class="form-select form-select-sm" name="site_code" id="editEntrySite"><option value="CDS">CDS</option><option value="KBG">KBG</option></select></label>
+      <label><span>Cluster</span><select class="form-select form-select-sm" name="cluster_name" id="editEntryCluster"><option value="">Tidak ada</option><option value="KRW">KRW</option><option value="CLM">CLM</option></select></label>
+      <label><span>Tanggal</span><input class="form-control form-control-sm" type="date" name="entry_date" id="editEntryDate" required></label>
+      <label class="span-2"><span>Kategori</span><input class="form-control form-control-sm" name="category" id="editEntryCategory" maxlength="120" required></label>
+      <label><span>Nominal</span><input class="form-control form-control-sm" type="number" min="1" step="1" name="amount" id="editEntryAmount" required></label>
+      <label class="span-3"><span>Keterangan</span><input class="form-control form-control-sm" name="description" id="editEntryDescription" maxlength="255"></label>
+    </div>
+    <div class="modal-footer"><button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-save2 me-1"></i>Simpan perubahan</button></div>
+  </form></div></div>
 
   <section class="card closing-card">
     <div class="card-body">
       <div class="closing-section-head"><div><span class="closing-card-kicker">RIWAYAT INPUT</span><h2>Rincian angka manual</h2></div><span class="closing-count"><%= lineItems.length %> baris</span></div>
       <div class="table-responsive mt-3"><table class="table table-sm align-middle closing-table"><thead><tr><th>Tanggal</th><th>Jenis</th><th>Lokasi</th><th>Kategori</th><th>Keterangan</th><th class="text-end">Nominal</th><th>Aksi</th></tr></thead><tbody>
         <% if (!lineItems.length) { %><tr><td colspan="7" class="text-muted text-center py-3">Belum ada angka manual. Isi form pendapatan atau pengeluaran di atas.</td></tr><% } %>
-        <% lineItems.forEach(row => { %><tr><td><%= row.entry_date %></td><td><span class="badge text-bg-<%= row.entry_type === 'INCOME' ? 'success' : 'warning' %>"><%= row.entry_type === 'INCOME' ? 'PENDAPATAN' : 'PENGELUARAN' %></span></td><td><%= row.site_code %><%= row.cluster_name ? ` / ${row.cluster_name}` : '' %></td><td><%= row.category %></td><td><%= row.description || '-' %></td><td class="text-end">Rp <%= money(row.amount).toLocaleString('id-ID') %></td><td><% if (closing.status !== 'LOCKED') { %><form method="post" action="/closing/entries/<%= row.id %>/delete" onsubmit="return confirm('Hapus baris ini?')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><button class="btn btn-outline-danger btn-sm" type="submit" title="Hapus"><i class="bi bi-trash"></i></button></form><% } else { %><span class="text-muted">Terkunci</span><% } %></td></tr><% }) %>
+        <% lineItems.forEach(row => { %><tr><td><%= row.entry_date %></td><td><span class="badge text-bg-<%= row.entry_type === 'INCOME' ? 'success' : 'warning' %>"><%= row.entry_type === 'INCOME' ? 'PENDAPATAN' : 'PENGELUARAN' %></span></td><td><%= row.site_code %><%= row.cluster_name ? ` / ${row.cluster_name}` : '' %></td><td><%= row.category %></td><td><%= row.description || '-' %></td><td class="text-end">Rp <%= money(row.amount).toLocaleString('id-ID') %></td><td class="closing-row-actions">
+          <button type="button" class="btn btn-outline-secondary btn-sm" title="Edit" onclick='openEditEntry(<%- safeJson({id:row.id,site_code:row.site_code,cluster_name:row.cluster_name||"",entry_date:String(row.entry_date).slice(0,10),category:row.category,amount:row.amount,description:row.description||""}) %>)'><i class="bi bi-pencil"></i></button>
+          <form method="post" action="/closing/entries/<%= row.id %>/delete" onsubmit="return confirm('Hapus baris ini?')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><button class="btn btn-outline-danger btn-sm" type="submit" title="Hapus"><i class="bi bi-trash"></i></button></form>
+        </td></tr><% }) %>
       </tbody></table></div>
     </div>
   </section>
@@ -114,7 +138,6 @@
   <section class="card closing-card">
     <div class="card-body">
       <div class="closing-section-head"><div><span class="closing-card-kicker">LANGKAH 3 · PENYESUAIAN</span><h2>Potongan dan tambahan per orang</h2><small class="text-muted">Cash belum setor otomatis mengurangi hak penerima.</small></div><span class="closing-count"><%= adjustments.length %> baris</span></div>
-      <% if (closing.status !== 'LOCKED') { %>
         <form class="closing-adjustment-grid mt-3" method="post" action="/closing/adjustments">
           <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="mode" value="manual">
           <label><span>Penerima</span><select class="form-select form-select-sm" name="recipient_name"><option>Edwin</option><option>Jon</option><option>Bopung</option><option>Mang Ali</option></select></label>
@@ -125,13 +148,29 @@
           <label class="closing-adjustment-description"><span>Keterangan</span><input class="form-control form-control-sm" name="description" maxlength="255" placeholder="Contoh: cash pelanggan belum disetor"></label>
           <button class="btn btn-outline-primary btn-sm" type="submit"><i class="bi bi-plus-lg me-1"></i>Tambah</button>
         </form>
-      <% } %>
       <div class="table-responsive mt-3"><table class="table table-sm align-middle closing-table"><thead><tr><th>Penerima</th><th>Lokasi</th><th>Jenis</th><th>Keterangan</th><th class="text-end">Nominal</th><th>Aksi</th></tr></thead><tbody>
         <% if (!adjustments.length) { %><tr><td colspan="6" class="text-muted text-center py-3">Belum ada potongan atau tambahan manual.</td></tr><% } %>
-        <% adjustments.forEach(item => { %><tr><td><strong><%= item.recipient_name %></strong></td><td><%= item.site_code || 'CDS' %></td><td><%= item.adjustment_type === 'CASH_HOLD' ? 'Cash belum setor' : (item.direction === 'DEDUCT' ? 'Potongan manual' : 'Tambahan manual') %></td><td><%= item.description || '-' %></td><td class="text-end <%= item.direction === 'DEDUCT' ? 'text-danger' : 'text-success' %>"><%= item.direction === 'DEDUCT' ? '- ' : '+ ' %>Rp <%= money(item.amount).toLocaleString('id-ID') %></td><td><% if (closing.status !== 'LOCKED') { %><form method="post" action="/closing/adjustments/<%= item.id %>/delete" onsubmit="return confirm('Hapus penyesuaian ini?')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><button class="btn btn-outline-danger btn-sm" type="submit" title="Hapus"><i class="bi bi-trash"></i></button></form><% } else { %><span class="text-muted">Terkunci</span><% } %></td></tr><% }) %>
+        <% adjustments.forEach(item => { %><tr><td><strong><%= item.recipient_name %></strong></td><td><%= item.site_code || 'CDS' %></td><td><%= item.adjustment_type === 'CASH_HOLD' ? 'Cash belum setor' : (item.direction === 'DEDUCT' ? 'Potongan manual' : 'Tambahan manual') %></td><td><%= item.description || '-' %></td><td class="text-end <%= item.direction === 'DEDUCT' ? 'text-danger' : 'text-success' %>"><%= item.direction === 'DEDUCT' ? '- ' : '+ ' %>Rp <%= money(item.amount).toLocaleString('id-ID') %></td><td class="closing-row-actions">
+          <button type="button" class="btn btn-outline-secondary btn-sm" title="Edit" onclick='openEditAdjustment(<%- safeJson({id:item.id,recipient_name:item.recipient_name,site_code:item.site_code||"CDS",adjustment_type:item.adjustment_type||"MANUAL",direction:item.direction,amount:item.amount,description:item.description||""}) %>)'><i class="bi bi-pencil"></i></button>
+          <form method="post" action="/closing/adjustments/<%= item.id %>/delete" onsubmit="return confirm('Hapus penyesuaian ini?')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><button class="btn btn-outline-danger btn-sm" type="submit" title="Hapus"><i class="bi bi-trash"></i></button></form>
+        </td></tr><% }) %>
       </tbody></table></div>
     </div>
   </section>
+
+  <div class="modal fade" id="editAdjustmentModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog"><form class="modal-content" method="post" id="editAdjustmentForm">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="mode" value="manual">
+    <div class="modal-header"><h5 class="modal-title">Edit Penyesuaian</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body closing-adjustment-grid">
+      <label><span>Penerima</span><select class="form-select form-select-sm" name="recipient_name" id="editAdjRecipient"><option>Edwin</option><option>Jon</option><option>Bopung</option><option>Mang Ali</option></select></label>
+      <label><span>Lokasi</span><select class="form-select form-select-sm" name="site_code" id="editAdjSite"><option value="CDS">CDS</option><option value="KBG">KBG</option></select></label>
+      <label><span>Jenis</span><select class="form-select form-select-sm" name="adjustment_type" id="editAdjType"><option value="CASH_HOLD">Cash belum setor</option><option value="MANUAL">Potongan / tambahan lain</option></select></label>
+      <label><span>Arah</span><select class="form-select form-select-sm" name="direction" id="editAdjDirection"><option value="DEDUCT">Potongan (-)</option><option value="ADD">Tambahan (+)</option></select></label>
+      <label><span>Nominal</span><input class="form-control form-control-sm" type="number" min="1" step="1" name="amount" id="editAdjAmount" required></label>
+      <label class="closing-adjustment-description"><span>Keterangan</span><input class="form-control form-control-sm" name="description" id="editAdjDescription" maxlength="255"></label>
+    </div>
+    <div class="modal-footer"><button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-save2 me-1"></i>Simpan perubahan</button></div>
+  </form></div></div>
 
   <section class="card closing-card">
     <div class="card-body">
@@ -160,18 +199,47 @@
           </div>
         </article>
       </div>
-      <div class="table-responsive mt-3"><table class="table table-sm align-middle closing-table"><thead><tr><th>Lokasi</th><th>Penerima</th><th>%</th><th class="text-end">Kotor</th><th class="text-end">Bersih</th></tr></thead><tbody><% [blocks.krwclm, blocks.kbg].forEach(block => (block.shares || []).forEach(share => { %><tr><td><%= block.label %></td><td><strong><%= share.name %></strong></td><td><%= share.percent %>%</td><td class="text-end">Rp <%= money(share.gross).toLocaleString('id-ID') %></td><td class="text-end"><strong>Rp <%= money(share.amount).toLocaleString('id-ID') %></strong></td></tr><% })) %></tbody></table></div>
+      <div class="table-responsive mt-3"><table class="table table-sm align-middle closing-table"><thead><tr><th>Lokasi</th><th>Penerima</th><th>%</th><th class="text-end">Kotor</th><th class="text-end">Bersih</th></tr></thead><tbody><% [blocks.krwclm, blocks.kbg].forEach(block => (block.shares || []).forEach(share => { %><tr><td><%= block.label %></td><td><strong><%= share.name %></strong></td><td><%= (share.displayPercent!=null?share.displayPercent:share.percent) %>%</td><td class="text-end">Rp <%= money(share.gross).toLocaleString('id-ID') %></td><td class="text-end"><strong>Rp <%= money(share.amount).toLocaleString('id-ID') %></strong></td></tr><% })) %></tbody></table></div>
     </div>
   </section>
 
   <div class="closing-lower-grid">
     <section class="card closing-card"><div class="card-body"><div class="closing-section-head"><div><span class="closing-card-kicker">POTONGAN DARI INPUT</span><h2>Gaji</h2></div></div><div class="closing-salary-list"><% salaryRows.forEach(row => { %><div><span><%= row.name %></span><strong>Rp <%= money(row.amount).toLocaleString('id-ID') %></strong></div><% }) %></div><small class="text-muted">Total gaji dibebankan ke CDS: Edwin 50%, Jon 25%, Bopung 25%. Mang Ali tidak dibebani.</small></div></section>
 
-    <section class="card closing-card"><div class="card-body"><div class="closing-section-head"><div><span class="closing-card-kicker">INVEST ROUTER</span><h2>Router milik tim</h2><small class="text-muted">Rp20.000 per unit aktif. Data diisi manual dan status rusak/diganti tidak dihitung.</small></div><span class="closing-count"><%= routerAssets.length %> data</span></div>
-      <% if (closing.status !== 'LOCKED') { %><form class="closing-router-grid mt-3" method="post" action="/closing/router-assets"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="mode" value="manual"><label><span>Nama pelanggan</span><input class="form-control form-control-sm" name="customer_name" placeholder="Pelanggan A" required></label><label><span>Lokasi</span><select class="form-select form-select-sm" name="site_code"><option value="CDS">CDS</option><option value="KBG">KBG</option></select></label><label><span>Cluster</span><select class="form-select form-select-sm" name="cluster_name"><option value="">Gabungan</option><option value="KRW">KRW</option><option value="CLM">CLM</option></select></label><label><span>Pemilik</span><input class="form-control form-control-sm" name="owner_name" placeholder="Jon / Bopung" required></label><label><span>Unit</span><input class="form-control form-control-sm" type="number" name="units" min="1" max="100" value="1" required></label><label><span>Aktif mulai</span><input class="form-control form-control-sm" type="date" name="active_from" value="<%= start %>" required></label><button class="btn btn-outline-primary btn-sm" type="submit"><i class="bi bi-plus-lg me-1"></i>Tambah router</button></form><% } %>
-      <div class="table-responsive mt-3"><table class="table table-sm align-middle closing-table"><thead><tr><th>Pelanggan</th><th>Lokasi</th><th>Pemilik</th><th>Unit</th><th>Status</th><th>Aksi</th></tr></thead><tbody><% if (!routerAssets.length) { %><tr><td colspan="6" class="text-muted text-center py-3">Belum ada router manual.</td></tr><% } %><% routerAssets.forEach(row => { %><tr><td><%= row.customer_name %></td><td><%= row.site_code %><%= row.cluster_name ? ` / ${row.cluster_name}` : '' %></td><td><%= row.owner_name %></td><td><%= row.units %></td><td><span class="badge text-bg-<%= row.status === 'ACTIVE' ? 'success' : 'secondary' %>"><%= row.status %></span></td><td><% if (closing.status !== 'LOCKED') { %><form class="closing-router-status-form" method="post" action="/closing/router-assets/<%= row.id %>/status"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><select class="form-select form-select-sm" name="status" aria-label="Status router"><option value="ACTIVE" <%= row.status === 'ACTIVE' ? 'selected' : '' %>>Aktif</option><option value="BROKEN" <%= row.status === 'BROKEN' ? 'selected' : '' %>>Rusak</option><option value="REPLACED" <%= row.status === 'REPLACED' ? 'selected' : '' %>>Diganti</option><option value="INACTIVE" <%= row.status === 'INACTIVE' ? 'selected' : '' %>>Tidak aktif</option></select><input class="form-control form-control-sm" type="date" name="active_until" value="<%= row.active_until || '' %>" aria-label="Tanggal berakhir"><button class="btn btn-outline-secondary btn-sm" type="submit">Simpan</button></form><% } else { %><span class="text-muted">Terkunci</span><% } %></td></tr><% }) %></tbody></table></div>
+    <section class="card closing-card"><div class="card-body"><div class="closing-section-head"><div><span class="closing-card-kicker">INFORMASI · TIDAK MEMENGARUHI PERHITUNGAN</span><h2>Pelanggan belum lunas</h2><small class="text-muted">Sekadar pengingat penagihan untuk periode ini — tidak dihitung ke Pendapatan/Bersih di atas.</small></div><% if (typeof unpaidSummary !== 'undefined' && unpaidSummary) { %><span class="closing-count"><%= unpaidSummary.count %> pelanggan</span><% } %></div>
+      <% if (typeof unpaidCustomers === 'undefined' || !unpaidCustomers.length) { %>
+        <div class="closing-locked-note"><i class="bi bi-check-circle"></i>Tidak ada pelanggan belum lunas untuk periode ini (atau data tagihan belum tersedia).</div>
+      <% } else { %>
+      <div class="table-responsive mt-3"><table class="table table-sm align-middle closing-table"><thead><tr><th>Pelanggan</th><th>Lokasi</th><th>Tagihan</th><th class="text-end">Outstanding</th></tr></thead><tbody>
+        <% unpaidCustomers.forEach(row => { %><tr><td><%= row.name %><br><small class="text-muted"><%= row.customer_code %></small></td><td><%= row.site_code %><%= row.cluster_name ? ` / ${row.cluster_name}` : '' %></td><td><%= row.invoice_count %> tagihan</td><td class="text-end text-danger">Rp <%= money(row.outstanding).toLocaleString('id-ID') %></td></tr><% }) %>
+      </tbody></table></div>
+      <% } %>
     </div></section>
   </div>
-
-  <section class="card closing-card closing-lock-card"><div class="card-body"><div class="closing-section-head"><div><span class="closing-card-kicker">FINALISASI</span><h2>Kunci closing</h2><small class="text-muted">Setelah dikunci, input dan PDF periode ini menjadi snapshot tetap.</small></div><% if (closing.status !== 'LOCKED') { %><form method="post" action="/closing/lock" onsubmit="return confirm('Kunci periode ini? Setelah dikunci, data tidak dapat diubah.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="mode" value="manual"><button class="btn btn-outline-danger btn-sm" type="submit"><i class="bi bi-lock-fill me-1"></i>Kunci Closing</button></form><% } else { %><span class="badge text-bg-success">SNAPSHOT TERKUNCI</span><% } %></div></div></section>
 </div>
+
+<script>
+(function(){
+  function modalFor(id){var el=document.getElementById(id);return window.bootstrap?bootstrap.Modal.getOrCreateInstance(el):null;}
+  window.openEditEntry=function(row){
+    document.getElementById('editEntryForm').action='/closing/entries/'+row.id+'/update';
+    document.getElementById('editEntrySite').value=row.site_code||'CDS';
+    document.getElementById('editEntryCluster').value=row.cluster_name||'';
+    document.getElementById('editEntryDate').value=row.entry_date||'';
+    document.getElementById('editEntryCategory').value=row.category||'';
+    document.getElementById('editEntryAmount').value=row.amount||'';
+    document.getElementById('editEntryDescription').value=row.description||'';
+    var m=modalFor('editEntryModal');if(m)m.show();
+  };
+  window.openEditAdjustment=function(row){
+    document.getElementById('editAdjustmentForm').action='/closing/adjustments/'+row.id+'/update';
+    document.getElementById('editAdjRecipient').value=row.recipient_name||'Edwin';
+    document.getElementById('editAdjSite').value=row.site_code||'CDS';
+    document.getElementById('editAdjType').value=row.adjustment_type||'MANUAL';
+    document.getElementById('editAdjDirection').value=row.direction||'DEDUCT';
+    document.getElementById('editAdjAmount').value=row.amount||'';
+    document.getElementById('editAdjDescription').value=row.description||'';
+    var m=modalFor('editAdjustmentModal');if(m)m.show();
+  };
+})();
+</script>

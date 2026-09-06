@@ -25,10 +25,39 @@ assert.deepEqual(data.blocks.krwclm.clusterRevenue, { KRW: 24000000, CLM: 500000
 assert.equal(data.blocks.krwclm.profit, 19000000);
 assert.equal(data.blocks.krwclm.shares.find((share) => share.name === 'Edwin').amount, 8750000);
 assert.equal(data.blocks.krwclm.shares.find((share) => share.name === 'Jon').amount, 4275000);
-assert.equal(data.blocks.krwclm.shares.find((share) => share.name === 'Bopung').amount, 4415000);
+assert.equal(data.blocks.krwclm.shares.find((share) => share.name === 'Bopung').amount, 4375000);
 assert.equal(data.blocks.kbg.profit, 8000000);
 assert.equal(data.blocks.kbg.shares.find((share) => share.name === 'Jon').amount, 893280);
 assert.equal(data.blocks.kbg.shares.find((share) => share.name === 'Mang Ali').amount, 2800000);
+
+// v1.29 — INVEST ROUTER auto-reward removed: owning a router must no longer add
+// anything to a person's payout automatically. routerAssets is still accepted as a
+// parameter for backward-compatible call sites, but it must be a complete no-op —
+// the same input with and without routerAssets has to reconcile to the exact same
+// rupiah for every recipient. Any reward now has to be entered as a visible manual
+// adjustment (Langkah 3) instead.
+const withoutRouter = buildClosingCalculation({
+  mode: 'manual',
+  closing: { manual_revenue: 0, manual_expense: 0, manual_carry: 0, manual_salary_agung: 500000, manual_salary_padilah: 1000000 },
+  payments: [
+    { site_code: 'CDS', cluster_name: 'KRW', amount: 24000000 },
+    { site_code: 'CDS', cluster_name: 'CLM', amount: 5000000 },
+    { site_code: 'KBG', amount: 10000000 }
+  ],
+  expenses: [
+    { site_code: 'CDS', category: 'Petty cash', amount: 10000000 },
+    { site_code: 'KBG', category: 'Maintenance', amount: 2000000 }
+  ],
+  heldCash: [{ site_code: 'CDS', cluster_name: 'KRW', holder_name: 'Jon', amount: 100000 }],
+  adjustments: [{ site_code: 'KBG', recipient_name: 'Jon', amount: 50000, direction: 'DEDUCT' }]
+  // routerAssets intentionally omitted here
+});
+['krwclm', 'kbg'].forEach((blockKey) => {
+  data.blocks[blockKey].shares.forEach((share) => {
+    const other = withoutRouter.blocks[blockKey].shares.find((s) => s.name === share.name);
+    assert.equal(other.amount, share.amount, `routerAssets tidak boleh mengubah bagian ${share.name} di ${blockKey}`);
+  });
+});
 
 const aliases = buildClosingCalculation({
   mode: 'manual',
@@ -57,4 +86,12 @@ assert(!/FROM\s+cash_transactions\b/i.test(loadSource), 'Closing tidak boleh mem
 assert(!/settlement_status/i.test(loadSource), 'Closing tidak boleh memakai status settlement billing');
 assert(loadSource.includes('FROM closing_entries'), 'Closing harus memakai closing_entries sebagai sumber angka manual');
 assert(closingRoute.includes("mode: 'manual'"), 'Mode Closing harus dipaksa manual');
-console.log('Closing calculator validation OK: manual-only source, cluster revenue, combined expenses, salary, cash, router, and per-location adjustments reconcile without double counting.');
+
+// v1.29 — Closing is flexible/always-editable now: no period lock, no INVEST ROUTER
+// ownership routes. Guard against either quietly reappearing.
+assert(!/router\.post\(['"]\/lock/.test(closingRoute), 'Route /lock (finalisasi/kunci closing) harus sudah dihapus');
+assert(!/router\.(get|post)\(['"]\/router-assets/.test(closingRoute), 'Route /router-assets harus sudah dihapus');
+assert(!/status\s*===\s*['"]LOCKED['"]/.test(closingRoute), 'Tidak boleh ada guard status LOCKED tersisa di routes/closing.js');
+assert(closingRoute.includes("router.post('/entries/:id/update'"), 'Route edit entry (closing_entries) harus tersedia');
+assert(closingRoute.includes("router.post('/adjustments/:id/update'"), 'Route edit penyesuaian (closing_adjustments) harus tersedia');
+console.log('Closing calculator validation OK: manual-only source, cluster revenue, combined expenses, salary, cash, and per-location adjustments reconcile without double counting; router ownership no longer auto-rewards.');
