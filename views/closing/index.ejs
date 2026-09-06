@@ -108,7 +108,7 @@
     </div>
   </section>
 
-  <div class="modal fade" id="editEntryModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog"><form class="modal-content" method="post" id="editEntryForm">
+  <div class="modal fade" id="editEntryModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-lg modal-dialog-centered"><form class="modal-content" method="post" id="editEntryForm">
     <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="mode" value="manual">
     <div class="modal-header"><h5 class="modal-title">Edit Baris Manual</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
     <div class="modal-body closing-form-grid">
@@ -158,10 +158,10 @@
     </div>
   </section>
 
-  <div class="modal fade" id="editAdjustmentModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog"><form class="modal-content" method="post" id="editAdjustmentForm">
+  <div class="modal fade" id="editAdjustmentModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-lg modal-dialog-centered"><form class="modal-content" method="post" id="editAdjustmentForm">
     <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="mode" value="manual">
     <div class="modal-header"><h5 class="modal-title">Edit Penyesuaian</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-    <div class="modal-body closing-adjustment-grid">
+    <div class="modal-body closing-adjustment-grid closing-modal-grid">
       <label><span>Penerima</span><select class="form-select form-select-sm" name="recipient_name" id="editAdjRecipient"><option>Edwin</option><option>Jon</option><option>Bopung</option><option>Mang Ali</option></select></label>
       <label><span>Lokasi</span><select class="form-select form-select-sm" name="site_code" id="editAdjSite"><option value="CDS">CDS</option><option value="KBG">KBG</option></select></label>
       <label><span>Jenis</span><select class="form-select form-select-sm" name="adjustment_type" id="editAdjType"><option value="CASH_HOLD">Cash belum setor</option><option value="MANUAL">Potongan / tambahan lain</option></select></label>

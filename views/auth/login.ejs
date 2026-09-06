@@ -6,7 +6,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"><link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <style>
-  :root{--bg:#0a0f1e;--bg2:#0d1427;--panel:rgba(21,29,49,.55);--line:rgba(148,163,196,.16);--text:#f2f5fb;--muted:#8d99b3;--purple:#7a5ff0;--cyan:#39d0f0}
+  :root{--bg:#0a0f1e;--bg2:#0d1427;--panel:rgba(21,29,49,.55);--line:rgba(148,163,196,.16);--text:#f2f5fb;--muted:#8d99b3;--purple:#765fd7;--purple2:#a78bfa;--cyan:#22d3ee;--cyan2:#67e8f9}
   *{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-weight:400}
   body{min-height:100vh;min-height:100dvh;color:var(--text);background:
       radial-gradient(circle at 88% 6%,rgba(58,110,220,.35),transparent 34%),
@@ -17,8 +17,8 @@
     background-image:linear-gradient(rgba(122,144,190,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(122,144,190,.08) 1px,transparent 1px);
     background-size:46px 46px;mask-image:radial-gradient(ellipse 80% 60% at 50% 30%,#000 40%,transparent 85%)}
   .ambient-glow{position:fixed;pointer-events:none;border-radius:50%;filter:blur(70px);z-index:0}
-  .ambient-glow.a{width:380px;height:380px;left:-140px;bottom:-120px;background:radial-gradient(circle,rgba(122,95,240,.38),transparent 70%);animation:glowFloat 13s ease-in-out infinite}
-  .ambient-glow.b{width:300px;height:300px;right:-100px;top:-90px;background:radial-gradient(circle,rgba(57,208,240,.26),transparent 70%);animation:glowFloat 11s ease-in-out infinite reverse}
+  .ambient-glow.a{width:380px;height:380px;left:-140px;bottom:-120px;background:radial-gradient(circle,rgba(118,95,215,.38),transparent 70%);animation:glowFloat 13s ease-in-out infinite}
+  .ambient-glow.b{width:300px;height:300px;right:-100px;top:-90px;background:radial-gradient(circle,rgba(34,211,238,.26),transparent 70%);animation:glowFloat 11s ease-in-out infinite reverse}
   @keyframes glowFloat{0%,100%{transform:translate(0,0) scale(1);opacity:.65}50%{transform:translate(20px,-16px) scale(1.1);opacity:1}}
   @keyframes fadeSlideUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
   @keyframes fadeSlideRight{from{opacity:0;transform:translateX(-18px)}to{opacity:1;transform:translateX(0)}}
@@ -30,10 +30,16 @@
   .login-page{min-height:100vh;min-height:100dvh;display:grid;grid-template-columns:1.05fr 1fr;position:relative;z-index:1}
   .login-hero{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:56px 48px;position:relative;overflow:hidden}
   .login-hero-inner{max-width:520px;width:100%;text-align:center;animation:fadeSlideRight .7s cubic-bezier(.2,.7,.3,1) both}
-  .login-hero-frame{position:relative;border-radius:22px;overflow:hidden;box-shadow:0 30px 70px -20px rgba(0,0,0,.65),0 0 0 1px rgba(148,163,196,.1);animation:heroFloat 6s ease-in-out infinite}
-  .login-hero-frame img{display:block;width:100%;height:auto;-webkit-mask-image:radial-gradient(ellipse 92% 88% at 50% 48%,#000 62%,transparent 100%);mask-image:radial-gradient(ellipse 92% 88% at 50% 48%,#000 62%,transparent 100%)}
-  .login-hero-frame:before{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 0%,rgba(255,255,255,.08) 45%,transparent 60%);transform:translateX(-120%);animation:heroSheen 5.5s ease-in-out infinite}
-  @keyframes heroSheen{0%{transform:translateX(-120%)}55%,100%{transform:translateX(120%)}}
+  .login-hero-frame{position:relative;animation:heroFloat 6s ease-in-out infinite}
+  .login-hero-frame .hero-glow-behind{position:absolute;inset:-18%;z-index:0;background:radial-gradient(ellipse 60% 55% at 8% 42%,rgba(118,95,215,.4),transparent 70%),radial-gradient(ellipse 55% 50% at 62% 55%,rgba(34,211,238,.3),transparent 70%);filter:blur(38px);animation:glowFloat 7s ease-in-out infinite}
+  .login-hero-frame img{position:relative;z-index:1;display:block;width:100%;height:auto;filter:drop-shadow(0 22px 40px rgba(0,0,0,.55))}
+  .login-hero-frame .hero-sheen{content:"";position:absolute;inset:0;z-index:2;pointer-events:none;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.5) 48%,transparent 66%);-webkit-mask-image:url('/img/inkamnet-go-lockup-transparent.png');mask-image:url('/img/inkamnet-go-lockup-transparent.png');-webkit-mask-size:100% 100%;mask-size:100% 100%;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;mix-blend-mode:overlay;background-size:260% 100%;background-position:-40% 0;animation:heroSheen 4.2s ease-in-out infinite}
+  @keyframes heroSheen{0%,12%{background-position:-40% 0}62%,100%{background-position:140% 0}}
+  .hero-ping-origin{position:absolute;left:4.5%;top:30.7%;width:0;height:0;z-index:0}
+  .hero-ping{position:absolute;left:0;top:0;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%;border:1.5px solid rgba(34,211,238,.75);opacity:0;animation:heroPing 3.2s cubic-bezier(.25,.6,.4,1) infinite}
+  .hero-ping.p2{border-color:rgba(118,95,215,.7);animation-delay:1.05s}
+  .hero-ping.p3{animation-delay:2.1s}
+  @keyframes heroPing{0%{transform:scale(.6);opacity:.85}75%{opacity:.12}100%{transform:scale(5.4);opacity:0}}
   .login-hero-tag{margin:26px 0 0;color:var(--muted);font-size:.95rem;line-height:1.6;max-width:420px;margin-inline:auto}
   .login-hero-chips{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:28px}
   .login-hero-chips span{display:flex;align-items:center;gap:7px;padding:8px 14px;border:1px solid var(--line);border-radius:999px;background:rgba(255,255,255,.03);color:#c3cbdd;font-size:.76rem;font-weight:500;animation:chipPulse 3.6s ease-in-out infinite}
@@ -44,7 +50,7 @@
 
   .login-formside{display:flex;align-items:center;justify-content:center;padding:32px 28px;position:relative}
   .login-card{width:100%;max-width:400px;padding:38px 36px 32px;border-radius:22px;border:1px solid var(--line);background:var(--panel);backdrop-filter:blur(22px) saturate(140%);-webkit-backdrop-filter:blur(22px) saturate(140%);box-shadow:0 30px 60px -25px rgba(0,0,0,.55);animation:fadeSlideUp .7s cubic-bezier(.2,.7,.3,1) .1s both;position:relative;overflow:hidden}
-  .login-card:before{content:"";position:absolute;left:0;right:0;top:0;height:1px;background:linear-gradient(90deg,transparent,rgba(122,95,240,.7),rgba(57,208,240,.7),transparent)}
+  .login-card:before{content:"";position:absolute;left:0;right:0;top:0;height:1px;background:linear-gradient(90deg,transparent,rgba(118,95,215,.7),rgba(34,211,238,.7),transparent)}
   .login-card h1{margin:0;font-family:'Poppins',sans-serif;font-size:1.5rem;font-weight:700;letter-spacing:-.01em}
   .login-card .subtitle{margin:9px 0 26px;color:var(--muted);font-size:.88rem;line-height:1.55}
   .error{display:flex;gap:9px;margin-bottom:16px;padding:11px 13px;border:1px solid rgba(255,113,131,.25);border-radius:10px;background:rgba(255,113,131,.08);color:#ff9baa;font-size:.8rem;line-height:1.45}
@@ -55,8 +61,8 @@
   .input-wrap input{min-width:0;flex:1;height:100%;padding:0 12px 0 0;border:0;outline:0;background:transparent;color:var(--text);font:inherit;font-size:.88rem}
   .input-wrap input::placeholder{color:#5c6a85}
   .password-toggle{width:46px;height:100%;border:0;background:transparent;color:#75839e;cursor:pointer}.password-toggle:hover{color:#b6c1d5}
-  .remember{display:flex;align-items:center;gap:9px;margin:2px 0 20px;color:#bdc6d7;font-size:.79rem;cursor:pointer}.remember input{width:16px;height:16px;margin:0;accent-color:#7a5ff0}
-  .login-button{width:100%;height:54px;border:0;border-radius:12px;background:linear-gradient(100deg,#684ce0,#39b8e0);background-size:200% auto;color:#fff;font-family:'Poppins',sans-serif;font-size:.96rem;font-weight:700;cursor:pointer;transition:.18s,background-position .5s;display:flex;align-items:center;justify-content:center;gap:8px}
+  .remember{display:flex;align-items:center;gap:9px;margin:2px 0 20px;color:#bdc6d7;font-size:.79rem;cursor:pointer}.remember input{width:16px;height:16px;margin:0;accent-color:var(--purple)}
+  .login-button{width:100%;height:54px;border:0;border-radius:12px;background:linear-gradient(100deg,var(--purple),var(--cyan));background-size:200% auto;color:#fff;font-family:'Poppins',sans-serif;font-size:.96rem;font-weight:700;cursor:pointer;transition:.18s,background-position .5s;display:flex;align-items:center;justify-content:center;gap:8px}
   .login-button:hover{filter:brightness(1.08);transform:translateY(-1px);background-position:right center}
   .login-button:disabled{opacity:.72;cursor:wait;transform:none}
   .card-foot{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:24px;color:var(--muted);font-size:.78rem}
@@ -67,7 +73,6 @@
     .login-page{grid-template-columns:1fr;grid-template-rows:auto 1fr}
     .login-hero{padding:34px 24px 8px}
     .login-hero-inner{max-width:280px}
-    .login-hero-frame{border-radius:16px}
     .login-hero-tag,.login-hero-chips,.login-hero-status{display:none}
     .login-formside{padding:20px 20px 28px;align-items:flex-start}
     .login-card{max-width:440px;margin:0 auto;padding:30px 26px 26px}
@@ -85,10 +90,13 @@
   <section class="login-hero">
     <div class="login-hero-inner">
       <div class="login-hero-frame">
+        <div class="hero-glow-behind" aria-hidden="true"></div>
+        <div class="hero-ping-origin" aria-hidden="true"><span class="hero-ping p1"></span><span class="hero-ping p2"></span><span class="hero-ping p3"></span></div>
         <picture>
-          <source srcset="/img/inkamnet-go-lockup.webp" type="image/webp">
-          <img src="/img/inkamnet-go-lockup.jpg" alt="INKAMNET GO — From the Village, Online Everywhere">
+          <source srcset="/img/inkamnet-go-lockup-transparent.webp" type="image/webp">
+          <img src="/img/inkamnet-go-lockup-transparent.png" alt="INKAMNET GO — From the Village, Online Everywhere">
         </picture>
+        <div class="hero-sheen" aria-hidden="true"></div>
       </div>
       <p class="login-hero-tag">Satu pusat kendali untuk pelanggan, jaringan, tagihan, dan operasional lapangan INKAMNET — real-time, di mana saja.</p>
       <div class="login-hero-chips">
