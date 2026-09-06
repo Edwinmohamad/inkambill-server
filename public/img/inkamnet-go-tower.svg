@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" role="img" aria-labelledby="title">
+  <title id="title">INKAMNET GO</title>
+  <defs><linearGradient id="tower" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#67e8f9"/></linearGradient><linearGradient id="signal" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#765fd7"/><stop offset="1" stop-color="#a78bfa"/></linearGradient></defs>
+  <path d="M31 60h8l6 25H25z" fill="url(#tower)"/><circle cx="35" cy="55" r="6" fill="#43d8ed"/>
+  <g fill="none" stroke="url(#signal)" stroke-width="6" stroke-linecap="round"><path d="M47 54c0-6-5-11-12-11"/><path d="M58 54c0-12-10-22-23-22"/><path d="M69 54c0-18-15-32-34-32"/></g>
+</svg>

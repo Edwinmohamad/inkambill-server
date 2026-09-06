@@ -9,6 +9,8 @@ const required = [
   'android/app/src/main/AndroidManifest.xml',
   'android/app/src/main/res/xml/network_security_config.xml',
   'android/app/src/main/res/drawable-nodpi/inkamnet_mark.png',
+  'android/app/src/main/res/drawable/inkamnet_tower_foreground.xml',
+  'public/img/inkamnet-go-tower.svg',
   'android/app/src/main/java/id/my/edwinpxmx/inkamnetgo/MainActivity.java',
   'android/app/src/main/java/id/my/edwinpxmx/inkamnetgo/AlertWorker.java',
   'android/app/src/main/java/id/my/edwinpxmx/inkamnetgo/NotificationHelper.java',
@@ -31,6 +33,8 @@ const manifest = fs.readFileSync(path.join(root, 'android/app/src/main/AndroidMa
 const activity = fs.readFileSync(path.join(root, 'android/app/src/main/java/id/my/edwinpxmx/inkamnetgo/MainActivity.java'), 'utf8');
 const appGradle = fs.readFileSync(path.join(root, 'android/app/build.gradle'), 'utf8');
 const security = fs.readFileSync(path.join(root, 'android/app/src/main/res/xml/network_security_config.xml'), 'utf8');
+const iconVector = fs.readFileSync(path.join(root, 'android/app/src/main/res/drawable/inkamnet_tower_foreground.xml'), 'utf8');
+const launcherIcon = fs.readFileSync(path.join(root, 'android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml'), 'utf8');
 const workflow = fs.readFileSync(path.join(root, '.github/workflows/build-android.yml'), 'utf8');
 const mobileRoute = fs.readFileSync(path.join(root, 'routes/mobile.js'), 'utf8');
 const csrf = fs.readFileSync(path.join(root, 'middleware/csrf.js'), 'utf8');
@@ -43,7 +47,7 @@ const checks = [
   [manifest.includes('inkambill.edwinpxmx.my.id'), 'host deep link'],
   [appGradle.includes('applicationId "id.my.edwinpxmx.inkamnetgo"'), 'application ID'],
   [appGradle.includes('minSdk 26'), 'minimum Android'],
-  [appGradle.includes('versionCode 2') && appGradle.includes('versionName "1.1.0"'), 'versi Android'],
+  [appGradle.includes('versionCode 3') && appGradle.includes('versionName "1.2.0"'), 'versi Android'],
   [appGradle.includes('androidx.biometric:biometric'), 'biometrik'],
   [appGradle.includes('androidx.work:work-runtime'), 'background worker'],
   [appGradle.includes('firebase-messaging'), 'Firebase push messaging'],
@@ -69,6 +73,8 @@ const checks = [
     && csrf.includes('req.session?.user')
     && csrf.includes("req.is('application/json')"), 'CSRF mobile terbatas'],
   [workflow.includes('apksigner') && workflow.includes('android-emulator-runner'), 'signature dan emulator CI'],
+  [(iconVector.match(/strokeLineCap="round"/g) || []).length === 3
+    && launcherIcon.includes('@drawable/inkamnet_tower_foreground'), 'ikon menara dengan tiga sinyal dan safe area'],
   [workflow.includes('bash scripts/android-emulator-smoke.sh')
     && emulatorSmoke.includes('adb wait-for-device')
     && emulatorSmoke.includes('sys.boot_completed')
