@@ -4,8 +4,11 @@ const ExcelJS = require('exceljs');
 const db = require('../config/db');
 const { createClosingReportPdf, rupiah, date } = require('../services/reportPdf');
 const { money, personKey, siteBlock, locationText, buildClosingCalculation } = require('../services/closingCalculator');
+const { requireMasterAdmin } = require('../middleware/auth');
+const { financialAudit } = require('../services/financialControlService');
 
 const router = express.Router();
+router.use(requireMasterAdmin);
 const DEFAULT_CLOSING_PIN_SHA256 = 'cc819c3e680dd46370437a0224ea316438d27b869e090347a4b9af058d75886c';
 const pinHash = () => String(process.env.CLOSING_PIN_SHA256 || DEFAULT_CLOSING_PIN_SHA256).trim().toLowerCase();
 const pinTtlMs = () => {
@@ -119,10 +122,20 @@ async function loadClosing(start, end) {
 
 async function ensureDraftPeriod(conn, start, end, userId) {
   let [rows] = await conn.execute('SELECT * FROM closing_periods WHERE period_start=? AND period_end=? FOR UPDATE', [start, end]);
-  if (rows.length) return rows[0];
+  if (rows.length) {
+    if (rows[0].status === 'LOCKED') throw new Error('Periode Closing sudah dikunci. Buka kembali periode sebelum mengubah data.');
+    return rows[0];
+  }
   const [created] = await conn.execute('INSERT INTO closing_periods(period_start,period_end,closing_date,manual_salary_agung,manual_salary_padilah,created_by) VALUES(?,?,CURDATE(),?,?,?)', [start, end, 500000, 1000000, userId]);
   [rows] = await conn.execute('SELECT * FROM closing_periods WHERE id=? FOR UPDATE', [created.insertId]);
   return rows[0];
+}
+
+async function assertClosingChildDraft(table, id) {
+  if (!['closing_entries','closing_adjustments'].includes(table)) throw new Error('Tabel closing tidak valid.');
+  const [[row]]=await db.execute(`SELECT cp.status FROM ${table} child JOIN closing_periods cp ON cp.id=child.closing_id WHERE child.id=? LIMIT 1`,[id]);
+  if (!row) throw new Error('Data Closing tidak ditemukan.');
+  if (row.status==='LOCKED') throw new Error('Periode Closing sudah dikunci. Buka kembali sebelum mengubah data.');
 }
 
 router.get('/unlock', (req, res) => {
@@ -195,6 +208,7 @@ router.post('/save', async (req, res, next) => {
     if (start > end) return res.status(400).send('Periode tidak valid.');
     const n = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
     const [[old]] = await db.execute('SELECT id,status,manual_revenue,manual_expense,manual_salary_agung,manual_salary_padilah FROM closing_periods WHERE period_start=? AND period_end=? LIMIT 1', [start, end]);
+    if(old?.status==='LOCKED') throw new Error('Periode Closing sudah dikunci.');
     // v1.29 — Closing is always editable now; the previous LOCKED 409 guard here
     // (and on every entries/adjustments route below) has been removed on purpose.
     // The simplified manual form no longer sends legacy total fields. Preserve
@@ -211,6 +225,34 @@ router.post('/save', async (req, res, next) => {
     req.session.flash = { type: 'success', message: 'Pengaturan Closing tersimpan.' };
     res.redirect(`/closing?from=${start}&to=${end}&mode=manual`);
   } catch (err) { next(err); }
+});
+
+router.post('/period-lock', async (req, res, next) => {
+  const { start, end } = selectedPeriod(req); let conn;
+  try {
+    conn=await db.getConnection();await conn.beginTransaction();
+    const period=await ensureDraftPeriod(conn,start,end,req.session.user.id);
+    const data=await loadClosing(start,end);
+    const before={status:period.status};
+    await conn.execute(`UPDATE closing_periods SET status='LOCKED',snapshot_json=?,locked_by=?,locked_at=NOW() WHERE id=?`,[JSON.stringify(data),req.session.user.id,period.id]);
+    await financialAudit({conn,userId:req.session.user.id,action:'lock_period',entityType:'closing_period',entityId:period.id,before,after:{status:'LOCKED',period_start:start,period_end:end},reason:String(req.body.reason||'Closing periode selesai'),ip:req.ip});
+    await conn.commit();req.session.flash={type:'success',message:`Periode ${start} s/d ${end} dikunci. Transaksi pada tanggal tersebut sekarang ditolak.`};
+    res.redirect(`/closing?from=${start}&to=${end}`);
+  } catch(err){if(conn)await conn.rollback();next(err);} finally{if(conn)conn.release();}
+});
+
+router.post('/period-reopen', async (req, res, next) => {
+  const { start, end } = selectedPeriod(req);const reason=String(req.body.reason||'').trim();let conn;
+  try {
+    if(reason.length<5)throw new Error('Alasan buka kembali wajib diisi minimal 5 karakter.');
+    conn=await db.getConnection();await conn.beginTransaction();
+    const [[period]]=await conn.execute(`SELECT * FROM closing_periods WHERE period_start=? AND period_end=? FOR UPDATE`,[start,end]);
+    if(!period||period.status!=='LOCKED')throw new Error('Periode ini tidak sedang dikunci.');
+    await conn.execute(`UPDATE closing_periods SET status='DRAFT',locked_by=NULL,locked_at=NULL WHERE id=?`,[period.id]);
+    await financialAudit({conn,userId:req.session.user.id,action:'reopen_period',entityType:'closing_period',entityId:period.id,before:{status:'LOCKED'},after:{status:'DRAFT'},reason,ip:req.ip});
+    await conn.commit();req.session.flash={type:'warning',message:`Periode ${start} s/d ${end} dibuka kembali.`};
+    res.redirect(`/closing?from=${start}&to=${end}`);
+  } catch(err){if(conn)await conn.rollback();next(err);} finally{if(conn)conn.release();}
 });
 
 router.post('/entries', async (req, res, next) => {
@@ -244,6 +286,7 @@ router.post('/entries/:id/update', async (req, res, next) => {
     const id = Number(req.params.id);
     const { start, end } = selectedPeriod(req);
     if (!Number.isInteger(id) || id < 1) return res.status(400).send('Transaksi tidak valid.');
+    await assertClosingChildDraft('closing_entries',id);
     const [[entry]] = await db.execute('SELECT id,entry_type FROM closing_entries WHERE id=? LIMIT 1', [id]);
     if (!entry) return res.status(404).send('Transaksi tidak ditemukan.');
     const site = normalizeSiteCluster(req.body.site_code, req.body.cluster_name);
@@ -266,6 +309,7 @@ router.post('/entries/:id/delete', async (req, res, next) => {
     const id = Number(req.params.id);
     const { start, end } = selectedPeriod(req);
     if (!Number.isInteger(id) || id < 1) return res.status(400).send('Transaksi tidak valid.');
+    await assertClosingChildDraft('closing_entries',id);
     const [[entry]] = await db.execute('SELECT id FROM closing_entries WHERE id=? LIMIT 1', [id]);
     if (!entry) return res.status(404).send('Transaksi tidak ditemukan.');
     await db.execute('DELETE FROM closing_entries WHERE id=?', [id]);
@@ -305,6 +349,7 @@ router.post('/adjustments/:id/update', async (req, res, next) => {
     const id = Number(req.params.id);
     const { start, end } = selectedPeriod(req);
     if (!Number.isInteger(id) || id < 1) return res.status(400).send('Penyesuaian tidak valid.');
+    await assertClosingChildDraft('closing_adjustments',id);
     const [[adjustment]] = await db.execute('SELECT id FROM closing_adjustments WHERE id=? LIMIT 1', [id]);
     if (!adjustment) return res.status(404).send('Penyesuaian tidak ditemukan.');
     const recipient = String(req.body.recipient_name || '').trim();
@@ -330,6 +375,7 @@ router.post('/adjustments/:id/delete', async (req, res, next) => {
     const id = Number(req.params.id);
     const { start, end } = selectedPeriod(req);
     if (!Number.isInteger(id) || id < 1) return res.status(400).send('Penyesuaian tidak valid.');
+    await assertClosingChildDraft('closing_adjustments',id);
     const [[adjustment]] = await db.execute('SELECT id FROM closing_adjustments WHERE id=? LIMIT 1', [id]);
     if (!adjustment) return res.status(404).send('Penyesuaian tidak ditemukan.');
     await db.execute('DELETE FROM closing_adjustments WHERE id=?', [id]);

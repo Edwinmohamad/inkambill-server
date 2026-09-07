@@ -7,6 +7,7 @@ const { requireAdmin, requireMasterAdmin, requirePermission, isMasterAdminRole }
 const { assignCashTransactionCode,normalizeCategoryCode,approveCashTransaction,rejectCashTransaction }=require('../services/cashService');
 const { formatCashExpenseName }=require('../services/cashNamingService');
 const { audit }=require('../services/auditService');
+const { assertDateOpen }=require('../services/financialControlService');
 const router=express.Router();
 const MONTH_NAMES_ID=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 // v1.25.5 (susulan) — "Nominal Tetap" & "Tanggal Jatuh Tempo" only ever mean something when a category is
@@ -224,6 +225,7 @@ router.get('/cash',async(req,res)=>{
 router.get('/cash/:id/proof',async(req,res)=>{const [rows]=await db.execute(`SELECT proof_path,proof_original_name,proof_mime FROM cash_transactions WHERE id=? LIMIT 1`,[req.params.id]);const t=rows[0];if(!t?.proof_path)return res.status(404).send('Bukti pengeluaran tidak ditemukan.');const full=path.join(CASH_PROOF_DIR,path.basename(t.proof_path));if(!fs.existsSync(full))return res.status(404).send('File bukti pengeluaran tidak ditemukan di storage.');res.type(t.proof_mime||'application/octet-stream');res.setHeader('Content-Disposition',`inline; filename="${String(t.proof_original_name||path.basename(t.proof_path)).replace(/[\r\n"]/g,'_')}"`);res.setHeader('Cache-Control','private, max-age=300');res.setHeader('X-Content-Type-Options','nosniff');res.sendFile(full);});
 
 router.post('/cash',async(req,res)=>{
+  await assertDateOpen(db,req.body.transaction_date);
   const b=req.body;const name=String(b.name||'').trim();const amount=Number(b.amount);if(!name)throw new Error('Nama transaksi wajib diisi.');if(!Number.isFinite(amount)||amount<=0)throw new Error('Nominal transaksi harus lebih dari 0.');
   const conn=await db.getConnection();let saved=null;
   try{await conn.beginTransaction();const [categoryRows]=await conn.execute(`SELECT id,name,type,code FROM cash_categories WHERE id=? AND is_active=1 LIMIT 1`,[b.category_id]);const category=categoryRows[0];if(!category)throw new Error('Kategori kas tidak ditemukan atau sudah tidak aktif.');const vendor=vendorMeta(category,b),isExpense=category.type==='expense';const purchaseChannel=isExpense&&!vendor.isVendor&&['online','offline'].includes(b.purchase_channel)?b.purchase_channel:null;const formattedName=isExpense?formatCashExpenseName({categoryCode:category.code,categoryName:category.name,rawName:name,shopName:b.purchase_shop_name,vendorName:vendor.name}):name;if(req.file)saved=await saveCashProof(req.file);const [r]=await conn.execute(`INSERT INTO cash_transactions(transaction_date,name,category_id,site_id,amount,notes,purchase_channel,purchase_shop_name,vendor_name,vendor_duration,vendor_duration_unit,proof_path,proof_original_name,proof_mime,proof_size,proof_uploaded_by,proof_uploaded_at,source_type,approval_status,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual','PENDING_APPROVAL',?)`,[b.transaction_date,formattedName,category.id,b.site_id||null,amount,b.notes||null,purchaseChannel,purchaseChannel?String(b.purchase_shop_name||'').trim()||null:null,vendor.name,vendor.duration,vendor.unit,saved?.filename||null,saved?.originalName||null,saved?.mime||null,saved?.size||null,saved?req.session.user.id:null,saved?new Date():null,req.session.user.id]);const code=await assignCashTransactionCode(conn,r.insertId,category.id,b.transaction_date);await conn.commit();req.session.flash={type:'success',message:`${isExpense?'Pengeluaran':'Pemasukan'} ${code} berhasil diajukan${vendor.isVendor?` untuk vendor ${vendor.name}`:''}${saved?' dengan bukti':''}. Menunggu approval Master Admin dan belum memengaruhi saldo real.`};}catch(e){await conn.rollback();if(saved)await removeCashProof(saved.filename);throw e;}finally{conn.release();}
@@ -231,6 +233,7 @@ router.post('/cash',async(req,res)=>{
 });
 
 router.post('/cash/:id/update',requireAdmin,async(req,res)=>{
+  await assertDateOpen(db,req.body.transaction_date);
   // v1.24.5 — baris "AUTO BILLING" (source_type='payment') kini boleh diedit sama seperti transaksi
   // manual (belum terhubung payment gateway, jadi bookkeeping kas masih perlu bisa dikoreksi manual).
   // Edit tetap mengembalikan baris ke PENDING_APPROVAL supaya Master Admin meninjau ulang nilainya.

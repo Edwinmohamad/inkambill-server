@@ -393,7 +393,7 @@ router.post('/import', requireAdmin, async(req,res)=>{
       const customerCode=await nextImportedCustomerCode(conn,d.site_code,dueDay,sequenceCache);
       const email=d.email||null;
       const wa=validateWhatsapp(d.phone);
-      await conn.execute(`INSERT INTO customers(customer_code,name,phone,whatsapp_status,whatsapp_normalized,whatsapp_verified_at,email,address,sales_id,site_id,router_id,cluster_id,package_id,pppoe_username,activation_date,due_day,grace_days,customer_status,billing_status,network_status,prorata_enabled,notes) VALUES(?,?,?,?,?,NOW(),?,?,?,?,?,?,?,?,?,?,?,?,'unpaid','offline',?,?)`,[customerCode,d.name,d.phone,wa.valid?'valid':'invalid',wa.normalized,email,d.address,d.sales_id,d.site_id,d.router_id,d.cluster_id,d.package_id,d.pppoe_username,d.activation_date,dueDay,d.grace_days,d.customer_status,d.prorata_enabled,d.notes]);
+      await conn.execute(`INSERT INTO customers(customer_code,name,phone,whatsapp_status,whatsapp_normalized,whatsapp_verified_at,email,address,sales_id,site_id,router_id,cluster_id,package_id,pppoe_username,activation_date,due_day,grace_days,customer_status,billing_status,network_status,prorata_enabled,customer_source,notes) VALUES(?,?,?,?,?,NOW(),?,?,?,?,?,?,?,?,?,?,?,?,'unpaid','offline',?,'excel_import',?)`,[customerCode,d.name,d.phone,wa.valid?'valid':'invalid',wa.normalized,email,d.address,d.sales_id,d.site_id,d.router_id,d.cluster_id,d.package_id,d.pppoe_username,d.activation_date,dueDay,d.grace_days,d.customer_status,d.prorata_enabled,d.notes]);
       inserted++;
     }
     await conn.commit();
@@ -472,7 +472,7 @@ router.post('/', async (req, res) => {
   }
   const email=b.email_mode==='auto'?autoCustomerEmail(customerCode):(String(b.email||'').trim()||null);
   const wa=validateWhatsapp(b.phone);
-  const [result]=await db.execute(`INSERT INTO customers (customer_code,name,phone,whatsapp_status,whatsapp_normalized,whatsapp_verified_at,email,address,sales_id,site_id,router_id,cluster_id,package_id,discount_id,pppoe_username,activation_date,due_day,grace_days,customer_status,billing_status,network_status,status_changed_at,prorata_enabled,is_new_install,install_technician_name,install_sales_name,notes) VALUES (?,?,?,?,?,NOW(),?,?,?,?,NULL,?,?,?,NULL,?,?,?,?,?,'offline',NOW(),?,?,?,?,?)`,[customerCode,b.name,b.phone||null,wa.valid?'valid':'invalid',wa.normalized,email,b.address||null,b.sales_id||null,siteId,b.cluster_id||null,packageId,discountId,b.activation_date||null,b.due_day||null,b.grace_days||null,b.customer_status||'active','unpaid',b.prorata_enabled?1:0,isNewInstall,installTechnicianName,installSalesName,b.notes||null]);
+  const [result]=await db.execute(`INSERT INTO customers (customer_code,name,phone,whatsapp_status,whatsapp_normalized,whatsapp_verified_at,email,address,sales_id,site_id,router_id,cluster_id,package_id,discount_id,pppoe_username,activation_date,due_day,grace_days,customer_status,billing_status,network_status,status_changed_at,prorata_enabled,is_new_install,customer_source,install_technician_name,install_sales_name,notes) VALUES (?,?,?,?,?,NOW(),?,?,?,?,NULL,?,?,?,NULL,?,?,?,?,?,'offline',NOW(),?,?,?,?,?,?)`,[customerCode,b.name,b.phone||null,wa.valid?'valid':'invalid',wa.normalized,email,b.address||null,b.sales_id||null,siteId,b.cluster_id||null,packageId,discountId,b.activation_date||null,b.due_day||null,b.grace_days||null,b.customer_status||'active','unpaid',b.prorata_enabled?1:0,isNewInstall,isNewInstall?'new_install':'manual_entry',installTechnicianName,installSalesName,b.notes||null]);
   await audit({userId:req.session.user.id,action:'create',entityType:'customer',entityId:result.insertId,description:`Tambah ${customerCode} - ${b.name}${isNewInstall?` (Pemasangan Baru — teknisi ${installTechnicianName}, sales ${installSalesName})`:''}`,ip:req.ip});
   req.session.flash={type:'success',message:`Pelanggan berhasil ditambahkan dengan Customer ID ${customerCode}.`};res.redirect('/customers');
 });
@@ -631,7 +631,7 @@ router.post('/:id/restore',requireAdmin,async(req,res)=>{
   const [rows]=await db.execute(`SELECT id,customer_code,name FROM customers WHERE id=? AND archived_at IS NOT NULL LIMIT 1`,[req.params.id]);
   if(!rows.length){req.session.flash={type:'warning',message:'Pelanggan tidak ditemukan atau tidak sedang diarsipkan.'};return res.redirect('/customers?status=archived');}
   const c=rows[0];
-  await db.execute(`UPDATE customers SET archived_at=NULL,customer_status='active',status_changed_at=NOW() WHERE id=?`,[c.id]);
+  await db.execute(`UPDATE customers SET archived_at=NULL,customer_status='active',customer_source='restored',status_changed_at=NOW() WHERE id=?`,[c.id]);
   await audit({userId:req.session.user.id,action:'restore',entityType:'customer',entityId:c.id,description:`Restore pelanggan ${c.customer_code} - ${c.name}`,ip:req.ip});
   req.session.flash={type:'success',message:`Pelanggan ${c.name} dipulihkan ke status Aktif.`};
   res.redirect('/customers?status=archived');

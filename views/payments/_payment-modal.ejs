@@ -4,12 +4,13 @@
     <form method="post" action="/payments" enctype="multipart/form-data" class="modal-content" id="paymentForm">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>">
       <input type="hidden" name="return_to" value="<%= paymentReturnTo %>">
+      <input type="hidden" name="idempotency_key" value="payment-<%= Date.now() %>-<%= Math.random().toString(36).slice(2) %>">
       <div class="modal-header"><div><div class="module-kicker">PEMBAYARAN PELANGGAN</div><h5 class="modal-title">Catat Pembayaran</h5><small class="text-secondary">Pilih satu atau banyak faktur sekaligus.</small></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body">
         <div class="payment-mode-picker mb-3">
-          <label><input type="radio" name="method" value="transfer" checked><span><i class="bi bi-bank2"></i><strong>Transfer</strong><small>Bukti opsional, menunggu approval</small></span></label>
+          <label><input type="radio" name="method" value="transfer" checked><span><i class="bi bi-bank2"></i><strong>Transfer</strong><small>Bukti wajib sebelum approval</small></span></label>
           <label><input type="radio" name="method" value="cash"><span><i class="bi bi-cash-stack"></i><strong>Cash ke Tim</strong><small>Bukti penerimaan dapat dilampirkan</small></span></label>
-          <label><input type="radio" name="method" value="qris"><span><i class="bi bi-qr-code"></i><strong>QRIS</strong><small>Screenshot transaksi bersifat opsional</small></span></label>
+          <label><input type="radio" name="method" value="qris"><span><i class="bi bi-qr-code"></i><strong>QRIS</strong><small>Bukti wajib sebelum approval</small></span></label>
         </div>
 
         <div class="invoice-picker-panel">
@@ -33,11 +34,12 @@
         </div>
 
         <div class="row g-3 mt-1">
+          <div class="col-md-6"><label class="form-label">Tanggal Pelanggan Membayar</label><input class="form-control" type="date" name="paid_at" value="<%= new Date().toISOString().slice(0,10) %>" required><div class="form-help">Tanggal transfer/cash sebenarnya, bukan tanggal approval.</div></div>
           <div class="col-md-6 transfer-fields"><label class="form-label">Bank Tujuan Terdaftar</label><select class="form-select" name="bank_id" required><option value="">Pilih rekening tujuan</option><% paymentBanks.forEach(bank=>{ %><option value="<%= bank.id %>"><%= bank.bank_name %> · <%= bank.account_number %> · a.n. <%= bank.account_name %></option><% }) %></select><div class="form-help"><% if(paymentBanks.length){ %>Data rekening diambil langsung dari Pengaturan → Bank.<% }else{ %><span class="text-danger-soft">Belum ada bank aktif. <% if(isAdmin){ %><a href="/settings?tab=banks">Daftarkan bank terlebih dahulu.</a><% } %></span><% } %></div></div>
           <div class="col-md-6"><label class="form-label">Alur Approval</label><div class="collector-self approval-master-flow"><i class="bi bi-shield-lock-fill"></i><span><strong>Menunggu Master Admin</strong><small>Admin input → bukti opsional → Master Admin Approve/Reject → tagihan diperbarui.</small></span></div></div>
           <div class="col-md-6 cash-fields d-none"><label class="form-label">Cash Diterima Oleh</label><% if(isAdmin){ %><select class="form-select" name="collector_user_id"><% staff.forEach(u=>{ %><option value="<%= u.id %>" <%= Number(u.id)===Number(user.id)?'selected':'' %>><%= u.name %> · <%= u.role %></option><% }) %></select><% } else { %><input type="hidden" name="collector_user_id" value="<%= user.id %>"><div class="collector-self"><i class="bi bi-person-check-fill"></i><span><strong><%= user.name %></strong><small>Cash tercatat atas nama akun yang login.</small></span></div><% } %><div class="form-help">Setelah disetujui Master Admin, dana berstatus <b>Cash di Staff</b> sampai disetor.</div></div>
           <div class="col-md-6 proof-upload-field">
-            <label class="form-label">Bukti Pembayaran <span class="text-success-soft">(opsional)</span></label>
+            <label class="form-label">Bukti Pembayaran <span class="text-success-soft">(wajib untuk Transfer/QRIS)</span></label>
             <label class="proof-dropzone" for="proof_file"><input id="proof_file" type="file" name="proof_file" accept="image/jpeg,image/png,image/webp,application/pdf"><span class="proof-drop-icon"><i class="bi bi-cloud-arrow-up"></i></span><span><strong>Lampirkan bukti jika tersedia</strong><small>JPG, PNG, WEBP, PDF · Maks. 6 MB</small><em id="proofFileName">Tanpa bukti</em></span></label>
             <div class="form-help">Admin tetap dapat klik simpan tanpa bukti. Master Admin menerima indikator jelas sebelum memilih Approve atau Reject.</div>
           </div>

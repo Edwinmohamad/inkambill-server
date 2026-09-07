@@ -59,7 +59,7 @@ router.get('/', async(req,res)=>{
       (SELECT COUNT(*) FROM technician_schedules ts WHERE (ts.technician_employee_id=e.id OR (ts.technician_employee_id IS NULL AND e.user_id IS NOT NULL AND ts.technician_id=e.user_id)) AND ts.status='done' AND ts.schedule_date BETWEEN ? AND ?) done_jobs,
       (SELECT COUNT(*) FROM server_duty_schedules sd WHERE sd.duty_date BETWEEN ? AND ? AND ((e.user_id IS NOT NULL AND sd.user_id=e.user_id) OR LOWER(TRIM(sd.staff_name))=LOWER(TRIM(e.name)))) assigned_duties,
       (SELECT COUNT(*) FROM server_duty_schedules sd WHERE sd.duty_date BETWEEN ? AND ? AND sd.status='present' AND ((e.user_id IS NOT NULL AND sd.user_id=e.user_id) OR LOWER(TRIM(sd.staff_name))=LOWER(TRIM(e.name)))) present_duties,
-      (SELECT COUNT(*) FROM customers c WHERE c.sales_id=e.id AND COALESCE(c.activation_date,DATE(c.created_at)) BETWEEN ? AND ?) psb_count
+      (SELECT COUNT(*) FROM customers c WHERE c.sales_id=e.id AND c.archived_at IS NULL AND c.customer_source='new_install' AND c.activation_date BETWEEN ? AND ?) psb_count
       ,(SELECT COUNT(*) FROM payments pay WHERE e.user_id IS NOT NULL AND pay.received_by=e.user_id AND DATE(pay.paid_at) BETWEEN ? AND ?) payments_recorded
       ,(SELECT COUNT(*) FROM payments pay WHERE e.user_id IS NOT NULL AND pay.verified_by=e.user_id AND DATE(pay.verified_at) BETWEEN ? AND ?) payments_approved
       ,(SELECT COUNT(*) FROM cash_transactions ct WHERE e.user_id IS NOT NULL AND ct.created_by=e.user_id AND ct.transaction_date BETWEEN ? AND ?) cash_entries

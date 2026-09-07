@@ -115,9 +115,9 @@ router.get('/', async (req, res) => {
   // v1.20.1: PSB/funnel counts must exclude archived (soft-deleted) customers — otherwise a
   // registration that's later archived (e.g. duplicate/mistaken entry) keeps inflating that
   // month's PSB numbers forever, since archiving never touches activation_date/created_at.
-  const [[newCustomers]] = await db.execute(`SELECT COUNT(*) total FROM customers c WHERE c.archived_at IS NULL AND YEAR(COALESCE(c.activation_date,DATE(c.created_at)))=? AND MONTH(COALESCE(c.activation_date,DATE(c.created_at)))=?${psbScope}`,[psbYear,psbMonth,...psbParams]);
-  const [[psbToday]] = await db.execute(`SELECT COUNT(*) total FROM customers c WHERE c.archived_at IS NULL AND DATE(COALESCE(c.activation_date,DATE(c.created_at)))=CURDATE()${psbScope}`,psbParams);
-  const [psbCustomers]=await db.execute(`SELECT c.id,c.customer_code,c.name,c.activation_date,c.customer_status,s.code site_code,cl.name cluster_name,p.name package_name,p.speed_label FROM customers c JOIN sites s ON s.id=c.site_id JOIN packages p ON p.id=c.package_id LEFT JOIN clusters cl ON cl.id=c.cluster_id WHERE c.archived_at IS NULL AND YEAR(COALESCE(c.activation_date,DATE(c.created_at)))=? AND MONTH(COALESCE(c.activation_date,DATE(c.created_at)))=?${psbScope} ORDER BY COALESCE(c.activation_date,DATE(c.created_at)) DESC,c.id DESC LIMIT 250`,[psbYear,psbMonth,...psbParams]);
+  const [[newCustomers]] = await db.execute(`SELECT COUNT(*) total FROM customers c WHERE c.archived_at IS NULL AND c.customer_source='new_install' AND YEAR(c.activation_date)=? AND MONTH(c.activation_date)=?${psbScope}`,[psbYear,psbMonth,...psbParams]);
+  const [[psbToday]] = await db.execute(`SELECT COUNT(*) total FROM customers c WHERE c.archived_at IS NULL AND c.customer_source='new_install' AND DATE(c.activation_date)=CURDATE()${psbScope}`,psbParams);
+  const [psbCustomers]=await db.execute(`SELECT c.id,c.customer_code,c.name,c.activation_date,c.customer_status,s.code site_code,cl.name cluster_name,p.name package_name,p.speed_label FROM customers c JOIN sites s ON s.id=c.site_id JOIN packages p ON p.id=c.package_id LEFT JOIN clusters cl ON cl.id=c.cluster_id WHERE c.archived_at IS NULL AND c.customer_source='new_install' AND YEAR(c.activation_date)=? AND MONTH(c.activation_date)=?${psbScope} ORDER BY c.activation_date DESC,c.id DESC LIMIT 250`,[psbYear,psbMonth,...psbParams]);
   const [[network]] = await db.execute(`SELECT SUM(c.network_status='online') online,SUM(c.network_status='offline') offline,SUM(c.network_status='isolated') isolated,SUM(c.network_status='router_unreachable') unreachable FROM customers c WHERE c.customer_status='active'${customerScope}`,customerParams);
 
   const [[routerNoc]] = await db.execute(`SELECT COUNT(*) routers_total,SUM(last_status='online') routers_online FROM routers WHERE is_active=1${siteId?' AND site_id=?':''}`,customerParams);
@@ -149,10 +149,10 @@ router.get('/', async (req, res) => {
     WHERE s.is_active=1
     GROUP BY s.id,s.code,s.name ORDER BY s.code`);
 
-  const [dailyPsbRows]=await db.execute(`SELECT DAY(COALESCE(c.activation_date,DATE(c.created_at))) day_no,COUNT(*) total
+  const [dailyPsbRows]=await db.execute(`SELECT DAY(c.activation_date) day_no,COUNT(*) total
     FROM customers c
-    WHERE c.archived_at IS NULL AND YEAR(COALESCE(c.activation_date,DATE(c.created_at)))=? AND MONTH(COALESCE(c.activation_date,DATE(c.created_at)))=?${psbScope}
-    GROUP BY DAY(COALESCE(c.activation_date,DATE(c.created_at))) ORDER BY day_no`,[psbYear,psbMonth,...psbParams]);
+    WHERE c.archived_at IS NULL AND c.customer_source='new_install' AND YEAR(c.activation_date)=? AND MONTH(c.activation_date)=?${psbScope}
+    GROUP BY DAY(c.activation_date) ORDER BY day_no`,[psbYear,psbMonth,...psbParams]);
 
   const [monthlyInvoiceRows]=await db.execute(`SELECT i.period_month month_no,COALESCE(SUM(i.total),0) total FROM invoices i JOIN customers c ON c.id=i.customer_id WHERE i.period_year=? AND i.status NOT IN ('cancelled','refunded')${customerScope} GROUP BY i.period_month ORDER BY i.period_month`,[selectedYear,...customerParams]);
   const [monthlyPaymentRows]=await db.execute(`SELECT MONTH(p.paid_at) month_no,COALESCE(SUM(p.amount),0) total FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id WHERE p.status='confirmed' AND YEAR(p.paid_at)=?${customerScope} GROUP BY MONTH(p.paid_at) ORDER BY MONTH(p.paid_at)`,[selectedYear,...customerParams]);

@@ -770,4 +770,22 @@ async function ensureV40Schema() {
   )`);
 }
 
-module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema };
+async function ensureV41Schema() {
+  await db.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS booked_at DATE NULL AFTER paid_at`);
+  await db.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS booked_date_mode ENUM('payment_date','approval_date','manual') NULL AFTER booked_at`);
+  await db.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(190) NULL AFTER reference`);
+  await db.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS customer_source ENUM('new_install','migration','excel_import','manual_entry','restored') NOT NULL DEFAULT 'manual_entry' AFTER is_new_install`);
+  await db.query(`UPDATE customers SET customer_source='new_install' WHERE is_new_install=1 AND customer_source='manual_entry'`);
+  await db.query(`CREATE TABLE IF NOT EXISTS financial_audit_logs (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,user_id BIGINT UNSIGNED NULL,action VARCHAR(80) NOT NULL,
+    entity_type VARCHAR(80) NOT NULL,entity_id BIGINT UNSIGNED NULL,before_json LONGTEXT NULL,after_json LONGTEXT NULL,
+    reason VARCHAR(500) NOT NULL,ip_address VARCHAR(64) NULL,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_financial_audit_entity(entity_type,entity_id),INDEX idx_financial_audit_time(created_at))`);
+  try { await db.query(`CREATE UNIQUE INDEX uq_payments_idempotency ON payments(idempotency_key)`); } catch (err) { if (!['ER_DUP_KEYNAME','ER_DUP_ENTRY'].includes(err.code)) throw err; }
+  try { await db.query(`CREATE UNIQUE INDEX uq_cash_source ON cash_transactions(source_type,source_id)`); } catch (err) {
+    if (!['ER_DUP_KEYNAME','ER_DUP_ENTRY'].includes(err.code)) throw err;
+    if (err.code === 'ER_DUP_ENTRY') console.warn('Unique jurnal sumber belum dipasang: bersihkan duplikasi cash_transactions terlebih dahulu.');
+  }
+}
+
+module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema };

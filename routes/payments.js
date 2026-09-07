@@ -7,6 +7,7 @@ const { refreshInvoiceStatus }=require('../services/invoiceService');
 const { audit }=require('../services/auditService');
 const { unisolateCustomer }=require('../services/networkService');
 const { assignCashTransactionCode }=require('../services/cashService');
+const { isoDate, assertDateOpen, resolveBookDate, financialAudit }=require('../services/financialControlService');
 const { requireAdmin, requireMasterAdmin, isAdminRole, isMasterAdminRole }=require('../middleware/auth');
 const router=express.Router();
 
@@ -64,15 +65,15 @@ async function billingCategory(conn,name='Pendapatan Billing'){
   const [rows]=await conn.execute(`SELECT id FROM cash_categories WHERE name=? AND type='income' LIMIT 1`,[name]);
   return rows[0]?.id||null;
 }
-async function postCashTransaction(conn,{paymentId,invoiceId,amount,reference,categoryName='Pendapatan Billing',prefix='Pembayaran',actorUserId=null}){
+async function postCashTransaction(conn,{paymentId,invoiceId,amount,reference,bookDate,categoryName='Pendapatan Billing',prefix='Pembayaran',actorUserId=null}){
   const meta=await paymentCashMeta(conn,invoiceId);if(!meta)return;
   const catId=await billingCategory(conn,categoryName);if(!catId)return;
   const [exists]=await conn.execute(`SELECT id FROM cash_transactions WHERE source_type='payment' AND source_id=? LIMIT 1`,[paymentId]);
   if(exists.length)return;
-  const [r]=await conn.execute(`INSERT INTO cash_transactions(transaction_date,name,category_id,site_id,amount,notes,source_type,source_id,created_by) VALUES(CURDATE(),?,?,?,?,?,'payment',?,?)`,[
-    `${prefix} ${meta.customer_name}`,catId,meta.site_id,amount,`Faktur ${meta.invoice_number}${reference?` · ${reference}`:''}`,paymentId,actorUserId
+  const [r]=await conn.execute(`INSERT INTO cash_transactions(transaction_date,name,category_id,site_id,amount,notes,source_type,source_id,created_by) VALUES(?,?,?,?,?,?,'payment',?,?)`,[
+    bookDate,`${prefix} ${meta.customer_name}`,catId,meta.site_id,amount,`Faktur ${meta.invoice_number}${reference?` · ${reference}`:''}`,paymentId,actorUserId
   ]);
-  await assignCashTransactionCode(conn,r.insertId,catId,new Date());
+  await assignCashTransactionCode(conn,r.insertId,catId,new Date(`${bookDate}T12:00:00`));
 }
 async function maybeAutoUnisolate(invoiceId){
   const [paidRows]=await db.execute(`SELECT i.status,c.id customer_id,c.network_status,c.isolation_reason FROM invoices i JOIN customers c ON c.id=i.customer_id WHERE i.id=?`,[invoiceId]);
@@ -149,6 +150,8 @@ router.post('/',requireAdmin,async(req,res)=>{
   if(!ids.length)throw new Error('Pilih minimal satu faktur yang akan dibayar.');
   const {method,notes,collector_user_id}=req.body;
   const normalizedMethod=['transfer','cash','qris'].includes(method)?method:'transfer';
+  const paidDate=isoDate(req.body.paid_at)||isoDate(new Date());
+  const requestKey=String(req.body.idempotency_key||crypto.randomUUID()).slice(0,150);
   let bankName=null;
   if(normalizedMethod==='transfer'){
     const [bankRows]=await db.execute(`SELECT id,bank_name,account_name,account_number FROM banks WHERE id=? AND is_active=1 AND type IN ('bank_transfer','virtual_account','other') LIMIT 1`,[req.body.bank_id||0]);
@@ -178,8 +181,8 @@ router.post('/',requireAdmin,async(req,res)=>{
       if(numericAmount>Number(invoice.outstanding))throw new Error(`Nominal faktur #${invoiceId} melebihi sisa tagihan (${Number(invoice.outstanding).toLocaleString('id-ID')}).`);
       let savedProof=null;
       if(req.file){savedProof=await saveProofFile(req.file);savedFiles.push(savedProof.filename);}
-      const [r]=await conn.execute(`INSERT INTO payments (invoice_id,amount,method,reference,notes,status,settlement_status,bank_name,proof_reference,proof_path,proof_original_name,proof_mime,proof_size,proof_uploaded_by,proof_uploaded_at,paid_at,received_by,collector_user_id,verified_by,verified_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),?,?,?,?)`,[
-        invoiceId,numericAmount,normalizedMethod,null,notes||null,status,settlement,bankName,savedProof?.originalName||null,savedProof?.filename||null,savedProof?.originalName||null,savedProof?.mime||null,savedProof?.size||null,savedProof?req.session.user.id:null,savedProof?new Date():null,req.session.user.id,collector,status==='confirmed'?req.session.user.id:null,status==='confirmed'?new Date():null
+      const [r]=await conn.execute(`INSERT INTO payments (invoice_id,amount,method,reference,idempotency_key,notes,status,settlement_status,bank_name,proof_reference,proof_path,proof_original_name,proof_mime,proof_size,proof_uploaded_by,proof_uploaded_at,paid_at,received_by,collector_user_id,verified_by,verified_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,[
+        invoiceId,numericAmount,normalizedMethod,null,`${requestKey}:${invoiceId}`,notes||null,status,settlement,bankName,savedProof?.originalName||null,savedProof?.filename||null,savedProof?.originalName||null,savedProof?.mime||null,savedProof?.size||null,savedProof?req.session.user.id:null,savedProof?new Date():null,`${paidDate} 12:00:00`,req.session.user.id,collector,status==='confirmed'?req.session.user.id:null,status==='confirmed'?new Date():null
       ]);
       const autoReference=paymentReference(r.insertId);
       await conn.execute(`UPDATE payments SET reference=? WHERE id=?`,[autoReference,r.insertId]);
@@ -209,6 +212,7 @@ router.post('/:id/method-to-cash',requireMasterAdmin,async(req,res)=>{
   let auditDescription='';
   try{
     await conn.beginTransaction();
+    await assertDateOpen(conn,paidDate);
     const [rows]=await conn.execute(`SELECT p.id,p.method,p.status,p.settlement_status,p.reference,p.amount,p.invoice_id,u.name collector_name
       FROM payments p LEFT JOIN users u ON u.id=? WHERE p.id=? FOR UPDATE`,[collectorId,paymentId]);
     const payment=rows[0];
@@ -268,14 +272,17 @@ router.post('/:id/verify',requireMasterAdmin,async(req,res)=>{
     const [rows]=await conn.execute(`SELECT * FROM payments WHERE id=? FOR UPDATE`,[req.params.id]);
     const p=rows[0];if(!p)throw new Error('Pembayaran tidak ditemukan');
     if(p.status!=='pending')throw new Error('Hanya pembayaran berstatus menunggu yang dapat disetujui.');
+    if(['transfer','qris'].includes(p.method)&&!p.proof_path)throw new Error('Bukti transfer/QRIS wajib dilampirkan sebelum approval.');
+    const booking=await resolveBookDate(conn,{mode:req.body.book_date_mode,paidAt:p.paid_at,manualDate:req.body.manual_book_date});
     const [invoiceRows]=await conn.execute(`SELECT i.outstanding,i.status
       FROM invoices i JOIN customers c ON c.id=i.customer_id
       WHERE i.id=? AND c.customer_status='active' AND c.archived_at IS NULL FOR UPDATE`,[p.invoice_id]);
     if(!invoiceRows.length)throw new Error('Faktur pembayaran tidak ditemukan.');
     if(Number(p.amount)>Number(invoiceRows[0].outstanding))throw new Error('Nominal transfer melebihi sisa tagihan saat ini. Periksa pembayaran lain sebelum verifikasi.');
-    await conn.execute(`UPDATE payments SET status='confirmed',settlement_status=?,verified_by=?,verified_at=NOW() WHERE id=?`,[p.method==='cash'?'held_by_staff':'not_applicable',req.session.user.id,p.id]);
+    await conn.execute(`UPDATE payments SET status='confirmed',settlement_status=?,booked_at=?,booked_date_mode=?,verified_by=?,verified_at=NOW() WHERE id=?`,[p.method==='cash'?'held_by_staff':'not_applicable',booking.date,booking.mode,req.session.user.id,p.id]);
     await refreshInvoiceStatus(conn,p.invoice_id);
-    if(p.method!=='cash')await postCashTransaction(conn,{paymentId:p.id,invoiceId:p.invoice_id,amount:p.amount,reference:p.reference,actorUserId:req.session.user.id});
+    if(p.method!=='cash')await postCashTransaction(conn,{paymentId:p.id,invoiceId:p.invoice_id,amount:p.amount,reference:p.reference,bookDate:booking.date,actorUserId:req.session.user.id});
+    await financialAudit({conn,userId:req.session.user.id,action:'approve',entityType:'payment',entityId:p.id,before:p,after:{status:'confirmed',booked_at:booking.date,booked_date_mode:booking.mode},reason:`Approval pembayaran (${booking.mode})`,ip:req.ip});
     await conn.commit();
     await audit({userId:req.session.user.id,action:'approve',entityType:'payment',entityId:p.id,description:`Approval Master Admin ${p.proof_path?'dengan bukti':'tanpa bukti'} untuk pembayaran ${p.reference||p.id}`,ip:req.ip});
     await maybeAutoUnisolate(p.invoice_id);
@@ -303,13 +310,16 @@ router.post('/bulk-verify',requireMasterAdmin,async(req,res)=>{
       const [rows]=await conn.execute(`SELECT * FROM payments WHERE id=? FOR UPDATE`,[id]);
       const p=rows[0];
       if(!p||p.status!=='pending'){await conn.rollback();continue;}
+      if(['transfer','qris'].includes(p.method)&&!p.proof_path){await conn.rollback();skipped.push(p);continue;}
+      const booking=await resolveBookDate(conn,{mode:req.body.book_date_mode,paidAt:p.paid_at,manualDate:req.body.manual_book_date});
       const [invoiceRows]=await conn.execute(`SELECT i.outstanding,i.status
         FROM invoices i JOIN customers c ON c.id=i.customer_id
         WHERE i.id=? AND c.customer_status='active' AND c.archived_at IS NULL FOR UPDATE`,[p.invoice_id]);
       if(!invoiceRows.length||Number(p.amount)>Number(invoiceRows[0].outstanding)){await conn.rollback();skipped.push(p);continue;}
-      await conn.execute(`UPDATE payments SET status='confirmed',settlement_status=?,verified_by=?,verified_at=NOW() WHERE id=?`,[p.method==='cash'?'held_by_staff':'not_applicable',req.session.user.id,p.id]);
+      await conn.execute(`UPDATE payments SET status='confirmed',settlement_status=?,booked_at=?,booked_date_mode=?,verified_by=?,verified_at=NOW() WHERE id=?`,[p.method==='cash'?'held_by_staff':'not_applicable',booking.date,booking.mode,req.session.user.id,p.id]);
       await refreshInvoiceStatus(conn,p.invoice_id);
-      if(p.method!=='cash')await postCashTransaction(conn,{paymentId:p.id,invoiceId:p.invoice_id,amount:p.amount,reference:p.reference,actorUserId:req.session.user.id});
+      if(p.method!=='cash')await postCashTransaction(conn,{paymentId:p.id,invoiceId:p.invoice_id,amount:p.amount,reference:p.reference,bookDate:booking.date,actorUserId:req.session.user.id});
+      await financialAudit({conn,userId:req.session.user.id,action:'bulk_approve',entityType:'payment',entityId:p.id,before:p,after:{status:'confirmed',booked_at:booking.date,booked_date_mode:booking.mode},reason:'Approval pembayaran massal',ip:req.ip});
       await conn.commit();
       done.push(p);
     }catch(e){await conn.rollback();skipped.push({id});}finally{conn.release();}
@@ -386,8 +396,9 @@ router.post('/:id/settle',requireAdmin,async(req,res)=>{
     if(p.method!=='cash')throw new Error('Hanya pembayaran cash yang perlu disetor');
     if(p.status!=='confirmed')throw new Error('Pembayaran cash belum disetujui Master Admin. Setoran belum boleh masuk Data Kas.');
     if(p.settlement_status!=='held_by_staff')throw new Error('Pembayaran ini sudah disetor atau tidak sedang dipegang staff.');
-    await conn.execute(`UPDATE payments SET settlement_status='settled',settled_by=?,settled_at=NOW() WHERE id=?`,[req.session.user.id,p.id]);
-    await postCashTransaction(conn,{paymentId:p.id,invoiceId:p.invoice_id,amount:p.amount,reference:p.reference,categoryName:'Setoran Cash Pelanggan',prefix:'Setoran Cash',actorUserId:req.session.user.id});
+    const settlementDate=await assertDateOpen(conn,req.body.settlement_date||new Date());
+    await conn.execute(`UPDATE payments SET settlement_status='settled',settled_by=?,settled_at=NOW(),booked_at=COALESCE(booked_at,?) WHERE id=?`,[req.session.user.id,settlementDate,p.id]);
+    await postCashTransaction(conn,{paymentId:p.id,invoiceId:p.invoice_id,amount:p.amount,reference:p.reference,bookDate:settlementDate,categoryName:'Setoran Cash Pelanggan',prefix:'Setoran Cash',actorUserId:req.session.user.id});
     await conn.commit();
     await audit({userId:req.session.user.id,action:'settle',entityType:'payment',entityId:p.id,description:'Konfirmasi setoran cash staff ke kas perusahaan',ip:req.ip});
     req.session.flash={type:'success',message:'Setoran cash dikonfirmasi dan masuk ke kas perusahaan.'};
@@ -413,8 +424,9 @@ router.post('/bulk-settle',requireAdmin,async(req,res)=>{
       const [rows]=await conn.execute(`SELECT * FROM payments WHERE id=? FOR UPDATE`,[id]);
       const p=rows[0];
       if(!p||p.method!=='cash'||p.settlement_status!=='held_by_staff'){await conn.rollback();skipped.push(p||{id});continue;}
-      await conn.execute(`UPDATE payments SET settlement_status='settled',settled_by=?,settled_at=NOW() WHERE id=?`,[req.session.user.id,p.id]);
-      await postCashTransaction(conn,{paymentId:p.id,invoiceId:p.invoice_id,amount:p.amount,reference:p.reference,categoryName:'Setoran Cash Pelanggan',prefix:'Setoran Cash',actorUserId:req.session.user.id});
+      const settlementDate=await assertDateOpen(conn,req.body.settlement_date||new Date());
+      await conn.execute(`UPDATE payments SET settlement_status='settled',settled_by=?,settled_at=NOW(),booked_at=COALESCE(booked_at,?) WHERE id=?`,[req.session.user.id,settlementDate,p.id]);
+      await postCashTransaction(conn,{paymentId:p.id,invoiceId:p.invoice_id,amount:p.amount,reference:p.reference,bookDate:settlementDate,categoryName:'Setoran Cash Pelanggan',prefix:'Setoran Cash',actorUserId:req.session.user.id});
       await conn.commit();
       done.push(p);
     }catch(e){await conn.rollback();skipped.push({id});}finally{conn.release();}

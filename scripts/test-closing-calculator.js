@@ -87,11 +87,12 @@ assert(!/settlement_status/i.test(loadSource), 'Closing tidak boleh memakai stat
 assert(loadSource.includes('FROM closing_entries'), 'Closing harus memakai closing_entries sebagai sumber angka manual');
 assert(closingRoute.includes("mode: 'manual'"), 'Mode Closing harus dipaksa manual');
 
-// v1.29 — Closing is flexible/always-editable now: no period lock, no INVEST ROUTER
-// ownership routes. Guard against either quietly reappearing.
-assert(!/router\.post\(['"]\/lock/.test(closingRoute), 'Route /lock (finalisasi/kunci closing) harus sudah dihapus');
+// Financial control: manual calculation remains independent, but the period can
+// be locked/reopened by Master Admin so back-dated changes cannot slip in.
+assert(closingRoute.includes("router.post('/period-lock'"), 'Route kunci periode wajib tersedia');
+assert(closingRoute.includes("router.post('/period-reopen'"), 'Route buka kembali periode wajib tersedia');
 assert(!/router\.(get|post)\(['"]\/router-assets/.test(closingRoute), 'Route /router-assets harus sudah dihapus');
-assert(!/status\s*===\s*['"]LOCKED['"]/.test(closingRoute), 'Tidak boleh ada guard status LOCKED tersisa di routes/closing.js');
+assert(/status\s*===\s*['"]LOCKED['"]/.test(closingRoute), 'Guard status LOCKED wajib tersedia');
 assert(closingRoute.includes("router.post('/entries/:id/update'"), 'Route edit entry (closing_entries) harus tersedia');
 assert(closingRoute.includes("router.post('/adjustments/:id/update'"), 'Route edit penyesuaian (closing_adjustments) harus tersedia');
 console.log('Closing calculator validation OK: manual-only source, cluster revenue, combined expenses, salary, cash, and per-location adjustments reconcile without double counting; router ownership no longer auto-rewards.');

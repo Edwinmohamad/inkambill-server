@@ -88,7 +88,7 @@
     button.style.minWidth=`${Math.ceil(button.getBoundingClientRect().width)}px`;
     button.innerHTML = `<span class="spinner-border spinner-border-sm"></span><span>${html.lang==='en'?'Processing...':'Memproses...'}</span>`;
     button.setAttribute('aria-disabled','true');
-    startOperationLoading(html.lang==='en'?'Processing data…':'Memproses data…');
+    startOperationLoading(form.dataset.loadingMessage||(html.lang==='en'?'Processing data…':'Memproses data…'));
   }));
 
   // Shared "something is happening" cue for both link navigation and instant filters,
