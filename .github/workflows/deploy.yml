@@ -14,13 +14,6 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     timeout-minutes: 20
     steps:
-      - name: Backup production database
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd /opt/inkambilling
-          sh backup.sh
-
       - name: Update production source
         shell: bash
         run: |
@@ -28,6 +21,13 @@ jobs:
           cd /opt/inkambilling
           git fetch origin main
           git pull --ff-only origin main
+
+      - name: Backup production database
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /opt/inkambilling
+          sh backup.sh
 
       - name: Rebuild and restart application
         shell: bash
