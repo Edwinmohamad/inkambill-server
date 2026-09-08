@@ -788,4 +788,35 @@ async function ensureV41Schema() {
   }
 }
 
-module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema };
+async function ensureV42Schema() {
+  await db.query(`CREATE TABLE IF NOT EXISTS acs_devices (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,device_id VARCHAR(255) NOT NULL,serial_number VARCHAR(160) NULL,
+    oui VARCHAR(40) NULL,manufacturer VARCHAR(120) NULL,product_class VARCHAR(160) NULL,software_version VARCHAR(160) NULL,
+    pppoe_username VARCHAR(180) NULL,wan_ip VARCHAR(80) NULL,ssid VARCHAR(180) NULL,rx_power DECIMAL(8,2) NULL,
+    temperature DECIMAL(8,2) NULL,active_clients INT UNSIGNED NULL,last_inform DATETIME NULL,
+    online_status ENUM('online','offline','unknown') NOT NULL DEFAULT 'unknown',signal_status ENUM('normal','warning','critical','unknown') NOT NULL DEFAULT 'unknown',
+    olt_name VARCHAR(120) NULL,pon_port VARCHAR(80) NULL,splitter_name VARCHAR(120) NULL,odp_name VARCHAR(120) NULL,
+    last_synced_at DATETIME NULL,sync_error VARCHAR(500) NULL,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_acs_device_id(device_id),INDEX idx_acs_serial(serial_number),INDEX idx_acs_pppoe(pppoe_username),
+    INDEX idx_acs_health(online_status,signal_status,last_inform),INDEX idx_acs_path(olt_name,pon_port,odp_name))`);
+  await db.query(`CREATE TABLE IF NOT EXISTS customer_ont_links (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,customer_id BIGINT UNSIGNED NOT NULL,acs_device_id BIGINT UNSIGNED NOT NULL,
+    match_method ENUM('pppoe','serial','tag','manual') NOT NULL DEFAULT 'manual',is_locked TINYINT(1) NOT NULL DEFAULT 0,
+    linked_by BIGINT UNSIGNED NULL,linked_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_customer_ont(customer_id),UNIQUE KEY uq_ont_customer(acs_device_id),INDEX idx_ont_link_method(match_method,is_locked))`);
+  await db.query(`CREATE TABLE IF NOT EXISTS acs_device_samples (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,acs_device_id BIGINT UNSIGNED NOT NULL,sampled_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    online_status ENUM('online','offline','unknown') NOT NULL,rx_power DECIMAL(8,2) NULL,temperature DECIMAL(8,2) NULL,active_clients INT UNSIGNED NULL,
+    INDEX idx_acs_sample_device_time(acs_device_id,sampled_at))`);
+  await db.query(`CREATE TABLE IF NOT EXISTS acs_sync_logs (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,status ENUM('running','success','failed','skipped') NOT NULL,device_count INT UNSIGNED NOT NULL DEFAULT 0,
+    linked_count INT UNSIGNED NOT NULL DEFAULT 0,message VARCHAR(700) NULL,started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,finished_at DATETIME NULL,
+    INDEX idx_acs_sync_time(started_at,status))`);
+  await db.query(`CREATE TABLE IF NOT EXISTS acs_action_logs (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,user_id BIGINT UNSIGNED NULL,action VARCHAR(80) NOT NULL,acs_device_id BIGINT UNSIGNED NULL,
+    customer_id BIGINT UNSIGNED NULL,status ENUM('success','failed') NOT NULL,details VARCHAR(700) NULL,ip_address VARCHAR(64) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,INDEX idx_acs_action_time(created_at),INDEX idx_acs_action_device(acs_device_id,created_at))`);
+}
+
+module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema };
