@@ -6,6 +6,7 @@ const db=require('../config/db');
 const { requireAdmin, requireMasterAdmin, requirePermission, isMasterAdminRole }=require('../middleware/auth');
 const { assignCashTransactionCode,normalizeCategoryCode,approveCashTransaction,rejectCashTransaction }=require('../services/cashService');
 const { formatCashExpenseName }=require('../services/cashNamingService');
+const { isVendorCashCategory }=require('../services/cashCategoryService');
 const { audit }=require('../services/auditService');
 const { assertDateOpen }=require('../services/financialControlService');
 const router=express.Router();
@@ -34,13 +35,20 @@ async function removeCashProof(filename){if(!filename)return;try{await fs.promis
 function cashReturn(body){const month=body.return_month||'',year=body.return_year||'',site=body.return_site||'',q=body.return_q||'',category=body.return_category||'',type=body.return_type||'';const p=new URLSearchParams();if(month)p.set('month',month);if(year)p.set('year',year);if(site)p.set('site',site);if(q)p.set('q',q);if(category)p.set('category',category);if(type)p.set('type',type);return `/cash${p.toString()?`?${p.toString()}`:''}`;}
 function localReturn(value,fallback='/cash'){const v=String(value||'');return v.startsWith('/')&&!v.startsWith('//')?v:fallback;}
 function vendorMeta(category,body){
-  const isVendor=String(category?.code||'').toUpperCase()==='VENDOR'||String(category?.name||'').trim().toLowerCase()==='vendor';
+  const isVendor=isVendorCashCategory(category);
   if(!isVendor)return {isVendor:false,name:null,duration:null,unit:null};
   const name=String(body.vendor_name||'').trim(),duration=Number(body.vendor_duration),unit=['hour','day'].includes(body.vendor_duration_unit)?body.vendor_duration_unit:null;
   if(!name)throw new Error('Nama vendor wajib diisi untuk kategori Vendor.');
   if(!Number.isFinite(duration)||duration<=0||!unit)throw new Error('Durasi kerja vendor dan satuannya wajib diisi dengan benar.');
   if(!String(body.notes||'').trim())throw new Error('Keterangan pekerjaan vendor wajib diisi.');
   return {isVendor:true,name,duration,unit};
+}
+function cashInputErrorMessage(error){
+  const msg=String(error?.message||'').trim();
+  if(!msg)return 'Data kas gagal disimpan. Periksa kembali data yang diinput.';
+  if(error?.code==='ER_NO_REFERENCED_ROW_2')return 'Kategori atau site yang dipilih sudah tidak tersedia. Muat ulang halaman lalu pilih kembali.';
+  if(error?.code==='ER_DATA_TOO_LONG')return 'Ada data yang terlalu panjang. Ringkas nama/keterangan lalu coba lagi.';
+  return msg;
 }
 
 router.get('/discounts',async(req,res)=>{const [discounts]=await db.query(`SELECT * FROM discounts ORDER BY is_active DESC,id DESC`);res.render('finance/discounts',{title:'Diskon',discounts});});
@@ -219,20 +227,45 @@ router.get('/cash',async(req,res)=>{
     }
   }
 
-  res.render('finance/cash',{title:'Data Kas',transactions,categories,sites,summary,collection:collection||{},approvalSummary:approvalSummary||{},cashCharts,mandatoryChecklist,filters:{month,year,site,q,category,type}});
+  res.render('finance/cash',{title:'Data Kas',transactions,categories,sites,summary,collection:collection||{},approvalSummary:approvalSummary||{},cashCharts,mandatoryChecklist,isVendorCashCategory,filters:{month,year,site,q,category,type}});
 });
 
 router.get('/cash/:id/proof',async(req,res)=>{const [rows]=await db.execute(`SELECT proof_path,proof_original_name,proof_mime FROM cash_transactions WHERE id=? LIMIT 1`,[req.params.id]);const t=rows[0];if(!t?.proof_path)return res.status(404).send('Bukti pengeluaran tidak ditemukan.');const full=path.join(CASH_PROOF_DIR,path.basename(t.proof_path));if(!fs.existsSync(full))return res.status(404).send('File bukti pengeluaran tidak ditemukan di storage.');res.type(t.proof_mime||'application/octet-stream');res.setHeader('Content-Disposition',`inline; filename="${String(t.proof_original_name||path.basename(t.proof_path)).replace(/[\r\n"]/g,'_')}"`);res.setHeader('Cache-Control','private, max-age=300');res.setHeader('X-Content-Type-Options','nosniff');res.sendFile(full);});
 
 router.post('/cash',async(req,res)=>{
-  await assertDateOpen(db,req.body.transaction_date);
-  const b=req.body;const name=String(b.name||'').trim();const amount=Number(b.amount);if(!name)throw new Error('Nama transaksi wajib diisi.');if(!Number.isFinite(amount)||amount<=0)throw new Error('Nominal transaksi harus lebih dari 0.');
-  const conn=await db.getConnection();let saved=null;
-  try{await conn.beginTransaction();const [categoryRows]=await conn.execute(`SELECT id,name,type,code FROM cash_categories WHERE id=? AND is_active=1 LIMIT 1`,[b.category_id]);const category=categoryRows[0];if(!category)throw new Error('Kategori kas tidak ditemukan atau sudah tidak aktif.');const vendor=vendorMeta(category,b),isExpense=category.type==='expense';const purchaseChannel=isExpense&&!vendor.isVendor&&['online','offline'].includes(b.purchase_channel)?b.purchase_channel:null;const formattedName=isExpense?formatCashExpenseName({categoryCode:category.code,categoryName:category.name,rawName:name,shopName:b.purchase_shop_name,vendorName:vendor.name}):name;if(req.file)saved=await saveCashProof(req.file);const [r]=await conn.execute(`INSERT INTO cash_transactions(transaction_date,name,category_id,site_id,amount,notes,purchase_channel,purchase_shop_name,vendor_name,vendor_duration,vendor_duration_unit,proof_path,proof_original_name,proof_mime,proof_size,proof_uploaded_by,proof_uploaded_at,source_type,approval_status,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual','PENDING_APPROVAL',?)`,[b.transaction_date,formattedName,category.id,b.site_id||null,amount,b.notes||null,purchaseChannel,purchaseChannel?String(b.purchase_shop_name||'').trim()||null:null,vendor.name,vendor.duration,vendor.unit,saved?.filename||null,saved?.originalName||null,saved?.mime||null,saved?.size||null,saved?req.session.user.id:null,saved?new Date():null,req.session.user.id]);const code=await assignCashTransactionCode(conn,r.insertId,category.id,b.transaction_date);await conn.commit();req.session.flash={type:'success',message:`${isExpense?'Pengeluaran':'Pemasukan'} ${code} berhasil diajukan${vendor.isVendor?` untuk vendor ${vendor.name}`:''}${saved?' dengan bukti':''}. Menunggu approval Master Admin dan belum memengaruhi saldo real.`};}catch(e){await conn.rollback();if(saved)await removeCashProof(saved.filename);throw e;}finally{conn.release();}
-  res.redirect(`/cash?month=${Number(String(b.transaction_date).slice(5,7))||new Date().getMonth()+1}&year=${Number(String(b.transaction_date).slice(0,4))||new Date().getFullYear()}`);
+  const b=req.body;const fallbackReturn=cashReturn(b);
+  try{
+    await assertDateOpen(db,b.transaction_date);
+    const name=String(b.name||'').trim();const amount=Number(b.amount);
+    if(!name)throw new Error('Nama transaksi wajib diisi.');
+    if(!Number.isFinite(amount)||amount<=0)throw new Error('Nominal transaksi harus lebih dari 0.');
+    if(!b.category_id)throw new Error('Kategori kas wajib dipilih.');
+    const conn=await db.getConnection();let saved=null;
+    try{
+      await conn.beginTransaction();
+      const [categoryRows]=await conn.execute(`SELECT id,name,type,code FROM cash_categories WHERE id=? AND is_active=1 LIMIT 1`,[b.category_id]);
+      const category=categoryRows[0];if(!category)throw new Error('Kategori kas tidak ditemukan atau sudah tidak aktif. Silakan pilih ulang kategori.');
+      const vendor=vendorMeta(category,b),isExpense=category.type==='expense';
+      const purchaseChannel=isExpense&&!vendor.isVendor&&['online','offline'].includes(b.purchase_channel)?b.purchase_channel:null;
+      const formattedName=isExpense?formatCashExpenseName({categoryCode:category.code,categoryName:category.name,rawName:name,shopName:b.purchase_shop_name,vendorName:vendor.name}):name;
+      if(req.file)saved=await saveCashProof(req.file);
+      const [r]=await conn.execute(`INSERT INTO cash_transactions(transaction_date,name,category_id,site_id,amount,notes,purchase_channel,purchase_shop_name,vendor_name,vendor_duration,vendor_duration_unit,proof_path,proof_original_name,proof_mime,proof_size,proof_uploaded_by,proof_uploaded_at,source_type,approval_status,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual','PENDING_APPROVAL',?)`,[b.transaction_date,formattedName,category.id,b.site_id||null,amount,b.notes||null,purchaseChannel,purchaseChannel?String(b.purchase_shop_name||'').trim()||null:null,vendor.name,vendor.duration,vendor.unit,saved?.filename||null,saved?.originalName||null,saved?.mime||null,saved?.size||null,saved?req.session.user.id:null,saved?new Date():null,req.session.user.id]);
+      const code=await assignCashTransactionCode(conn,r.insertId,category.id,b.transaction_date);
+      await conn.commit();
+      req.session.flash={type:'success',message:`${isExpense?'Pengeluaran':'Pemasukan'} ${code} berhasil diajukan${vendor.isVendor?` untuk vendor ${vendor.name}`:''}${saved?' dengan bukti':''}. Menunggu approval Master Admin dan belum memengaruhi saldo real.`};
+    }catch(e){await conn.rollback();if(saved)await removeCashProof(saved.filename);throw e;}finally{conn.release();}
+    const date=String(b.transaction_date||'');
+    return res.redirect(`/cash?month=${Number(date.slice(5,7))||new Date().getMonth()+1}&year=${Number(date.slice(0,4))||new Date().getFullYear()}`);
+  }catch(e){
+    console.error('Input Data Kas gagal:',e);
+    req.session.flash={type:'danger',message:`Data kas gagal disimpan: ${cashInputErrorMessage(e)}`};
+    return res.redirect(fallbackReturn);
+  }
 });
 
 router.post('/cash/:id/update',requireAdmin,async(req,res)=>{
+  const fallbackReturn=cashReturn(req.body);
+  try{
   await assertDateOpen(db,req.body.transaction_date);
   // v1.24.5 — baris "AUTO BILLING" (source_type='payment') kini boleh diedit sama seperti transaksi
   // manual (belum terhubung payment gateway, jadi bookkeeping kas masih perlu bisa dikoreksi manual).
@@ -253,7 +286,12 @@ router.post('/cash/:id/update',requireAdmin,async(req,res)=>{
     }
   }
   const [categoryRows]=await conn.execute(`SELECT id,name,type,code FROM cash_categories WHERE id=? AND is_active=1 LIMIT 1`,[b.category_id]);const category=categoryRows[0];if(!category)throw new Error('Kategori kas tidak ditemukan atau sudah tidak aktif.');const vendor=vendorMeta(category,b),purchaseChannel=category.type==='expense'&&!vendor.isVendor&&['online','offline'].includes(b.purchase_channel)?b.purchase_channel:null;const formattedName=category.type==='expense'?formatCashExpenseName({categoryCode:category.code,categoryName:category.name,rawName:b.name,shopName:b.purchase_shop_name,vendorName:vendor.name}):String(b.name||'').trim();oldProof=rows[0].proof_path;if(req.file)saved=await saveCashProof(req.file);await conn.execute(`UPDATE cash_transactions SET transaction_date=?,name=?,category_id=?,site_id=?,amount=?,notes=?,purchase_channel=?,purchase_shop_name=?,vendor_name=?,vendor_duration=?,vendor_duration_unit=?,proof_path=COALESCE(?,proof_path),proof_original_name=COALESCE(?,proof_original_name),proof_mime=COALESCE(?,proof_mime),proof_size=COALESCE(?,proof_size),proof_uploaded_by=CASE WHEN ? IS NULL THEN proof_uploaded_by ELSE ? END,proof_uploaded_at=CASE WHEN ? IS NULL THEN proof_uploaded_at ELSE NOW() END,approval_status='PENDING_APPROVAL',approval_reason=NULL,reviewed_by=NULL,reviewed_at=NULL WHERE id=?`,[b.transaction_date,formattedName,b.category_id,b.site_id||null,amount,b.notes||null,purchaseChannel,purchaseChannel?String(b.purchase_shop_name||'').trim()||null:null,vendor.name,vendor.duration,vendor.unit,saved?.filename||null,saved?.originalName||null,saved?.mime||null,saved?.size||null,saved?.filename||null,req.session.user.id,saved?.filename||null,req.params.id]);await assignCashTransactionCode(conn,req.params.id,b.category_id,b.transaction_date);await conn.commit();if(saved&&oldProof)await removeCashProof(oldProof);req.session.flash={type:'success',message:'Data kas diperbarui dan dikembalikan ke PENDING_APPROVAL. Saldo real belum berubah sampai disetujui Master Admin.'};}catch(e){await conn.rollback();if(saved)await removeCashProof(saved.filename);throw e;}finally{conn.release();}
-  res.redirect(cashReturn(b));
+  return res.redirect(cashReturn(b));
+  }catch(e){
+    console.error('Update Data Kas gagal:',e);
+    req.session.flash={type:'danger',message:`Data kas gagal diperbarui: ${cashInputErrorMessage(e)}`};
+    return res.redirect(fallbackReturn);
+  }
 });
 
 router.post('/cash/:id/approve',requireMasterAdmin,async(req,res)=>{
