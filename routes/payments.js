@@ -135,13 +135,11 @@ router.get('/',async(req,res)=>{
   // Transactions Master Admin already approved but which never received a transfer/QRIS proof attachment.
   const [[missingProof]]=await db.execute(`SELECT COUNT(*) total,COALESCE(SUM(p.amount),0) amount FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id WHERE p.status='confirmed' AND p.method IN ('transfer','qris') AND (p.proof_path IS NULL OR p.proof_path='')${site?` AND s.code=?`:''}`,site?[site]:[]);
   const preselectedInvoiceId=Number(req.query.invoice_id||0)||null;
-  let cashApprovals=[];
-  if(isMasterAdminRole(req.session.user.role)){
-    // v1.24.5 — the source_type='manual' filter was removed: an "AUTO BILLING" (source_type='payment')
-    // row edited from Data Kas also drops back to PENDING_APPROVAL now, so it needs to surface here too,
-    // otherwise it would be stuck pending with no visible queue to approve/reject it from.
-    [cashApprovals]=await db.query(`SELECT ct.id,ct.transaction_code,ct.transaction_date,ct.name,ct.amount,ct.notes,ct.proof_path,ct.proof_mime,ct.approval_status,cc.name category_name,cc.type category_type,s.code site_code,u.name creator_name FROM cash_transactions ct JOIN cash_categories cc ON cc.id=ct.category_id LEFT JOIN sites s ON s.id=ct.site_id LEFT JOIN users u ON u.id=ct.created_by WHERE ct.approval_status='PENDING_APPROVAL' ORDER BY ct.transaction_date DESC,ct.id DESC LIMIT 250`);
-  }
+  // v1.25.8 — visibility and authorization are intentionally separated.
+  // Every user who can open Approval & Transaksi must be able to SEE pending manual-cash requests,
+  // otherwise an Admin can submit Data Kas successfully and it appears to vanish. Approve/Reject
+  // remain protected by requireMasterAdmin on the mutation routes.
+  const [cashApprovals]=await db.query(`SELECT ct.id,ct.transaction_code,ct.transaction_date,ct.name,ct.amount,ct.notes,ct.proof_path,ct.proof_mime,ct.approval_status,cc.name category_name,cc.type category_type,s.code site_code,u.name creator_name FROM cash_transactions ct JOIN cash_categories cc ON cc.id=ct.category_id LEFT JOIN sites s ON s.id=ct.site_id LEFT JOIN users u ON u.id=ct.created_by WHERE ct.approval_status='PENDING_APPROVAL' ORDER BY ct.transaction_date DESC,ct.id DESC LIMIT 250`);
   res.render('payments/index',{title:'Approval & Transaksi',payments,openInvoices,staff,banks,sites,clusters,cashApprovals,summary:summary||{},missingProof:missingProof||{total:0,amount:0},preselectedInvoiceId,filters:{q,site,cluster,month,year,approval},summaryMonth,summaryYear});
 });
 

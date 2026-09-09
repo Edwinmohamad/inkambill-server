@@ -23,19 +23,17 @@
   <div class="payment-approval-flow"><span><i class="bi bi-pencil-square"></i><b>1. Admin input</b></span><i class="bi bi-arrow-right"></i><span><i class="bi bi-paperclip"></i><b>2. Bukti opsional</b></span><i class="bi bi-arrow-right"></i><span><i class="bi bi-hourglass-split"></i><b>3. Menunggu</b></span><i class="bi bi-arrow-right"></i><span class="master"><i class="bi bi-shield-fill-check"></i><b>4. Master Approve / Reject</b></span></div>
 
 
-  <% if(isMasterAdmin){ %>
   <article class="cash-approval-center" id="cash-approval">
-    <div class="data-card-head"><div><div class="module-kicker">CASH APPROVAL QUEUE</div><h3>Approval Kas Manual</h3><small>Pengeluaran / pemasukan dari Admin belum memengaruhi saldo real sebelum Anda menyetujui.</small></div><span class="cash-approval-count"><i class="bi bi-shield-check"></i><%= cashApprovals.length %> pending</span></div>
+    <div class="data-card-head"><div><div class="module-kicker">CASH APPROVAL QUEUE</div><h3>Approval Kas Manual</h3><small>Pengeluaran / pemasukan dari Data Kas yang masih menunggu keputusan. <% if(!isMasterAdmin){ %>Anda dapat memonitor antrean ini; approval final hanya oleh Master Admin.<% } else { %>Nilai belum memengaruhi saldo real sebelum disetujui.<% } %></small></div><span class="cash-approval-count"><i class="bi bi-shield-check"></i><%= cashApprovals.length %> pending</span></div>
     <% if(cashApprovals.length){ %><div class="cash-approval-list"><% cashApprovals.forEach(tx=>{ %>
       <div class="cash-approval-item <%= tx.category_type %>">
         <div class="cash-approval-type"><i class="bi <%= tx.category_type==='income'?'bi-arrow-down-left-circle-fill':'bi-arrow-up-right-circle-fill' %>"></i><span><b><%= tx.category_type==='income'?'Pemasukan':'Pengeluaran' %></b><small><%= tx.transaction_code||`TX-${tx.id}` %></small></span></div>
         <div class="cash-approval-copy"><strong><%= tx.name %></strong><small><%= tx.category_name %> · <%= tx.site_code||'GLOBAL' %> · input <%= tx.creator_name||'-' %></small><em><%= tx.notes||'Tanpa catatan tambahan' %></em></div>
         <div class="cash-approval-value"><strong><%= formatRupiah(tx.amount) %></strong><small><%= formatDate(tx.transaction_date) %></small><% if(tx.proof_path){ %><a href="/cash/<%= tx.id %>/proof" target="_blank" rel="noopener"><i class="bi bi-paperclip"></i>Bukti</a><% } %></div>
-        <div class="cash-approval-actions"><form method="post" action="/cash/<%= tx.id %>/approve" onsubmit="return confirm('Setujui transaksi kas <%= tx.transaction_code||tx.id %>? Nilainya akan masuk saldo real.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="return_to" value="/payments#cash-approval"><button class="approval-button approve"><i class="bi bi-check2-circle"></i>Approve</button></form><button type="button" class="approval-button reject" data-cash-reject="<%= tx.id %>" data-code="<%= tx.transaction_code||tx.id %>" data-bs-toggle="modal" data-bs-target="#cashRejectModal"><i class="bi bi-x-circle"></i>Reject</button></div>
+        <div class="cash-approval-actions"><% if(isMasterAdmin){ %><form method="post" action="/cash/<%= tx.id %>/approve" onsubmit="return confirm('Setujui transaksi kas <%= tx.transaction_code||tx.id %>? Nilainya akan masuk saldo real.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="return_to" value="/payments#cash-approval"><button class="approval-button approve"><i class="bi bi-check2-circle"></i>Approve</button></form><button type="button" class="approval-button reject" data-cash-reject="<%= tx.id %>" data-code="<%= tx.transaction_code||tx.id %>" data-bs-toggle="modal" data-bs-target="#cashRejectModal"><i class="bi bi-x-circle"></i>Reject</button><% } else { %><span class="cash-approval-readonly"><i class="bi bi-lock-fill"></i>Menunggu Master Admin</span><% } %></div>
       </div>
     <% }) %></div><% } else { %><div class="empty-state compact"><i class="bi bi-shield-check"></i><strong>Tidak ada kas menunggu approval</strong><small>Semua pengajuan kas manual sudah ditindaklanjuti.</small></div><% } %>
   </article>
-  <% } %>
 
   <form class="filter-card" method="get" action="/payments">
     <div class="filter-grid payment-filter-grid">

@@ -144,7 +144,7 @@ router.get('/cash',async(req,res)=>{
   // existing Site filter for faster lookup in a busy Data Kas ledger. Scoped only to the transaction
   // list below (same as `q`) — the summary cards, charts, and mandatory-expense checklist intentionally
   // keep showing the whole month/site regardless, so they always reflect the real totals.
-  const category=String(req.query.category||'').trim();const type=['income','expense'].includes(req.query.type)?req.query.type:'';
+  const category=String(req.query.category||'').trim();const type=['income','expense'].includes(req.query.type)?req.query.type:'';const createdId=Number(req.query.created)||0;
   // v1.24.2 — auto (source_type='payment') rows join through to their originating invoice so the
   // "Aksi" column can offer a real, safe way to reverse them (via /invoices/:id/reset-unpaid, which
   // cancels the payment, reopens the invoice as unpaid, AND removes this exact cash_transactions row)
@@ -227,7 +227,8 @@ router.get('/cash',async(req,res)=>{
     }
   }
 
-  res.render('finance/cash',{title:'Data Kas',transactions,categories,sites,summary,collection:collection||{},approvalSummary:approvalSummary||{},cashCharts,mandatoryChecklist,isVendorCashCategory,filters:{month,year,site,q,category,type}});
+  const createdTransaction=createdId?transactions.find(t=>Number(t.id)===createdId)||null:null;
+  res.render('finance/cash',{title:'Data Kas',transactions,categories,sites,summary,collection:collection||{},approvalSummary:approvalSummary||{},cashCharts,mandatoryChecklist,isVendorCashCategory,createdId,createdTransaction,filters:{month,year,site,q,category,type}});
 });
 
 router.get('/cash/:id/proof',async(req,res)=>{const [rows]=await db.execute(`SELECT proof_path,proof_original_name,proof_mime FROM cash_transactions WHERE id=? LIMIT 1`,[req.params.id]);const t=rows[0];if(!t?.proof_path)return res.status(404).send('Bukti pengeluaran tidak ditemukan.');const full=path.join(CASH_PROOF_DIR,path.basename(t.proof_path));if(!fs.existsSync(full))return res.status(404).send('File bukti pengeluaran tidak ditemukan di storage.');res.type(t.proof_mime||'application/octet-stream');res.setHeader('Content-Disposition',`inline; filename="${String(t.proof_original_name||path.basename(t.proof_path)).replace(/[\r\n"]/g,'_')}"`);res.setHeader('Cache-Control','private, max-age=300');res.setHeader('X-Content-Type-Options','nosniff');res.sendFile(full);});
@@ -240,7 +241,7 @@ router.post('/cash',async(req,res)=>{
     if(!name)throw new Error('Nama transaksi wajib diisi.');
     if(!Number.isFinite(amount)||amount<=0)throw new Error('Nominal transaksi harus lebih dari 0.');
     if(!b.category_id)throw new Error('Kategori kas wajib dipilih.');
-    const conn=await db.getConnection();let saved=null;
+    const conn=await db.getConnection();let saved=null,createdId=0,createdCode='';
     try{
       await conn.beginTransaction();
       const [categoryRows]=await conn.execute(`SELECT id,name,type,code FROM cash_categories WHERE id=? AND is_active=1 LIMIT 1`,[b.category_id]);
@@ -250,12 +251,17 @@ router.post('/cash',async(req,res)=>{
       const formattedName=isExpense?formatCashExpenseName({categoryCode:category.code,categoryName:category.name,rawName:name,shopName:b.purchase_shop_name,vendorName:vendor.name}):name;
       if(req.file)saved=await saveCashProof(req.file);
       const [r]=await conn.execute(`INSERT INTO cash_transactions(transaction_date,name,category_id,site_id,amount,notes,purchase_channel,purchase_shop_name,vendor_name,vendor_duration,vendor_duration_unit,proof_path,proof_original_name,proof_mime,proof_size,proof_uploaded_by,proof_uploaded_at,source_type,approval_status,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual','PENDING_APPROVAL',?)`,[b.transaction_date,formattedName,category.id,b.site_id||null,amount,b.notes||null,purchaseChannel,purchaseChannel?String(b.purchase_shop_name||'').trim()||null:null,vendor.name,vendor.duration,vendor.unit,saved?.filename||null,saved?.originalName||null,saved?.mime||null,saved?.size||null,saved?req.session.user.id:null,saved?new Date():null,req.session.user.id]);
-      const code=await assignCashTransactionCode(conn,r.insertId,category.id,b.transaction_date);
+      createdId=Number(r.insertId)||0;
+      if(!createdId)throw new Error('Database tidak mengembalikan ID transaksi baru. Penyimpanan dibatalkan agar data tidak hilang diam-diam.');
+      createdCode=await assignCashTransactionCode(conn,createdId,category.id,b.transaction_date);
+      const [[verify]]=await conn.execute(`SELECT id,transaction_code,approval_status FROM cash_transactions WHERE id=? LIMIT 1`,[createdId]);
+      if(!verify||Number(verify.id)!==createdId||verify.approval_status!=='PENDING_APPROVAL')throw new Error('Verifikasi transaksi baru gagal. Penyimpanan dibatalkan agar data kas tidak hilang diam-diam.');
       await conn.commit();
-      req.session.flash={type:'success',message:`${isExpense?'Pengeluaran':'Pemasukan'} ${code} berhasil diajukan${vendor.isVendor?` untuk vendor ${vendor.name}`:''}${saved?' dengan bukti':''}. Menunggu approval Master Admin dan belum memengaruhi saldo real.`};
-    }catch(e){await conn.rollback();if(saved)await removeCashProof(saved.filename);throw e;}finally{conn.release();}
+      req.session.flash={type:'success',message:`${isExpense?'Pengeluaran':'Pemasukan'} ${createdCode} berhasil disimpan dan sekarang menunggu approval Master Admin. Baris transaksi baru ditandai di tabel Data Kas.`};
+    }catch(e){try{await conn.rollback();}catch(_){/* no-op */}if(saved)await removeCashProof(saved.filename);throw e;}finally{conn.release();}
     const date=String(b.transaction_date||'');
-    return res.redirect(`/cash?month=${Number(date.slice(5,7))||new Date().getMonth()+1}&year=${Number(date.slice(0,4))||new Date().getFullYear()}`);
+    const month=Number(date.slice(5,7))||new Date().getMonth()+1,year=Number(date.slice(0,4))||new Date().getFullYear();
+    return res.redirect(`/cash?month=${month}&year=${year}&created=${createdId}`);
   }catch(e){
     console.error('Input Data Kas gagal:',e);
     req.session.flash={type:'danger',message:`Data kas gagal disimpan: ${cashInputErrorMessage(e)}`};

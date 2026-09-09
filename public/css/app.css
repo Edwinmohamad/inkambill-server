@@ -1620,3 +1620,18 @@ body .ink-kpi strong{font-weight:600!important}
 .payment-approve-summary small{margin-top:2px;font-size:.5rem;color:var(--muted)}
 @media(max-width:1199.98px){.payment-history-table{min-width:1180px}.payment-history-head{align-items:flex-start}.payment-history-head .invoice-registry-tools{justify-content:flex-start}}
 @media(max-width:767.98px){.payment-history-head{padding:11px 12px}.payment-history-head .legend-inline{display:none}.payment-approval-compact{min-width:150px}.payment-history-table{min-width:1120px}}
+
+/* v1.25.7 — Data Kas post-save visibility / pending clarity */
+.cash-summary-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+.cash-summary-card.pending{border-color:rgba(245,158,11,.22);background:linear-gradient(145deg,rgba(245,158,11,.075),rgba(15,23,42,.015))}
+.cash-summary-card.pending>i{color:#f59e0b}.cash-summary-card.pending small{display:block;margin-top:4px;color:var(--ink-muted,#8b9ab5);font-size:.72rem;font-weight:650}
+.cash-created-note{display:flex;align-items:center;gap:12px;padding:12px 14px;margin:0 0 12px;border:1px solid rgba(16,185,129,.28);border-radius:12px;background:rgba(16,185,129,.08);box-shadow:inset 3px 0 0 rgba(16,185,129,.75)}
+.cash-created-note>i{font-size:1.15rem;color:#34d399}.cash-created-note>span{display:grid;gap:2px;min-width:0;flex:1}.cash-created-note strong{font-size:.84rem}.cash-created-note small{color:var(--ink-muted,#8b9ab5);white-space:normal}.cash-created-note a{font-size:.74rem;font-weight:750;text-decoration:none;white-space:nowrap}
+.cash-ledger-table tr.cash-row-created>td{background:rgba(16,185,129,.055)!important;border-top-color:rgba(16,185,129,.26)!important;border-bottom-color:rgba(16,185,129,.26)!important}
+.cash-ledger-table tr.cash-row-created td:first-child{box-shadow:inset 3px 0 0 #10b981}
+@media(max-width:1100px){.cash-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){.cash-summary-grid{grid-template-columns:1fr}.cash-created-note{align-items:flex-start;flex-wrap:wrap}.cash-created-note a{width:100%;padding-left:28px}}
+
+/* v1.25.8 — Cash approval queue visibility for non-master reviewers. */
+.cash-approval-readonly{display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border:1px solid rgba(148,163,184,.18);border-radius:8px;background:rgba(15,23,42,.35);color:#94a3b8;font-size:.72rem;font-weight:700;white-space:nowrap}
+.cash-approval-readonly i{font-size:.75rem}

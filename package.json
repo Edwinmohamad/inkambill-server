@@ -1,8 +1,8 @@
 {
   "name": "inkamnet-billing",
-  "version": "1.25.6",
+  "version": "1.25.8",
   "private": true,
-  "description": "INKAMNET Control Center v1.25.6 - cash vendor/category reliability fix and compact payment approval history UI",
+  "description": "INKAMNET Control Center v1.25.7 - Data Kas verified-save visibility, pending summary, and cash transaction highlight",
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
