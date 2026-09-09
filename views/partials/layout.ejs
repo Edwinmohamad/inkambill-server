@@ -75,6 +75,11 @@
         </nav>
         <% } %>
 
+        <% if(can('finance') && !can('billing')){ %>
+        <div class="sidebar-section-label"><%= language==='en'?'APPROVAL':'APPROVAL' %></div>
+        <nav class="sidebar-nav"><a class="sidebar-link <%= currentPath === '/payments' ? 'active' : '' %>" href="/payments"><i class="bi bi-shield-check"></i><span><%= language==='en'?'Approval & Transactions':'Approval & Transaksi' %></span></a></nav>
+        <% } %>
+
         <% if(can('finance')||can('reports')){ %>
         <div class="sidebar-section-label"><%= language==='en'?'FINANCE':'KEUANGAN' %></div>
         <nav class="sidebar-nav">

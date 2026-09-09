@@ -21,7 +21,7 @@ const cashProofUpload = require('./middleware/cashProofUpload');
 const ticketPhotoUpload = require('./middleware/ticketPhotoUpload');
 const dutyProofUpload = require('./middleware/dutyProofUpload');
 const invoiceLogoUpload = require('./middleware/invoiceLogoUpload');
-const { requireAuth, loadPermissions, requirePermission, requireMasterAdmin } = require('./middleware/auth');
+const { requireAuth, loadPermissions, requirePermission, requireAnyPermission, requireMasterAdmin } = require('./middleware/auth');
 const { generateMonthlyInvoices } = require('./services/invoiceService');
 const { runAutoIsolation } = require('./services/networkService');
 const { captureAllNmsTelemetry, backupAllRouters } = require('./services/nmsTelemetryService');
@@ -212,7 +212,7 @@ app.use('/analytics', requireAuth, requirePermission('finance'), require('./rout
 app.use('/customers', requireAuth, requirePermission('customers'), require('./routes/customers'));
 app.use('/packages', requireAuth, requirePermission('customers'), require('./routes/packages'));
 app.use('/invoices', requireAuth, requirePermission('billing'), require('./routes/invoices'));
-app.use('/payments', requireAuth, requirePermission('billing'), require('./routes/payments'));
+app.use('/payments', requireAuth, requireAnyPermission('billing', 'finance'), require('./routes/payments'));
 app.use('/reports', requireAuth, requirePermission('reports'), require('./routes/reports'));
 app.use('/debts', requireAuth, requirePermission('finance'), require('./routes/debts'));
 app.use('/closing', requireAuth, requireMasterAdmin, require('./routes/closing'));

@@ -72,6 +72,21 @@ function requirePermission(permission) {
   };
 }
 
+// Some screens combine modules whose data is governed by separate permissions.
+// Approval & Transaksi contains both billing approvals and manual cash approvals,
+// so visibility is allowed when the user can access either module. Mutation
+// routes still apply their own stricter guards (requireAdmin/requireMasterAdmin).
+function requireAnyPermission(...permissions) {
+  return (req, res, next) => {
+    if (!req.session.user) return res.redirect('/login');
+    if (permissions.some(permission => (req.permissions || []).includes(permission))) return next();
+    return res.status(403).render('errors/403', {
+      title: 'Akses Dibatasi',
+      requiredPermission: permissions.join(' atau ')
+    });
+  };
+}
+
 function requireAdmin(req, res, next) {
   if (!req.session.user) return res.redirect('/login');
   if (!isAdminRole(req.session.user.role)) {
@@ -101,5 +116,6 @@ module.exports = {
   requireAuth,
   requireAdmin,
   requireMasterAdmin,
-  requirePermission
+  requirePermission,
+  requireAnyPermission
 };
