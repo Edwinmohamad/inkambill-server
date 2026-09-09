@@ -122,6 +122,39 @@
     form.querySelectorAll(purchaseSelector).forEach(field=>{field.classList.toggle('d-none',isVendor);field.querySelectorAll('input,select,textarea').forEach(input=>input.disabled=isVendor);});
   };
   if(addForm){
+    // Browser constraint validation on a Bootstrap modal can look like a no-op when a required
+    // field (most commonly Nominal) is empty. Validate on the button click as well and show the
+    // missing field inside the modal so the user knows why the request was not sent.
+    const submitError=document.createElement('div');
+    submitError.className='cash-form-error';
+    submitError.setAttribute('role','alert');
+    submitError.hidden=true;
+    addForm.querySelector('.modal-body')?.prepend(submitError);
+    const showSubmitError=(message,field)=>{
+      submitError.innerHTML=`<i class="bi bi-exclamation-triangle-fill"></i><span>${message}</span>`;
+      submitError.hidden=false;
+      field?.classList.add('is-invalid');
+      field?.focus({preventScroll:true});
+      field?.scrollIntoView({block:'center',behavior:'smooth'});
+    };
+    const clearSubmitError=field=>{field?.classList.remove('is-invalid');if(!addForm.querySelector('.is-invalid'))submitError.hidden=true;};
+    addForm.querySelectorAll('[required]').forEach(field=>field.addEventListener('input',()=>clearSubmitError(field)));
+    addForm.querySelectorAll('select[required]').forEach(field=>field.addEventListener('change',()=>clearSubmitError(field)));
+    addForm.querySelector('.modal-footer .btn-tech.primary')?.addEventListener('click',event=>{
+      const date=addForm.querySelector('[name="transaction_date"]');
+      const amount=addForm.querySelector('[name="amount"]');
+      const name=addForm.querySelector('[name="name"]');
+      const category=addForm.querySelector('[name="category_id"]');
+      const checks=[
+        [date,!String(date?.value||'').trim(),'Tanggal transaksi wajib diisi.'],
+        [amount,!Number.isFinite(Number(amount?.value))||Number(amount?.value)<=0,'Nominal pengeluaran wajib diisi dan harus lebih dari 0.'],
+        [name,!String(name?.value||'').trim(),'Nama transaksi wajib diisi.'],
+        [category,!String(category?.value||'').trim()||category?.disabled,'Pilih kategori pengeluaran terlebih dahulu.']
+      ];
+      const failed=checks.find(([,invalid])=>invalid);
+      if(failed){event.preventDefault();showSubmitError(failed[2],failed[0]);}
+      else submitError.hidden=true;
+    });
     const hint=addForm.querySelector('.cash-code-hint');
     hint?.insertAdjacentHTML('beforebegin','<div class="cash-entry-type"><label><input type="radio" name="entry_type" value="expense" checked><span><i class="bi bi-graph-down-arrow"></i><strong>Pengeluaran</strong><small>Belanja, vendor, atau biaya operasional</small></span></label><label><input type="radio" name="entry_type" value="income"><span><i class="bi bi-graph-up-arrow"></i><strong>Pemasukan</strong><small>Pendapatan kas manual</small></span></label></div>');
     const category=addForm.querySelector('select[name="category_id"]'),proof=addForm.querySelector('[name="proof_file"]'),submit=addForm.querySelector('.modal-footer .btn-tech.primary');
@@ -156,6 +189,8 @@
     const addModal=document.getElementById('cashModal');
     addModal?.addEventListener('hidden.bs.modal',()=>{
       addForm.reset();
+      submitError.hidden=true;
+      addForm.querySelectorAll('.is-invalid').forEach(field=>field.classList.remove('is-invalid'));
       const expenseRadio=addForm.querySelector('input[name="entry_type"][value="expense"]');if(expenseRadio)expenseRadio.checked=true;
       renderCategories('expense');syncType();
       addForm.querySelectorAll('[data-cash-proof-name]').forEach(x=>x.textContent='Belum ada file dipilih');

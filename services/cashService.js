@@ -22,7 +22,7 @@ async function assignCashTransactionCode(conn, transactionId, categoryId, transa
 // them to PENDING_APPROVAL just like manual rows, so Master Admin must be able to approve/reject them
 // here too — otherwise an edited AUTO BILLING row would get stuck in PENDING_APPROVAL forever.
 async function approveCashTransaction(conn,transactionId,reviewerId){
-  const [rows]=await conn.execute(`SELECT ct.id,ct.transaction_code,ct.name,ct.amount,ct.source_type,ct.approval_status,cc.type category_type FROM cash_transactions ct JOIN cash_categories cc ON cc.id=ct.category_id WHERE ct.id=? FOR UPDATE`,[transactionId]);
+  const [rows]=await conn.execute(`SELECT ct.id,ct.transaction_code,ct.name,ct.amount,ct.source_type,COALESCE(ct.approval_status,'PENDING_APPROVAL') approval_status,cc.type category_type FROM cash_transactions ct JOIN cash_categories cc ON cc.id=ct.category_id WHERE ct.id=? FOR UPDATE`,[transactionId]);
   const tx=rows[0];
   if(!tx)throw new Error('Transaksi kas tidak ditemukan.');
   if(tx.approval_status!=='PENDING_APPROVAL')throw new Error('Hanya transaksi PENDING_APPROVAL yang dapat disetujui.');
@@ -32,7 +32,7 @@ async function approveCashTransaction(conn,transactionId,reviewerId){
 async function rejectCashTransaction(conn,transactionId,reviewerId,reason){
   const clean=normalizeApprovalReason(reason);
   if(clean.length<3)throw new Error('Alasan penolakan wajib diisi minimal 3 karakter.');
-  const [rows]=await conn.execute(`SELECT ct.id,ct.transaction_code,ct.name,ct.amount,ct.source_type,ct.approval_status,cc.type category_type FROM cash_transactions ct JOIN cash_categories cc ON cc.id=ct.category_id WHERE ct.id=? FOR UPDATE`,[transactionId]);
+  const [rows]=await conn.execute(`SELECT ct.id,ct.transaction_code,ct.name,ct.amount,ct.source_type,COALESCE(ct.approval_status,'PENDING_APPROVAL') approval_status,cc.type category_type FROM cash_transactions ct JOIN cash_categories cc ON cc.id=ct.category_id WHERE ct.id=? FOR UPDATE`,[transactionId]);
   const tx=rows[0];
   if(!tx)throw new Error('Transaksi kas tidak ditemukan.');
   if(tx.approval_status!=='PENDING_APPROVAL')throw new Error('Hanya transaksi PENDING_APPROVAL yang dapat ditolak.');

@@ -1635,3 +1635,4 @@ body .ink-kpi strong{font-weight:600!important}
 /* v1.25.8 — Cash approval queue visibility for non-master reviewers. */
 .cash-approval-readonly{display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border:1px solid rgba(148,163,184,.18);border-radius:8px;background:rgba(15,23,42,.35);color:#94a3b8;font-size:.72rem;font-weight:700;white-space:nowrap}
 .cash-approval-readonly i{font-size:.75rem}
+.cash-form-error{display:flex;align-items:flex-start;gap:.55rem;margin:.2rem 0 .9rem;padding:.7rem .8rem;border:1px solid rgba(255,105,105,.45);border-radius:.55rem;background:rgba(255,105,105,.09);color:#ffb1b1;font-size:.78rem;line-height:1.4}.cash-form-error i{color:#ff6969;margin-top:.1rem}.cash-modal .is-invalid,.modal-content .is-invalid{border-color:#ff6969!important;box-shadow:0 0 0 .16rem rgba(255,105,105,.12)}

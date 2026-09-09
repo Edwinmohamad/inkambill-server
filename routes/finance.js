@@ -236,7 +236,7 @@ router.get('/cash/:id/proof',async(req,res)=>{const [rows]=await db.execute(`SEL
 router.post('/cash',async(req,res)=>{
   const b=req.body;const fallbackReturn=cashReturn(b);
   try{
-    await assertDateOpen(db,b.transaction_date);
+    const transactionDate=await assertDateOpen(db,b.transaction_date);
     const name=String(b.name||'').trim();const amount=Number(b.amount);
     if(!name)throw new Error('Nama transaksi wajib diisi.');
     if(!Number.isFinite(amount)||amount<=0)throw new Error('Nominal transaksi harus lebih dari 0.');
@@ -250,10 +250,11 @@ router.post('/cash',async(req,res)=>{
       const purchaseChannel=isExpense&&!vendor.isVendor&&['online','offline'].includes(b.purchase_channel)?b.purchase_channel:null;
       const formattedName=isExpense?formatCashExpenseName({categoryCode:category.code,categoryName:category.name,rawName:name,shopName:b.purchase_shop_name,vendorName:vendor.name}):name;
       if(req.file)saved=await saveCashProof(req.file);
-      const [r]=await conn.execute(`INSERT INTO cash_transactions(transaction_date,name,category_id,site_id,amount,notes,purchase_channel,purchase_shop_name,vendor_name,vendor_duration,vendor_duration_unit,proof_path,proof_original_name,proof_mime,proof_size,proof_uploaded_by,proof_uploaded_at,source_type,approval_status,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual','PENDING_APPROVAL',?)`,[b.transaction_date,formattedName,category.id,b.site_id||null,amount,b.notes||null,purchaseChannel,purchaseChannel?String(b.purchase_shop_name||'').trim()||null:null,vendor.name,vendor.duration,vendor.unit,saved?.filename||null,saved?.originalName||null,saved?.mime||null,saved?.size||null,saved?req.session.user.id:null,saved?new Date():null,req.session.user.id]);
+      const actorId=Number(req.session?.user?.id)||null;
+      const [r]=await conn.execute(`INSERT INTO cash_transactions(transaction_date,name,category_id,site_id,amount,notes,purchase_channel,purchase_shop_name,vendor_name,vendor_duration,vendor_duration_unit,proof_path,proof_original_name,proof_mime,proof_size,proof_uploaded_by,proof_uploaded_at,source_type,approval_status,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,[transactionDate,formattedName,category.id,b.site_id||null,amount,b.notes||null,purchaseChannel,purchaseChannel?String(b.purchase_shop_name||'').trim()||null:null,vendor.name,vendor.duration,vendor.unit,saved?.filename||null,saved?.originalName||null,saved?.mime||null,saved?.size||null,saved?actorId:null,saved?new Date():null,'manual','PENDING_APPROVAL',actorId]);
       createdId=Number(r.insertId)||0;
       if(!createdId)throw new Error('Database tidak mengembalikan ID transaksi baru. Penyimpanan dibatalkan agar data tidak hilang diam-diam.');
-      createdCode=await assignCashTransactionCode(conn,createdId,category.id,b.transaction_date);
+      createdCode=await assignCashTransactionCode(conn,createdId,category.id,transactionDate);
       const [[verify]]=await conn.execute(`SELECT id,transaction_code,approval_status FROM cash_transactions WHERE id=? LIMIT 1`,[createdId]);
       if(!verify||Number(verify.id)!==createdId||verify.approval_status!=='PENDING_APPROVAL')throw new Error('Verifikasi transaksi baru gagal. Penyimpanan dibatalkan agar data kas tidak hilang diam-diam.');
       await conn.commit();
