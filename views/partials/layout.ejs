@@ -109,6 +109,7 @@
           <a class="sidebar-link <%= currentPath.startsWith('/sites') ? 'active' : '' %>" href="/sites"><i class="bi bi-hdd-rack-fill"></i><span><%= t('sites') %></span></a>
           <a class="sidebar-link <%= currentPath.startsWith('/routers') ? 'active' : '' %>" href="/routers"><i class="bi bi-router-fill"></i><span><%= t('routers') %></span></a>
           <a class="sidebar-link <%= currentPath.startsWith('/clusters') ? 'active' : '' %>" href="/clusters"><i class="bi bi-diagram-3-fill"></i><span><%= t('clusters') %></span></a>
+          <a class="sidebar-link <%= currentPath.startsWith('/noc') ? 'active' : '' %>" href="/noc"><i class="bi bi-speedometer2"></i><span>NOC Terpadu</span><em>LIVE</em></a>
           <a class="sidebar-link <%= currentPath.startsWith('/network/monitor') ? 'active' : '' %>" href="/network/monitor"><i class="bi bi-broadcast-pin"></i><span><%= t('monitor') %></span></a>
           <a class="sidebar-link <%= currentPath.startsWith('/acs') ? 'active' : '' %>" href="/acs"><i class="bi bi-bezier2"></i><span>Network Map & ONT</span><em>LIVE</em></a>
           <details class="sidebar-nav-group infra-sidebar-group" <%= currentPath.startsWith('/network/tools') ? 'open' : '' %>>

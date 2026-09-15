@@ -142,6 +142,22 @@
     apply();
   });
 
+  // Universal zero-wait search for all primary data tables. Results already rendered in the browser
+  // are narrowed immediately; pressing Enter no longer causes a page reload or loading overlay.
+  document.querySelectorAll('form[method="get"] input[name="q"],form[method="GET"] input[name="q"]').forEach(input=>{
+    if(input.hasAttribute('data-instant-prefix-input'))return;
+    const rows=[...document.querySelectorAll('.page-enter table.app-table tbody>tr')].filter(row=>!row.querySelector('.empty-state'));
+    if(!rows.length)return;
+    input.setAttribute('autocomplete','off');input.dataset.universalInstantSearch='1';
+    const form=input.closest('form');const button=form?.querySelector('button[type="submit"],button:not([type])');
+    if(button)button.classList.add('universal-search-fallback');
+    let badge=input.closest('.search-box')?.querySelector('.universal-search-count');
+    if(!badge&&input.closest('.search-box')){badge=document.createElement('span');badge.className='universal-search-count';input.closest('.search-box').appendChild(badge);}
+    const apply=()=>{const queries=normalizeInstantSearch(input.value).split(/\s+/).filter(Boolean);let visible=0;rows.forEach(row=>{const words=normalizeInstantSearch(row.textContent).split(/[^a-z0-9]+/).filter(Boolean);const match=!queries.length||queries.every(q=>words.some(word=>word.startsWith(q)));row.hidden=!match;if(match)visible+=1;});if(badge){badge.textContent=queries.length?`${visible} hasil`:'';badge.hidden=!queries.length;}};
+    input.addEventListener('input',apply);
+    input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();apply();}});
+  });
+
   document.addEventListener('click', event => {
     const link = event.target.closest('a[href]');
     if (!link || link.target === '_blank' || link.hasAttribute('download') || link.href.startsWith('javascript:') || link.getAttribute('href').startsWith('#')) return;
