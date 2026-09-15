@@ -1,5 +1,6 @@
 const express=require('express');
 const db=require('../config/db');
+const {paginate}=require('../utils/pagination');
 const router=express.Router();
 router.get('/',async(req,res)=>{
   const q=String(req.query.q||'').trim();
@@ -18,7 +19,7 @@ router.get('/',async(req,res)=>{
   if(dateFrom){auditWhere+=' AND DATE(a.created_at)>=?';params.push(dateFrom);}
   if(dateTo){auditWhere+=' AND DATE(a.created_at)<=?';params.push(dateTo);}
   if(action){auditWhere+=' AND a.action=?';params.push(action);}
-  const [audit]=await db.execute(`SELECT a.*,u.name user_name FROM audit_logs a LEFT JOIN users u ON u.id=a.user_id WHERE ${auditWhere} ORDER BY a.id DESC LIMIT 250`,params);
+  const auditPage=await paginate(db,`SELECT a.*,u.name user_name FROM audit_logs a LEFT JOIN users u ON u.id=a.user_id WHERE ${auditWhere} ORDER BY a.id DESC`,params,req,50);const audit=auditPage.rows;res.locals.pagination=auditPage.pagination;
 
   const automationParams=[];let automationWhere='1=1';
   if(q){const like=`%${q}%`;automationWhere+=' AND (job_name LIKE ? OR status LIKE ? OR message LIKE ?)';automationParams.push(like,like,like);}

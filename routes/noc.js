@@ -1,6 +1,9 @@
 const express=require('express');
 const db=require('../config/db');
 const router=express.Router();
+let summaryCache={expires:0,value:null};
+async function compactSummary(){if(summaryCache.value&&summaryCache.expires>Date.now())return summaryCache.value;const [routers,onts,customers,tickets]=await Promise.all([db.query(`SELECT COUNT(*) total,SUM(last_status='online') online,SUM(last_status='offline') offline FROM routers WHERE is_active=1`),db.query(`SELECT COUNT(*) total,SUM(online_status='online') online,SUM(online_status='offline') offline,SUM(signal_status='critical') critical,SUM(signal_status='warning') warning FROM acs_devices`),db.query(`SELECT COUNT(*) total,SUM(network_status='online') online,SUM(network_status='isolated') isolated FROM customers WHERE archived_at IS NULL AND customer_status='active'`),db.query(`SELECT COUNT(*) total,SUM(priority='critical') critical FROM tickets WHERE status IN ('open','progress','pending')`)]);summaryCache={expires:Date.now()+15000,value:{routers:routers[0][0],onts:onts[0][0],customers:customers[0][0],tickets:tickets[0][0],generatedAt:new Date().toISOString()}};return summaryCache.value;}
+router.get('/api/summary',async(req,res,next)=>{try{res.set('Cache-Control','private, max-age=10').json(await compactSummary());}catch(err){next(err);}});
 
 router.get('/',async(req,res,next)=>{try{
   const results=await Promise.all([

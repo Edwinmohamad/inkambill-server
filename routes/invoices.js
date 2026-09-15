@@ -3,6 +3,7 @@ const fs=require('fs');
 const path=require('path');
 const ExcelJS=require('exceljs');
 const db=require('../config/db');
+const {paginate}=require('../utils/pagination');
 const { generateMonthlyInvoices, applyInvoiceDiscount, refreshInvoiceStatus, nextInvoiceNumber }=require('../services/invoiceService');
 const { requireAdmin, requireMasterAdmin, isMasterAdminRole }=require('../middleware/auth');
 const { createCorporateInvoicePdf }=require('../services/reportPdf');
@@ -109,7 +110,7 @@ function invoicePaymentReference(paymentId,date=new Date()){
 // approval, sedangkan memilih "open"/"unpaid"/"partial"/"overdue" TIDAK LAGI ikut menampilkan tagihan
 // yang menunggu approval (supaya user tidak salah kira tagihan itu "belum dibayar sama sekali").
 // Status paid/cancelled/refunded tidak diubah — approval pembayaran tidak relevan untuk status itu.
-async function queryInvoiceList(req){
+async function queryInvoiceList(req,{paged=false}={}){
   const now=new Date();
   const month=intInRange(req.query.month,1,12,now.getMonth()+1);
   const year=intInRange(req.query.year,2020,2100,now.getFullYear());
@@ -155,15 +156,16 @@ async function queryInvoiceList(req){
   if(dueBucket==='due15'){listWhere.push('DAY(i.due_date)<=22');}
   else if(dueBucket==='due30'){listWhere.push('DAY(i.due_date)>22');}
 
-  const [invoices]=await db.execute(`SELECT i.*,DATE_FORMAT(i.invoice_date,'%Y-%m-%d') invoice_date_key,DATE_FORMAT(i.due_date,'%Y-%m-%d') due_date_key,GREATEST(DATEDIFF(CURDATE(),i.due_date),0) days_overdue,c.customer_code,c.name customer_name,c.phone,c.whatsapp_status,c.due_day,c.archived_at customer_archived_at,p.name package_name,s.code site_code,cl.name cluster_name,
+  const listSql=`SELECT i.*,DATE_FORMAT(i.invoice_date,'%Y-%m-%d') invoice_date_key,DATE_FORMAT(i.due_date,'%Y-%m-%d') due_date_key,GREATEST(DATEDIFF(CURDATE(),i.due_date),0) days_overdue,c.customer_code,c.name customer_name,c.phone,c.whatsapp_status,c.due_day,c.archived_at customer_archived_at,p.name package_name,s.code site_code,cl.name cluster_name,
       (SELECT COUNT(*) FROM payments px WHERE px.invoice_id=i.id) payment_count,
       (SELECT COUNT(*) FROM payments pa WHERE pa.invoice_id=i.id AND pa.status IN ('confirmed','pending')) active_payment_count,
       (SELECT COUNT(*) FROM payments pd WHERE pd.invoice_id=i.id AND pd.status='pending') pending_payment_count
     FROM invoices i JOIN customers c ON c.id=i.customer_id JOIN packages p ON p.id=c.package_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id
-    WHERE ${listWhere.join(' AND ')} ORDER BY i.due_date ASC,c.name ASC`,listParams);
+    WHERE ${listWhere.join(' AND ')} ORDER BY i.due_date ASC,c.name ASC`;
+  let invoices,pagination=null;if(paged){const result=await paginate(db,listSql,listParams,req,50);invoices=result.rows;pagination=result.pagination;}else [invoices]=await db.execute(listSql,listParams);
 
   const filters={month,year,status,site,cluster,customer,q,dueBucket};
-  return {invoices,filters,commonWhere,commonParams};
+  return {invoices,filters,commonWhere,commonParams,pagination};
 }
 
 function styleInvoiceWorkbook(ws){
@@ -189,7 +191,7 @@ async function loadInvoiceBranding(){
 
 router.get('/',async(req,res)=>{
   await db.query(`UPDATE invoices SET status='overdue' WHERE status IN ('unpaid','partial') AND due_date < CURDATE()`);
-  const {invoices,filters,commonWhere,commonParams}=await queryInvoiceList(req);
+  const {invoices,filters,commonWhere,commonParams,pagination}=await queryInvoiceList(req,{paged:true});res.locals.pagination=pagination;
   const {month,year,site,cluster,customer}=filters;
 
   const [[invoiceSummary]]=await db.execute(`SELECT
