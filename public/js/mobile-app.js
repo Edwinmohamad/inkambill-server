@@ -22,5 +22,14 @@
       },250);
     });
   }
+  // Put the primary list filter directly below the page title. On desktop these forms
+  // keep their original location; in the APK users no longer scroll past KPI cards first.
+  const page=document.querySelector('.page-enter');
+  const heading=page?.querySelector('.module-head');
+  const primaryFilter=page?.querySelector('.billing-filter-panel,.filter-card');
+  if(heading&&primaryFilter){
+    primaryFilter.classList.add('go-primary-filter');
+    heading.insertAdjacentElement('afterend',primaryFilter);
+  }
   document.querySelectorAll('.go-menu a,.go-quick-grid a').forEach(link=>link.addEventListener('click',()=>{link.classList.add('go-tapped');}));
 })();

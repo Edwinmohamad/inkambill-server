@@ -17,6 +17,18 @@ body.inkamnet-go-app .module-head h1{font-size:1.22rem!important;line-height:1.2
 body.inkamnet-go-app .module-head p{font-size:.76rem;line-height:1.45}
 body.inkamnet-go-app .module-actions{width:100%;display:flex;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
 body.inkamnet-go-app .module-actions::-webkit-scrollbar{display:none}
+body.inkamnet-go-app .go-primary-filter{position:relative;z-index:2;margin:0 0 12px!important;box-shadow:0 8px 22px rgba(35,25,70,.09)!important}
+body.inkamnet-go-app .go-primary-filter.filter-card{padding:10px!important}
+body.inkamnet-go-app .go-primary-filter .filter-grid{display:grid!important;grid-template-columns:1fr 1fr!important;gap:8px!important}
+body.inkamnet-go-app .go-primary-filter .filter-grid>.filter-group:first-child{grid-column:1/-1;grid-row:1}
+body.inkamnet-go-app .go-primary-filter .billing-filter-head{padding:9px 11px!important;min-height:0}
+body.inkamnet-go-app .go-primary-filter .billing-filter-head small{display:none}
+body.inkamnet-go-app .go-primary-filter .billing-filter-grid{display:grid!important;grid-template-columns:1fr 1fr!important;padding:9px!important;gap:8px!important}
+body.inkamnet-go-app .go-primary-filter .billing-filter-search{grid-column:1/-1!important;grid-row:1!important}
+body.inkamnet-go-app .go-primary-filter .billing-filter-submit{grid-column:1/-1}
+body.inkamnet-go-app .go-primary-filter .search-box{width:100%;min-width:0}
+body.inkamnet-go-app .go-primary-filter label{font-size:.54rem}
+body.inkamnet-go-app .go-primary-filter .universal-search-count{font-size:.55rem}
 body.inkamnet-go-app .btn-tech{white-space:nowrap;border-radius:12px!important}
 body.inkamnet-go-app .filter-card,body.inkamnet-go-app .data-card,body.inkamnet-go-app .form-card,body.inkamnet-go-app .metric-card,body.inkamnet-go-app .command-panel,body.inkamnet-go-app .ink-panel{border:1px solid var(--go-line)!important;background:var(--go-card)!important;color:var(--go-ink)!important;box-shadow:0 5px 18px rgba(35,25,70,.055)!important;border-radius:16px!important}
 body.inkamnet-go-app .text-secondary,body.inkamnet-go-app small{color:var(--go-muted)!important}
@@ -94,5 +106,5 @@ body.inkamnet-go-app .go-quick-grid span{display:flex;flex-direction:column;min-
 body.inkamnet-go-app .go-quick-grid b{font-size:.76rem}
 body.inkamnet-go-app .go-quick-grid small{font-size:.61rem}
 
-@media(max-width:374px){body.inkamnet-go-app .go-menu-grid{grid-template-columns:repeat(3,minmax(0,1fr))}body.inkamnet-go-app .go-quick-grid{grid-template-columns:1fr}body.inkamnet-go-app .topbar-actions .header-center-dropdown:nth-of-type(2){display:none}}
+@media(max-width:374px){body.inkamnet-go-app .go-menu-grid{grid-template-columns:repeat(3,minmax(0,1fr))}body.inkamnet-go-app .go-quick-grid,body.inkamnet-go-app .go-primary-filter .filter-grid,body.inkamnet-go-app .go-primary-filter .billing-filter-grid{grid-template-columns:1fr!important}body.inkamnet-go-app .topbar-actions .header-center-dropdown:nth-of-type(2){display:none}}
 @media(min-width:768px){body.inkamnet-go-app .content-wrap{max-width:760px;margin:0 auto}body.inkamnet-go-app .go-bottom-nav{left:50%;right:auto;width:760px;transform:translateX(-50%);border-radius:22px 22px 0 0}body.inkamnet-go-app .go-menu,body.inkamnet-go-app .go-sheet{left:50%;right:auto;width:760px;transform:translateX(-50%)}}

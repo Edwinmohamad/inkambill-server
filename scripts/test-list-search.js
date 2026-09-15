@@ -1,0 +1,13 @@
+const fs=require('fs');
+const must=(file,value,label)=>{if(!fs.readFileSync(file,'utf8').includes(value))throw new Error(`${label} missing in ${file}`);};
+must('routes/customers.js','paginate(db,sql,params,req,500,500)','customer search window');
+must('routes/invoices.js','paginate(db,listSql,listParams,req,500,500)','invoice search window');
+must('public/js/app.js',"form?.hasAttribute('data-server-search-fallback')",'server-search Enter fallback');
+must('views/customers/index.ejs','data-server-search-fallback','customer server fallback');
+must('views/invoices/index.ejs','data-server-search-fallback','invoice server fallback');
+must('public/js/mobile-app.js',"heading.insertAdjacentElement('afterend',primaryFilter)",'mobile filter placement');
+must('public/css/mobile-app.css','.go-primary-filter{position:relative','top mobile filter');
+const {pageInfo}=require('../utils/pagination');
+const normal=pageInfo({query:{}},50),wide=pageInfo({query:{}},500,500),hostile=pageInfo({query:{page:'-9',per_page:'999999'}},500,500);
+if(normal.perPage!==50||wide.perPage!==500||hostile.page!==1||hostile.perPage!==500)throw new Error('Pagination bounds are not enforced correctly.');
+console.log('Customer/invoice search validation passed: instant rows, server fallback, real 500-row window, bounds, and top placement.');

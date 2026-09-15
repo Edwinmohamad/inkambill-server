@@ -149,13 +149,14 @@
     const rows=[...document.querySelectorAll('.page-enter table.app-table tbody>tr')].filter(row=>!row.querySelector('.empty-state'));
     if(!rows.length)return;
     input.setAttribute('autocomplete','off');input.dataset.universalInstantSearch='1';
-    const form=input.closest('form');const button=form?.querySelector('button[type="submit"],button:not([type])');
-    if(button)button.classList.add('universal-search-fallback');
+    const form=input.closest('form');
     let badge=input.closest('.search-box')?.querySelector('.universal-search-count');
     if(!badge&&input.closest('.search-box')){badge=document.createElement('span');badge.className='universal-search-count';input.closest('.search-box').appendChild(badge);}
-    const apply=()=>{const queries=normalizeInstantSearch(input.value).split(/\s+/).filter(Boolean);let visible=0;rows.forEach(row=>{const words=normalizeInstantSearch(row.textContent).split(/[^a-z0-9]+/).filter(Boolean);const match=!queries.length||queries.every(q=>words.some(word=>word.startsWith(q)));row.hidden=!match;if(match)visible+=1;});if(badge){badge.textContent=queries.length?`${visible} hasil`:'';badge.hidden=!queries.length;}};
+    const apply=()=>{const queries=normalizeInstantSearch(input.value).split(/\s+/).filter(Boolean);let visible=0;rows.forEach(row=>{const words=normalizeInstantSearch(row.textContent).split(/[^a-z0-9]+/).filter(Boolean);const match=!queries.length||queries.every(q=>words.some(word=>word.startsWith(q)));row.hidden=!match;if(match)visible+=1;});if(badge){badge.textContent=queries.length?`${visible} hasil`:'';badge.hidden=!queries.length;}return visible;};
     input.addEventListener('input',apply);
-    input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();apply();}});
+    // Typing is always zero-wait against the rows already rendered. Enter remains a real
+    // server search, so a record outside the current page can never become unreachable.
+    input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();if(form?.hasAttribute('data-server-search-fallback')&&input.value.trim()){HTMLFormElement.prototype.submit.call(form);return;}apply();}});
   });
 
   document.addEventListener('click', event => {

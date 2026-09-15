@@ -11,7 +11,7 @@ const required=[
   [layout,'go-bottom-nav','bottom navigation'],[layout,'goQuickSheet','quick action sheet'],
   [layout,'goMenu','full menu'],[layout,"if(can('billing'))",'permission-aware billing'],
   [css,'env(safe-area-inset-bottom)','safe-area support'],[css,'.go-menu-grid','menu grid'],
-  [css,'@media(max-width:374px)','small-phone layout'],[js,"sessionStorage.setItem('inkamnet-go-cash-action'",'cash quick action'],
+  [css,'@media(max-width:374px)','small-phone layout'],[css,'.go-primary-filter','visible list filter'],[js,"sessionStorage.setItem('inkamnet-go-cash-action'",'cash quick action'],[js,"heading.insertAdjacentElement('afterend',primaryFilter)",'filter moved above list content'],
   [app,"'public/css/mobile-app.css'",'mobile asset cache version']
 ];
 for(const [source,needle,label] of required)if(!source.includes(needle))throw new Error(`Mobile UI missing: ${label}`);

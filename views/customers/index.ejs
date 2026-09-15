@@ -19,7 +19,7 @@
     <article class="metric-card red"><div class="metric-top"><span class="metric-label">Terisolir</span><span class="metric-icon"><i class="bi bi-wifi-off"></i></span></div><strong><%= n(stats.isolated) %></strong><small>Status isolasi jaringan</small></article>
   </div>
 
-  <form class="filter-card" method="get">
+  <form class="filter-card" method="get" data-server-search-fallback>
     <div class="filter-grid">
       <div class="filter-group"><label>PENCARIAN</label><input class="form-control" name="q" value="<%= filters.q %>" placeholder="ID, nama, telepon, alamat, site, cluster..."></div>
       <div class="filter-group"><label>SITE / POP</label><select class="form-select" name="site"><option value="">Semua Site</option><% sites.forEach(s=>{ %><option value="<%= s.code %>" <%= filters.site===s.code?'selected':'' %>><%= s.code %> · <%= s.name %></option><% }) %></select></div>

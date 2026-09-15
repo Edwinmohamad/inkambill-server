@@ -15,7 +15,8 @@
     "test:instant-search": "node scripts/test-instant-cash-search.js",
     "test:network-suite": "node scripts/test-powerful-network-suite.js",
     "test:performance": "node scripts/test-performance-suite.js",
-    "test:mobile-ui": "node scripts/test-mobile-ui.js"
+    "test:mobile-ui": "node scripts/test-mobile-ui.js",
+    "test:list-search": "node scripts/test-list-search.js"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^7.0.0-rc14",

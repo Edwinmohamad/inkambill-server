@@ -162,7 +162,7 @@ async function queryInvoiceList(req,{paged=false}={}){
       (SELECT COUNT(*) FROM payments pd WHERE pd.invoice_id=i.id AND pd.status='pending') pending_payment_count
     FROM invoices i JOIN customers c ON c.id=i.customer_id JOIN packages p ON p.id=c.package_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id
     WHERE ${listWhere.join(' AND ')} ORDER BY i.due_date ASC,c.name ASC`;
-  let invoices,pagination=null;if(paged){const result=await paginate(db,listSql,listParams,req,50);invoices=result.rows;pagination=result.pagination;}else [invoices]=await db.execute(listSql,listParams);
+  let invoices,pagination=null;if(paged){const result=await paginate(db,listSql,listParams,req,500,500);invoices=result.rows;pagination=result.pagination;}else [invoices]=await db.execute(listSql,listParams);
 
   const filters={month,year,status,site,cluster,customer,q,dueBucket};
   return {invoices,filters,commonWhere,commonParams,pagination};
