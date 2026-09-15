@@ -108,6 +108,40 @@
     if(form.hasAttribute('data-auto-filter'))form.classList.add('auto-filter-enabled');
   });
 
+  // Instant prefix search for rendered lists. This never submits the form, starts a loader,
+  // or calls the server: typing "D" immediately keeps rows containing a word beginning with D.
+  // Select filters remain server-backed so totals, charts, and approval data stay authoritative.
+  const normalizeInstantSearch=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('id-ID').trim();
+  document.querySelectorAll('[data-instant-prefix-form]').forEach(form=>{
+    const input=form.querySelector('[data-instant-prefix-input]');
+    const target=document.getElementById(form.dataset.instantTarget||'');
+    if(!input||!target)return;
+    // Do not send the live text to the server when Site/Kategori/Tipe changes; otherwise clearing
+    // the field afterwards could not restore rows that the server had already excluded.
+    input.removeAttribute('name');
+    const rows=[...target.querySelectorAll('[data-instant-filter-row]')];
+    const empty=target.querySelector('[data-instant-empty]');
+    const count=document.querySelector('[data-instant-result-count]');
+    const siteSuffix=count?.textContent.match(/\s·\s.+$/)?.[0]||'';
+    const apply=()=>{
+      const queries=normalizeInstantSearch(input.value).split(/\s+/).filter(Boolean);
+      let visible=0;
+      rows.forEach(row=>{
+        const words=normalizeInstantSearch(row.dataset.instantSearchValue).split(/[^a-z0-9]+/).filter(Boolean);
+        const match=!queries.length||queries.every(query=>words.some(word=>word.startsWith(query)));
+        row.hidden=!match;
+        if(match){visible+=1;const number=row.querySelector('[data-instant-number]');if(number)number.textContent=String(visible);}
+        else row.querySelectorAll('[data-row-check]:checked').forEach(box=>{box.checked=false;box.dispatchEvent(new Event('change',{bubbles:true}));});
+      });
+      if(empty)empty.hidden=visible!==0;
+      if(count)count.textContent=queries.length?`${visible} dari ${rows.length} transaksi${siteSuffix}`:`${rows.length} transaksi${siteSuffix}`;
+    };
+    input.addEventListener('input',apply);
+    input.addEventListener('keydown',event=>{if(event.key==='Enter')event.preventDefault();});
+    form.addEventListener('submit',event=>{if(document.activeElement===input)event.preventDefault();});
+    apply();
+  });
+
   document.addEventListener('click', event => {
     const link = event.target.closest('a[href]');
     if (!link || link.target === '_blank' || link.hasAttribute('download') || link.href.startsWith('javascript:') || link.getAttribute('href').startsWith('#')) return;
