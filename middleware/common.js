@@ -11,6 +11,9 @@ const statusLabels={
 function commonLocals(req,res,next){
   const language=req.session?.language==='en'?'en':'id';
   res.locals.appName=process.env.APP_NAME||'INKAMNET Billing';
+  // Render the native-like shell on the server for INKAMNET GO. The client-side
+  // check in app.js remains as a fallback, but this avoids a desktop-layout flash.
+  res.locals.isMobileApp=/INKAMNET-GO\//i.test(String(req.get('user-agent')||''));
   const sessionUser=req.session?.user||null;
   res.locals.isAdmin=isAdminRole(sessionUser?.role);
   res.locals.isMasterAdmin=isMasterAdminRole(sessionUser?.role);

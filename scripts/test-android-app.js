@@ -47,7 +47,7 @@ const checks = [
   [manifest.includes('inkambill.edwinpxmx.my.id'), 'host deep link'],
   [appGradle.includes('applicationId "id.my.edwinpxmx.inkamnetgo"'), 'application ID'],
   [appGradle.includes('minSdk 26'), 'minimum Android'],
-  [appGradle.includes('versionCode 4') && appGradle.includes('versionName "1.2.1"'), 'versi Android'],
+  [appGradle.includes('versionCode 5') && appGradle.includes('versionName "1.3.0"'), 'versi Android'],
   [appGradle.includes('androidx.biometric:biometric'), 'biometrik'],
   [appGradle.includes('androidx.work:work-runtime'), 'background worker'],
   [appGradle.includes('firebase-messaging'), 'Firebase push messaging'],

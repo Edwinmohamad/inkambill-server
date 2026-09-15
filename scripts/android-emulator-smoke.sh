@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 api_level="${1:?API level wajib diisi}"
 artifact_dir="${2:?Direktori artifact wajib diisi}"
-apk_file="${artifact_dir}/INKAMNET-GO-v1.2.1.apk"
+apk_file="${artifact_dir}/INKAMNET-GO-v1.3.0.apk"
 package_file="${artifact_dir}/package-name.txt"
 launch_log="emulator-launch-${api_level}.txt"
 screen_file="emulator-smoke-${api_level}.png"

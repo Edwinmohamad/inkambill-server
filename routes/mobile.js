@@ -27,8 +27,8 @@ router.get('/api/mobile/version', (req, res) => {
     ok: true,
     app: 'INKAMNET GO',
     packageName: 'id.my.edwinpxmx.inkamnetgo',
-    versionCode: positiveInt(releaseMeta.versionCode, positiveInt(process.env.MOBILE_ANDROID_VERSION_CODE, 4)),
-    versionName: clean(releaseMeta.versionName || process.env.MOBILE_ANDROID_VERSION_NAME || '1.2.1', 40),
+    versionCode: positiveInt(releaseMeta.versionCode, positiveInt(process.env.MOBILE_ANDROID_VERSION_CODE, 5)),
+    versionName: clean(releaseMeta.versionName || process.env.MOBILE_ANDROID_VERSION_NAME || '1.3.0', 40),
     apkUrl: safeHttpsUrl(process.env.MOBILE_ANDROID_APK_URL) || productionDownload,
     forceUpdate: String(process.env.MOBILE_ANDROID_FORCE_UPDATE || '').toLowerCase() === 'true'
   });
