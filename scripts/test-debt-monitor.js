@@ -19,10 +19,13 @@ const checks = [
   [route.includes('if (paid > remaining)'), 'proteksi kelebihan pembayaran'],
   [route.includes("router.post('/:id/payments/:paymentId/delete'") && route.includes('await refreshStatus(conn, id)'), 'koreksi pembayaran dan hitung ulang'],
   [route.includes("status='ARCHIVED'"), 'arsip non-destruktif'],
-  [view.includes('Sisa hutang') && view.includes('Sisa piutang') && view.includes('Terlambat'), 'ringkasan monitoring'],
+  [view.includes('Sisa Hutang') && view.includes('Sisa Piutang') && view.includes('Lewat Jatuh Tempo'), 'ringkasan monitoring'],
   [route.includes('function installmentSchedule(record)') && view.includes('Rincian & jadwal cicilan'), 'jadwal cicilan otomatis'],
   [view.includes('debtItemTemplate') && view.includes('Total otomatis'), 'input rincian item dinamis'],
-  [view.includes('tidak otomatis masuk ke Closing'), 'proteksi hitung ganda']
+  [view.includes('tidak otomatis masuk ke Closing'), 'proteksi hitung ganda'],
+  [view.includes('debt-page-v2') && view.includes('debt-money-grid'), 'layout profesional dan kolom nominal'],
+  [view.includes('data-debt-search') && view.includes("search?.addEventListener('input'"), 'pencarian instan'],
+  [view.includes('data-auto-filter') && view.includes('debt-filter-reset'), 'filter otomatis dan reset']
 ];
 
 for (const [valid, label] of checks) if (!valid) throw new Error(`Validasi Hutang gagal: ${label}`);
