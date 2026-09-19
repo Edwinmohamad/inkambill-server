@@ -3,14 +3,15 @@
     <div>
       <div class="module-kicker">CASH FLOW CONFIG</div>
       <h1>Kategori Kas</h1>
-      <p>Semua kategori kas operasional dibuat manual. Kategori internal billing tidak ditampilkan di menu ini.</p>
+      <p>Kategori manual dan kategori otomatis sistem ditampilkan bersama agar seluruh transaksi pada grafik dan Data Kas dapat ditelusuri.</p>
     </div>
     <div class="module-actions"><button class="btn-tech primary" data-bs-toggle="modal" data-bs-target="#categoryModal"><i class="bi bi-plus-lg"></i>Tambah Kategori</button></div>
   </div>
 
   <div class="metric-grid">
     <article class="metric-card green"><div class="metric-top"><span class="metric-label">Pendapatan</span><span class="metric-icon"><i class="bi bi-arrow-down-left-circle-fill"></i></span></div><strong><%= categories.filter(c=>c.type==='income').length %></strong><small>Kategori pemasukan</small></article>
-    <article class="metric-card red"><div class="metric-top"><span class="metric-label">Pengeluaran</span><span class="metric-icon"><i class="bi bi-arrow-up-right-circle-fill"></i></span></div><strong><%= categories.filter(c=>c.type==='expense').length %></strong><small>Kategori pengeluaran manual</small></article>
+    <article class="metric-card red"><div class="metric-top"><span class="metric-label">Pengeluaran</span><span class="metric-icon"><i class="bi bi-arrow-up-right-circle-fill"></i></span></div><strong><%= categories.filter(c=>c.type==='expense').length %></strong><small>Seluruh kategori pengeluaran</small></article>
+    <article class="metric-card"><div class="metric-top"><span class="metric-label">Kategori Otomatis</span><span class="metric-icon"><i class="bi bi-cpu-fill"></i></span></div><strong><%= categories.filter(c=>Number(c.is_system||0)===1).length %></strong><small>Dibuat dan dikelola sistem</small></article>
   </div>
 
   <div class="cash-category-guide mb-3"><div><i class="bi bi-lightbulb-fill"></i><strong>Contoh kategori yang bisa kamu buat</strong></div><span>Liability / Pengeluaran Pokok Bulanan</span><span>Petty Cash</span><span>Bandwidth / ISP</span><span>Listrik & Utilitas</span><span>Gaji / Honor</span><span>Transportasi</span><span>Maintenance</span><span>Sewa</span><span>Pajak / Administrasi</span><span>Lain-lain</span><small>Contoh ini hanya referensi — sistem tidak membuat kategori otomatis.</small></div>
@@ -25,13 +26,13 @@
           <tr>
             <td><span class="cell-main"><%= catIndex+1 %></span></td>
             <td><code class="cash-category-code"><%= c.code||'-' %></code></td>
-            <td><span class="cell-main"><%= c.name %></span> <% if(c.is_recurring_mandatory){ %><span class="status-badge purple"><i class="bi bi-calendar2-check-fill"></i>Wajib Bulanan</span><% } %></td>
+            <td><span class="cell-main"><%= c.name %></span> <% if(Number(c.is_system||0)===1){ %><span class="status-badge purple"><i class="bi bi-cpu-fill"></i>Otomatis Sistem</span><% } %> <% if(c.is_recurring_mandatory){ %><span class="status-badge purple"><i class="bi bi-calendar2-check-fill"></i>Wajib Bulanan</span><% } %></td>
             <td><span class="status-badge <%= c.type==='income'?'green':'red' %>"><%= c.type==='income'?'Pendapatan':'Pengeluaran' %></span></td>
             <td><span class="status-badge purple"><%= c.site_code||'GLOBAL' %></span></td>
             <td><%= c.description||'-' %></td>
             <td><span class="status-badge <%= c.is_active?'green':'gray' %>"><%= c.is_active?'aktif':'nonaktif' %></span></td>
             <td class="text-end">
-              <% if(isAdmin){ %>
+              <% if(isAdmin && Number(c.is_system||0)===0){ %>
                 <div class="d-inline-flex gap-1">
                   <button type="button" class="btn-tech compact" data-bs-toggle="modal" data-bs-target="#editCategory<%= c.id %>"><i class="bi bi-pencil-square"></i>Edit</button>
                   <form method="post" action="/cash/categories/<%= c.id %>/delete" class="d-inline" onsubmit="return confirm('Hapus kategori ini? Kategori yang sudah dipakai transaksi tidak dapat dihapus.')">
@@ -39,7 +40,7 @@
                     <button class="btn-tech danger compact" type="submit"><i class="bi bi-trash3"></i>Hapus</button>
                   </form>
                 </div>
-              <% } else { %><span class="text-secondary">-</span><% } %>
+              <% } else if(Number(c.is_system||0)===1){ %><span class="status-badge gray"><i class="bi bi-shield-lock-fill"></i>Read-only</span><% } else { %><span class="text-secondary">-</span><% } %>
             </td>
           </tr>
           <% }) %>
@@ -77,7 +78,7 @@
   </div>
 </div>
 
-<% categories.forEach(c=>{ %>
+<% categories.filter(c=>Number(c.is_system||0)===0).forEach(c=>{ %>
 <div class="modal fade" id="editCategory<%= c.id %>" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
     <form class="modal-content" method="post" action="/cash/categories/<%= c.id %>/edit">
