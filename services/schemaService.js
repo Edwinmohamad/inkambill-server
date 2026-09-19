@@ -846,4 +846,15 @@ async function ensureV44Schema(){
   ];for(const sql of statements)await db.query(sql);
 }
 
-module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema };
+async function ensureV45Schema(){
+  // v1.26 -- Piutang/Hutang cicilan UX overhaul: each payment entry now records its own
+  // payment channel (mirrors the cash/transfer/qris/other options already used across
+  // Payments & Cash) plus an optional attachment ("Lampiran Bukti"), so the history
+  // timeline can show a real payment method and a receipt per entry.
+  await db.query(`ALTER TABLE finance_debt_payments ADD COLUMN IF NOT EXISTS payment_method ENUM('cash','transfer','qris','other') NOT NULL DEFAULT 'cash' AFTER amount`);
+  await db.query(`ALTER TABLE finance_debt_payments ADD COLUMN IF NOT EXISTS proof_path VARCHAR(190) NULL AFTER notes`);
+  await db.query(`ALTER TABLE finance_debt_payments ADD COLUMN IF NOT EXISTS proof_original_name VARCHAR(255) NULL AFTER proof_path`);
+  await db.query(`ALTER TABLE finance_debt_payments ADD COLUMN IF NOT EXISTS proof_mime VARCHAR(100) NULL AFTER proof_original_name`);
+}
+
+module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema };

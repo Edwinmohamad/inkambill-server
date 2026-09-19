@@ -16,11 +16,30 @@
   <link rel="stylesheet" href="/css/mobile-app.css?v=<%= assetVersion %>">
   <script>(()=>{try{const allowed=['nebula','ocean','emerald','sunset','rose','ice'];const pref=localStorage.getItem('inkamnet-theme')||<%- JSON.stringify(defaultTheme||'dark') %>;document.documentElement.dataset.theme=pref==='system'?(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'):pref;const palette=localStorage.getItem('inkamnet-palette')||<%- JSON.stringify(defaultUiPalette||'nebula') %>;document.documentElement.dataset.palette=allowed.includes(palette)?palette:'nebula';if(sessionStorage.getItem('inkamnet-instant-filter')==='1'){sessionStorage.removeItem('inkamnet-instant-filter');document.documentElement.classList.add('instant-filter-nav')}}catch(e){}})();</script>
   <style id="inkamnet-critical-ui">
-    /* Critical shell/loader CSS prevents FOUC and oversized logo while the main stylesheet is loading. */
-    #appLoader{position:fixed!important;inset:0!important;z-index:3000!important;display:grid!important;place-items:center!important;align-content:center!important;gap:18px!important;overflow:hidden!important;background:#070a13!important;color:#fff!important;transition:opacity .34s ease,visibility .34s ease!important}
-    #appLoader .boot-logo{width:min(250px,72vw)!important;height:88px!important;display:grid!important;place-items:center!important;position:relative!important}
-    #appLoader .boot-logo img{display:block!important;width:100%!important;max-width:250px!important;max-height:88px!important;height:auto!important;object-fit:contain!important}
+    /* Critical shell/loader CSS prevents FOUC while the main stylesheet is loading.
+       v1.26 -- Apple-style loading overlay: no app logo here (the logo stays in the
+       sidebar/navbar brand mark), glass blur backdrop, iOS-style 12-blade activity
+       indicator, minimal status copy. Pure CSS transform/opacity animation only,
+       so it stays smooth at 60fps without layout thrashing. */
+    #appLoader{position:fixed!important;inset:0!important;z-index:3000!important;display:grid!important;place-items:center!important;align-content:center!important;gap:16px!important;overflow:hidden!important;background:rgba(8,11,20,.6)!important;-webkit-backdrop-filter:blur(18px) saturate(150%)!important;backdrop-filter:blur(18px) saturate(150%)!important;color:#fff!important;transition:opacity .32s ease,visibility .32s ease!important}
     #appLoader.is-hidden{opacity:0!important;visibility:hidden!important;pointer-events:none!important}
+    #appLoader .ios-spinner{position:relative!important;width:40px!important;height:40px!important}
+    #appLoader .ios-spinner i{position:absolute!important;top:0!important;left:50%!important;width:3px!important;height:10px!important;margin-left:-1.5px!important;border-radius:2px!important;background:#fff!important;transform-origin:1.5px 20px!important;animation:iosSpinnerFade 1.05s linear infinite!important;will-change:opacity!important}
+    #appLoader .ios-spinner i:nth-child(1){transform:rotate(0deg)!important;animation-delay:-.964s!important}
+    #appLoader .ios-spinner i:nth-child(2){transform:rotate(30deg)!important;animation-delay:-.877s!important}
+    #appLoader .ios-spinner i:nth-child(3){transform:rotate(60deg)!important;animation-delay:-.79s!important}
+    #appLoader .ios-spinner i:nth-child(4){transform:rotate(90deg)!important;animation-delay:-.702s!important}
+    #appLoader .ios-spinner i:nth-child(5){transform:rotate(120deg)!important;animation-delay:-.614s!important}
+    #appLoader .ios-spinner i:nth-child(6){transform:rotate(150deg)!important;animation-delay:-.526s!important}
+    #appLoader .ios-spinner i:nth-child(7){transform:rotate(180deg)!important;animation-delay:-.438s!important}
+    #appLoader .ios-spinner i:nth-child(8){transform:rotate(210deg)!important;animation-delay:-.351s!important}
+    #appLoader .ios-spinner i:nth-child(9){transform:rotate(240deg)!important;animation-delay:-.263s!important}
+    #appLoader .ios-spinner i:nth-child(10){transform:rotate(270deg)!important;animation-delay:-.175s!important}
+    #appLoader .ios-spinner i:nth-child(11){transform:rotate(300deg)!important;animation-delay:-.088s!important}
+    #appLoader .ios-spinner i:nth-child(12){transform:rotate(330deg)!important;animation-delay:0s!important}
+    @keyframes iosSpinnerFade{0%{opacity:1}100%{opacity:.15}}
+    #appLoader .apple-loader-text{margin:0!important;font-family:-apple-system,BlinkMacSystemFont,'Inter',var(--font-display,sans-serif)!important;font-size:.72rem!important;font-weight:500!important;letter-spacing:.02em!important;color:rgba(255,255,255,.82)!important}
+    @media(prefers-reduced-motion:reduce){#appLoader .ios-spinner i{animation:none!important;opacity:.55!important}}
     html.instant-filter-nav #appLoader{display:none!important}html.instant-filter-nav .page-enter{animation:none!important;transition:none!important}
     html.instant-filter-nav .reveal-item{animation:none!important;opacity:1!important;transform:none!important}
   </style>
@@ -32,10 +51,8 @@
   <div class="signal-stream" aria-hidden="true"><span></span><span></span><span></span></div>
 
   <div class="app-loader" id="appLoader" aria-hidden="true">
-    <div class="boot-logo"><img src="/img/inkamnet-wordmark-hq.png?v=1.2.2" alt="INKAMNET"></div>
-    <div class="loader-radar"><span></span><span></span><span></span><i class="bi bi-broadcast-pin"></i></div>
-    <div class="loader-copy"><strong>INKAMNET CONTROL CENTER</strong><small>Initializing Network · Billing · Warehouse · Finance</small></div>
-    <div class="boot-status"><span></span><b>SECURE SYSTEM READY</b></div>
+    <div class="ios-spinner" role="status" aria-label="Memuat"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <p class="apple-loader-text">Memuat&hellip;</p>
   </div>
 
   <% if(isMobileApp){ %>

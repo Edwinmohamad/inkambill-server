@@ -18,6 +18,7 @@ const clusterExcelUpload = require('./middleware/clusterExcelUpload');
 const invoiceExcelUpload = require('./middleware/invoiceExcelUpload');
 const profilePhotoUpload = require('./middleware/profilePhotoUpload');
 const cashProofUpload = require('./middleware/cashProofUpload');
+const debtProofUpload = require('./middleware/debtProofUpload');
 const ticketPhotoUpload = require('./middleware/ticketPhotoUpload');
 const dutyProofUpload = require('./middleware/dutyProofUpload');
 const invoiceLogoUpload = require('./middleware/invoiceLogoUpload');
@@ -29,7 +30,7 @@ const { syncDevices: syncAcsDevices } = require('./services/acsService');
 const { scanLowStock } = require('./services/inventoryService');
 const { deliverMobilePushes } = require('./services/mobilePushService');
 const { purgeOldLogs } = require('./services/logRetentionService');
-const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema } = require('./services/schemaService');
+const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema } = require('./services/schemaService');
 const { requireN8nToken } = require('./middleware/n8n');
 const { startGateway, hasSavedSession, processQueue, runAutoReminderSweep } = require('./services/whatsappGatewayService');
 
@@ -143,6 +144,18 @@ app.use('/cash', (req, res, next) => {
       if (err) {
         req.session.flash = { type: 'danger', message: err.code === 'LIMIT_FILE_SIZE' ? 'Bukti pengeluaran maksimal 6 MB.' : err.message };
         return res.redirect('/cash');
+      }
+      next();
+    });
+  }
+  next();
+});
+app.use('/debts', (req, res, next) => {
+  if (['POST','PUT','PATCH'].includes(req.method) && req.is('multipart/form-data')) {
+    return debtProofUpload(req, res, (err) => {
+      if (err) {
+        req.session.flash = { type: 'danger', message: err.code === 'LIMIT_FILE_SIZE' ? 'Lampiran bukti cicilan maksimal 6 MB.' : err.message };
+        return res.redirect('/debts');
       }
       next();
     });
@@ -282,6 +295,7 @@ async function bootstrap() {
   await ensureV42Schema();
   await ensureV43Schema();
   await ensureV44Schema();
+  await ensureV45Schema();
   const [rows] = await db.query('SELECT COUNT(*) total FROM users');
   if (Number(rows[0].total) === 0) {
     const username = process.env.DEFAULT_ADMIN_USERNAME || 'admin';

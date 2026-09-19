@@ -33,18 +33,20 @@
     <label><span>Jenis</span><select class="form-select" name="type" aria-label="Jenis"><option value="">Semua jenis</option><option value="DEBT" <%= filters.type==='DEBT'?'selected':'' %>>Hutang</option><option value="RECEIVABLE" <%= filters.type==='RECEIVABLE'?'selected':'' %>>Piutang</option></select></label>
     <label><span>Lokasi</span><select class="form-select" name="site" aria-label="Lokasi"><option value="">Semua lokasi</option><option value="GLOBAL" <%= filters.site==='GLOBAL'?'selected':'' %>>Global</option><option value="CDS" <%= filters.site==='CDS'?'selected':'' %>>CDS</option><option value="KBG" <%= filters.site==='KBG'?'selected':'' %>>KBG</option></select></label>
     <label><span>Status</span><select class="form-select" name="status" aria-label="Status"><option value="ACTIVE" <%= filters.status==='ACTIVE'?'selected':'' %>>Aktif</option><option value="PAID" <%= filters.status==='PAID'?'selected':'' %>>Lunas</option><option value="ARCHIVED" <%= filters.status==='ARCHIVED'?'selected':'' %>>Arsip</option></select></label>
-    <% if(filters.type||filters.site||filters.status!=='ACTIVE'||filters.query){ %><a class="debt-filter-reset" href="/debts" title="Reset filter"><i class="bi bi-arrow-counterclockwise"></i><span>Reset</span></a><% } %>
+    <label><span>Periode</span><select class="form-select" name="period" aria-label="Periode"><option value="">Semua waktu</option><option value="today" <%= filters.period==='today'?'selected':'' %>>Hari ini</option><option value="month" <%= filters.period==='month'?'selected':'' %>>Bulan ini</option><option value="custom" <%= filters.period==='custom'?'selected':'' %>>Custom</option></select></label>
+    <% if(filters.period==='custom'){ %><div class="debt-filter-custom-range"><input class="form-control" type="date" name="from" value="<%= filters.from %>" aria-label="Dari tanggal"><span>—</span><input class="form-control" type="date" name="to" value="<%= filters.to %>" aria-label="Sampai tanggal"></div><% } %>
+    <% if(filters.type||filters.site||filters.status!=='ACTIVE'||filters.query||filters.period){ %><a class="debt-filter-reset" href="/debts" title="Reset filter"><i class="bi bi-arrow-counterclockwise"></i><span>Reset</span></a><% } %>
   </form>
 
   <section class="debt-list">
     <% if (!records.length) { %><div class="debt-empty"><i class="bi bi-journal-check"></i><strong>Belum ada data</strong><span>Catat hutang atau piutang menggunakan tombol di atas.</span></div><% } %>
-    <% records.forEach(row => { const remaining=Number(row.remaining_amount||0); const paid=Number(row.paid_amount||0); const principal=Number(row.principal_amount||0); const progress=principal>0?Math.min(100,Math.round(paid/principal*100)):0; %>
+    <% records.forEach(row => { const remaining=Number(row.remaining_amount||0); const paid=Number(row.paid_amount||0); const principal=Number(row.principal_amount||0); const progress=principal>0?Math.min(100,Math.round(paid/principal*100)):0; const statusKey=row.payment_status.toLowerCase().replace(/\s+/g,'-'); %>
       <article class="debt-item <%= row.is_overdue ? 'is-overdue' : '' %>" data-debt-search="<%= [row.party_name,row.purpose,row.responsible_name,row.site_code].filter(Boolean).join(' ') %>">
         <div class="debt-item-accent <%= row.record_type==='DEBT'?'debt':'receivable' %>"></div>
         <div class="debt-item-main">
           <div class="debt-item-icon"><i class="bi <%= row.record_type==='DEBT'?'bi-arrow-down-left':'bi-arrow-up-right' %>"></i></div>
           <div class="debt-item-copy">
-            <div class="debt-item-title"><strong><%= row.party_name %></strong><span class="badge <%= row.record_type==='DEBT'?'text-bg-warning':'text-bg-info' %>"><%= row.record_type==='DEBT'?'HUTANG':'PIUTANG' %></span><span class="debt-site"><%= row.site_code %></span></div>
+            <div class="debt-item-title"><strong><%= row.party_name %></strong><span class="badge <%= row.record_type==='DEBT'?'text-bg-warning':'text-bg-info' %>"><%= row.record_type==='DEBT'?'HUTANG':'PIUTANG' %></span><span class="debt-status-badge status-<%= statusKey %>"><%= row.payment_status %></span><span class="debt-site"><%= row.site_code %></span></div>
             <p><%= row.purpose %></p>
             <div class="debt-meta"><span><i class="bi bi-person"></i><%= row.responsible_name || 'Belum ditentukan' %></span><span><i class="bi bi-calendar3"></i><%= row.due_date || 'Tanpa jatuh tempo' %></span><span><i class="bi bi-credit-card"></i><%= row.payment_method==='INSTALLMENT'?'Cicilan':'Sekali bayar' %></span></div>
           </div>
@@ -55,8 +57,34 @@
         <div class="debt-item-foot">
           <span class="debt-due-state <%= row.is_overdue?'danger':'safe' %>"><i class="bi <%= row.is_overdue?'bi-exclamation-circle-fill':'bi-calendar2-check' %>"></i><% if(row.is_overdue){ %>Terlambat<% } else if(row.days_to_due!==null && row.days_to_due>=0){ %><%= row.days_to_due %> hari menuju jatuh tempo<% }else{ %>Tanpa jatuh tempo<% } %></span>
           <div class="debt-actions">
-          <% if ((row.payments || []).length) { %><details class="debt-history"><summary class="btn btn-link btn-sm">Riwayat (<%= row.payments.length %>)</summary><div class="debt-history-list"><% row.payments.forEach(payment => { %><div><span><strong>Rp <%= Number(payment.amount).toLocaleString('id-ID') %></strong><small><%= payment.payment_date %><%= payment.notes ? ` · ${payment.notes}` : '' %></small></span><% if(row.status!=='ARCHIVED'){ %><form method="post" action="/debts/<%= row.id %>/payments/<%= payment.id %>/delete" onsubmit="return confirm('Hapus pembayaran ini? Sisa akan dihitung ulang.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn btn-link btn-sm text-danger" type="submit" title="Hapus pembayaran"><i class="bi bi-trash"></i></button></form><% } %></div><% }) %></div></details><% } %>
-          <% if (row.status==='ACTIVE') { %><details class="debt-pay"><summary class="btn btn-outline-primary btn-sm">Catat pembayaran</summary><form method="post" action="/debts/<%= row.id %>/payments"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input class="form-control form-control-sm" type="date" name="payment_date" value="<%= today %>" required><input class="form-control form-control-sm" type="number" min="1" max="<%= Math.floor(remaining) %>" name="amount" placeholder="Nominal" required><input class="form-control form-control-sm" name="notes" maxlength="500" placeholder="Catatan"><button class="btn btn-primary btn-sm" type="submit">Simpan</button></form></details><% } %>
+          <details class="debt-history"><summary class="btn btn-link btn-sm">Riwayat (<%= row.timeline.length %>)</summary>
+            <div class="debt-timeline">
+              <% row.timeline.forEach(entry => { const entryKey=entry.entryStatus.toLowerCase(); %>
+              <div class="debt-timeline-item status-<%= entryKey %>">
+                <span class="debt-timeline-dot"></span>
+                <div class="debt-timeline-body">
+                  <div class="debt-timeline-top">
+                    <div class="debt-timeline-when"><strong><%= formatDate(entry.date) %></strong><% if(entry.time){ %><small><%= formatTime(entry.time) %> WIB</small><% } %></div>
+                    <span class="debt-timeline-status <%= entryKey %>"><%= entry.kind==='created' ? (row.record_type==='DEBT'?'Hutang Dicatat':'Piutang Dicatat') : (entry.entryStatus==='LUNAS'?'Lunas':'Dicicil') %></span>
+                  </div>
+                  <div class="debt-timeline-mid">
+                    <strong class="debt-timeline-amount"><%= entry.kind==='created'?'':'+ ' %>Rp <%= entry.amount.toLocaleString('id-ID') %></strong>
+                    <% if(entry.method){ %><span class="debt-timeline-method"><i class="bi bi-credit-card-2-front"></i><%= statusLabel(entry.method) %></span><% } %>
+                  </div>
+                  <div class="debt-timeline-foot">
+                    <span>Sisa saldo: <b>Rp <%= entry.remainingAfter.toLocaleString('id-ID') %></b></span>
+                    <% if(entry.notes){ %><span class="debt-timeline-note"><%= entry.notes %></span><% } %>
+                  </div>
+                  <div class="debt-timeline-actions">
+                    <% if(entry.hasProof){ %><a href="/debts/<%= row.id %>/payments/<%= entry.id %>/proof" target="_blank" rel="noopener"><i class="bi bi-paperclip"></i>Lihat bukti</a><% } %>
+                    <% if(entry.kind==='payment' && row.status!=='ARCHIVED'){ %><form method="post" action="/debts/<%= row.id %>/payments/<%= entry.id %>/delete" onsubmit="return confirm('Hapus pembayaran ini? Sisa akan dihitung ulang.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn btn-link btn-sm text-danger" type="submit" title="Hapus pembayaran"><i class="bi bi-trash"></i> Hapus</button></form><% } %>
+                  </div>
+                </div>
+              </div>
+              <% }) %>
+            </div>
+          </details>
+          <% if (row.status==='ACTIVE') { %><button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#debtPayModal" data-debt-id="<%= row.id %>" data-debt-type-label="<%= row.record_type==='DEBT'?'Hutang':'Piutang' %>" data-debt-party="<%= row.party_name %>" data-debt-purpose="<%= row.purpose %>" data-debt-site="<%= row.site_code %>" data-debt-principal="<%= principal %>" data-debt-paid="<%= paid %>" data-debt-remaining="<%= Math.floor(remaining) %>"><i class="bi bi-cash-coin"></i> Catat Cicilan</button><% } %>
           <% if (row.status!=='ARCHIVED') { %><form method="post" action="/debts/<%= row.id %>/archive" onsubmit="return confirm('Arsipkan data ini? Riwayat pembayaran tetap tersimpan.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn btn-link btn-sm text-muted" type="submit">Arsipkan</button></form><% } %>
           </div>
         </div>
@@ -68,4 +96,122 @@
 </div>
 
 <template id="debtItemTemplate"><div class="debt-item-input"><input class="form-control form-control-sm" name="item_name[]" placeholder="Nama barang / keperluan" required><input class="form-control form-control-sm debt-item-qty" type="number" min="0.01" step="0.01" name="item_quantity[]" value="1" aria-label="Jumlah" required><input class="form-control form-control-sm debt-item-price" type="number" min="1" step="1" name="item_unit_price[]" placeholder="Harga satuan" required><input class="form-control form-control-sm" name="item_notes[]" placeholder="Catatan item"><button class="btn btn-link text-danger debt-remove-item" type="button" title="Hapus"><i class="bi bi-trash"></i></button><strong class="debt-item-subtotal">Rp 0</strong></div></template>
-<script>(()=>{const method=document.getElementById('debtPaymentMethod'),months=document.getElementById('debtInstallmentMonths'),rows=document.getElementById('debtItemRows'),template=document.getElementById('debtItemTemplate'),total=document.getElementById('debtItemsTotal');if(!rows)return;const rupiah=value=>`Rp ${Math.round(value||0).toLocaleString('id-ID')}`;const calculate=()=>{let sum=0;rows.querySelectorAll('.debt-item-input').forEach(row=>{const subtotal=(Number(row.querySelector('.debt-item-qty')?.value)||0)*(Number(row.querySelector('.debt-item-price')?.value)||0);row.querySelector('.debt-item-subtotal').textContent=rupiah(subtotal);sum+=subtotal;});total.textContent=rupiah(sum);};const bind=row=>{row.querySelectorAll('input').forEach(input=>input.addEventListener('input',calculate));row.querySelector('.debt-remove-item')?.addEventListener('click',()=>{if(rows.children.length>1)row.remove();else row.querySelectorAll('input').forEach((input,index)=>input.value=index===1?'1':'');calculate();});};rows.querySelectorAll('.debt-item-input').forEach(bind);document.getElementById('addDebtItem')?.addEventListener('click',()=>{const row=template.content.firstElementChild.cloneNode(true);rows.appendChild(row);bind(row);row.querySelector('input')?.focus();});const toggleMethod=()=>{months.hidden=method.value!=='INSTALLMENT';};method?.addEventListener('change',toggleMethod);toggleMethod();calculate();const search=document.querySelector('.debt-filter input[name="q"]'),cards=[...document.querySelectorAll('.debt-item[data-debt-search]')];search?.addEventListener('input',()=>{const words=search.value.toLocaleLowerCase('id-ID').trim().split(/\s+/).filter(Boolean);cards.forEach(card=>{const haystack=card.dataset.debtSearch.toLocaleLowerCase('id-ID');card.hidden=words.length>0&&!words.every(word=>haystack.includes(word));});});})();</script>
+
+<!-- v1.26 -- shared "Catat Cicilan / Pembayaran" modal, reused by every debt-item row's "Catat Cicilan"
+     button via its [data-debt-*] attributes (same reuse pattern as the shared delete modals in
+     views/partials/layout.ejs). Laid out in the 5 logical steps requested: debtor, what is being paid,
+     amount (with live remaining-balance feedback), method + date, then an optional proof attachment. -->
+<div class="modal fade" id="debtPayModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <form class="modal-content nms-modal" method="post" id="debtPayForm" enctype="multipart/form-data" action="/debts">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <div class="modal-header">
+        <div><div class="module-kicker">CATAT CICILAN / PEMBAYARAN</div><h5 class="modal-title">Catat Pembayaran</h5><small class="text-secondary">Ikuti langkah berikut agar sisa piutang selalu akurat.</small></div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body debt-pay-steps">
+        <section class="debt-pay-step">
+          <div class="debt-pay-step-label"><span>1</span>Pelanggan / Debitur</div>
+          <div class="debt-pay-summary">
+            <div><small>Nama pihak</small><strong id="debtPaySummaryParty">-</strong></div>
+            <div><small>Jenis</small><strong id="debtPaySummaryType">-</strong></div>
+            <div><small>Lokasi</small><strong id="debtPaySummarySite">-</strong></div>
+          </div>
+        </section>
+        <section class="debt-pay-step">
+          <div class="debt-pay-step-label"><span>2</span>Detail Piutang / Hutang yang Dibayar</div>
+          <p class="debt-pay-purpose" id="debtPaySummaryPurpose">-</p>
+          <div class="debt-pay-money-row">
+            <div><small>Total</small><strong id="debtPaySummaryPrincipal">Rp 0</strong></div>
+            <div><small>Terbayar</small><strong class="paid" id="debtPaySummaryPaid">Rp 0</strong></div>
+            <div><small>Sisa saat ini</small><strong class="remaining" id="debtPaySummaryRemaining">Rp 0</strong></div>
+          </div>
+        </section>
+        <section class="debt-pay-step">
+          <div class="debt-pay-step-label"><span>3</span>Nominal Cicilan</div>
+          <input class="form-control" type="number" min="1" step="1" name="amount" id="debtPayAmount" placeholder="Masukkan nominal pembayaran" required>
+          <div class="debt-pay-live" id="debtPayLive"><span>Sisa piutang setelah pembayaran</span><strong id="debtPayLiveRemaining">Rp 0</strong></div>
+          <div class="debt-pay-warning" id="debtPayWarning" hidden><i class="bi bi-exclamation-triangle-fill"></i>Nominal melebihi sisa. Maksimal <b id="debtPayMaxHint">Rp 0</b>.</div>
+        </section>
+        <section class="debt-pay-step">
+          <div class="debt-pay-step-label"><span>4</span>Metode Pembayaran & Tanggal</div>
+          <div class="debt-pay-method-picker">
+            <label><input type="radio" name="payment_method" value="cash" checked><span><i class="bi bi-cash-stack"></i>Tunai</span></label>
+            <label><input type="radio" name="payment_method" value="transfer"><span><i class="bi bi-bank2"></i>Transfer</span></label>
+            <label><input type="radio" name="payment_method" value="qris"><span><i class="bi bi-qr-code"></i>QRIS</span></label>
+            <label><input type="radio" name="payment_method" value="other"><span><i class="bi bi-three-dots"></i>Lainnya</span></label>
+          </div>
+          <input class="form-control mt-2" type="date" name="payment_date" id="debtPayDate" required>
+        </section>
+        <section class="debt-pay-step">
+          <div class="debt-pay-step-label"><span>5</span>Lampiran Bukti <em>(Opsional)</em></div>
+          <input class="form-control" type="file" name="proof_file" accept="image/jpeg,image/png,image/webp,application/pdf">
+          <small class="text-secondary">JPG, PNG, WEBP, atau PDF · maksimal 6 MB.</small>
+        </section>
+        <section class="debt-pay-step">
+          <label class="form-label">Catatan (opsional)</label>
+          <input class="form-control" name="notes" maxlength="500" placeholder="Contoh: cicilan bulan ke-2">
+        </section>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button>
+        <button type="submit" class="btn-tech primary" id="debtPaySubmit"><i class="bi bi-save2 me-1"></i>Simpan Pembayaran</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>(()=>{const method=document.getElementById('debtPaymentMethod'),months=document.getElementById('debtInstallmentMonths'),rows=document.getElementById('debtItemRows'),template=document.getElementById('debtItemTemplate'),total=document.getElementById('debtItemsTotal');if(!rows)return;const rupiah=value=>`Rp ${Math.round(value||0).toLocaleString('id-ID')}`;const calculate=()=>{let sum=0;rows.querySelectorAll('.debt-item-input').forEach(row=>{const subtotal=(Number(row.querySelector('.debt-item-qty')?.value)||0)*(Number(row.querySelector('.debt-item-price')?.value)||0);row.querySelector('.debt-item-subtotal').textContent=rupiah(subtotal);sum+=subtotal;});total.textContent=rupiah(sum);};const bind=row=>{row.querySelectorAll('input').forEach(input=>input.addEventListener('input',calculate));row.querySelector('.debt-remove-item')?.addEventListener('click',()=>{if(rows.children.length>1)row.remove();else row.querySelectorAll('input').forEach((input,index)=>input.value=index===1?'1':'');calculate();});};rows.querySelectorAll('.debt-item-input').forEach(bind);document.getElementById('addDebtItem')?.addEventListener('click',()=>{const row=template.content.firstElementChild.cloneNode(true);rows.appendChild(row);bind(row);row.querySelector('input')?.focus();});const toggleMethod=()=>{months.hidden=method.value!=='INSTALLMENT';};method?.addEventListener('change',toggleMethod);toggleMethod();calculate();const search=document.querySelector('.debt-filter input[name="q"]'),cards=[...document.querySelectorAll('.debt-item[data-debt-search]')];search?.addEventListener('input',()=>{const words=search.value.toLocaleLowerCase('id-ID').trim().split(/\s+/).filter(Boolean);cards.forEach(card=>{const haystack=card.dataset.debtSearch.toLocaleLowerCase('id-ID');card.hidden=words.length>0&&!words.every(word=>haystack.includes(word));});});
+
+// v1.26 -- Catat Cicilan modal: populate context from the triggering row's [data-debt-*]
+// attributes, then keep "sisa piutang setelah pembayaran" live as the user types the nominal,
+// blocking submit the moment it would exceed the current remaining balance.
+const payModal=document.getElementById('debtPayModal');
+if(payModal){
+  const form=document.getElementById('debtPayForm');
+  const amountInput=document.getElementById('debtPayAmount');
+  const dateInput=document.getElementById('debtPayDate');
+  const liveBox=document.getElementById('debtPayLive');
+  const liveRemaining=document.getElementById('debtPayLiveRemaining');
+  const warning=document.getElementById('debtPayWarning');
+  const maxHint=document.getElementById('debtPayMaxHint');
+  const submitBtn=document.getElementById('debtPaySubmit');
+  let currentRemaining=0;
+  const money=value=>rupiah(Math.max(0,Math.round(Number(value)||0)));
+  const recalc=()=>{
+    const value=Number(amountInput.value)||0;
+    const after=currentRemaining-value;
+    liveRemaining.textContent=money(after);
+    const overLimit=value>currentRemaining;
+    warning.hidden=!overLimit;
+    liveBox.classList.toggle('is-over',after<0);
+    submitBtn.disabled=value<=0||overLimit;
+  };
+  amountInput.addEventListener('input',recalc);
+  payModal.addEventListener('show.bs.modal',event=>{
+    const btn=event.relatedTarget;if(!btn||!btn.dataset)return;
+    const d=btn.dataset;
+    form.action=`/debts/${d.debtId}/payments`;
+    document.getElementById('debtPaySummaryParty').textContent=d.debtParty||'-';
+    document.getElementById('debtPaySummaryType').textContent=d.debtTypeLabel||'-';
+    document.getElementById('debtPaySummarySite').textContent=d.debtSite||'-';
+    document.getElementById('debtPaySummaryPurpose').textContent=d.debtPurpose||'-';
+    document.getElementById('debtPaySummaryPrincipal').textContent=money(d.debtPrincipal);
+    document.getElementById('debtPaySummaryPaid').textContent=money(d.debtPaid);
+    currentRemaining=Number(d.debtRemaining)||0;
+    document.getElementById('debtPaySummaryRemaining').textContent=money(currentRemaining);
+    maxHint.textContent=money(currentRemaining);
+    amountInput.value='';
+    amountInput.max=String(currentRemaining);
+    dateInput.value='<%= today %>';
+    const notesInput=form.querySelector('input[name="notes"]');if(notesInput)notesInput.value='';
+    form.querySelectorAll('input[name="payment_method"]').forEach((radio,index)=>radio.checked=index===0);
+    const fileInput=form.querySelector('input[name="proof_file"]');if(fileInput)fileInput.value='';
+    recalc();
+  });
+  form.addEventListener('submit',event=>{
+    const value=Number(amountInput.value)||0;
+    if(value<=0||value>currentRemaining){event.preventDefault();recalc();}
+  });
+}
+})();</script>

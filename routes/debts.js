@@ -1,4 +1,7 @@
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
 const db = require('../config/db');
 
 const router = express.Router();
@@ -40,6 +43,41 @@ function installmentSchedule(record) {
   });
 }
 
+// v1.26 -- payment channel options for a cicilan/payment entry. Mirrors the cash/transfer/qris/other
+// vocabulary already used by Payments & Cash so `statusLabel()` (middleware/common.js) renders the
+// same Indonesian labels (Tunai/Transfer/QRIS/Lainnya) without any extra translation table here.
+const PAYMENT_METHODS = new Set(['cash', 'transfer', 'qris', 'other']);
+const PERIOD_OPTIONS = new Set(['today', 'month', 'custom']);
+
+// v1.26 -- optional "Lampiran Bukti" attachment for a debt/receivable payment. Same
+// memory-storage -> validate-signature -> write-once-to-disk pattern used for cash proofs
+// (routes/finance.js) and payment proofs, kept local to this module for consistency.
+const DEBT_PROOF_DIR = path.join(__dirname, '..', 'storage', 'debt-proofs');
+fs.mkdirSync(DEBT_PROOF_DIR, { recursive: true });
+function proofExtension(mime) { return ({ 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'application/pdf': '.pdf' })[mime] || ''; }
+function proofSignatureMatches(file) {
+  const b = file?.buffer;
+  if (!b || b.length < 12) return false;
+  if (file.mimetype === 'image/jpeg') return b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
+  if (file.mimetype === 'image/png') return b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  if (file.mimetype === 'image/webp') return b.subarray(0, 4).toString() === 'RIFF' && b.subarray(8, 12).toString() === 'WEBP';
+  if (file.mimetype === 'application/pdf') return b.subarray(0, 5).toString() === '%PDF-';
+  return false;
+}
+async function saveDebtProof(file) {
+  if (!file) return null;
+  const ext = proofExtension(file.mimetype);
+  if (!ext || !proofSignatureMatches(file)) throw new Error('Isi file lampiran bukti tidak sesuai format yang diizinkan.');
+  const filename = `debt-${Date.now()}-${crypto.randomUUID()}${ext}`;
+  await fs.promises.writeFile(path.join(DEBT_PROOF_DIR, filename), file.buffer, { flag: 'wx' });
+  return { filename, originalName: file.originalname, mime: file.mimetype, size: file.size };
+}
+async function removeDebtProof(filename) {
+  if (!filename) return;
+  try { await fs.promises.unlink(path.join(DEBT_PROOF_DIR, path.basename(filename))); }
+  catch (e) { if (e.code !== 'ENOENT') console.error('Gagal hapus lampiran bukti cicilan:', e.message); }
+}
+
 async function refreshStatus(conn, id) {
   await conn.execute(`UPDATE finance_debts d
     SET d.status=CASE
@@ -55,11 +93,19 @@ router.get('/', async (req, res, next) => {
     const status = ['ACTIVE', 'PAID', 'ARCHIVED'].includes(String(req.query.status || '').toUpperCase()) ? String(req.query.status).toUpperCase() : 'ACTIVE';
     const site = ['GLOBAL', 'CDS', 'KBG'].includes(String(req.query.site || '').toUpperCase()) ? String(req.query.site).toUpperCase() : '';
     const query = String(req.query.q || '').trim().slice(0, 100);
+    // v1.26 -- quick period filter (Hari ini / Bulan ini / Custom) on top of the existing
+    // type/site/status/search filters, scoped to when the record was recorded (issue_date).
+    const period = PERIOD_OPTIONS.has(String(req.query.period || '')) ? String(req.query.period) : '';
+    const periodFrom = validDate(req.query.from) ? String(req.query.from) : '';
+    const periodTo = validDate(req.query.to) ? String(req.query.to) : '';
     const conditions = ['d.status=?'];
     const params = [status];
     if (type) { conditions.push('d.record_type=?'); params.push(type); }
     if (site) { conditions.push('d.site_code=?'); params.push(site); }
     if (query) { conditions.push('(d.party_name LIKE ? OR d.purpose LIKE ? OR d.responsible_name LIKE ?)'); params.push(`%${query}%`, `%${query}%`, `%${query}%`); }
+    if (period === 'today') { conditions.push('d.issue_date = CURDATE()'); }
+    else if (period === 'month') { conditions.push('MONTH(d.issue_date)=MONTH(CURDATE()) AND YEAR(d.issue_date)=YEAR(CURDATE())'); }
+    else if (period === 'custom' && periodFrom && periodTo) { conditions.push('d.issue_date BETWEEN ? AND ?'); params.push(periodFrom, periodTo); }
     const [records] = await db.execute(`SELECT d.*,
       COALESCE(SUM(p.amount),0) paid_amount,
       GREATEST(d.principal_amount-COALESCE(SUM(p.amount),0),0) remaining_amount,
@@ -70,7 +116,7 @@ router.get('/', async (req, res, next) => {
     if (records.length) {
       const ids = records.map((row) => Number(row.id));
       const placeholders = ids.map(() => '?').join(',');
-      const [payments] = await db.execute(`SELECT id,debt_id,payment_date,amount,notes,created_at FROM finance_debt_payments WHERE debt_id IN (${placeholders}) ORDER BY payment_date DESC,id DESC`, ids);
+      const [payments] = await db.execute(`SELECT id,debt_id,payment_date,amount,payment_method,notes,proof_path,proof_original_name,created_at FROM finance_debt_payments WHERE debt_id IN (${placeholders}) ORDER BY payment_date DESC,id DESC`, ids);
       const [items] = await db.execute(`SELECT id,debt_id,item_name,quantity,unit_price,notes FROM finance_debt_items WHERE debt_id IN (${placeholders}) ORDER BY debt_id,id`, ids);
       const grouped = new Map();
       const groupedItems = new Map();
@@ -89,6 +135,51 @@ router.get('/', async (req, res, next) => {
         const nextInstallment = record.installments.find((item) => item.status !== 'PAID');
         record.next_installment = nextInstallment || null;
         record.is_overdue = record.installments.some((item) => item.status === 'OVERDUE');
+
+        // v1.26 -- riwayat transaksi timeline: the record's creation ("penambahan piutang/hutang")
+        // plus every payment, each carrying its own running "sisa saldo" so the UI never has to
+        // recompute a balance client-side. Newest activity first, the original entry always last.
+        const principal = Number(record.principal_amount || 0);
+        const paymentsAsc = [...record.payments].sort((a, b) => {
+          if (a.payment_date === b.payment_date) return Number(a.id) - Number(b.id);
+          return a.payment_date < b.payment_date ? -1 : 1;
+        });
+        let cumulative = 0;
+        const paymentEntries = paymentsAsc.map((p) => {
+          cumulative += Number(p.amount);
+          const remainingAfter = Math.max(0, principal - cumulative);
+          return {
+            kind: 'payment',
+            id: p.id,
+            date: p.payment_date,
+            time: p.created_at,
+            amount: Number(p.amount),
+            method: p.payment_method || 'cash',
+            notes: p.notes,
+            hasProof: Boolean(p.proof_path),
+            remainingAfter,
+            entryStatus: remainingAfter <= 0 ? 'LUNAS' : 'DICICIL'
+          };
+        });
+        record.timeline = [...paymentEntries].reverse().concat([{
+          kind: 'created',
+          id: null,
+          date: record.issue_date,
+          time: record.created_at || null,
+          amount: principal,
+          method: null,
+          notes: record.purpose,
+          hasProof: false,
+          remainingAfter: principal,
+          entryStatus: 'DIBUAT'
+        }]);
+
+        // Overall status badge for the card header: LUNAS (paid off) > TERLAMBAT (past due,
+        // still owing) > DICICIL (partially paid) > BELUM DIBAYAR (nothing paid yet).
+        const paidAmount = Number(record.paid_amount || 0);
+        record.payment_status = record.status === 'PAID'
+          ? 'LUNAS'
+          : (record.is_overdue ? 'TERLAMBAT' : (paidAmount > 0 ? 'DICICIL' : 'BELUM DIBAYAR'));
       });
     }
     const [summaryRows] = await db.query(`SELECT d.record_type,
@@ -99,7 +190,7 @@ router.get('/', async (req, res, next) => {
       WHERE d.status='ACTIVE' GROUP BY d.record_type`);
     const summary = { DEBT: { remaining: 0, overdue: 0, total: 0 }, RECEIVABLE: { remaining: 0, overdue: 0, total: 0 } };
     summaryRows.forEach((row) => { summary[row.record_type] = { remaining: Number(row.remaining || 0), overdue: Number(row.overdue || 0), total: Number(row.total || 0) }; });
-    res.render('debts/index', { title: 'Hutang & Piutang', pageTitle: 'Hutang & Piutang', records, summary, filters: { type, status, site, query }, today: localDate() });
+    res.render('debts/index', { title: 'Hutang & Piutang', pageTitle: 'Hutang & Piutang', records, summary, filters: { type, status, site, query, period, from: periodFrom, to: periodTo }, today: localDate() });
   } catch (err) { next(err); }
 });
 
@@ -143,10 +234,12 @@ router.post('/', async (req, res, next) => {
 
 router.post('/:id/payments', async (req, res, next) => {
   let conn;
+  let saved = null;
   try {
     const id = Number(req.params.id);
     const paid = amount(req.body.amount);
     const paymentDate = validDate(req.body.payment_date) ? req.body.payment_date : '';
+    const method = PAYMENT_METHODS.has(String(req.body.payment_method || '').toLowerCase()) ? String(req.body.payment_method).toLowerCase() : 'cash';
     const notes = String(req.body.notes || '').trim().slice(0, 500) || null;
     if (!Number.isInteger(id) || id < 1 || paid <= 0 || !paymentDate) return res.status(400).send('Pembayaran tidak valid.');
     conn = await db.getConnection();
@@ -157,12 +250,36 @@ router.post('/:id/payments', async (req, res, next) => {
     const remaining = Number(record.principal_amount) - Number(totals.paid_amount);
     if (record.status === 'ARCHIVED') { await conn.rollback(); return res.status(409).send('Data yang diarsipkan tidak dapat menerima pembayaran.'); }
     if (paid > remaining) { await conn.rollback(); return res.status(400).send(`Pembayaran melebihi sisa Rp ${Math.max(0, remaining).toLocaleString('id-ID')}.`); }
-    await conn.execute('INSERT INTO finance_debt_payments(debt_id,payment_date,amount,notes,created_by) VALUES(?,?,?,?,?)', [id, paymentDate, paid, notes, req.session.user.id]);
+    // Attachment is saved only after every business-rule check has passed, so a rejected
+    // payment (over the remaining balance, archived record, ...) never leaves an orphan file.
+    if (req.file) saved = await saveDebtProof(req.file);
+    await conn.execute('INSERT INTO finance_debt_payments(debt_id,payment_date,amount,payment_method,notes,proof_path,proof_original_name,proof_mime,created_by) VALUES(?,?,?,?,?,?,?,?,?)',
+      [id, paymentDate, paid, method, notes, saved?.filename || null, saved?.originalName || null, saved?.mime || null, req.session.user.id]);
     await refreshStatus(conn, id);
     await conn.commit();
     req.session.flash = { type: 'success', message: 'Pembayaran berhasil dicatat dan sisa diperbarui.' };
     res.redirect('/debts');
-  } catch (err) { if (conn) await conn.rollback(); next(err); } finally { if (conn) conn.release(); }
+  } catch (err) {
+    if (conn) await conn.rollback();
+    if (saved) await removeDebtProof(saved.filename);
+    next(err);
+  } finally { if (conn) conn.release(); }
+});
+
+router.get('/:id/payments/:paymentId/proof', async (req, res) => {
+  const id = Number(req.params.id);
+  const paymentId = Number(req.params.paymentId);
+  if (!Number.isInteger(id) || id < 1 || !Number.isInteger(paymentId) || paymentId < 1) return res.status(400).send('Permintaan tidak valid.');
+  const [rows] = await db.execute('SELECT proof_path,proof_original_name,proof_mime FROM finance_debt_payments WHERE id=? AND debt_id=? LIMIT 1', [paymentId, id]);
+  const proof = rows[0];
+  if (!proof?.proof_path) return res.status(404).send('Lampiran bukti tidak ditemukan.');
+  const full = path.join(DEBT_PROOF_DIR, path.basename(proof.proof_path));
+  if (!fs.existsSync(full)) return res.status(404).send('File lampiran tidak ditemukan di storage.');
+  res.type(proof.proof_mime || 'application/octet-stream');
+  res.setHeader('Content-Disposition', `inline; filename="${String(proof.proof_original_name || path.basename(proof.proof_path)).replace(/[\r\n"]/g, '_')}"`);
+  res.setHeader('Cache-Control', 'private, max-age=300');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.sendFile(full);
 });
 
 router.post('/:id/archive', async (req, res, next) => {
@@ -178,6 +295,7 @@ router.post('/:id/archive', async (req, res, next) => {
 
 router.post('/:id/payments/:paymentId/delete', async (req, res, next) => {
   let conn;
+  let removedProof = null;
   try {
     const id = Number(req.params.id);
     const paymentId = Number(req.params.paymentId);
@@ -187,10 +305,13 @@ router.post('/:id/payments/:paymentId/delete', async (req, res, next) => {
     const [[record]] = await conn.execute('SELECT id,status FROM finance_debts WHERE id=? FOR UPDATE', [id]);
     if (!record) { await conn.rollback(); return res.status(404).send('Data tidak ditemukan.'); }
     if (record.status === 'ARCHIVED') { await conn.rollback(); return res.status(409).send('Data arsip tidak dapat diubah.'); }
+    const [[paymentRow]] = await conn.execute('SELECT proof_path FROM finance_debt_payments WHERE id=? AND debt_id=?', [paymentId, id]);
     const [removed] = await conn.execute('DELETE FROM finance_debt_payments WHERE id=? AND debt_id=?', [paymentId, id]);
     if (!removed.affectedRows) { await conn.rollback(); return res.status(404).send('Riwayat pembayaran tidak ditemukan.'); }
     await refreshStatus(conn, id);
     await conn.commit();
+    removedProof = paymentRow?.proof_path || null;
+    if (removedProof) await removeDebtProof(removedProof);
     req.session.flash = { type: 'success', message: 'Pembayaran dihapus dan sisa dihitung ulang.' };
     res.redirect('/debts');
   } catch (err) { if (conn) await conn.rollback(); next(err); } finally { if (conn) conn.release(); }
