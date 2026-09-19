@@ -15,7 +15,7 @@ check('cash approval workflow',()=>{must('services/schemaService.js',"PENDING_AP
 check('login ticker schema',()=>{must('services/schemaService.js','CREATE TABLE IF NOT EXISTS user_login_events');must('routes/auth.js','INSERT INTO user_login_events');must('routes/dashboard.js','frequentLogins');must('routes/dashboard.js','recentLogins');});
 check('pending cash excluded from real totals',()=>{must('routes/finance.js',"COALESCE(ct.approval_status,'APPROVED')='APPROVED'");must('services/analyticsService.js',"COALESCE(ct.approval_status,'APPROVED')='APPROVED'");must('routes/dashboard.js','pending_cash_approvals');});
 check('schema bootstrap',()=>{must('app.js','ensureV27Schema');must('services/schemaService.js','async function ensureV27Schema');});
-check('version',()=>{must('package.json','"version": "1.25.5"');must('views/partials/layout.ejs','CONTROL CENTER v1.25.5');});
+check('version',()=>{const pkg=JSON.parse(read('package.json'));if(!/^1\.25\./.test(pkg.version))throw new Error(`package.json: unexpected version ${pkg.version}`);must('views/partials/layout.ejs',`CONTROL CENTER v${pkg.version}`);});
 check('style markers',()=>{must('public/css/app.css','v1.19.0');must('public/css/app.css','@keyframes inkUserTicker');must('public/css/app.css','.psb-hero-v119');must('public/css/app.css','.infra-hub-shell');must('public/css/app.css','.analytics-v119');must('public/css/app.css','--border:var(--line)');must('public/css/app.css','--card:var(--panel)');braces('public/css/app.css');});
 
 console.log(`v1.19 contract validation OK: ${checks.length} groups passed (${checks.join(', ')}).`);

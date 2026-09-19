@@ -1,6 +1,7 @@
 const express = require('express');
 const ExcelJS = require('exceljs');
 const db = require('../config/db');
+const { paginate } = require('../utils/pagination');
 const { audit } = require('../services/auditService');
 const { requireAdmin, requireMasterAdmin, isMasterAdminRole } = require('../middleware/auth');
 const { validateWhatsapp } = require('../services/whatsappService');
@@ -149,7 +150,9 @@ function styleWorkbook(ws){
 
 router.get('/', async (req, res) => {
   const filters=customerFilter(req);const {sql,params}=customerSql(filters);
-  const [customers]=await db.execute(sql,params);
+  // Most installations are a few hundred subscribers. Rendering up to 500 rows lets the
+  // zero-wait client search cover the operational database without page hopping.
+  const pageResult=await paginate(db,sql,params,req,500,500);const customers=pageResult.rows;res.locals.pagination=pageResult.pagination;
   const [sites]=await db.query(`SELECT code,name FROM sites ORDER BY code`);
   const [clusters]=await db.query(`SELECT cl.id,cl.name,s.code site_code FROM clusters cl JOIN sites s ON s.id=cl.site_id WHERE cl.status!='inactive' ORDER BY s.code,cl.name`);
   const [sales]=await db.query(`SELECT e.id,e.employee_code,e.name FROM employees e LEFT JOIN positions p ON p.id=e.position_id WHERE e.is_active=1 AND p.category='sales' ORDER BY e.name`);

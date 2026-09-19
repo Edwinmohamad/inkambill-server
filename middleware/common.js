@@ -11,6 +11,9 @@ const statusLabels={
 function commonLocals(req,res,next){
   const language=req.session?.language==='en'?'en':'id';
   res.locals.appName=process.env.APP_NAME||'INKAMNET Billing';
+  // Render the native-like shell on the server for INKAMNET GO. The client-side
+  // check in app.js remains as a fallback, but this avoids a desktop-layout flash.
+  res.locals.isMobileApp=/INKAMNET-GO\//i.test(String(req.get('user-agent')||''));
   const sessionUser=req.session?.user||null;
   res.locals.isAdmin=isAdminRole(sessionUser?.role);
   res.locals.isMasterAdmin=isMasterAdminRole(sessionUser?.role);
@@ -32,6 +35,8 @@ function commonLocals(req,res,next){
   const titleMap={en:{'Pelanggan':'Customers','Tambah Pelanggan':'Add Customer','Edit Pelanggan':'Edit Customer','Paket Internet':'Internet Packages','Tagihan':'Billing','Pembayaran':'Payments','Laporan':'Reports','Pengaturan':'Settings','Jadwal Teknisi':'Technician Schedule','Jadwal Piket Server':'Server Duty Schedule','Ticketing':'Tickets','Arus Kas':'Cash Flow','Network Monitor':'Network Monitor','Profil Saya':'My Profile'}};
   res.locals.translateTitle=(value)=>language==='en'?(titleMap.en[value]||value):value;
   res.locals.currentPath=req.originalUrl?req.originalUrl.split('?')[0]:req.path||'/';
+  res.locals.queryParams={...req.query};
+  res.locals.pagination=null;
   res.locals.flash=req.session?.flash||null;
   if(req.session?.flash)delete req.session.flash;
   res.locals.formatRupiah=(value)=>new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(Number(value||0));

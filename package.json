@@ -11,7 +11,12 @@
     "validate": "npm run check && node scripts/validate-static.js",
     "validate:v119": "npm run validate && node scripts/test-infrastructure-proxy.js && node scripts/test-cash-approval.js && node scripts/test-closing-calculator.js && node scripts/test-responsive-css.js && node scripts/validate-v119.js",
     "validate:final": "npm run validate:v119 && node scripts/test-v128-features.js && node scripts/test-android-app.js && node scripts/test-mobile-api.js && node scripts/test-debt-monitor.js && node scripts/test-payment-method-correction.js && node scripts/test-invoice-refresh.js && node scripts/test-cash-naming.js && node scripts/test-cash-expense-submit.js && node scripts/test-acs-monitoring.js",
-    "test:v1256": "node scripts/test-v1256-cash-payment-ui.js"
+    "test:v1256": "node scripts/test-v1256-cash-payment-ui.js",
+    "test:instant-search": "node scripts/test-instant-cash-search.js",
+    "test:network-suite": "node scripts/test-powerful-network-suite.js",
+    "test:performance": "node scripts/test-performance-suite.js",
+    "test:mobile-ui": "node scripts/test-mobile-ui.js",
+    "test:list-search": "node scripts/test-list-search.js"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^7.0.0-rc14",

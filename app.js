@@ -29,12 +29,12 @@ const { syncDevices: syncAcsDevices } = require('./services/acsService');
 const { scanLowStock } = require('./services/inventoryService');
 const { deliverMobilePushes } = require('./services/mobilePushService');
 const { purgeOldLogs } = require('./services/logRetentionService');
-const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema } = require('./services/schemaService');
+const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema } = require('./services/schemaService');
 const { requireN8nToken } = require('./middleware/n8n');
 const { startGateway, hasSavedSession, processQueue, runAutoReminderSweep } = require('./services/whatsappGatewayService');
 
 const app = express();
-const assetVersion = ['public/css/app.css','public/js/app.js','public/js/nms.js']
+const assetVersion = ['public/css/app.css','public/css/mobile-app.css','public/js/app.js','public/js/mobile-app.js','public/js/nms.js','public/js/performance.js']
   .map(file => Math.floor(fs.statSync(path.join(__dirname,file)).mtimeMs).toString(36))
   .join('-');
 app.set('view engine', 'ejs');
@@ -43,7 +43,7 @@ app.use(expressLayouts);
 app.set('layout', 'partials/layout');
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'),{maxAge:process.env.NODE_ENV==='production'?'7d':0,immutable:process.env.NODE_ENV==='production',etag:true,lastModified:true}));
 app.set('trust proxy', 1);
 app.use((req,res,next)=>{res.locals.assetVersion=assetVersion;next();});
 
@@ -218,6 +218,7 @@ app.use('/debts', requireAuth, requirePermission('finance'), require('./routes/d
 app.use('/closing', requireAuth, requireMasterAdmin, require('./routes/closing'));
 app.use('/routers', requireAuth, requirePermission('network'), require('./routes/routers'));
 app.use('/network', requireAuth, requirePermission('network'), require('./routes/network'));
+app.use('/noc', requireAuth, requirePermission('network'), require('./routes/noc'));
 app.use('/acs', requireAuth, requirePermission('network'), require('./routes/acs'));
 app.use('/settings', requireAuth, requirePermission('settings'), require('./routes/settings'));
 app.use('/profile', requireAuth, require('./routes/profile'));
@@ -279,6 +280,8 @@ async function bootstrap() {
   await ensureV40Schema();
   await ensureV41Schema();
   await ensureV42Schema();
+  await ensureV43Schema();
+  await ensureV44Schema();
   const [rows] = await db.query('SELECT COUNT(*) total FROM users');
   if (Number(rows[0].total) === 0) {
     const username = process.env.DEFAULT_ADMIN_USERNAME || 'admin';

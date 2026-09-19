@@ -32,7 +32,7 @@
 
   <% const scopedInvoiceRow=filters.customer?invoices.find(i=>String(i.customer_id)===String(filters.customer)):null;
      const scopedCustomer=filters.customer?(customers.find(c=>String(c.id)===String(filters.customer))||(scopedInvoiceRow?{name:scopedInvoiceRow.customer_name,customer_code:scopedInvoiceRow.customer_code}:null)):null; %>
-  <form class="billing-filter-panel" method="get" action="/invoices">
+  <form class="billing-filter-panel" method="get" action="/invoices" data-server-search-fallback>
     <div class="billing-filter-head">
       <div><strong>Filter Tagihan</strong><small>Pilih periode dan data yang ingin ditampilkan. Gunakan kotak Cari untuk menemukan pelanggan tertentu.</small></div>
       <a href="/invoices" class="ink-text-link"><i class="bi bi-arrow-counterclockwise"></i> Atur Ulang</a>

@@ -21,6 +21,14 @@ async function acsFetch(path,params={}){
   try{const response=await fetch(url,{headers:headers(cfg),signal:controller.signal});if(!response.ok)throw new Error(`GenieACS HTTP ${response.status}`);return await response.json();}
   catch(err){throw new Error(err.name==='AbortError'?'GenieACS timeout':err.message);}finally{clearTimeout(timeout);}
 }
+async function acsTask(deviceId,task){
+  const allowed=new Set(['refreshObject','reboot']);if(!allowed.has(task.name))throw new Error('Aksi ACS tidak diizinkan.');
+  const cfg=config();if(!/^https?:\/\//.test(cfg.baseUrl))throw new Error('GENIEACS_NBI_URL belum dikonfigurasi.');
+  const url=new URL(`${cfg.baseUrl}/devices/${encodeURIComponent(deviceId)}/tasks`);url.searchParams.set('connection_request','');
+  const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),Number(process.env.ACS_TIMEOUT_MS||12000));
+  try{const response=await fetch(url,{method:'POST',headers:{...headers(cfg),'Content-Type':'application/json'},body:JSON.stringify(task),signal:controller.signal});if(!response.ok)throw new Error(`GenieACS HTTP ${response.status}`);return await response.json();}
+  catch(err){throw new Error(err.name==='AbortError'?'GenieACS timeout':err.message);}finally{clearTimeout(timeout);}
+}
 function normalizeDevice(device){
   const cfg=config();const lastInform=dateOrNull(device._lastInform);const online=lastInform&&(Date.now()-lastInform.getTime())<=cfg.onlineMinutes*60000?'online':lastInform?'offline':'unknown';
   const rx=numberOrNull(firstValue(device,[process.env.ACS_RX_PATH||'VirtualParameters.RXPower','VirtualParameters.rxPower','InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig.RXPower']));
@@ -51,4 +59,4 @@ async function syncDevices(){
   }catch(err){try{await conn.rollback();}catch(_){}if(logId)await conn.execute(`UPDATE acs_sync_logs SET status='failed',message=?,finished_at=NOW() WHERE id=?`,[err.message.slice(0,700),logId]);throw err;}
   finally{if(locked)try{await conn.query(`DO RELEASE_LOCK('inkambilling_acs_sync')`);}catch(_){}conn.release();}
 }
-module.exports={config,testConnection,syncDevices,normalizeDevice};
+module.exports={config,testConnection,syncDevices,normalizeDevice,acsTask};

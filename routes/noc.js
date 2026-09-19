@@ -1,0 +1,22 @@
+const express=require('express');
+const db=require('../config/db');
+const router=express.Router();
+let summaryCache={expires:0,value:null};
+async function compactSummary(){if(summaryCache.value&&summaryCache.expires>Date.now())return summaryCache.value;const [routers,onts,customers,tickets]=await Promise.all([db.query(`SELECT COUNT(*) total,SUM(last_status='online') online,SUM(last_status='offline') offline FROM routers WHERE is_active=1`),db.query(`SELECT COUNT(*) total,SUM(online_status='online') online,SUM(online_status='offline') offline,SUM(signal_status='critical') critical,SUM(signal_status='warning') warning FROM acs_devices`),db.query(`SELECT COUNT(*) total,SUM(network_status='online') online,SUM(network_status='isolated') isolated FROM customers WHERE archived_at IS NULL AND customer_status='active'`),db.query(`SELECT COUNT(*) total,SUM(priority='critical') critical FROM tickets WHERE status IN ('open','progress','pending')`)]);summaryCache={expires:Date.now()+15000,value:{routers:routers[0][0],onts:onts[0][0],customers:customers[0][0],tickets:tickets[0][0],generatedAt:new Date().toISOString()}};return summaryCache.value;}
+router.get('/api/summary',async(req,res,next)=>{try{res.set('Cache-Control','private, max-age=10').json(await compactSummary());}catch(err){next(err);}});
+
+router.get('/',async(req,res,next)=>{try{
+  const results=await Promise.all([
+    db.query(`SELECT COUNT(*) total,SUM(COALESCE(last_status,'never')='online') online,SUM(last_status='offline') offline,SUM(last_status IS NULL) never FROM routers WHERE is_active=1`),
+    db.query(`SELECT COUNT(*) total,SUM(online_status='online') online,SUM(online_status='offline') offline,SUM(signal_status='warning') warning,SUM(signal_status='critical') critical FROM acs_devices`),
+    db.query(`SELECT COUNT(*) total,SUM(network_status='online') online,SUM(network_status='offline') offline,SUM(network_status='isolated') isolated,SUM(network_status='router_unreachable') unreachable FROM customers WHERE archived_at IS NULL AND customer_status='active'`),
+    db.query(`SELECT COUNT(*) total,SUM(priority='critical') critical,SUM(status='open') open_count,SUM(status='progress') progress_count FROM tickets WHERE status IN ('open','progress','pending')`),
+    db.query(`SELECT s.id,s.code,s.name,(SELECT COUNT(*) FROM customers c WHERE c.site_id=s.id AND c.archived_at IS NULL AND c.customer_status='active') customers,(SELECT COUNT(*) FROM routers r WHERE r.site_id=s.id AND r.is_active=1) routers,(SELECT COUNT(*) FROM routers r WHERE r.site_id=s.id AND r.is_active=1 AND r.last_status='offline') routers_offline,(SELECT COUNT(*) FROM customer_ont_links l JOIN customers c ON c.id=l.customer_id JOIN acs_devices d ON d.id=l.acs_device_id WHERE c.site_id=s.id AND d.online_status='offline') ont_offline,(SELECT COUNT(*) FROM customer_ont_links l JOIN customers c ON c.id=l.customer_id JOIN acs_devices d ON d.id=l.acs_device_id WHERE c.site_id=s.id AND d.signal_status='critical') ont_critical FROM sites s WHERE s.is_active=1 ORDER BY s.code`),
+    db.query(`SELECT * FROM (SELECT 'router' kind,r.id entity_id,r.name title,CONCAT(s.code,' · ',COALESCE(r.last_error,'Router tidak terjangkau')) detail,r.last_seen_at event_at,'danger' tone FROM routers r JOIN sites s ON s.id=r.site_id WHERE r.is_active=1 AND r.last_status='offline' UNION ALL SELECT 'ont',d.id,COALESCE(c.name,d.serial_number,d.device_id),CONCAT(COALESCE(s.code,'-'),' · ',COALESCE(cl.name,d.odp_name,'ODP belum dipetakan'),' · RX ',COALESCE(d.rx_power,'N/A'),' dBm'),d.last_inform,IF(d.online_status='offline','danger','warning') FROM acs_devices d LEFT JOIN customer_ont_links l ON l.acs_device_id=d.id LEFT JOIN customers c ON c.id=l.customer_id LEFT JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id WHERE d.online_status='offline' OR d.signal_status IN ('critical','warning')) alarm_rows ORDER BY FIELD(tone,'danger','warning'),event_at DESC LIMIT 30`),
+    db.query(`SELECT * FROM acs_sync_logs ORDER BY id DESC LIMIT 1`)
+  ]);
+  res.set('Cache-Control','no-store');
+  res.render('noc/index',{title:'NOC Terpadu',routers:results[0][0][0]||{},onts:results[1][0][0]||{},customers:results[2][0][0]||{},tickets:results[3][0][0]||{},sites:results[4][0],alarms:results[5][0],lastSync:results[6][0][0]||null});
+}catch(err){next(err);}});
+
+module.exports=router;

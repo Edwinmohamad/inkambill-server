@@ -108,6 +108,57 @@
     if(form.hasAttribute('data-auto-filter'))form.classList.add('auto-filter-enabled');
   });
 
+  // Instant prefix search for rendered lists. This never submits the form, starts a loader,
+  // or calls the server: typing "D" immediately keeps rows containing a word beginning with D.
+  // Select filters remain server-backed so totals, charts, and approval data stay authoritative.
+  const normalizeInstantSearch=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('id-ID').trim();
+  document.querySelectorAll('[data-instant-prefix-form]').forEach(form=>{
+    const input=form.querySelector('[data-instant-prefix-input]');
+    const target=document.getElementById(form.dataset.instantTarget||'');
+    if(!input||!target)return;
+    // Do not send the live text to the server when Site/Kategori/Tipe changes; otherwise clearing
+    // the field afterwards could not restore rows that the server had already excluded.
+    input.removeAttribute('name');
+    const rows=[...target.querySelectorAll('[data-instant-filter-row]')];
+    const empty=target.querySelector('[data-instant-empty]');
+    const count=document.querySelector('[data-instant-result-count]');
+    const siteSuffix=count?.textContent.match(/\s·\s.+$/)?.[0]||'';
+    const apply=()=>{
+      const queries=normalizeInstantSearch(input.value).split(/\s+/).filter(Boolean);
+      let visible=0;
+      rows.forEach(row=>{
+        const words=normalizeInstantSearch(row.dataset.instantSearchValue).split(/[^a-z0-9]+/).filter(Boolean);
+        const match=!queries.length||queries.every(query=>words.some(word=>word.startsWith(query)));
+        row.hidden=!match;
+        if(match){visible+=1;const number=row.querySelector('[data-instant-number]');if(number)number.textContent=String(visible);}
+        else row.querySelectorAll('[data-row-check]:checked').forEach(box=>{box.checked=false;box.dispatchEvent(new Event('change',{bubbles:true}));});
+      });
+      if(empty)empty.hidden=visible!==0;
+      if(count)count.textContent=queries.length?`${visible} dari ${rows.length} transaksi${siteSuffix}`:`${rows.length} transaksi${siteSuffix}`;
+    };
+    input.addEventListener('input',apply);
+    input.addEventListener('keydown',event=>{if(event.key==='Enter')event.preventDefault();});
+    form.addEventListener('submit',event=>{if(document.activeElement===input)event.preventDefault();});
+    apply();
+  });
+
+  // Universal zero-wait search for all primary data tables. Results already rendered in the browser
+  // are narrowed immediately; pressing Enter no longer causes a page reload or loading overlay.
+  document.querySelectorAll('form[method="get"] input[name="q"],form[method="GET"] input[name="q"]').forEach(input=>{
+    if(input.hasAttribute('data-instant-prefix-input'))return;
+    const rows=[...document.querySelectorAll('.page-enter table.app-table tbody>tr')].filter(row=>!row.querySelector('.empty-state'));
+    if(!rows.length)return;
+    input.setAttribute('autocomplete','off');input.dataset.universalInstantSearch='1';
+    const form=input.closest('form');
+    let badge=input.closest('.search-box')?.querySelector('.universal-search-count');
+    if(!badge&&input.closest('.search-box')){badge=document.createElement('span');badge.className='universal-search-count';input.closest('.search-box').appendChild(badge);}
+    const apply=()=>{const queries=normalizeInstantSearch(input.value).split(/\s+/).filter(Boolean);let visible=0;rows.forEach(row=>{const words=normalizeInstantSearch(row.textContent).split(/[^a-z0-9]+/).filter(Boolean);const match=!queries.length||queries.every(q=>words.some(word=>word.startsWith(q)));row.hidden=!match;if(match)visible+=1;});if(badge){badge.textContent=queries.length?`${visible} hasil`:'';badge.hidden=!queries.length;}return visible;};
+    input.addEventListener('input',apply);
+    // Typing is always zero-wait against the rows already rendered. Enter remains a real
+    // server search, so a record outside the current page can never become unreachable.
+    input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();if(form?.hasAttribute('data-server-search-fallback')&&input.value.trim()){HTMLFormElement.prototype.submit.call(form);return;}apply();}});
+  });
+
   document.addEventListener('click', event => {
     const link = event.target.closest('a[href]');
     if (!link || link.target === '_blank' || link.hasAttribute('download') || link.href.startsWith('javascript:') || link.getAttribute('href').startsWith('#')) return;

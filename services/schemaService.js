@@ -819,4 +819,31 @@ async function ensureV42Schema() {
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,INDEX idx_acs_action_time(created_at),INDEX idx_acs_action_device(acs_device_id,created_at))`);
 }
 
-module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema };
+async function ensureV43Schema() {
+  await db.query(`CREATE TABLE IF NOT EXISTS network_map_nodes (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,node_type ENUM('pop','olt','odc','odp','customer','pole','other') NOT NULL,
+    name VARCHAR(180) NOT NULL,site_id BIGINT UNSIGNED NULL,customer_id BIGINT UNSIGNED NULL,acs_device_id BIGINT UNSIGNED NULL,
+    latitude DECIMAL(10,7) NOT NULL,longitude DECIMAL(10,7) NOT NULL,capacity INT UNSIGNED NULL,notes VARCHAR(500) NULL,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,created_by BIGINT UNSIGNED NULL,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_map_node_type(node_type,is_active),INDEX idx_map_node_site(site_id),INDEX idx_map_node_customer(customer_id))`);
+  await db.query(`CREATE TABLE IF NOT EXISTS network_map_links (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,source_node_id BIGINT UNSIGNED NOT NULL,target_node_id BIGINT UNSIGNED NOT NULL,
+    cable_type ENUM('backbone','distribution','drop','wireless','other') NOT NULL DEFAULT 'distribution',
+    status_mode ENUM('automatic','manual') NOT NULL DEFAULT 'automatic',manual_status ENUM('online','warning','offline','unknown') NOT NULL DEFAULT 'online',
+    cable_length_m DECIMAL(12,2) NULL,core_label VARCHAR(120) NULL,notes VARCHAR(500) NULL,is_active TINYINT(1) NOT NULL DEFAULT 1,
+    created_by BIGINT UNSIGNED NULL,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_map_link(source_node_id,target_node_id),INDEX idx_map_link_status(status_mode,manual_status))`);
+}
+async function ensureV44Schema(){
+  const statements=[
+    `ALTER TABLE customers ADD INDEX IF NOT EXISTS idx_customer_list(site_id,customer_status,archived_at,id)`,
+    `ALTER TABLE invoices ADD INDEX IF NOT EXISTS idx_invoice_period_status(period_year,period_month,status,customer_id)`,
+    `ALTER TABLE payments ADD INDEX IF NOT EXISTS idx_payment_invoice_status_date(invoice_id,status,paid_at)`,
+    `ALTER TABLE cash_transactions ADD INDEX IF NOT EXISTS idx_cash_date_approval(transaction_date,approval_status,category_id,site_id)`,
+    `ALTER TABLE tickets ADD INDEX IF NOT EXISTS idx_ticket_status_priority(status,priority,id)`,
+    `ALTER TABLE acs_devices ADD INDEX IF NOT EXISTS idx_acs_list(online_status,signal_status,last_inform,id)`
+  ];for(const sql of statements)await db.query(sql);
+}
+
+module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema };
