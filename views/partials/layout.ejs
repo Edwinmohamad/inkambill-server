@@ -161,16 +161,28 @@
         <% } %>
 
         <% if(can('network')){ %>
+        <% const netRegistryOpen = currentPath.startsWith('/sites') || currentPath.startsWith('/routers') || currentPath.startsWith('/olt') || currentPath.startsWith('/clusters'); %>
+        <% const netMonitoringOpen = currentPath.startsWith('/monitoring') || currentPath.startsWith('/noc') || currentPath.startsWith('/network/monitor') || currentPath.startsWith('/acs'); %>
         <div class="sidebar-section-label"><%= language==='en'?'NETWORK':'JARINGAN' %></div>
         <nav class="sidebar-nav">
-          <a class="sidebar-link <%= currentPath.startsWith('/sites') ? 'active' : '' %>" href="/sites"><i class="bi bi-hdd-rack-fill"></i><span><%= t('sites') %></span></a>
-          <a class="sidebar-link <%= currentPath.startsWith('/routers') ? 'active' : '' %>" href="/routers"><i class="bi bi-router-fill"></i><span><%= t('routers') %></span></a>
-          <a class="sidebar-link <%= currentPath.startsWith('/olt') ? 'active' : '' %>" href="/olt"><i class="bi bi-hdd-network-fill"></i><span>Registry OLT</span></a>
-          <a class="sidebar-link <%= currentPath.startsWith('/clusters') ? 'active' : '' %>" href="/clusters"><i class="bi bi-diagram-3-fill"></i><span><%= t('clusters') %></span></a>
-          <a class="sidebar-link <%= currentPath.startsWith('/monitoring') ? 'active' : '' %>" href="/monitoring"><i class="bi bi-grid-1x2-fill"></i><span>Dashboard Monitoring</span><em>NEW</em></a>
-          <a class="sidebar-link <%= currentPath.startsWith('/noc') ? 'active' : '' %>" href="/noc"><i class="bi bi-speedometer2"></i><span>NOC Terpadu</span><em>LIVE</em></a>
-          <a class="sidebar-link <%= currentPath.startsWith('/network/monitor') ? 'active' : '' %>" href="/network/monitor"><i class="bi bi-broadcast-pin"></i><span><%= t('monitor') %></span></a>
-          <a class="sidebar-link <%= currentPath.startsWith('/acs') ? 'active' : '' %>" href="/acs"><i class="bi bi-bezier2"></i><span>Network Map & ONT</span><em>LIVE</em></a>
+          <details class="sidebar-nav-group infra-sidebar-group" <%= netRegistryOpen ? 'open' : '' %>>
+            <summary class="sidebar-link <%= netRegistryOpen ? 'active' : '' %>"><i class="bi bi-hdd-rack-fill"></i><span>Registry & Konfigurasi</span><em><i class="bi bi-chevron-down"></i></em></summary>
+            <div class="sidebar-subnav infra-sidebar-subnav">
+              <a class="<%= currentPath.startsWith('/sites') ? 'active' : '' %>" href="/sites"><i class="bi bi-hdd-rack-fill"></i><%= t('sites') %></a>
+              <a class="<%= currentPath.startsWith('/routers') ? 'active' : '' %>" href="/routers"><i class="bi bi-router-fill"></i><%= t('routers') %></a>
+              <a class="<%= currentPath.startsWith('/olt') ? 'active' : '' %>" href="/olt"><i class="bi bi-hdd-network-fill"></i>Registry OLT</a>
+              <a class="<%= currentPath.startsWith('/clusters') ? 'active' : '' %>" href="/clusters"><i class="bi bi-diagram-3-fill"></i><%= t('clusters') %></a>
+            </div>
+          </details>
+          <details class="sidebar-nav-group infra-sidebar-group" <%= netMonitoringOpen ? 'open' : '' %>>
+            <summary class="sidebar-link <%= netMonitoringOpen ? 'active' : '' %>"><i class="bi bi-grid-1x2-fill"></i><span>Live Monitoring</span><em><i class="bi bi-chevron-down"></i></em></summary>
+            <div class="sidebar-subnav infra-sidebar-subnav">
+              <a class="<%= currentPath.startsWith('/monitoring') ? 'active' : '' %>" href="/monitoring"><i class="bi bi-grid-1x2-fill"></i>Dashboard Monitoring<em class="badge-new">NEW</em></a>
+              <a class="<%= currentPath.startsWith('/noc') ? 'active' : '' %>" href="/noc"><i class="bi bi-speedometer2"></i>NOC Terpadu<em class="badge-live">LIVE</em></a>
+              <a class="<%= currentPath.startsWith('/network/monitor') ? 'active' : '' %>" href="/network/monitor"><i class="bi bi-broadcast-pin"></i><%= t('monitor') %></a>
+              <a class="<%= currentPath.startsWith('/acs') ? 'active' : '' %>" href="/acs"><i class="bi bi-bezier2"></i>Network Map & ONT<em class="badge-live">LIVE</em></a>
+            </div>
+          </details>
           <details class="sidebar-nav-group infra-sidebar-group" <%= currentPath.startsWith('/network/tools') ? 'open' : '' %>>
             <summary class="sidebar-link <%= currentPath.startsWith('/network/tools') ? 'active' : '' %>"><i class="bi bi-grid-1x2-fill"></i><span>Infrastructure Hub</span><em><i class="bi bi-chevron-down"></i></em></summary>
             <div class="sidebar-subnav infra-sidebar-subnav"><a href="/network/tools"><i class="bi bi-grid"></i>Workspace Overview</a><a href="/network/tools?group=server"><i class="bi bi-server"></i>Server & OS</a><a href="/network/tools?group=management"><i class="bi bi-router-fill"></i>TR-069 & Management</a><a href="/network/tools?group=containers"><i class="bi bi-box-seam-fill"></i>Container Services</a></div>
