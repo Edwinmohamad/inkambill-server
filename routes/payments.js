@@ -2,6 +2,7 @@ const express=require('express');
 const fs=require('fs');
 const path=require('path');
 const crypto=require('crypto');
+const ExcelJS=require('exceljs');
 const db=require('../config/db');
 const {paginate}=require('../utils/pagination');
 const { refreshInvoiceStatus }=require('../services/invoiceService');
@@ -10,7 +11,18 @@ const { unisolateCustomer }=require('../services/networkService');
 const { assignCashTransactionCode }=require('../services/cashService');
 const { isoDate, assertDateOpen, resolveBookDate, financialAudit }=require('../services/financialControlService');
 const { requireAdmin, requireMasterAdmin, isAdminRole, isMasterAdminRole }=require('../middleware/auth');
+const { createReportPdf, rupiah, COLORS }=require('../services/reportPdf');
 const router=express.Router();
+
+// v1.26 — shared header styling for reconciliation export sheets (same convention as
+// routes/customers.js / routes/clusters.js: bold white header row on a brand-purple fill,
+// frozen header + autofilter so exported files are immediately usable in Excel).
+function styleWorkbook(ws){
+  ws.views=[{state:'frozen',ySplit:1}];
+  ws.autoFilter={from:'A1',to:ws.getRow(1).getCell(ws.columnCount).address};
+  const row=ws.getRow(1);row.height=22;
+  row.eachCell(cell=>{cell.font={bold:true,color:{argb:'FFFFFFFF'}};cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF6030E0'}};cell.alignment={vertical:'middle'};cell.border={bottom:{style:'thin',color:{argb:'FFFF433E'}}};});
+}
 
 const PROOF_DIR=path.join(__dirname,'..','storage','payment-proofs');
 fs.mkdirSync(PROOF_DIR,{recursive:true});
@@ -363,7 +375,11 @@ router.post('/:id/reject',requireMasterAdmin,async(req,res)=>{
   res.redirect(returnTo);
 });
 
-router.get('/reconciliation',requireAdmin,async(req,res)=>{
+// v1.26 — factored out of the GET /reconciliation handler so the Excel/PDF export routes below
+// can reuse the exact same filtered dataset (same q/site/cluster semantics) instead of duplicating
+// the SQL. Only `withLookups` (sites/clusters for the filter dropdowns) is skipped by the exporters,
+// since a file download has no <select> to populate.
+async function loadReconciliationData(req,{withLookups=false}={}){
   const q=String(req.query.q||'').trim();const site=String(req.query.site||'').trim();const cluster=String(req.query.cluster||'').trim();
   let heldSql=`SELECT p.*,c.customer_code,c.name customer_name,s.code site_code,cl.name cluster_name,u.name collector_name,i.invoice_number
     FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id LEFT JOIN users u ON u.id=COALESCE(p.collector_user_id,p.received_by)
@@ -382,8 +398,84 @@ router.get('/reconciliation',requireAdmin,async(req,res)=>{
     COALESCE(SUM(CASE WHEN method='cash' AND status='confirmed' AND settlement_status='settled' AND DATE(settled_at)=CURDATE() THEN amount ELSE 0 END),0) settled_today,
     COALESCE(SUM(CASE WHEN method='transfer' AND status='confirmed' AND DATE(paid_at)=CURDATE() THEN amount ELSE 0 END),0) transfer_today
     FROM payments`);
-  const [sites]=await db.query(`SELECT code,name FROM sites WHERE is_active=1 ORDER BY code`);const [clusters]=await db.query(`SELECT cl.id,cl.name,s.code site_code FROM clusters cl JOIN sites s ON s.id=cl.site_id WHERE cl.status!='inactive' ORDER BY s.code,cl.name`);
-  res.render('payments/reconciliation',{title:'Rekonsiliasi Pembayaran',held,staffBalances,summary:summary||{},q,site,cluster,sites,clusters});
+  const result={held,staffBalances,summary:summary||{},q,site,cluster};
+  if(withLookups){
+    const [sites]=await db.query(`SELECT code,name FROM sites WHERE is_active=1 ORDER BY code`);const [clusters]=await db.query(`SELECT cl.id,cl.name,s.code site_code FROM clusters cl JOIN sites s ON s.id=cl.site_id WHERE cl.status!='inactive' ORDER BY s.code,cl.name`);
+    result.sites=sites;result.clusters=clusters;
+  }
+  return result;
+}
+
+router.get('/reconciliation',requireAdmin,async(req,res)=>{
+  const data=await loadReconciliationData(req,{withLookups:true});
+  res.render('payments/reconciliation',{title:'Rekonsiliasi Pembayaran',...data});
+});
+
+// v1.26 — "Export Excel" untuk menu Rekonsiliasi: 3 sheet (rincian cash belum disetor, rekap per
+// collector, dan ringkasan angka) supaya file bisa langsung dipakai untuk audit/lampiran tanpa buka
+// aplikasi. Menghormati filter q/site/cluster yang sedang aktif di halaman.
+router.get('/reconciliation/export.xlsx',requireAdmin,async(req,res)=>{
+  const {held,staffBalances,summary,site}=await loadReconciliationData(req);
+  const wb=new ExcelJS.Workbook();wb.creator='INKAMNET Control Center';wb.created=new Date();
+
+  const ws=wb.addWorksheet('Cash Belum Disetor');
+  ws.columns=[['collector_name','Collector',22],['customer_name','Pelanggan',28],['customer_code','Customer ID',16],['invoice_number','Faktur',18],['site_code','Site',10],['cluster_name','Cluster',20],['amount','Nominal (Rp)',18],['paid_at','Diterima',20],['status','Status',16]].map(([key,header,width])=>({header,key,width}));
+  held.forEach(p=>ws.addRow({collector_name:p.collector_name||'Tidak diketahui',customer_name:p.customer_name,customer_code:p.customer_code,invoice_number:p.invoice_number,site_code:p.site_code,cluster_name:p.cluster_name||'',amount:Number(p.amount),paid_at:p.paid_at?new Date(p.paid_at):'',status:'Belum Disetor'}));
+  styleWorkbook(ws);ws.getColumn('amount').numFmt='#,##0';ws.getColumn('paid_at').numFmt='dd/mm/yyyy hh:mm';
+  if(held.length){const totalRow=ws.addRow({collector_name:'TOTAL',amount:held.reduce((a,p)=>a+Number(p.amount||0),0)});totalRow.font={bold:true};totalRow.getCell('amount').numFmt='#,##0';}
+
+  const ws2=wb.addWorksheet('Rekap Collector');
+  ws2.columns=[['collector_name','Collector',28],['transactions','Jumlah Transaksi',18],['amount','Total Nominal (Rp)',20]].map(([key,header,width])=>({header,key,width}));
+  staffBalances.forEach(s=>ws2.addRow({collector_name:s.collector_name,transactions:Number(s.transactions),amount:Number(s.amount)}));
+  styleWorkbook(ws2);ws2.getColumn('amount').numFmt='#,##0';
+
+  const ws3=wb.addWorksheet('Ringkasan');
+  ws3.columns=[['metric','Metrik',32],['value','Nilai (Rp)',22]].map(([key,header,width])=>({header,key,width}));
+  ws3.addRows([
+    {metric:'Cash Masih di Tim (belum disetor)',value:Number(summary.held_total||0)},
+    {metric:'Setoran Cash Hari Ini',value:Number(summary.settled_today||0)},
+    {metric:'Transfer Hari Ini',value:Number(summary.transfer_today||0)},
+  ]);
+  styleWorkbook(ws3);ws3.getColumn('value').numFmt='#,##0';
+  ws3.addRow({});ws3.addRow({metric:'Diekspor pada',value:new Date().toLocaleString('id-ID',{timeZone:'Asia/Jakarta'})});
+
+  const filename=`rekonsiliasi-pembayaran${site?'-'+site:''}-${new Date().toISOString().slice(0,10)}.xlsx`;
+  res.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition',`attachment; filename="${filename}"`);
+  await wb.xlsx.write(res);res.end();
+});
+
+// v1.26 — "Export PDF" untuk menu Rekonsiliasi: memakai layout laporan resmi yang sama (kop
+// perusahaan, kartu ringkasan, tabel, watermark, footer bernomor halaman) dengan modul lain seperti
+// Analitik/Laporan, supaya konsisten saat dicetak atau dilampirkan.
+router.get('/reconciliation/export.pdf',requireAdmin,async(req,res)=>{
+  const {held,staffBalances,summary,q,site,cluster}=await loadReconciliationData(req);
+  const rows=held.map(p=>({collector:p.collector_name||'Tidak diketahui',customer:`${p.customer_name} (${p.customer_code})`,invoice:p.invoice_number,siteCluster:`${p.site_code}${p.cluster_name?' · '+p.cluster_name:''}`,amount:rupiah(p.amount),_rawAmount:Number(p.amount||0),receivedAt:new Date(p.paid_at).toLocaleString('id-ID',{timeZone:'Asia/Jakarta'}),status:'Belum Disetor'}));
+  const filterLabel=[q?`Cari: "${q}"`:'',site?`Site: ${site}`:'',cluster?`Cluster ID: ${cluster}`:''].filter(Boolean).join(' · ')||'Semua data';
+  return createReportPdf(res,{
+    title:'Rekonsiliasi Pembayaran',
+    subtitle:`Cash belum disetor ke kas perusahaan · ${filterLabel}`,
+    filename:`rekonsiliasi-pembayaran${site?'-'+site:''}-${new Date().toISOString().slice(0,10)}.pdf`.toLowerCase(),
+    watermark:'INKAMNET · REKONSILIASI',
+    disposition:req.query.download==='0'?'inline':'attachment',
+    summaryItems:[
+      {label:'CASH MASIH DI TIM',value:rupiah(summary.held_total||0),color:COLORS.red},
+      {label:'SETORAN HARI INI',value:rupiah(summary.settled_today||0),color:COLORS.green},
+      {label:'TRANSFER HARI INI',value:rupiah(summary.transfer_today||0),color:COLORS.blue},
+      {label:'COLLECTOR AKTIF',value:String(staffBalances.length),color:COLORS.purple},
+    ],
+    columns:[
+      {label:'Collector',key:'collector',width:1.3,bold:true},
+      {label:'Pelanggan',key:'customer',width:1.9},
+      {label:'Faktur',key:'invoice',width:1.1},
+      {label:'Site / Cluster',key:'siteCluster',width:1.3},
+      {label:'Nominal',key:'amount',width:1.1,align:'right',total:true,totalBy:r=>r._rawAmount},
+      {label:'Diterima',key:'receivedAt',width:1.3},
+      {label:'Status',key:'status',width:0.9}
+    ],
+    rows,
+    layout:'landscape'
+  });
 });
 
 router.post('/:id/settle',requireAdmin,async(req,res)=>{

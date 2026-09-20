@@ -1363,102 +1363,79 @@ html[data-theme="light"] .dashboard-v119 .command-kpi,html[data-theme="light"] .
 .closing-steps b{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:rgba(var(--brand-rgb),.15);color:var(--brand);font-size:.55rem}
 .closing-steps small{font-size:.52rem;font-weight:750}
 
-/* Minimal finance debt and receivable monitor */
-.debt-page{display:grid;gap:12px;color:var(--text)}
-.debt-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:0}
-.debt-head h1{margin:2px 0 3px;font-family:var(--font-display);font-size:1.25rem}
-.debt-eyebrow{color:var(--brand);font-size:.5rem;font-weight:850;letter-spacing:.12em}
+/* Hutang & Piutang (debt/receivable monitor) -- v1.27: redesigned to reuse the shared finance-module
+   design system (module-head, metric-grid/metric-card, filter-card/filter-grid, data-card, status-badge,
+   app-dropdown) instead of the previous bespoke "v2" look, so the page reads consistently with
+   Rekonsiliasi, Pembayaran, Pelanggan, dst. */
+.debt-page{display:grid;gap:14px;color:var(--text)}
+.debt-page .module-head p{max-width:720px}
+
+/* "Catat Baru" popover form */
 .debt-create-panel{position:relative;flex:none}
 .debt-create-panel>summary{list-style:none;cursor:pointer}.debt-create-panel>summary::-webkit-details-marker{display:none}
-.debt-create-form{position:absolute;z-index:20;top:calc(100% + 8px);right:0;display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:10px;width:min(760px,calc(100vw - 52px));padding:15px;border:1px solid var(--line);border-radius:12px;background:var(--panel-2);box-shadow:var(--shadow)}
+.debt-create-form{position:absolute;z-index:20;top:calc(100% + 8px);right:0;display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:10px;width:min(760px,calc(100vw - 52px));padding:16px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);box-shadow:var(--shadow)}
+.debt-form-section{grid-column:1/-1;display:flex;align-items:center;gap:7px;margin:2px 0 -2px;padding-bottom:7px;border-bottom:1px solid var(--line);color:var(--muted-2);font-size:.56rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.debt-form-section i{color:var(--brand)}
 .debt-create-form label{min-width:0}.debt-create-form label>span{display:block;margin-bottom:4px;color:var(--muted-2);font-size:.52rem;font-weight:750}
 .debt-create-form .span-2{grid-column:span 2}.debt-create-form .span-4{grid-column:1/-1}
 .debt-form-action{display:flex;justify-content:flex-end;padding-top:2px}
-.debt-items-editor{padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--panel-3)}.debt-items-head,.debt-items-total{display:flex;align-items:center;justify-content:space-between;gap:10px}.debt-items-head>span{color:var(--text);font-size:.56rem;font-weight:800}.debt-item-input{display:grid;grid-template-columns:minmax(150px,1.5fr) 70px 130px minmax(120px,1fr) auto 90px;align-items:center;gap:6px;padding:7px 0;border-bottom:1px solid var(--line)}.debt-item-input:last-child{border-bottom:0}.debt-item-subtotal{text-align:right;color:var(--text);font-size:.52rem}.debt-items-total{padding-top:8px;border-top:1px solid var(--line);color:var(--muted);font-size:.52rem}.debt-items-total strong{color:var(--brand);font-size:.68rem}
+.debt-items-editor{padding:10px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel-3)}.debt-items-head,.debt-items-total{display:flex;align-items:center;justify-content:space-between;gap:10px}.debt-items-head>span{color:var(--text);font-size:.56rem;font-weight:800}.debt-item-input{display:grid;grid-template-columns:minmax(150px,1.5fr) 70px 130px minmax(120px,1fr) auto 90px;align-items:center;gap:6px;padding:7px 0;border-bottom:1px solid var(--line)}.debt-item-input:last-child{border-bottom:0}.debt-item-subtotal{text-align:right;color:var(--text);font-size:.52rem}.debt-items-total{padding-top:8px;border-top:1px solid var(--line);color:var(--muted);font-size:.52rem}.debt-items-total strong{color:var(--brand);font-size:.68rem}
 .debt-page .form-control,.debt-page .form-select{background:var(--panel-3);border-color:var(--line);color:var(--text)}
 .debt-page .form-control::placeholder{color:var(--muted)}
-.debt-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
-.debt-summary article{display:flex;align-items:center;gap:11px;padding:13px;border:1px solid var(--line);border-radius:12px;background:var(--panel-2)}
-.debt-summary article>i{display:grid;place-items:center;width:32px;height:32px;border-radius:9px;background:rgba(var(--brand-rgb),.12);color:var(--brand)}
-.debt-summary .is-alert>i{background:rgba(255,91,110,.12);color:#ff7183}
-.debt-summary span,.debt-summary small{display:block;color:var(--muted);font-size:.5rem}.debt-summary strong{display:block;margin:2px 0;color:var(--text);font-size:.82rem}
-.debt-filter{display:grid;grid-template-columns:135px 125px 115px minmax(180px,1fr) auto;gap:8px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--panel-2)}
-.debt-filter .btn{display:flex;align-items:center;gap:6px}
-.debt-list{display:grid;gap:8px}
-.debt-item{padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--panel-2)}
-.debt-item.is-overdue{border-color:rgba(255,91,110,.4)}
-.debt-item-main{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px}
-.debt-item-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:9px;background:var(--panel-3);color:var(--brand)}
-.debt-item-title{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.debt-item-title strong{font-size:.68rem}.debt-item-title .badge,.debt-site{font-size:.45rem}.debt-site{padding:3px 5px;border:1px solid var(--line);border-radius:999px;color:var(--muted)}
-.debt-item-copy p{margin:3px 0 5px;color:var(--muted-2);font-size:.58rem}
-.debt-meta{display:flex;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:.48rem}.debt-meta span{display:flex;align-items:center;gap:4px}
-.debt-amount{text-align:right}.debt-amount span,.debt-amount small{display:block;color:var(--muted);font-size:.48rem}.debt-amount strong{display:block;margin:1px 0;color:var(--text);font-size:.78rem}
-.debt-progress{height:4px;margin:10px 0 8px;border-radius:999px;background:var(--panel-3);overflow:hidden}.debt-progress span{display:block;height:100%;border-radius:inherit;background:var(--brand)}
-.debt-breakdown{margin:0 0 8px;border:1px solid var(--line);border-radius:9px;background:var(--panel-3)}.debt-breakdown>summary{display:flex;align-items:center;justify-content:space-between;padding:7px 9px;list-style:none;cursor:pointer;color:var(--muted-2);font-size:.52rem;font-weight:750}.debt-breakdown>summary::-webkit-details-marker{display:none}.debt-breakdown>summary span{display:flex;gap:6px}.debt-breakdown[open]>summary>i{transform:rotate(180deg)}.debt-breakdown-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:10px;border-top:1px solid var(--line)}.debt-breakdown-grid h4{margin:0 0 5px;color:var(--text);font-size:.56rem}.debt-breakdown-line,.debt-installment-line{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px dashed var(--line);font-size:.5rem}.debt-breakdown-line:last-child,.debt-installment-line:last-child{border-bottom:0}.debt-breakdown-line span small,.debt-installment-line strong small{display:block;margin-top:2px;color:var(--muted);font-size:.44rem}.debt-installment-line span{display:flex;align-items:center;gap:6px}.debt-installment-line span b{display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:var(--panel-2);color:var(--muted)}.debt-installment-line.status-paid strong small{color:var(--success)}.debt-installment-line.status-overdue strong small{color:var(--danger)}.debt-installment-line.status-partial strong small{color:var(--warning)}
-.debt-item-foot{display:flex;align-items:center;justify-content:flex-end;gap:8px;color:var(--muted);font-size:.5rem}.debt-item-foot>span{margin-right:auto}
-.debt-pay{position:relative}.debt-pay>summary{list-style:none;cursor:pointer}.debt-pay>summary::-webkit-details-marker{display:none}
-.debt-pay form{position:absolute;z-index:10;right:0;top:calc(100% + 6px);display:grid;grid-template-columns:130px 150px minmax(160px,1fr) auto;gap:7px;width:min(620px,calc(100vw - 60px));padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--panel-3);box-shadow:var(--shadow)}
-.debt-history{position:relative}.debt-history>summary{list-style:none;cursor:pointer}.debt-history>summary::-webkit-details-marker{display:none}.debt-history-list{position:absolute;z-index:11;right:0;top:calc(100% + 6px);width:min(340px,calc(100vw - 60px));padding:7px;border:1px solid var(--line);border-radius:10px;background:var(--panel-3);box-shadow:var(--shadow)}.debt-history-list>div{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px;border-bottom:1px solid var(--line)}.debt-history-list>div:last-child{border-bottom:0}.debt-history-list span,.debt-history-list small{display:block}.debt-history-list strong{color:var(--text);font-size:.56rem}.debt-history-list small{margin-top:2px;color:var(--muted);font-size:.46rem}
-.debt-empty{display:grid;place-items:center;gap:4px;padding:38px;border:1px dashed var(--line);border-radius:12px;background:var(--panel-2);color:var(--muted);font-size:.58rem}.debt-empty i{font-size:1.5rem;color:var(--brand)}.debt-empty strong{color:var(--text);font-size:.7rem}
-.debt-note{display:flex;gap:8px;align-items:flex-start;padding:9px 11px;border:1px solid rgba(var(--brand-rgb),.2);border-radius:10px;background:rgba(var(--brand-rgb),.06);color:var(--muted-2);font-size:.52rem}
-@media(max-width:991.98px){.closing-share-rules{grid-template-columns:1fr}.debt-create-form{grid-template-columns:repeat(2,minmax(0,1fr))}.debt-filter{grid-template-columns:repeat(3,1fr)}.debt-filter input{grid-column:span 2}.debt-pay form{grid-template-columns:1fr 1fr}.debt-item-input{grid-template-columns:minmax(140px,1fr) 65px 120px auto}.debt-item-input input:nth-of-type(4){grid-column:1/4}.debt-breakdown-grid{grid-template-columns:1fr}}
-@media(max-width:767.98px){.closing-steps{grid-template-columns:1fr 1fr}.debt-head{align-items:stretch;flex-direction:column}.debt-create-panel>summary{width:100%;text-align:center}.debt-create-form{position:static;width:100%;margin-top:8px;grid-template-columns:1fr}.debt-create-form .span-2,.debt-create-form .span-4{grid-column:auto}.debt-summary{grid-template-columns:1fr}.debt-filter{grid-template-columns:1fr 1fr}.debt-filter input{grid-column:1/-1}.debt-filter .btn{justify-content:center}.debt-item-input{grid-template-columns:minmax(0,1fr) 60px}.debt-item-input input:nth-of-type(3),.debt-item-input input:nth-of-type(4){grid-column:1/-1}.debt-item-subtotal{grid-column:1/2;text-align:left}.debt-item-main{grid-template-columns:auto minmax(0,1fr)}.debt-amount{grid-column:1/-1;padding-top:7px;border-top:1px solid var(--line);text-align:left}.debt-item-foot{align-items:stretch;flex-wrap:wrap}.debt-item-foot>span{width:100%}.debt-pay form{position:static;width:100%;margin-top:6px;grid-template-columns:1fr}.debt-pay{flex:1}.debt-pay>summary{width:100%;text-align:center}}
 
-/* Hutang & Piutang v2 — follows the same panel, filter, metric and action language as other modules. */
-.debt-page-v2{gap:14px}
-.debt-page-v2 .debt-head{padding:2px 0 0}.debt-page-v2 .debt-head h1{font-size:1.18rem}.debt-page-v2 .debt-head p{max-width:720px;font-size:.58rem;line-height:1.55}
-.debt-page-v2 .debt-create-panel>summary{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:38px;border:0;border-radius:4px;background:var(--brand);color:#fff;font-size:.58rem;font-weight:800;box-shadow:0 7px 18px rgba(var(--brand-rgb),.2)}
-.debt-page-v2 .debt-summary{gap:12px}
-.debt-page-v2 .debt-summary-card{position:relative;min-height:108px;padding:16px 17px;gap:13px;overflow:hidden;border-radius:6px;background:linear-gradient(145deg,var(--panel-2),var(--panel));box-shadow:0 7px 20px rgba(0,0,0,.09)}
-.debt-page-v2 .debt-summary-card::after{content:"";position:absolute;right:-25px;bottom:-35px;width:105px;height:105px;border-radius:50%;background:rgba(var(--brand-rgb),.055);pointer-events:none}
-.debt-page-v2 .debt-summary-icon{display:grid;place-items:center;width:42px;height:42px;flex:0 0 42px;border-radius:12px;background:rgba(87,148,255,.11);color:#6fa8ff;font-size:.92rem}
-.debt-page-v2 .debt-summary-card.receivable .debt-summary-icon{background:rgba(45,211,156,.1);color:var(--success)}
-.debt-page-v2 .debt-summary-card.is-alert .debt-summary-icon{background:rgba(255,91,110,.1);color:#ff7183}
-.debt-page-v2 .debt-summary-copy{min-width:0}.debt-page-v2 .debt-summary-copy>span{font-size:.5rem;font-weight:750;letter-spacing:.025em}.debt-page-v2 .debt-summary-copy>strong{margin:5px 0 4px;font-family:var(--font-display);font-size:1rem;letter-spacing:-.02em}.debt-page-v2 .debt-summary-copy small b{color:var(--text);font-weight:800}
-.debt-page-v2 .debt-summary-card>a{position:relative;z-index:1;display:grid;place-items:center;width:28px;height:28px;margin-left:auto;border:1px solid var(--line);border-radius:8px;color:var(--muted);text-decoration:none;background:var(--panel-3)}.debt-page-v2 .debt-summary-card>a:hover{border-color:var(--brand);color:var(--brand)}
-.debt-health-dot{width:9px;height:9px;margin-left:auto;border-radius:50%;box-shadow:0 0 0 5px rgba(45,211,156,.08)}.debt-health-dot.safe{background:var(--success)}.debt-health-dot.danger{background:var(--danger);box-shadow:0 0 0 5px rgba(255,91,110,.09)}
-.debt-page-v2 .debt-filter{display:grid;grid-template-columns:minmax(280px,1fr) 150px 150px 135px auto;align-items:end;gap:9px;padding:12px;border-radius:6px;background:var(--panel);box-shadow:0 5px 16px rgba(0,0,0,.06)}
-.debt-page-v2 .debt-filter label{display:grid;gap:5px;min-width:0}.debt-page-v2 .debt-filter label>span{padding-left:2px;color:var(--muted-2);font-size:.45rem;font-weight:850;letter-spacing:.07em;text-transform:uppercase}
-.debt-page-v2 .debt-filter .form-control,.debt-page-v2 .debt-filter .form-select{height:38px;min-height:38px;padding-top:0;padding-bottom:0;border-radius:4px;font-size:.55rem;background:var(--panel-2)}
-.debt-filter-search{position:relative}.debt-filter-search>i{position:absolute;z-index:2;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.7rem}.debt-page-v2 .debt-filter-search input{padding-left:36px}
-.debt-filter-reset{height:38px;padding:0 12px;display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);border-radius:4px;color:var(--muted);background:var(--panel-2);font-size:.53rem;font-weight:750;text-decoration:none}.debt-filter-reset:hover{color:var(--text);border-color:var(--line-2)}
-.debt-page-v2 .debt-list{gap:11px}
-.debt-page-v2 .debt-item{position:relative;padding:0;border-radius:7px;overflow:visible;background:var(--panel);box-shadow:0 5px 18px rgba(0,0,0,.07)}
-.debt-page-v2 .debt-item-accent{position:absolute;z-index:2;left:-1px;top:13px;bottom:13px;width:3px;border-radius:0 4px 4px 0;background:#66a3ff}.debt-page-v2 .debt-item-accent.receivable{background:var(--success)}
-.debt-page-v2 .debt-item-main{grid-template-columns:40px minmax(230px,1.35fr) minmax(390px,1fr);gap:13px;padding:15px 16px 12px}
-.debt-page-v2 .debt-item-icon{width:38px;height:38px;border-radius:11px;background:rgba(var(--brand-rgb),.09)}
-.debt-page-v2 .debt-item-title strong{font-size:.7rem}.debt-page-v2 .debt-item-title .badge{padding:4px 6px;border-radius:5px}.debt-page-v2 .debt-site{padding:4px 7px;border-radius:5px;font-weight:750}
-.debt-page-v2 .debt-item-copy p{margin:5px 0 7px;font-size:.56rem;color:var(--muted)}
-.debt-page-v2 .debt-meta{gap:10px}.debt-page-v2 .debt-meta span{padding-right:10px;border-right:1px solid var(--line)}.debt-page-v2 .debt-meta span:last-child{padding-right:0;border-right:0}
-.debt-money-grid{display:grid;grid-template-columns:repeat(3,minmax(105px,1fr));align-items:center;border:1px solid var(--line);border-radius:6px;background:var(--panel-2);overflow:hidden}
-.debt-money-grid>div{min-width:0;padding:10px 12px;border-right:1px solid var(--line)}.debt-money-grid>div:last-child{border-right:0}.debt-money-grid span{display:block;margin-bottom:4px;color:var(--muted);font-size:.44rem;font-weight:750;text-transform:uppercase}.debt-money-grid strong{display:block;color:var(--text);font-size:.64rem;white-space:nowrap}.debt-money-grid strong.paid{color:var(--success)}.debt-money-grid .remaining{background:rgba(var(--brand-rgb),.045)}.debt-money-grid .remaining strong{color:#b2a3f3;font-size:.7rem}
-.debt-progress-wrap{padding:0 16px 11px}.debt-progress-wrap>div:first-child{display:flex;justify-content:space-between;margin-bottom:5px;color:var(--muted);font-size:.45rem}.debt-progress-wrap b{color:var(--text)}.debt-page-v2 .debt-progress{height:5px;margin:0}.debt-page-v2 .debt-progress span{background:linear-gradient(90deg,var(--brand),#8f78ee)}
-.debt-page-v2 .debt-breakdown{margin:0 16px 10px;border-radius:5px}.debt-page-v2 .debt-breakdown>summary{min-height:34px;padding:7px 10px}
-.debt-page-v2 .debt-item-foot{min-height:51px;padding:9px 15px;border-top:1px solid var(--line);background:rgba(var(--brand-rgb),.018);border-radius:0 0 7px 7px}
-.debt-due-state{display:inline-flex!important;align-items:center;gap:6px;width:auto!important;padding:5px 8px;border-radius:5px;background:rgba(45,211,156,.07);color:var(--success)!important;font-size:.49rem!important;font-weight:750}.debt-due-state.danger{background:rgba(255,91,110,.08);color:var(--danger)!important}
-.debt-actions{margin-left:auto;display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}.debt-actions summary,.debt-actions>form button{min-height:31px;border-radius:4px!important;text-decoration:none!important;font-size:.51rem!important}.debt-actions .debt-pay>summary{padding:0 11px;display:flex;align-items:center;color:#b5a7f0;border-color:rgba(var(--brand-rgb),.35);background:rgba(var(--brand-rgb),.06)}
-.debt-page-v2 .debt-note{padding:11px 13px;border-radius:5px;font-size:.5rem}
-.debt-page-v2 [hidden]{display:none!important}
-@media(max-width:1199.98px){.debt-page-v2 .debt-filter{grid-template-columns:1fr 1fr 1fr}.debt-filter-search{grid-column:1/-1}.debt-page-v2 .debt-item-main{grid-template-columns:40px minmax(0,1fr)}.debt-money-grid{grid-column:1/-1}}
-@media(max-width:767.98px){.debt-page-v2 .debt-head h1{font-size:1.1rem}.debt-page-v2 .debt-summary{grid-template-columns:1fr}.debt-page-v2 .debt-summary-card{min-height:91px;padding:13px}.debt-page-v2 .debt-filter{grid-template-columns:1fr 1fr;padding:10px}.debt-filter-search{grid-column:1/-1}.debt-filter-reset{grid-column:1/-1}.debt-page-v2 .debt-item-main{grid-template-columns:36px minmax(0,1fr);padding:13px 12px 10px}.debt-page-v2 .debt-item-icon{width:34px;height:34px}.debt-money-grid{grid-template-columns:1fr 1fr;grid-column:1/-1}.debt-money-grid .remaining{grid-column:1/-1;border-top:1px solid var(--line)}.debt-money-grid>div:nth-child(2){border-right:0}.debt-page-v2 .debt-meta{display:grid;grid-template-columns:1fr}.debt-page-v2 .debt-meta span{padding-right:0;border:0}.debt-page-v2 .debt-progress-wrap{padding:0 12px 10px}.debt-page-v2 .debt-breakdown{margin:0 12px 9px}.debt-page-v2 .debt-item-foot{align-items:stretch;padding:10px 12px}.debt-actions{width:100%;margin-left:0;justify-content:stretch}.debt-actions>*{flex:1}.debt-actions summary,.debt-actions>form button{width:100%}.debt-history-list{right:auto;left:0}}
-@media(max-width:420px){.debt-page-v2 .debt-filter{grid-template-columns:1fr}.debt-page-v2 .debt-filter>*{grid-column:1!important}.debt-money-grid{grid-template-columns:1fr}.debt-money-grid>div{border-right:0;border-bottom:1px solid var(--line)}.debt-money-grid>div:last-child{border-bottom:0}.debt-money-grid .remaining{grid-column:auto;border-top:0}}
+/* Summary strip -- reuses .metric-grid/.metric-card as-is, only a couple of debt-specific tweaks */
+.debt-metric-grid{margin-bottom:0}
+.debt-health-line{display:flex!important;align-items:center;gap:6px}
+.debt-health-dot{width:7px;height:7px;border-radius:50%;flex:0 0 7px}.debt-health-dot.safe{background:var(--success)}.debt-health-dot.danger{background:var(--danger)}
 
-/* v1.26 -- Piutang/Hutang UX overhaul: status badges, quick period filter, riwayat transaksi
-   timeline, and the "Catat Cicilan" modal (summary / live remaining-balance calc / method picker). */
-.debt-page-v2 .debt-filter{grid-template-columns:minmax(220px,1fr) 120px 110px 105px 120px auto}
-.debt-filter-custom-range{grid-column:1/-1;display:flex;align-items:center;gap:8px}
-.debt-filter-custom-range input{flex:1;height:38px;min-width:0;border:1px solid var(--line);border-radius:4px;background:var(--panel-2);color:var(--text);font-size:.55rem;padding:0 10px}
-.debt-filter-custom-range span{color:var(--muted);font-size:.5rem}
-.debt-status-badge{padding:3px 7px;border-radius:5px;font-size:.42rem;font-weight:850;letter-spacing:.04em}
-.debt-status-badge.status-lunas{color:var(--success);background:rgba(45,211,156,.12)}
-.debt-status-badge.status-dicicil{color:#6fa8ff;background:rgba(87,148,255,.12)}
-.debt-status-badge.status-terlambat{color:var(--danger);background:rgba(255,91,110,.12)}
-.debt-status-badge.status-belum-dibayar{color:var(--warning);background:rgba(255,184,76,.12)}
-.debt-timeline{position:absolute;z-index:11;right:0;top:calc(100% + 6px);width:min(420px,calc(100vw - 60px));max-height:360px;overflow-y:auto;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel-3);box-shadow:var(--shadow);display:grid;gap:0}
+/* Filter toolbar -- reuses .filter-card/.filter-grid/.filter-group, with a wider column template to
+   fit the extra Jenis/Status/Periode selects this module needs. */
+.debt-filter-grid{grid-template-columns:minmax(220px,1.4fr) repeat(4,minmax(110px,1fr)) auto}
+.debt-filter-custom-range{grid-column:span 2}
+.debt-filter-custom-range-inputs{display:flex;align-items:center;gap:8px}
+.debt-filter-custom-range-inputs input{flex:1;min-width:0}
+.debt-filter-custom-range-inputs span{color:var(--muted)}
+
+/* Record list */
+.debt-list-card .data-card-body{padding:0}
+.debt-list{display:grid;gap:10px;padding:15px}
+.debt-item{padding:14px 15px;border:1px solid var(--line);border-left:3px solid var(--line-2);border-radius:var(--radius);background:var(--panel)}
+.debt-item.type-debt{border-left-color:#5b94e6}
+.debt-item.type-receivable{border-left-color:var(--success)}
+.debt-item.is-overdue{border-left-color:var(--danger);background:rgba(255,102,112,.035)}
+.debt-item-main{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,420px);gap:16px;align-items:start}
+.debt-item-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px}
+.debt-item-title strong{font-size:.74rem;color:var(--text)}
+.debt-site{padding:2px 6px;border:1px solid var(--line);border-radius:3px;color:var(--muted);font-size:.48rem;font-weight:700}
+.debt-item-copy p{margin:2px 0 8px;color:var(--muted-2);font-size:.62rem;line-height:1.5}
+.debt-meta{display:flex;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:.52rem}.debt-meta span{display:flex;align-items:center;gap:5px}.debt-meta i{color:var(--muted-2)}
+
+.debt-money-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:center;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel-2);overflow:hidden}
+.debt-money-grid>div{min-width:0;padding:9px 12px;border-right:1px solid var(--line)}.debt-money-grid>div:last-child{border-right:0}.debt-money-grid span{display:block;margin-bottom:4px;color:var(--muted);font-size:.44rem;font-weight:750;text-transform:uppercase;letter-spacing:.04em}.debt-money-grid strong{display:block;color:var(--text);font-size:.66rem;white-space:nowrap}.debt-money-grid strong.paid{color:var(--success)}.debt-money-grid .remaining{background:rgba(var(--brand-rgb),.05)}.debt-money-grid .remaining strong{color:var(--brand);font-size:.72rem}
+
+.debt-progress-wrap{margin-top:10px}.debt-progress-wrap>div:first-child{display:flex;justify-content:space-between;margin-bottom:5px;color:var(--muted);font-size:.46rem}.debt-progress-wrap b{color:var(--text)}
+.debt-progress{height:4px;border-radius:999px;background:var(--panel-3);overflow:hidden}.debt-progress span{display:block;height:100%;border-radius:inherit;background:var(--brand)}
+
+.debt-breakdown{margin-top:9px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel-2)}.debt-breakdown>summary{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;list-style:none;cursor:pointer;color:var(--muted-2);font-size:.52rem;font-weight:750}.debt-breakdown>summary::-webkit-details-marker{display:none}.debt-breakdown>summary span{display:flex;gap:6px}.debt-breakdown[open]>summary>i{transform:rotate(180deg)}.debt-breakdown-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:11px;border-top:1px solid var(--line)}.debt-breakdown-grid h4{margin:0 0 5px;color:var(--text);font-size:.56rem}.debt-breakdown-line,.debt-installment-line{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px dashed var(--line);font-size:.5rem}.debt-breakdown-line:last-child,.debt-installment-line:last-child{border-bottom:0}.debt-breakdown-line span small,.debt-installment-line strong small{display:block;margin-top:2px;color:var(--muted);font-size:.44rem}.debt-installment-line span{display:flex;align-items:center;gap:6px}.debt-installment-line span b{display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:var(--panel-3);color:var(--muted);font-size:.44rem}.debt-installment-line.status-paid strong small{color:var(--success)}.debt-installment-line.status-overdue strong small{color:var(--danger)}.debt-installment-line.status-partial strong small{color:var(--warning)}
+
+.debt-item-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:11px;padding-top:11px;border-top:1px solid var(--line);color:var(--muted);font-size:.5rem}
+.debt-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.debt-due-state{display:inline-flex;align-items:center;gap:6px;font-weight:750}
+.debt-due-state.safe{color:var(--success)}.debt-due-state.danger{color:var(--danger)}
+
+.debt-status-badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:3px;font-size:.44rem;font-weight:800;letter-spacing:.03em;text-transform:uppercase}
+.debt-status-badge.status-lunas{color:var(--success);background:rgba(49,211,154,.12)}
+.debt-status-badge.status-dicicil{color:#5b94e6;background:rgba(91,148,230,.12)}
+.debt-status-badge.status-terlambat{color:var(--danger);background:rgba(255,102,112,.12)}
+.debt-status-badge.status-belum-dibayar{color:var(--warning);background:rgba(244,182,77,.12)}
+
+/* "Riwayat" history -- native Bootstrap dropdown (same app-dropdown convention as the topbar's
+   notification/message/user menus), replacing the old absolutely-positioned <details> popover. */
+.debt-timeline-menu{width:min(420px,calc(100vw - 40px));max-height:380px;overflow-y:auto;padding:8px}
 .debt-timeline-item{position:relative;display:grid;grid-template-columns:16px 1fr;gap:10px;padding:9px 2px}
 .debt-timeline-item::before{content:"";position:absolute;left:7px;top:22px;bottom:-9px;width:1px;background:var(--line)}
 .debt-timeline-item:last-child::before{display:none}
-.debt-timeline-dot{width:9px;height:9px;margin-top:4px;border-radius:50%;background:var(--muted);box-shadow:0 0 0 3px var(--panel-3)}
+.debt-timeline-dot{width:9px;height:9px;margin-top:4px;border-radius:50%;background:var(--muted);box-shadow:0 0 0 3px var(--panel)}
 .debt-timeline-item.status-lunas .debt-timeline-dot{background:var(--success)}
 .debt-timeline-item.status-dicicil .debt-timeline-dot{background:var(--brand)}
 .debt-timeline-item.status-dibuat .debt-timeline-dot{background:var(--muted)}
@@ -1466,22 +1443,27 @@ html[data-theme="light"] .dashboard-v119 .command-kpi,html[data-theme="light"] .
 .debt-timeline-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .debt-timeline-when strong{display:block;font-size:.54rem;color:var(--text)}
 .debt-timeline-when small{display:block;margin-top:1px;color:var(--muted);font-size:.42rem}
-.debt-timeline-status{padding:2px 6px;border-radius:999px;font-size:.4rem;font-weight:800;letter-spacing:.03em;white-space:nowrap}
-.debt-timeline-status.lunas{color:var(--success);background:rgba(45,211,156,.1)}
+.debt-timeline-status{padding:2px 6px;border-radius:3px;font-size:.4rem;font-weight:800;letter-spacing:.03em;white-space:nowrap}
+.debt-timeline-status.lunas{color:var(--success);background:rgba(49,211,154,.1)}
 .debt-timeline-status.dicicil{color:var(--brand);background:rgba(var(--brand-rgb),.1)}
-.debt-timeline-status.dibuat{color:var(--muted);background:var(--panel-2)}
+.debt-timeline-status.dibuat{color:var(--muted);background:var(--panel-3)}
 .debt-timeline-mid{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .debt-timeline-amount{font-size:.6rem;color:var(--text)}
-.debt-timeline-method{display:inline-flex;align-items:center;gap:4px;padding:2px 6px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font-size:.4rem}
+.debt-timeline-method{display:inline-flex;align-items:center;gap:4px;padding:2px 6px;border:1px solid var(--line);border-radius:3px;color:var(--muted);font-size:.4rem}
 .debt-timeline-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--muted);font-size:.44rem}
 .debt-timeline-foot b{color:var(--text)}
 .debt-timeline-note{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px}
 .debt-timeline-actions{display:flex;align-items:center;gap:10px;margin-top:2px}
-.debt-timeline-actions a{color:#b5a7f0;font-size:.42rem;text-decoration:none;display:inline-flex;align-items:center;gap:3px}
+.debt-timeline-actions a{color:var(--brand);font-size:.42rem;text-decoration:none;display:inline-flex;align-items:center;gap:3px}
 .debt-timeline-actions form{margin:0}
 .debt-timeline-actions button{padding:0;border:0;background:transparent;color:var(--danger);font-size:.42rem;display:inline-flex;align-items:center;gap:3px}
-.debt-pay-steps{display:grid;gap:14px}
-.debt-pay-step{padding:12px 13px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2)}
+
+.debt-note{display:flex;gap:8px;align-items:flex-start;padding:11px 13px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel-2);color:var(--muted-2);font-size:.54rem}
+.debt-note i{color:var(--brand);margin-top:1px}
+
+/* "Catat Cicilan" modal steps -- kept, radius aligned to the app's flat 3px scale */
+.debt-pay-steps{display:grid;gap:12px}
+.debt-pay-step{padding:12px 13px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel-2)}
 .debt-pay-step-label{display:flex;align-items:center;gap:8px;margin-bottom:10px;color:var(--text);font-size:.58rem;font-weight:800}
 .debt-pay-step-label span{display:grid;place-items:center;width:20px;height:20px;flex:0 0 20px;border-radius:50%;background:rgba(var(--brand-rgb),.16);color:var(--brand);font-size:.5rem}
 .debt-pay-step-label em{margin-left:auto;color:var(--muted);font-size:.46rem;font-style:normal}
@@ -1493,21 +1475,45 @@ html[data-theme="light"] .dashboard-v119 .command-kpi,html[data-theme="light"] .
 .debt-pay-money-row small{display:block;color:var(--muted);font-size:.44rem}
 .debt-pay-money-row strong{display:block;margin-top:3px;font-size:.62rem;color:var(--text)}
 .debt-pay-money-row strong.paid{color:var(--success)}
-.debt-pay-money-row strong.remaining{color:#b2a3f3}
-.debt-pay-live{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:9px;padding:9px 11px;border:1px solid rgba(var(--brand-rgb),.25);border-radius:7px;background:rgba(var(--brand-rgb),.06);transition:.15s}
+.debt-pay-money-row strong.remaining{color:var(--brand)}
+.debt-pay-live{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:9px;padding:9px 11px;border:1px solid rgba(var(--brand-rgb),.25);border-radius:var(--radius);background:rgba(var(--brand-rgb),.06);transition:.15s}
 .debt-pay-live span{color:var(--muted-2);font-size:.5rem;font-weight:750}
 .debt-pay-live strong{color:var(--brand);font-size:.68rem}
-.debt-pay-live.is-over{border-color:rgba(255,91,110,.35);background:rgba(255,91,110,.08)}
+.debt-pay-live.is-over{border-color:rgba(255,102,112,.35);background:rgba(255,102,112,.08)}
 .debt-pay-live.is-over strong{color:var(--danger)}
-.debt-pay-warning{display:flex;align-items:center;gap:7px;margin-top:8px;padding:8px 10px;border:1px solid rgba(255,91,110,.3);border-radius:7px;background:rgba(255,91,110,.08);color:var(--danger);font-size:.5rem;font-weight:700}
+.debt-pay-warning{display:flex;align-items:center;gap:7px;margin-top:8px;padding:8px 10px;border:1px solid rgba(255,102,112,.3);border-radius:var(--radius);background:rgba(255,102,112,.08);color:var(--danger);font-size:.5rem;font-weight:700}
 .debt-pay-method-picker{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .debt-pay-method-picker label{position:relative}
 .debt-pay-method-picker input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
-.debt-pay-method-picker span{display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 6px;border:1px solid var(--line);border-radius:7px;background:var(--panel-3);color:var(--muted);font-size:.48rem;font-weight:700;text-align:center;transition:.15s}
+.debt-pay-method-picker span{display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 6px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel-3);color:var(--muted);font-size:.48rem;font-weight:700;text-align:center;transition:.15s}
 .debt-pay-method-picker span i{font-size:.85rem}
 .debt-pay-method-picker input:checked+span{border-color:var(--brand);background:rgba(var(--brand-rgb),.1);color:var(--brand)}
-@media(max-width:1199.98px){.debt-page-v2 .debt-filter{grid-template-columns:1fr 1fr 1fr}}
-@media(max-width:767.98px){.debt-timeline{position:static;width:100%;margin-top:8px;box-shadow:none}}
+
+@media(max-width:991.98px){
+  .closing-share-rules{grid-template-columns:1fr}
+  .debt-create-form{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .debt-filter-grid{grid-template-columns:repeat(3,1fr)}
+  .debt-filter-search-group{grid-column:span 3}
+  .debt-item-main{grid-template-columns:1fr}
+  .debt-item-input{grid-template-columns:minmax(140px,1fr) 65px 120px auto}.debt-item-input input:nth-of-type(4){grid-column:1/4}
+  .debt-breakdown-grid{grid-template-columns:1fr}
+}
+@media(max-width:767.98px){
+  .closing-steps{grid-template-columns:1fr 1fr}
+  .debt-create-panel>summary{width:100%;text-align:center}
+  .debt-create-form{position:static;width:100%;margin-top:8px;grid-template-columns:1fr}
+  .debt-create-form .span-2,.debt-create-form .span-4{grid-column:auto}
+  .debt-filter-grid{grid-template-columns:1fr 1fr}
+  .debt-filter-search-group,.debt-filter-custom-range{grid-column:1/-1}
+  .debt-money-grid{grid-template-columns:1fr 1fr}.debt-money-grid .remaining{grid-column:1/-1;border-top:1px solid var(--line)}.debt-money-grid>div:nth-child(2){border-right:0}
+  .debt-item-foot{align-items:stretch;flex-wrap:wrap}
+  .debt-actions{width:100%;justify-content:stretch}.debt-actions>*{flex:1}
+  .debt-item-input{grid-template-columns:minmax(0,1fr) 60px}.debt-item-input input:nth-of-type(3),.debt-item-input input:nth-of-type(4){grid-column:1/-1}
+  .debt-item-subtotal{grid-column:1/2;text-align:left}
+}
+@media(max-width:420px){
+  .debt-money-grid{grid-template-columns:1fr}.debt-money-grid>div{border-right:0;border-bottom:1px solid var(--line)}.debt-money-grid>div:last-child{border-bottom:0}.debt-money-grid .remaining{grid-column:auto;border-top:0}
+}
 @media(max-width:479.98px){.debt-pay-summary,.debt-pay-money-row{grid-template-columns:1fr 1fr}.debt-pay-method-picker{grid-template-columns:1fr 1fr}}
 
 /* Compact dashboard rhythm: dense enough for daily operations while retaining

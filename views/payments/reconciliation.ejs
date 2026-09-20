@@ -1,7 +1,8 @@
 <section>
   <div class="module-head">
     <div><div class="module-kicker">CASH RECONCILIATION</div><h1>Rekonsiliasi Pembayaran</h1><p>Pisahkan pembayaran pelanggan dari uang yang benar-benar sudah masuk ke kas perusahaan.</p></div>
-    <div class="module-actions"><a href="/payments" class="btn-tech"><i class="bi bi-arrow-left"></i>Kembali ke Pembayaran</a></div>
+    <% const reconciliationExportQuery=new URLSearchParams({q,site,cluster}).toString(); %>
+    <div class="module-actions"><a class="btn-tech" href="/payments/reconciliation/export.pdf?<%= reconciliationExportQuery %>"><i class="bi bi-filetype-pdf"></i>PDF</a><a class="btn-tech" href="/payments/reconciliation/export.xlsx?<%= reconciliationExportQuery %>"><i class="bi bi-file-earmark-spreadsheet"></i>Excel</a><a href="/payments" class="btn-tech"><i class="bi bi-arrow-left"></i>Kembali ke Pembayaran</a></div>
   </div>
   <!-- v1.25.5 (update) — setiap widget di bawah sekarang bisa diklik: kartu ringkasan mengarah ke
        tempat datanya bisa diperiksa lebih lanjut (tabel di halaman ini atau Data Kas terkait), dan kartu

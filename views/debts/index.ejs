@@ -1,96 +1,114 @@
-<div class="debt-page debt-page-v2">
-  <header class="page-header debt-head">
-    <div><div class="debt-eyebrow">KEUANGAN · MONITORING</div><h1>Hutang & Piutang</h1><p class="text-muted mb-0">Pantau kewajiban, tagihan masuk, jatuh tempo, pembayaran, dan sisa secara terpisah dari Closing.</p></div>
-    <details class="debt-create-panel">
-      <summary class="btn-tech primary"><i class="bi bi-plus-lg"></i>Catat Baru</summary>
-      <form method="post" action="/debts" class="debt-create-form">
-        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-        <label><span>Jenis</span><select class="form-select form-select-sm" name="record_type" required><option value="DEBT">Hutang INKAMNET</option><option value="RECEIVABLE">Piutang / belum diterima</option></select></label>
-        <label><span>Lokasi</span><select class="form-select form-select-sm" name="site_code" required><option value="GLOBAL">Global</option><option value="CDS">CDS</option><option value="KBG">KBG</option></select></label>
-        <label class="span-2"><span>Nama pihak</span><input class="form-control form-control-sm" name="party_name" maxlength="160" placeholder="Vendor / pemberi hutang / pemegang cash" required></label>
-        <label class="span-2"><span>Keperluan</span><input class="form-control form-control-sm" name="purpose" maxlength="255" placeholder="Contoh: pembelian router" required></label>
-        <label><span>Metode</span><select class="form-select form-select-sm" name="payment_method" id="debtPaymentMethod"><option value="ONCE">Sekali bayar</option><option value="INSTALLMENT">Cicilan</option></select></label>
-        <label id="debtInstallmentMonths" hidden><span>Durasi cicilan</span><select class="form-select form-select-sm" name="installment_months"><option value="3">3 bulan</option><option value="6">6 bulan</option><option value="12">12 bulan</option><option value="18">18 bulan</option><option value="24">24 bulan</option></select></label>
-        <label><span>Tanggal dicatat</span><input class="form-control form-control-sm" type="date" name="issue_date" value="<%= today %>" required></label>
-        <label><span>Jatuh tempo pertama</span><input class="form-control form-control-sm" type="date" name="due_date"></label>
-        <label class="span-2"><span>Penanggung jawab</span><input class="form-control form-control-sm" name="responsible_name" maxlength="160" placeholder="Edwin / Jon / Bopung / bersama"></label>
-        <label class="span-2"><span>Catatan</span><input class="form-control form-control-sm" name="notes" maxlength="2000" placeholder="Opsional"></label>
-        <div class="debt-items-editor span-4"><div class="debt-items-head"><span>Rincian pembelian</span><button class="btn btn-outline-primary btn-sm" type="button" id="addDebtItem"><i class="bi bi-plus-lg"></i> Tambah item</button></div><div id="debtItemRows"><div class="debt-item-input"><input class="form-control form-control-sm" name="item_name[]" placeholder="Nama barang / keperluan" required><input class="form-control form-control-sm debt-item-qty" type="number" min="0.01" step="0.01" name="item_quantity[]" value="1" aria-label="Jumlah" required><input class="form-control form-control-sm debt-item-price" type="number" min="1" step="1" name="item_unit_price[]" placeholder="Harga satuan" required><input class="form-control form-control-sm" name="item_notes[]" placeholder="Catatan item"><button class="btn btn-link text-danger debt-remove-item" type="button" title="Hapus"><i class="bi bi-trash"></i></button><strong class="debt-item-subtotal">Rp 0</strong></div></div><div class="debt-items-total"><span>Total otomatis</span><strong id="debtItemsTotal">Rp 0</strong></div></div>
-        <div class="debt-form-action span-4"><button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-save2 me-1"></i>Simpan</button></div>
-      </form>
-    </details>
-  </header>
+<!-- v1.27 -- total redesign: menu ini sekarang memakai komponen desain yang sama dengan modul lain
+     (module-head, metric-grid/metric-card, filter-card/filter-grid, data-card, status-badge, app-dropdown,
+     btn-tech) alih-alih gaya "v2" tersendiri yang penuh gradasi/glow. Semua id, name, class, dan
+     data-attribute yang dipakai script di bagian bawah file ini TIDAK diubah -- hanya tampilan & susunan
+     visualnya yang dirapikan supaya konsisten dan terasa lebih profesional dengan modul keuangan lain
+     (Rekonsiliasi, Pembayaran, Pelanggan, dst). -->
+<div class="debt-page">
+  <div class="module-head">
+    <div><div class="module-kicker">KEUANGAN · MONITORING</div><h1>Hutang & Piutang</h1><p>Pantau kewajiban, tagihan masuk, jatuh tempo, pembayaran, dan sisa secara terpisah dari Closing.</p></div>
+    <div class="module-actions">
+      <details class="debt-create-panel">
+        <summary class="btn-tech primary"><i class="bi bi-plus-lg"></i>Catat Baru</summary>
+        <form method="post" action="/debts" class="debt-create-form">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <div class="debt-form-section span-4"><i class="bi bi-info-circle"></i>Informasi Umum</div>
+          <label><span>Jenis</span><select class="form-select form-select-sm" name="record_type" required><option value="DEBT">Hutang INKAMNET</option><option value="RECEIVABLE">Piutang / belum diterima</option></select></label>
+          <label><span>Lokasi</span><select class="form-select form-select-sm" name="site_code" required><option value="GLOBAL">Global</option><option value="CDS">CDS</option><option value="KBG">KBG</option></select></label>
+          <label class="span-2"><span>Nama pihak</span><input class="form-control form-control-sm" name="party_name" maxlength="160" placeholder="Vendor / pemberi hutang / pemegang cash" required></label>
+          <label class="span-2"><span>Keperluan</span><input class="form-control form-control-sm" name="purpose" maxlength="255" placeholder="Contoh: pembelian router" required></label>
+          <label><span>Metode</span><select class="form-select form-select-sm" name="payment_method" id="debtPaymentMethod"><option value="ONCE">Sekali bayar</option><option value="INSTALLMENT">Cicilan</option></select></label>
+          <label id="debtInstallmentMonths" hidden><span>Durasi cicilan</span><select class="form-select form-select-sm" name="installment_months"><option value="3">3 bulan</option><option value="6">6 bulan</option><option value="12">12 bulan</option><option value="18">18 bulan</option><option value="24">24 bulan</option></select></label>
+          <label><span>Tanggal dicatat</span><input class="form-control form-control-sm" type="date" name="issue_date" value="<%= today %>" required></label>
+          <label><span>Jatuh tempo pertama</span><input class="form-control form-control-sm" type="date" name="due_date"></label>
+          <label class="span-2"><span>Penanggung jawab</span><input class="form-control form-control-sm" name="responsible_name" maxlength="160" placeholder="Edwin / Jon / Bopung / bersama"></label>
+          <label class="span-2"><span>Catatan</span><input class="form-control form-control-sm" name="notes" maxlength="2000" placeholder="Opsional"></label>
+
+          <div class="debt-form-section span-4"><i class="bi bi-receipt"></i>Rincian Pembelian</div>
+          <div class="debt-items-editor span-4"><div class="debt-items-head"><span>Rincian pembelian</span><button class="btn btn-outline-primary btn-sm" type="button" id="addDebtItem"><i class="bi bi-plus-lg"></i> Tambah item</button></div><div id="debtItemRows"><div class="debt-item-input"><input class="form-control form-control-sm" name="item_name[]" placeholder="Nama barang / keperluan" required><input class="form-control form-control-sm debt-item-qty" type="number" min="0.01" step="0.01" name="item_quantity[]" value="1" aria-label="Jumlah" required><input class="form-control form-control-sm debt-item-price" type="number" min="1" step="1" name="item_unit_price[]" placeholder="Harga satuan" required><input class="form-control form-control-sm" name="item_notes[]" placeholder="Catatan item"><button class="btn btn-link text-danger debt-remove-item" type="button" title="Hapus"><i class="bi bi-trash"></i></button><strong class="debt-item-subtotal">Rp 0</strong></div></div><div class="debt-items-total"><span>Total otomatis</span><strong id="debtItemsTotal">Rp 0</strong></div></div>
+          <div class="debt-form-action span-4"><button class="btn-tech primary" type="submit"><i class="bi bi-save2"></i>Simpan</button></div>
+        </form>
+      </details>
+    </div>
+  </div>
 
   <% const totalOutstanding=summary.DEBT.remaining+summary.RECEIVABLE.remaining; const totalOverdue=summary.DEBT.overdue+summary.RECEIVABLE.overdue; %>
-  <section class="debt-summary" aria-label="Ringkasan hutang dan piutang">
-    <article class="debt-summary-card debt"><div class="debt-summary-icon"><i class="bi bi-arrow-down-left"></i></div><div class="debt-summary-copy"><span>Sisa Hutang</span><strong>Rp <%= summary.DEBT.remaining.toLocaleString('id-ID') %></strong><small><b><%= summary.DEBT.total %></b> kewajiban aktif</small></div><a href="/debts?type=DEBT&status=ACTIVE" aria-label="Lihat hutang"><i class="bi bi-arrow-right"></i></a></article>
-    <article class="debt-summary-card receivable"><div class="debt-summary-icon"><i class="bi bi-arrow-up-right"></i></div><div class="debt-summary-copy"><span>Sisa Piutang</span><strong>Rp <%= summary.RECEIVABLE.remaining.toLocaleString('id-ID') %></strong><small><b><%= summary.RECEIVABLE.total %></b> tagihan aktif</small></div><a href="/debts?type=RECEIVABLE&status=ACTIVE" aria-label="Lihat piutang"><i class="bi bi-arrow-right"></i></a></article>
-    <article class="debt-summary-card is-alert"><div class="debt-summary-icon"><i class="bi bi-exclamation-triangle"></i></div><div class="debt-summary-copy"><span>Lewat Jatuh Tempo</span><strong>Rp <%= totalOverdue.toLocaleString('id-ID') %></strong><small><%= totalOverdue>0?'Perlu segera ditindaklanjuti':'Semua pembayaran terkendali' %></small></div><span class="debt-health-dot <%= totalOverdue>0?'danger':'safe' %>"></span></article>
-  </section>
+  <div class="metric-grid debt-metric-grid" aria-label="Ringkasan hutang dan piutang">
+    <a class="metric-card metric-card-link" href="/debts?type=DEBT&status=ACTIVE"><div class="metric-top"><span class="metric-label">Sisa Hutang</span><span class="metric-icon"><i class="bi bi-arrow-down-left"></i></span></div><strong>Rp <%= summary.DEBT.remaining.toLocaleString('id-ID') %></strong><small><b><%= summary.DEBT.total %></b> kewajiban aktif</small></a>
+    <a class="metric-card green metric-card-link" href="/debts?type=RECEIVABLE&status=ACTIVE"><div class="metric-top"><span class="metric-label">Sisa Piutang</span><span class="metric-icon"><i class="bi bi-arrow-up-right"></i></span></div><strong>Rp <%= summary.RECEIVABLE.remaining.toLocaleString('id-ID') %></strong><small><b><%= summary.RECEIVABLE.total %></b> tagihan aktif</small></a>
+    <div class="metric-card <%= totalOverdue>0?'red':'' %>"><div class="metric-top"><span class="metric-label">Lewat Jatuh Tempo</span><span class="metric-icon"><i class="bi bi-exclamation-triangle"></i></span></div><strong>Rp <%= totalOverdue.toLocaleString('id-ID') %></strong><small class="debt-health-line"><span class="debt-health-dot <%= totalOverdue>0?'danger':'safe' %>"></span><%= totalOverdue>0?'Perlu segera ditindaklanjuti':'Semua pembayaran terkendali' %></small></div>
+    <div class="metric-card"><div class="metric-top"><span class="metric-label">Total Outstanding</span><span class="metric-icon"><i class="bi bi-wallet2"></i></span></div><strong>Rp <%= totalOutstanding.toLocaleString('id-ID') %></strong><small>Hutang + piutang aktif gabungan</small></div>
+  </div>
 
-  <form class="debt-filter" method="get" action="/debts" data-auto-filter>
-    <div class="debt-filter-search"><i class="bi bi-search"></i><input class="form-control" name="q" value="<%= filters.query %>" maxlength="100" autocomplete="off" placeholder="Cari nama pihak, keperluan, atau penanggung jawab…"></div>
-    <label><span>Jenis</span><select class="form-select" name="type" aria-label="Jenis"><option value="">Semua jenis</option><option value="DEBT" <%= filters.type==='DEBT'?'selected':'' %>>Hutang</option><option value="RECEIVABLE" <%= filters.type==='RECEIVABLE'?'selected':'' %>>Piutang</option></select></label>
-    <label><span>Lokasi</span><select class="form-select" name="site" aria-label="Lokasi"><option value="">Semua lokasi</option><option value="GLOBAL" <%= filters.site==='GLOBAL'?'selected':'' %>>Global</option><option value="CDS" <%= filters.site==='CDS'?'selected':'' %>>CDS</option><option value="KBG" <%= filters.site==='KBG'?'selected':'' %>>KBG</option></select></label>
-    <label><span>Status</span><select class="form-select" name="status" aria-label="Status"><option value="ACTIVE" <%= filters.status==='ACTIVE'?'selected':'' %>>Aktif</option><option value="PAID" <%= filters.status==='PAID'?'selected':'' %>>Lunas</option><option value="ARCHIVED" <%= filters.status==='ARCHIVED'?'selected':'' %>>Arsip</option></select></label>
-    <label><span>Periode</span><select class="form-select" name="period" aria-label="Periode"><option value="">Semua waktu</option><option value="today" <%= filters.period==='today'?'selected':'' %>>Hari ini</option><option value="month" <%= filters.period==='month'?'selected':'' %>>Bulan ini</option><option value="custom" <%= filters.period==='custom'?'selected':'' %>>Custom</option></select></label>
-    <% if(filters.period==='custom'){ %><div class="debt-filter-custom-range"><input class="form-control" type="date" name="from" value="<%= filters.from %>" aria-label="Dari tanggal"><span>—</span><input class="form-control" type="date" name="to" value="<%= filters.to %>" aria-label="Sampai tanggal"></div><% } %>
-    <% if(filters.type||filters.site||filters.status!=='ACTIVE'||filters.query||filters.period){ %><a class="debt-filter-reset" href="/debts" title="Reset filter"><i class="bi bi-arrow-counterclockwise"></i><span>Reset</span></a><% } %>
+  <form class="filter-card debt-filter" method="get" action="/debts" data-auto-filter>
+    <div class="filter-grid debt-filter-grid">
+      <div class="filter-group debt-filter-search-group"><label>CARI</label><div class="search-box"><i class="bi bi-search"></i><input name="q" value="<%= filters.query %>" maxlength="100" autocomplete="off" placeholder="Cari nama pihak, keperluan, atau penanggung jawab…"></div></div>
+      <div class="filter-group"><label>JENIS</label><select class="form-select" name="type" aria-label="Jenis"><option value="">Semua jenis</option><option value="DEBT" <%= filters.type==='DEBT'?'selected':'' %>>Hutang</option><option value="RECEIVABLE" <%= filters.type==='RECEIVABLE'?'selected':'' %>>Piutang</option></select></div>
+      <div class="filter-group"><label>LOKASI</label><select class="form-select" name="site" aria-label="Lokasi"><option value="">Semua lokasi</option><option value="GLOBAL" <%= filters.site==='GLOBAL'?'selected':'' %>>Global</option><option value="CDS" <%= filters.site==='CDS'?'selected':'' %>>CDS</option><option value="KBG" <%= filters.site==='KBG'?'selected':'' %>>KBG</option></select></div>
+      <div class="filter-group"><label>STATUS</label><select class="form-select" name="status" aria-label="Status"><option value="ACTIVE" <%= filters.status==='ACTIVE'?'selected':'' %>>Aktif</option><option value="PAID" <%= filters.status==='PAID'?'selected':'' %>>Lunas</option><option value="ARCHIVED" <%= filters.status==='ARCHIVED'?'selected':'' %>>Arsip</option></select></div>
+      <div class="filter-group"><label>PERIODE</label><select class="form-select" name="period" aria-label="Periode"><option value="">Semua waktu</option><option value="today" <%= filters.period==='today'?'selected':'' %>>Hari ini</option><option value="month" <%= filters.period==='month'?'selected':'' %>>Bulan ini</option><option value="custom" <%= filters.period==='custom'?'selected':'' %>>Custom</option></select></div>
+      <% if(filters.period==='custom'){ %><div class="filter-group debt-filter-custom-range"><label>RENTANG TANGGAL</label><div class="debt-filter-custom-range-inputs"><input class="form-control" type="date" name="from" value="<%= filters.from %>" aria-label="Dari tanggal"><span>—</span><input class="form-control" type="date" name="to" value="<%= filters.to %>" aria-label="Sampai tanggal"></div></div><% } %>
+      <div class="filter-group d-flex align-items-end gap-2"><button class="btn-tech primary flex-fill"><i class="bi bi-search"></i>Cari</button><% if(filters.type||filters.site||filters.status!=='ACTIVE'||filters.query||filters.period){ %><a class="btn-tech" href="/debts" title="Reset filter"><i class="bi bi-x-lg"></i></a><% } %></div>
+    </div>
   </form>
 
-  <section class="debt-list">
-    <% if (!records.length) { %><div class="debt-empty"><i class="bi bi-journal-check"></i><strong>Belum ada data</strong><span>Catat hutang atau piutang menggunakan tombol di atas.</span></div><% } %>
-    <% records.forEach(row => { const remaining=Number(row.remaining_amount||0); const paid=Number(row.paid_amount||0); const principal=Number(row.principal_amount||0); const progress=principal>0?Math.min(100,Math.round(paid/principal*100)):0; const statusKey=row.payment_status.toLowerCase().replace(/\s+/g,'-'); %>
-      <article class="debt-item <%= row.is_overdue ? 'is-overdue' : '' %>" data-debt-search="<%= [row.party_name,row.purpose,row.responsible_name,row.site_code].filter(Boolean).join(' ') %>">
-        <div class="debt-item-accent <%= row.record_type==='DEBT'?'debt':'receivable' %>"></div>
+  <div class="data-card debt-list-card">
+    <div class="data-card-head"><div><h3>Daftar Hutang & Piutang</h3><small><%= records.length %> data ditemukan <% if(filters.status!=='ACTIVE'){ %>&middot; status: <%= filters.status==='PAID'?'Lunas':'Arsip' %><% } %></small></div></div>
+    <div class="debt-list">
+      <% if (!records.length) { %><div class="empty-state"><i class="bi bi-journal-check"></i><strong>Belum ada data</strong><small>Catat hutang atau piutang menggunakan tombol "Catat Baru" di atas.</small></div><% } %>
+      <% records.forEach(row => { const remaining=Number(row.remaining_amount||0); const paid=Number(row.paid_amount||0); const principal=Number(row.principal_amount||0); const progress=principal>0?Math.min(100,Math.round(paid/principal*100)):0; const statusKey=row.payment_status.toLowerCase().replace(/\s+/g,'-'); const typeClass=row.record_type==='DEBT'?'type-debt':'type-receivable'; %>
+      <article class="debt-item <%= typeClass %> <%= row.is_overdue ? 'is-overdue' : '' %>" data-debt-search="<%= [row.party_name,row.purpose,row.responsible_name,row.site_code].filter(Boolean).join(' ') %>">
         <div class="debt-item-main">
-          <div class="debt-item-icon"><i class="bi <%= row.record_type==='DEBT'?'bi-arrow-down-left':'bi-arrow-up-right' %>"></i></div>
           <div class="debt-item-copy">
-            <div class="debt-item-title"><strong><%= row.party_name %></strong><span class="badge <%= row.record_type==='DEBT'?'text-bg-warning':'text-bg-info' %>"><%= row.record_type==='DEBT'?'HUTANG':'PIUTANG' %></span><span class="debt-status-badge status-<%= statusKey %>"><%= row.payment_status %></span><span class="debt-site"><%= row.site_code %></span></div>
+            <div class="debt-item-title"><strong><%= row.party_name %></strong><span class="status-badge <%= row.record_type==='DEBT'?'purple':'green' %>"><%= row.record_type==='DEBT'?'HUTANG':'PIUTANG' %></span><span class="debt-status-badge status-<%= statusKey %>"><%= row.payment_status %></span><span class="debt-site"><%= row.site_code %></span></div>
             <p><%= row.purpose %></p>
             <div class="debt-meta"><span><i class="bi bi-person"></i><%= row.responsible_name || 'Belum ditentukan' %></span><span><i class="bi bi-calendar3"></i><%= row.due_date || 'Tanpa jatuh tempo' %></span><span><i class="bi bi-credit-card"></i><%= row.payment_method==='INSTALLMENT'?'Cicilan':'Sekali bayar' %></span></div>
           </div>
-          <div class="debt-money-grid"><div><span>Total</span><strong>Rp <%= principal.toLocaleString('id-ID') %></strong></div><div><span>Terbayar</span><strong class="paid">Rp <%= paid.toLocaleString('id-ID') %></strong></div><div class="remaining"><span>Sisa</span><strong>Rp <%= remaining.toLocaleString('id-ID') %></strong></div></div>
+          <div class="debt-money-grid"><div><span>Total</span><strong class="money">Rp <%= principal.toLocaleString('id-ID') %></strong></div><div><span>Terbayar</span><strong class="money paid">Rp <%= paid.toLocaleString('id-ID') %></strong></div><div class="remaining"><span>Sisa</span><strong class="money">Rp <%= remaining.toLocaleString('id-ID') %></strong></div></div>
         </div>
         <div class="debt-progress-wrap"><div><span>Progres pembayaran</span><b><%= progress %>%</b></div><div class="debt-progress"><span style="width:<%= progress %>%"></span></div></div>
         <details class="debt-breakdown"><summary><span><i class="bi bi-list-check"></i>Rincian & jadwal cicilan</span><i class="bi bi-chevron-down"></i></summary><div class="debt-breakdown-grid"><div><h4>Rincian nominal</h4><% if(!(row.items||[]).length){ %><small class="text-muted">Data lama belum memiliki rincian item.</small><% } %><% (row.items||[]).forEach(item=>{ %><div class="debt-breakdown-line"><span><%= item.item_name %><small><%= Number(item.quantity).toLocaleString('id-ID') %> × Rp <%= Number(item.unit_price).toLocaleString('id-ID') %></small></span><strong>Rp <%= Math.round(Number(item.quantity)*Number(item.unit_price)).toLocaleString('id-ID') %></strong></div><% }) %></div><div><h4>Jadwal <%= row.payment_method==='INSTALLMENT'?`${row.installment_months} bulan`:'pembayaran' %></h4><% (row.installments||[]).forEach(item=>{ %><div class="debt-installment-line status-<%= item.status.toLowerCase() %>"><span><b><%= item.number %></b><%= item.dueDate %></span><strong>Rp <%= item.target.toLocaleString('id-ID') %><small><%= item.status==='PAID'?'Lunas':item.status==='PARTIAL'?`Sisa Rp ${item.remaining.toLocaleString('id-ID')}`:item.status==='OVERDUE'?'Terlambat':'Akan datang' %></small></strong></div><% }) %></div></div></details>
         <div class="debt-item-foot">
           <span class="debt-due-state <%= row.is_overdue?'danger':'safe' %>"><i class="bi <%= row.is_overdue?'bi-exclamation-circle-fill':'bi-calendar2-check' %>"></i><% if(row.is_overdue){ %>Terlambat<% } else if(row.days_to_due!==null && row.days_to_due>=0){ %><%= row.days_to_due %> hari menuju jatuh tempo<% }else{ %>Tanpa jatuh tempo<% } %></span>
           <div class="debt-actions">
-          <details class="debt-history"><summary class="btn btn-link btn-sm">Riwayat (<%= row.timeline.length %>)</summary>
-            <div class="debt-timeline">
-              <% row.timeline.forEach(entry => { const entryKey=entry.entryStatus.toLowerCase(); %>
-              <div class="debt-timeline-item status-<%= entryKey %>">
-                <span class="debt-timeline-dot"></span>
-                <div class="debt-timeline-body">
-                  <div class="debt-timeline-top">
-                    <div class="debt-timeline-when"><strong><%= formatDate(entry.date) %></strong><% if(entry.time){ %><small><%= formatTime(entry.time) %> WIB</small><% } %></div>
-                    <span class="debt-timeline-status <%= entryKey %>"><%= entry.kind==='created' ? (row.record_type==='DEBT'?'Hutang Dicatat':'Piutang Dicatat') : (entry.entryStatus==='LUNAS'?'Lunas':'Dicicil') %></span>
-                  </div>
-                  <div class="debt-timeline-mid">
-                    <strong class="debt-timeline-amount"><%= entry.kind==='created'?'':'+ ' %>Rp <%= entry.amount.toLocaleString('id-ID') %></strong>
-                    <% if(entry.method){ %><span class="debt-timeline-method"><i class="bi bi-credit-card-2-front"></i><%= statusLabel(entry.method) %></span><% } %>
-                  </div>
-                  <div class="debt-timeline-foot">
-                    <span>Sisa saldo: <b>Rp <%= entry.remainingAfter.toLocaleString('id-ID') %></b></span>
-                    <% if(entry.notes){ %><span class="debt-timeline-note"><%= entry.notes %></span><% } %>
-                  </div>
-                  <div class="debt-timeline-actions">
-                    <% if(entry.hasProof){ %><a href="/debts/<%= row.id %>/payments/<%= entry.id %>/proof" target="_blank" rel="noopener"><i class="bi bi-paperclip"></i>Lihat bukti</a><% } %>
-                    <% if(entry.kind==='payment' && row.status!=='ARCHIVED'){ %><form method="post" action="/debts/<%= row.id %>/payments/<%= entry.id %>/delete" onsubmit="return confirm('Hapus pembayaran ini? Sisa akan dihitung ulang.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn btn-link btn-sm text-danger" type="submit" title="Hapus pembayaran"><i class="bi bi-trash"></i> Hapus</button></form><% } %>
+          <div class="dropdown debt-history">
+            <button class="btn-tech compact dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Riwayat (<%= row.timeline.length %>)</button>
+            <div class="dropdown-menu dropdown-menu-end app-dropdown debt-timeline-menu p-2">
+              <div class="debt-timeline">
+                <% row.timeline.forEach(entry => { const entryKey=entry.entryStatus.toLowerCase(); %>
+                <div class="debt-timeline-item status-<%= entryKey %>">
+                  <span class="debt-timeline-dot"></span>
+                  <div class="debt-timeline-body">
+                    <div class="debt-timeline-top">
+                      <div class="debt-timeline-when"><strong><%= formatDate(entry.date) %></strong><% if(entry.time){ %><small><%= formatTime(entry.time) %> WIB</small><% } %></div>
+                      <span class="debt-timeline-status <%= entryKey %>"><%= entry.kind==='created' ? (row.record_type==='DEBT'?'Hutang Dicatat':'Piutang Dicatat') : (entry.entryStatus==='LUNAS'?'Lunas':'Dicicil') %></span>
+                    </div>
+                    <div class="debt-timeline-mid">
+                      <strong class="debt-timeline-amount"><%= entry.kind==='created'?'':'+ ' %>Rp <%= entry.amount.toLocaleString('id-ID') %></strong>
+                      <% if(entry.method){ %><span class="debt-timeline-method"><i class="bi bi-credit-card-2-front"></i><%= statusLabel(entry.method) %></span><% } %>
+                    </div>
+                    <div class="debt-timeline-foot">
+                      <span>Sisa saldo: <b>Rp <%= entry.remainingAfter.toLocaleString('id-ID') %></b></span>
+                      <% if(entry.notes){ %><span class="debt-timeline-note"><%= entry.notes %></span><% } %>
+                    </div>
+                    <div class="debt-timeline-actions">
+                      <% if(entry.hasProof){ %><a href="/debts/<%= row.id %>/payments/<%= entry.id %>/proof" target="_blank" rel="noopener"><i class="bi bi-paperclip"></i>Lihat bukti</a><% } %>
+                      <% if(entry.kind==='payment' && row.status!=='ARCHIVED'){ %><form method="post" action="/debts/<%= row.id %>/payments/<%= entry.id %>/delete" onsubmit="return confirm('Hapus pembayaran ini? Sisa akan dihitung ulang.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn btn-link btn-sm text-danger" type="submit" title="Hapus pembayaran"><i class="bi bi-trash"></i> Hapus</button></form><% } %>
+                    </div>
                   </div>
                 </div>
+                <% }) %>
               </div>
-              <% }) %>
             </div>
-          </details>
-          <% if (row.status==='ACTIVE') { %><button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#debtPayModal" data-debt-id="<%= row.id %>" data-debt-type-label="<%= row.record_type==='DEBT'?'Hutang':'Piutang' %>" data-debt-party="<%= row.party_name %>" data-debt-purpose="<%= row.purpose %>" data-debt-site="<%= row.site_code %>" data-debt-principal="<%= principal %>" data-debt-paid="<%= paid %>" data-debt-remaining="<%= Math.floor(remaining) %>"><i class="bi bi-cash-coin"></i> Catat Cicilan</button><% } %>
-          <% if (row.status!=='ARCHIVED') { %><form method="post" action="/debts/<%= row.id %>/archive" onsubmit="return confirm('Arsipkan data ini? Riwayat pembayaran tetap tersimpan.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn btn-link btn-sm text-muted" type="submit">Arsipkan</button></form><% } %>
+          </div>
+          <% if (row.status==='ACTIVE') { %><button type="button" class="btn-tech primary compact" data-bs-toggle="modal" data-bs-target="#debtPayModal" data-debt-id="<%= row.id %>" data-debt-type-label="<%= row.record_type==='DEBT'?'Hutang':'Piutang' %>" data-debt-party="<%= row.party_name %>" data-debt-purpose="<%= row.purpose %>" data-debt-site="<%= row.site_code %>" data-debt-principal="<%= principal %>" data-debt-paid="<%= paid %>" data-debt-remaining="<%= Math.floor(remaining) %>"><i class="bi bi-cash-coin"></i> Catat Cicilan</button><% } %>
+          <% if (row.status!=='ARCHIVED') { %><form method="post" action="/debts/<%= row.id %>/archive" onsubmit="return confirm('Arsipkan data ini? Riwayat pembayaran tetap tersimpan.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn-tech compact" type="submit" title="Arsipkan"><i class="bi bi-archive"></i></button></form><% } %>
           </div>
         </div>
       </article>
-    <% }) %>
-  </section>
+      <% }) %>
+    </div>
+  </div>
 
   <div class="debt-note"><i class="bi bi-info-circle"></i><span>Modul ini tidak otomatis masuk ke Closing. Hanya pembayaran pada periode tersebut yang Anda input sebagai pengeluaran Closing agar tidak dihitung dua kali.</span></div>
 </div>
