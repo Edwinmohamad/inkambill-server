@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Preview: Sekarang vs Usulan Redesign</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#080b14; --panel:#101522; --panel-2:#131a29; --panel-3:#182033;
+    --line:rgba(255,255,255,.07); --line-2:rgba(255,255,255,.11);
+    --text:#edf1fb; --muted:#95a1b7; --muted-2:#65728a;
+    --brand:#765fd7; --brand-rgb:118,95,215;
+    --success:#2ed6a1; --danger:#ff5a59; --warning:#ffbb55;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:#04060c; color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    padding:28px 16px 60px;
+  }
+  .page-head{max-width:1180px;margin:0 auto 26px;text-align:center}
+  .page-head h1{font-size:1.3rem;margin:0 0 8px;font-weight:800}
+  .page-head p{color:var(--muted);font-size:.85rem;margin:0;max-width:640px;margin-inline:auto;line-height:1.6}
+
+  .compare-wrap{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  @media(max-width:900px){.compare-wrap{grid-template-columns:1fr}}
+
+  .panel-outer{border-radius:16px;overflow:hidden;border:1px solid var(--line-2);background:var(--bg)}
+  .panel-tag{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 18px;background:var(--panel-3)}
+  .panel-tag b{font-size:.78rem;letter-spacing:.02em}
+  .panel-tag span{font-size:.62rem;color:var(--muted);font-weight:600}
+  .tag-pill{font-size:.56rem;font-weight:800;letter-spacing:.05em;padding:3px 9px;border-radius:999px}
+  .tag-pill.old{background:rgba(255,90,89,.14);color:#ff8f8e}
+  .tag-pill.new{background:rgba(46,214,161,.14);color:var(--success)}
+
+  .demo{padding:22px}
+
+  /* ============ BEFORE (current) — 3px radius, uppercase, flat, tiny type, Segoe/system font ============ */
+  .old .demo{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .old .mhead{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:16px}
+  .old .kicker{color:var(--muted);font-size:.56rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px}
+  .old h2{margin:0;font-size:.92rem;font-weight:800}
+  .old .btn{height:32px;padding:0 12px;border-radius:3px;border:1px solid var(--line);background:var(--brand);color:#fff;font-size:.62rem;font-weight:800;display:inline-flex;align-items:center;gap:6px;cursor:default}
+
+  .old .metric-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+  .old .metric-card{border:1px solid var(--line);border-radius:3px;background:var(--panel);padding:14px;box-shadow:none}
+  .old .metric-label{display:block;color:var(--muted);font-size:.56rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px}
+  .old .metric-card strong{display:block;font-size:.98rem;font-weight:800}
+  .old .metric-card small{display:block;margin-top:5px;color:var(--muted-2);font-size:.5rem}
+
+  .old .search{height:34px;border:1px solid var(--line);border-radius:3px;background:var(--panel-2);color:var(--muted-2);font-size:.62rem;display:flex;align-items:center;padding:0 10px;margin-bottom:12px}
+
+  .old table{width:100%;border-collapse:separate;border-spacing:0;border:1px solid var(--line);border-radius:3px;overflow:hidden}
+  .old th{background:var(--panel-2);color:var(--muted-2);font-size:.5rem;text-transform:uppercase;letter-spacing:.07em;font-weight:800;padding:9px 10px;text-align:left;border-bottom:1px solid var(--line)}
+  .old td{padding:10px;font-size:.62rem;border-bottom:1px solid var(--line);vertical-align:middle}
+  .old tr:last-child td{border-bottom:0}
+  .old .party{display:flex;align-items:center;gap:8px}
+  .old .avatar{width:26px;height:26px;border-radius:50%;background:var(--brand);color:#fff;display:grid;place-items:center;font-size:.58rem;font-weight:800;flex:0 0 26px}
+  .old .pname{font-weight:750}
+  .old .psub{display:block;color:var(--muted-2);font-size:.5rem;margin-top:2px}
+  .old .badge{display:inline-flex;align-items:center;padding:3px 7px;border-radius:3px;font-size:.42rem;font-weight:800;letter-spacing:.03em;text-transform:uppercase}
+  .old .badge.overdue{color:var(--danger);background:rgba(255,90,89,.12)}
+  .old .badge.installment{color:#5b94e6;background:rgba(91,148,230,.12)}
+  .old .money{font-weight:750;font-size:.68rem}
+  .old .row-btn{width:26px;height:26px;border:1px solid var(--line);border-radius:3px;background:var(--panel-2);color:var(--muted);display:inline-grid;place-items:center;margin-left:4px;cursor:default}
+
+  /* ============ AFTER (proposed) — Inter, larger radius, soft shadow, sentence case, more air ============ */
+  .new .demo{font-family:'Inter',-apple-system,sans-serif}
+  .new .panel-outer{border-color:rgba(255,255,255,.06)}
+  .new .mhead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:20px}
+  .new .kicker{color:var(--muted);font-size:.66rem;font-weight:600;letter-spacing:.01em;margin-bottom:5px}
+  .new h2{margin:0;font-size:1.08rem;font-weight:700;letter-spacing:-.01em}
+  .new .btn{height:36px;padding:0 16px;border-radius:10px;border:0;background:var(--brand);color:#fff;font-size:.72rem;font-weight:600;display:inline-flex;align-items:center;gap:7px;cursor:default;box-shadow:0 4px 14px rgba(var(--brand-rgb),.35);transition:transform .2s ease}
+  .new .btn:hover{transform:translateY(-1px)}
+
+  .new .metric-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px}
+  .new .metric-card{border:1px solid rgba(255,255,255,.06);border-radius:14px;background:linear-gradient(180deg,var(--panel-2),var(--panel));padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.28);transition:transform .25s cubic-bezier(.2,.8,.2,1)}
+  .new .metric-card:hover{transform:translateY(-2px)}
+  .new .metric-label{display:block;color:var(--muted);font-size:.68rem;font-weight:500;margin-bottom:11px}
+  .new .metric-card strong{display:block;font-size:1.08rem;font-weight:700;letter-spacing:-.01em}
+  .new .metric-card small{display:block;margin-top:6px;color:var(--muted-2);font-size:.62rem}
+
+  .new .search{height:40px;border:1px solid rgba(255,255,255,.08);border-radius:10px;background:var(--panel-2);color:var(--muted-2);font-size:.72rem;display:flex;align-items:center;padding:0 13px;margin-bottom:14px}
+
+  .new table{width:100%;border-collapse:separate;border-spacing:0 8px}
+  .new thead{display:none}
+  .new tr{background:var(--panel-2);box-shadow:0 4px 14px rgba(0,0,0,.18)}
+  .new tr td:first-child{border-radius:12px 0 0 12px}
+  .new tr td:last-child{border-radius:0 12px 12px 0}
+  .new td{padding:13px 14px;font-size:.72rem;vertical-align:middle;border:0}
+  .new .party{display:flex;align-items:center;gap:10px}
+  .new .avatar{width:32px;height:32px;border-radius:50%;background:var(--brand);color:#fff;display:grid;place-items:center;font-size:.66rem;font-weight:700;flex:0 0 32px}
+  .new .pname{font-weight:600;letter-spacing:-.005em}
+  .new .psub{display:block;color:var(--muted-2);font-size:.62rem;margin-top:3px}
+  .new .badge{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:999px;font-size:.62rem;font-weight:600}
+  .new .badge.overdue{color:#ff9d9c;background:rgba(255,90,89,.14)}
+  .new .badge.installment{color:#8fb8f5;background:rgba(91,148,230,.14)}
+  .new .money{font-weight:700;font-size:.78rem;letter-spacing:-.01em}
+  .new .row-btn{width:30px;height:30px;border:1px solid rgba(255,255,255,.08);border-radius:9px;background:var(--panel-3);color:var(--muted);display:inline-grid;place-items:center;margin-left:5px;cursor:default;transition:.2s}
+  .new .row-btn:hover{color:var(--text);border-color:rgba(255,255,255,.18)}
+
+  .foot-note{max-width:1180px;margin:26px auto 0;color:var(--muted-2);font-size:.66rem;text-align:center;line-height:1.7}
+  .foot-note b{color:var(--muted)}
+  svg{display:block}
+</style>
+</head>
+<body>
+
+  <div class="page-head">
+    <h1>Perbandingan tampilan: Sekarang vs Usulan</h1>
+    <p>Contoh diambil dari potongan halaman Piutang (kartu ringkasan + tabel) supaya perbandingannya konkret. Coba arahkan kursor ke tombol / kartu di panel kanan.</p>
+  </div>
+
+  <div class="compare-wrap">
+
+    <!-- BEFORE -->
+    <div class="panel-outer old">
+      <div class="panel-tag"><b>Sekarang</b><span class="tag-pill old">SEBELUM</span></div>
+      <div class="demo">
+        <div class="mhead">
+          <div><div class="kicker">Keuangan · Monitoring</div><h2>Hutang &amp; Piutang</h2></div>
+          <button class="btn">+ Catat Baru</button>
+        </div>
+
+        <div class="metric-grid">
+          <div class="metric-card"><span class="metric-label">Sisa Piutang</span><strong>Rp 1.500.000</strong><small>2 tagihan aktif</small></div>
+          <div class="metric-card"><span class="metric-label">Lewat Jatuh Tempo</span><strong>Rp 900.000</strong><small>Perlu ditindaklanjuti</small></div>
+          <div class="metric-card"><span class="metric-label">Total Outstanding</span><strong>Rp 2.400.000</strong><small>Gabungan aktif</small></div>
+        </div>
+
+        <div class="search">🔍&nbsp;&nbsp;Cari nama pihak, keperluan...</div>
+
+        <table>
+          <thead><tr><th>Pihak</th><th>Status</th><th>Nominal</th><th></th></tr></thead>
+          <tbody>
+            <tr>
+              <td><div class="party"><span class="avatar">T</span><div><span class="pname">Toko Jaya Makmur</span><span class="psub">Pembelian router Mikrotik</span></div></div></td>
+              <td><span class="badge installment">DICICIL</span></td>
+              <td class="money">Rp 1.500.000</td>
+              <td><span class="row-btn">⋯</span><span class="row-btn">₨</span></td>
+            </tr>
+            <tr>
+              <td><div class="party"><span class="avatar" style="background:var(--success)">P</span><div><span class="pname">PT Sumber Rejeki</span><span class="psub">Internet 3 bulan</span></div></div></td>
+              <td><span class="badge overdue">TERLAMBAT</span></td>
+              <td class="money">Rp 900.000</td>
+              <td><span class="row-btn">⋯</span><span class="row-btn">₨</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- AFTER -->
+    <div class="panel-outer new">
+      <div class="panel-tag"><b>Usulan</b><span class="tag-pill new">SESUDAH</span></div>
+      <div class="demo">
+        <div class="mhead">
+          <div><div class="kicker">Keuangan · Monitoring</div><h2>Hutang &amp; Piutang</h2></div>
+          <button class="btn">+ Catat Baru</button>
+        </div>
+
+        <div class="metric-grid">
+          <div class="metric-card"><span class="metric-label">Sisa Piutang</span><strong>Rp 1.500.000</strong><small>2 tagihan aktif</small></div>
+          <div class="metric-card"><span class="metric-label">Lewat Jatuh Tempo</span><strong>Rp 900.000</strong><small>Perlu ditindaklanjuti</small></div>
+          <div class="metric-card"><span class="metric-label">Total Outstanding</span><strong>Rp 2.400.000</strong><small>Gabungan aktif</small></div>
+        </div>
+
+        <div class="search">🔍&nbsp;&nbsp;Cari nama pihak, keperluan...</div>
+
+        <table>
+          <thead><tr><th>Pihak</th><th>Status</th><th>Nominal</th><th></th></tr></thead>
+          <tbody>
+            <tr>
+              <td><div class="party"><span class="avatar">T</span><div><span class="pname">Toko Jaya Makmur</span><span class="psub">Pembelian router Mikrotik</span></div></div></td>
+              <td><span class="badge installment">Dicicil</span></td>
+              <td class="money">Rp 1.500.000</td>
+              <td><span class="row-btn">⋯</span><span class="row-btn">₨</span></td>
+            </tr>
+            <tr>
+              <td><div class="party"><span class="avatar" style="background:var(--success)">P</span><div><span class="pname">PT Sumber Rejeki</span><span class="psub">Internet 3 bulan</span></div></div></td>
+              <td><span class="badge overdue">Terlambat</span></td>
+              <td class="money">Rp 900.000</td>
+              <td><span class="row-btn">⋯</span><span class="row-btn">₨</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <p class="foot-note">Perbedaan utama: <b>font Inter</b> (bukan bergantung font sistem OS) &middot; <b>radius sudut lebih besar</b> (3px → ~10–14px) &middot; <b>shadow lembut</b> menggantikan border tegas &middot; <b>label sentence case</b> (bukan KAPITAL semua) &middot; <b>ukuran & jarak lebih lega</b> &middot; <b>transisi halus</b> saat hover.</p>
+
+</body>
+</html>

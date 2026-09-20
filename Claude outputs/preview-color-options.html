@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Preview: Opsi Palet Warna Minimalis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:#050505; color:#f5f5f7;
+    font-family:'Inter',-apple-system,sans-serif;
+    padding:30px 16px 60px;
+  }
+  .page-head{max-width:1200px;margin:0 auto 28px;text-align:center}
+  .page-head h1{font-size:1.3rem;margin:0 0 8px;font-weight:700;letter-spacing:-.01em}
+  .page-head p{color:#9a9aa0;font-size:.85rem;margin:0;max-width:660px;margin-inline:auto;line-height:1.65}
+
+  .grid{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  @media(max-width:860px){.grid{grid-template-columns:1fr}}
+
+  .card-outer{border-radius:18px;overflow:hidden;border:1px solid rgba(255,255,255,.08)}
+  .swatch-tag{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 18px;background:#151517}
+  .swatch-tag b{font-size:.8rem;font-weight:700}
+  .swatch-tag span{font-size:.62rem;color:#8a8a90;font-weight:500}
+  .dotrow{display:flex;gap:5px}
+  .dotrow i{width:9px;height:9px;border-radius:50%;display:block}
+
+  .demo{padding:20px}
+
+  .mhead{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:16px}
+  .kicker{font-size:.62rem;font-weight:500;margin-bottom:5px}
+  .demo h2{margin:0;font-size:.98rem;font-weight:700;letter-spacing:-.01em}
+  .btn{height:32px;padding:0 14px;border-radius:9px;border:0;font-size:.68rem;font-weight:600;display:inline-flex;align-items:center;gap:6px;cursor:default;transition:transform .2s ease}
+  .btn:hover{transform:translateY(-1px)}
+
+  .metric-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+  .metric-card{border-radius:13px;padding:13px;transition:transform .25s cubic-bezier(.2,.8,.2,1)}
+  .metric-card:hover{transform:translateY(-2px)}
+  .metric-label{display:block;font-size:.62rem;font-weight:500;margin-bottom:8px}
+  .metric-card strong{display:block;font-size:.92rem;font-weight:700;letter-spacing:-.01em}
+
+  .badges{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+  .badge{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:999px;font-size:.6rem;font-weight:600}
+
+  .row{display:flex;align-items:center;gap:10px;border-radius:12px;padding:11px 13px}
+  .avatar{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:.6rem;font-weight:700;flex:0 0 28px}
+  .row .pname{font-weight:600;font-size:.7rem;letter-spacing:-.005em}
+  .row .psub{display:block;font-size:.6rem;margin-top:2px}
+  .row .money{margin-left:auto;font-weight:700;font-size:.72rem;letter-spacing:-.01em}
+
+  .foot-note{max-width:1200px;margin:26px auto 0;color:#8a8a90;font-size:.66rem;text-align:center;line-height:1.7}
+  .foot-note b{color:#c9c9cf}
+</style>
+</head>
+<body>
+
+  <div class="page-head">
+    <h1>4 opsi palet warna minimalis</h1>
+    <p>Font, radius, shadow, dan spacing sudah pakai arah yang kamu setujui kemarin — yang beda cuma warnanya. Tinggal pilih salah satu, atau gabungkan (misal background dari opsi 1, aksen dari opsi 3).</p>
+  </div>
+
+  <div class="grid">
+
+    <!-- OPTION 1: Graphite + Ungu (existing brand, refined) -->
+    <div class="card-outer" style="background:#0b0b0d">
+      <div class="swatch-tag" style="background:#161618">
+        <div><b style="color:#f5f5f7">1 · Graphite + Ungu</b><br><span>Netral abu, brand ungu kamu dipertahankan</span></div>
+        <div class="dotrow"><i style="background:#765fd7"></i><i style="background:#34c759"></i><i style="background:#ff453a"></i><i style="background:#ff9f0a"></i></div>
+      </div>
+      <div class="demo">
+        <div class="mhead">
+          <div><div class="kicker" style="color:#8a8a90">Keuangan · Monitoring</div><h2 style="color:#f5f5f7">Hutang &amp; Piutang</h2></div>
+          <button class="btn" style="background:#765fd7;color:#fff;box-shadow:0 4px 14px rgba(118,95,215,.35)">+ Catat Baru</button>
+        </div>
+        <div class="metric-row">
+          <div class="metric-card" style="background:#18181b;border:1px solid rgba(255,255,255,.06)"><span class="metric-label" style="color:#9a9aa0">Sisa Piutang</span><strong style="color:#f5f5f7">Rp 1.500.000</strong></div>
+          <div class="metric-card" style="background:#18181b;border:1px solid rgba(255,255,255,.06)"><span class="metric-label" style="color:#9a9aa0">Lewat Tempo</span><strong style="color:#f5f5f7">Rp 900.000</strong></div>
+        </div>
+        <div class="badges">
+          <span class="badge" style="color:#5fe08a;background:rgba(52,199,89,.14)">Lunas</span>
+          <span class="badge" style="color:#ff8f8a;background:rgba(255,69,58,.14)">Terlambat</span>
+          <span class="badge" style="color:#ffc069;background:rgba(255,159,10,.14)">Belum Bayar</span>
+        </div>
+        <div class="row" style="background:#18181b">
+          <span class="avatar" style="background:#765fd7;color:#fff">T</span>
+          <div><span class="pname" style="color:#f5f5f7">Toko Jaya Makmur</span><span class="psub" style="color:#8a8a90">Router Mikrotik</span></div>
+          <span class="money" style="color:#f5f5f7">Rp 1.500.000</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- OPTION 2: Graphite + Biru Apple -->
+    <div class="card-outer" style="background:#0b0b0d">
+      <div class="swatch-tag" style="background:#161618">
+        <div><b style="color:#f5f5f7">2 · Graphite + Biru Apple</b><br><span>Sama netralnya, aksen biru sistem iOS/macOS</span></div>
+        <div class="dotrow"><i style="background:#0a84ff"></i><i style="background:#34c759"></i><i style="background:#ff453a"></i><i style="background:#ff9f0a"></i></div>
+      </div>
+      <div class="demo">
+        <div class="mhead">
+          <div><div class="kicker" style="color:#8a8a90">Keuangan · Monitoring</div><h2 style="color:#f5f5f7">Hutang &amp; Piutang</h2></div>
+          <button class="btn" style="background:#0a84ff;color:#fff;box-shadow:0 4px 14px rgba(10,132,255,.35)">+ Catat Baru</button>
+        </div>
+        <div class="metric-row">
+          <div class="metric-card" style="background:#18181b;border:1px solid rgba(255,255,255,.06)"><span class="metric-label" style="color:#9a9aa0">Sisa Piutang</span><strong style="color:#f5f5f7">Rp 1.500.000</strong></div>
+          <div class="metric-card" style="background:#18181b;border:1px solid rgba(255,255,255,.06)"><span class="metric-label" style="color:#9a9aa0">Lewat Tempo</span><strong style="color:#f5f5f7">Rp 900.000</strong></div>
+        </div>
+        <div class="badges">
+          <span class="badge" style="color:#5fe08a;background:rgba(52,199,89,.14)">Lunas</span>
+          <span class="badge" style="color:#ff8f8a;background:rgba(255,69,58,.14)">Terlambat</span>
+          <span class="badge" style="color:#ffc069;background:rgba(255,159,10,.14)">Belum Bayar</span>
+        </div>
+        <div class="row" style="background:#18181b">
+          <span class="avatar" style="background:#0a84ff;color:#fff">T</span>
+          <div><span class="pname" style="color:#f5f5f7">Toko Jaya Makmur</span><span class="psub" style="color:#8a8a90">Router Mikrotik</span></div>
+          <span class="money" style="color:#f5f5f7">Rp 1.500.000</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- OPTION 3: Warm Stone + Teal -->
+    <div class="card-outer" style="background:#0f0e0c">
+      <div class="swatch-tag" style="background:#1a1815">
+        <div><b style="color:#f6f4f0">3 · Warm Stone + Teal</b><br><span>Abu hangat (bukan biru-navy), aksen teal kalem</span></div>
+        <div class="dotrow"><i style="background:#3ea89a"></i><i style="background:#34c759"></i><i style="background:#e5605a"></i><i style="background:#d9a441"></i></div>
+      </div>
+      <div class="demo">
+        <div class="mhead">
+          <div><div class="kicker" style="color:#9a948a">Keuangan · Monitoring</div><h2 style="color:#f6f4f0">Hutang &amp; Piutang</h2></div>
+          <button class="btn" style="background:#3ea89a;color:#0f0e0c;box-shadow:0 4px 14px rgba(62,168,154,.3)">+ Catat Baru</button>
+        </div>
+        <div class="metric-row">
+          <div class="metric-card" style="background:#1e1c18;border:1px solid rgba(255,250,240,.06)"><span class="metric-label" style="color:#9a948a">Sisa Piutang</span><strong style="color:#f6f4f0">Rp 1.500.000</strong></div>
+          <div class="metric-card" style="background:#1e1c18;border:1px solid rgba(255,250,240,.06)"><span class="metric-label" style="color:#9a948a">Lewat Tempo</span><strong style="color:#f6f4f0">Rp 900.000</strong></div>
+        </div>
+        <div class="badges">
+          <span class="badge" style="color:#6bd39a;background:rgba(52,199,89,.14)">Lunas</span>
+          <span class="badge" style="color:#f19b95;background:rgba(229,96,90,.16)">Terlambat</span>
+          <span class="badge" style="color:#e8c179;background:rgba(217,164,65,.16)">Belum Bayar</span>
+        </div>
+        <div class="row" style="background:#1e1c18">
+          <span class="avatar" style="background:#3ea89a;color:#0f0e0c">T</span>
+          <div><span class="pname" style="color:#f6f4f0">Toko Jaya Makmur</span><span class="psub" style="color:#9a948a">Router Mikrotik</span></div>
+          <span class="money" style="color:#f6f4f0">Rp 1.500.000</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- OPTION 4: Light mode ala macOS -->
+    <div class="card-outer" style="background:#f5f5f7">
+      <div class="swatch-tag" style="background:#ffffff;border-bottom:1px solid #e5e5ea">
+        <div><b style="color:#1d1d1f">4 · Light ala macOS</b><br><span style="color:#6e6e73">Untuk yang lebih suka mode terang</span></div>
+        <div class="dotrow"><i style="background:#765fd7"></i><i style="background:#34c759"></i><i style="background:#ff3b30"></i><i style="background:#ff9500"></i></div>
+      </div>
+      <div class="demo">
+        <div class="mhead">
+          <div><div class="kicker" style="color:#6e6e73">Keuangan · Monitoring</div><h2 style="color:#1d1d1f">Hutang &amp; Piutang</h2></div>
+          <button class="btn" style="background:#765fd7;color:#fff;box-shadow:0 4px 14px rgba(118,95,215,.25)">+ Catat Baru</button>
+        </div>
+        <div class="metric-row">
+          <div class="metric-card" style="background:#ffffff;border:1px solid #e5e5ea;box-shadow:0 2px 10px rgba(0,0,0,.04)"><span class="metric-label" style="color:#6e6e73">Sisa Piutang</span><strong style="color:#1d1d1f">Rp 1.500.000</strong></div>
+          <div class="metric-card" style="background:#ffffff;border:1px solid #e5e5ea;box-shadow:0 2px 10px rgba(0,0,0,.04)"><span class="metric-label" style="color:#6e6e73">Lewat Tempo</span><strong style="color:#1d1d1f">Rp 900.000</strong></div>
+        </div>
+        <div class="badges">
+          <span class="badge" style="color:#1f8a3d;background:rgba(52,199,89,.14)">Lunas</span>
+          <span class="badge" style="color:#d32b21;background:rgba(255,59,48,.12)">Terlambat</span>
+          <span class="badge" style="color:#b8760a;background:rgba(255,149,0,.14)">Belum Bayar</span>
+        </div>
+        <div class="row" style="background:#ffffff;border:1px solid #e5e5ea">
+          <span class="avatar" style="background:#765fd7;color:#fff">T</span>
+          <div><span class="pname" style="color:#1d1d1f">Toko Jaya Makmur</span><span class="psub" style="color:#6e6e73">Router Mikrotik</span></div>
+          <span class="money" style="color:#1d1d1f">Rp 1.500.000</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <p class="foot-note">Titik warna di pojok kanan tiap judul = <b>aksen, sukses, bahaya, peringatan</b> untuk palet itu. Opsi 1 &amp; 2 identik kecuali warna aksennya (ungu vs biru) — paling dekat ke gaya Apple asli. Opsi 3 lebih hangat &amp; santai. Opsi 4 buat mode terang.</p>
+
+</body>
+</html>
