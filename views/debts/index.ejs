@@ -52,66 +52,121 @@
     </div>
   </form>
 
+  <!-- v1.28 -- daftar dipindah dari kartu bertumpuk ke tabel (app-table, sama seperti Rekonsiliasi/
+       Pelanggan) supaya banyak baris lebih gampang dipindai/dimonitor sekaligus. Rincian pembelian,
+       jadwal cicilan, dan riwayat transaksi -- yang tadinya dropdown/`<details>` inline -- sekarang
+       digabung jadi satu modal "Detail" per baris (data-bs-toggle="modal", sama seperti modal Catat
+       Cicilan yang sudah ada) supaya tetap aman dipakai di dalam tabel yang bisa discroll horizontal;
+       dropdown biasa berisiko terpotong oleh overflow tabel, modal Bootstrap tidak. -->
   <div class="data-card debt-list-card">
     <div class="data-card-head"><div><h3>Daftar Hutang & Piutang</h3><small><%= records.length %> data ditemukan <% if(filters.status!=='ACTIVE'){ %>&middot; status: <%= filters.status==='PAID'?'Lunas':'Arsip' %><% } %></small></div></div>
-    <div class="debt-list">
-      <% if (!records.length) { %><div class="empty-state"><i class="bi bi-journal-check"></i><strong>Belum ada data</strong><small>Catat hutang atau piutang menggunakan tombol "Catat Baru" di atas.</small></div><% } %>
-      <% records.forEach(row => { const remaining=Number(row.remaining_amount||0); const paid=Number(row.paid_amount||0); const principal=Number(row.principal_amount||0); const progress=principal>0?Math.min(100,Math.round(paid/principal*100)):0; const statusKey=row.payment_status.toLowerCase().replace(/\s+/g,'-'); const typeClass=row.record_type==='DEBT'?'type-debt':'type-receivable'; %>
-      <article class="debt-item <%= typeClass %> <%= row.is_overdue ? 'is-overdue' : '' %>" data-debt-search="<%= [row.party_name,row.purpose,row.responsible_name,row.site_code].filter(Boolean).join(' ') %>">
-        <div class="debt-item-main">
-          <div class="debt-item-copy">
-            <div class="debt-item-title"><strong><%= row.party_name %></strong><span class="status-badge <%= row.record_type==='DEBT'?'purple':'green' %>"><%= row.record_type==='DEBT'?'HUTANG':'PIUTANG' %></span><span class="debt-status-badge status-<%= statusKey %>"><%= row.payment_status %></span><span class="debt-site"><%= row.site_code %></span></div>
-            <p><%= row.purpose %></p>
-            <div class="debt-meta"><span><i class="bi bi-person"></i><%= row.responsible_name || 'Belum ditentukan' %></span><span><i class="bi bi-calendar3"></i><%= row.due_date || 'Tanpa jatuh tempo' %></span><span><i class="bi bi-credit-card"></i><%= row.payment_method==='INSTALLMENT'?'Cicilan':'Sekali bayar' %></span></div>
-          </div>
-          <div class="debt-money-grid"><div><span>Total</span><strong class="money">Rp <%= principal.toLocaleString('id-ID') %></strong></div><div><span>Terbayar</span><strong class="money paid">Rp <%= paid.toLocaleString('id-ID') %></strong></div><div class="remaining"><span>Sisa</span><strong class="money">Rp <%= remaining.toLocaleString('id-ID') %></strong></div></div>
-        </div>
-        <div class="debt-progress-wrap"><div><span>Progres pembayaran</span><b><%= progress %>%</b></div><div class="debt-progress"><span style="width:<%= progress %>%"></span></div></div>
-        <details class="debt-breakdown"><summary><span><i class="bi bi-list-check"></i>Rincian & jadwal cicilan</span><i class="bi bi-chevron-down"></i></summary><div class="debt-breakdown-grid"><div><h4>Rincian nominal</h4><% if(!(row.items||[]).length){ %><small class="text-muted">Data lama belum memiliki rincian item.</small><% } %><% (row.items||[]).forEach(item=>{ %><div class="debt-breakdown-line"><span><%= item.item_name %><small><%= Number(item.quantity).toLocaleString('id-ID') %> × Rp <%= Number(item.unit_price).toLocaleString('id-ID') %></small></span><strong>Rp <%= Math.round(Number(item.quantity)*Number(item.unit_price)).toLocaleString('id-ID') %></strong></div><% }) %></div><div><h4>Jadwal <%= row.payment_method==='INSTALLMENT'?`${row.installment_months} bulan`:'pembayaran' %></h4><% (row.installments||[]).forEach(item=>{ %><div class="debt-installment-line status-<%= item.status.toLowerCase() %>"><span><b><%= item.number %></b><%= item.dueDate %></span><strong>Rp <%= item.target.toLocaleString('id-ID') %><small><%= item.status==='PAID'?'Lunas':item.status==='PARTIAL'?`Sisa Rp ${item.remaining.toLocaleString('id-ID')}`:item.status==='OVERDUE'?'Terlambat':'Akan datang' %></small></strong></div><% }) %></div></div></details>
-        <div class="debt-item-foot">
-          <span class="debt-due-state <%= row.is_overdue?'danger':'safe' %>"><i class="bi <%= row.is_overdue?'bi-exclamation-circle-fill':'bi-calendar2-check' %>"></i><% if(row.is_overdue){ %>Terlambat<% } else if(row.days_to_due!==null && row.days_to_due>=0){ %><%= row.days_to_due %> hari menuju jatuh tempo<% }else{ %>Tanpa jatuh tempo<% } %></span>
-          <div class="debt-actions">
-          <div class="dropdown debt-history">
-            <button class="btn-tech compact dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Riwayat (<%= row.timeline.length %>)</button>
-            <div class="dropdown-menu dropdown-menu-end app-dropdown debt-timeline-menu p-2">
-              <div class="debt-timeline">
-                <% row.timeline.forEach(entry => { const entryKey=entry.entryStatus.toLowerCase(); %>
-                <div class="debt-timeline-item status-<%= entryKey %>">
-                  <span class="debt-timeline-dot"></span>
-                  <div class="debt-timeline-body">
-                    <div class="debt-timeline-top">
-                      <div class="debt-timeline-when"><strong><%= formatDate(entry.date) %></strong><% if(entry.time){ %><small><%= formatTime(entry.time) %> WIB</small><% } %></div>
-                      <span class="debt-timeline-status <%= entryKey %>"><%= entry.kind==='created' ? (row.record_type==='DEBT'?'Hutang Dicatat':'Piutang Dicatat') : (entry.entryStatus==='LUNAS'?'Lunas':'Dicicil') %></span>
-                    </div>
-                    <div class="debt-timeline-mid">
-                      <strong class="debt-timeline-amount"><%= entry.kind==='created'?'':'+ ' %>Rp <%= entry.amount.toLocaleString('id-ID') %></strong>
-                      <% if(entry.method){ %><span class="debt-timeline-method"><i class="bi bi-credit-card-2-front"></i><%= statusLabel(entry.method) %></span><% } %>
-                    </div>
-                    <div class="debt-timeline-foot">
-                      <span>Sisa saldo: <b>Rp <%= entry.remainingAfter.toLocaleString('id-ID') %></b></span>
-                      <% if(entry.notes){ %><span class="debt-timeline-note"><%= entry.notes %></span><% } %>
-                    </div>
-                    <div class="debt-timeline-actions">
-                      <% if(entry.hasProof){ %><a href="/debts/<%= row.id %>/payments/<%= entry.id %>/proof" target="_blank" rel="noopener"><i class="bi bi-paperclip"></i>Lihat bukti</a><% } %>
-                      <% if(entry.kind==='payment' && row.status!=='ARCHIVED'){ %><form method="post" action="/debts/<%= row.id %>/payments/<%= entry.id %>/delete" onsubmit="return confirm('Hapus pembayaran ini? Sisa akan dihitung ulang.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn btn-link btn-sm text-danger" type="submit" title="Hapus pembayaran"><i class="bi bi-trash"></i> Hapus</button></form><% } %>
-                    </div>
-                  </div>
-                </div>
-                <% }) %>
-              </div>
+    <% if (!records.length) { %><div class="empty-state"><i class="bi bi-journal-check"></i><strong>Belum ada data</strong><small>Catat hutang atau piutang menggunakan tombol "Catat Baru" di atas.</small></div><% } %>
+    <% if (records.length) { %>
+    <div class="table-responsive">
+      <table class="app-table debt-table">
+        <thead><tr><th class="app-seq-col">No.</th><th>Pihak & Keperluan</th><th>Jenis / Site</th><th>Status</th><th>Nominal</th><th>Jatuh Tempo</th><th class="debt-action-col">Aksi</th></tr></thead>
+        <tbody>
+        <% records.forEach((row,index) => { const remaining=Number(row.remaining_amount||0); const paid=Number(row.paid_amount||0); const principal=Number(row.principal_amount||0); const progress=principal>0?Math.min(100,Math.round(paid/principal*100)):0; const statusKey=row.payment_status.toLowerCase().replace(/\s+/g,'-'); const typeClass=row.record_type==='DEBT'?'type-debt':'type-receivable'; %>
+        <tr class="debt-item <%= typeClass %> <%= row.is_overdue ? 'is-overdue' : '' %>" data-debt-search="<%= [row.party_name,row.purpose,row.responsible_name,row.site_code].filter(Boolean).join(' ') %>">
+          <td><span class="cell-main"><%= index+1 %></span></td>
+          <td>
+            <span class="cell-main"><%= row.party_name %></span>
+            <span class="cell-sub"><%= row.purpose %></span>
+            <span class="cell-sub"><i class="bi bi-person"></i> <%= row.responsible_name || 'Belum ditentukan' %> &middot; <%= row.payment_method==='INSTALLMENT'?`Cicilan ${row.installment_months}x`:'Sekali bayar' %></span>
+          </td>
+          <td>
+            <span class="status-badge <%= row.record_type==='DEBT'?'purple':'green' %>"><%= row.record_type==='DEBT'?'HUTANG':'PIUTANG' %></span>
+            <span class="debt-site"><%= row.site_code %></span>
+          </td>
+          <td><span class="debt-status-badge status-<%= statusKey %>"><%= row.payment_status %></span></td>
+          <td class="debt-nominal-cell">
+            <span class="cell-main money">Rp <%= remaining.toLocaleString('id-ID') %></span>
+            <span class="cell-sub">dari Rp <%= principal.toLocaleString('id-ID') %> &middot; terbayar Rp <%= paid.toLocaleString('id-ID') %></span>
+            <div class="debt-progress" title="<%= progress %>% terbayar"><span style="width:<%= progress %>%"></span></div>
+          </td>
+          <td>
+            <span class="debt-due-state <%= row.is_overdue?'danger':'safe' %>"><i class="bi <%= row.is_overdue?'bi-exclamation-circle-fill':'bi-calendar2-check' %>"></i><% if(row.is_overdue){ %>Terlambat<% } else if(row.days_to_due!==null && row.days_to_due>=0){ %><%= row.days_to_due %> hari lagi<% }else{ %>Tanpa jatuh tempo<% } %></span>
+            <% if(row.due_date){ %><span class="cell-sub"><%= row.due_date %></span><% } %>
+          </td>
+          <td>
+            <div class="debt-actions">
+              <button type="button" class="action-menu" data-bs-toggle="modal" data-bs-target="#debtDetailModal<%= row.id %>" title="Detail, rincian & riwayat"><i class="bi bi-clock-history"></i></button>
+              <% if (row.status==='ACTIVE') { %><button type="button" class="action-menu primary" data-bs-toggle="modal" data-bs-target="#debtPayModal" data-debt-id="<%= row.id %>" data-debt-type-label="<%= row.record_type==='DEBT'?'Hutang':'Piutang' %>" data-debt-party="<%= row.party_name %>" data-debt-purpose="<%= row.purpose %>" data-debt-site="<%= row.site_code %>" data-debt-principal="<%= principal %>" data-debt-paid="<%= paid %>" data-debt-remaining="<%= Math.floor(remaining) %>" title="Catat Cicilan"><i class="bi bi-cash-coin"></i></button><% } %>
+              <% if (row.status!=='ARCHIVED') { %><form method="post" action="/debts/<%= row.id %>/archive" onsubmit="return confirm('Arsipkan data ini? Riwayat pembayaran tetap tersimpan.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="action-menu" type="submit" title="Arsipkan"><i class="bi bi-archive"></i></button></form><% } %>
             </div>
-          </div>
-          <% if (row.status==='ACTIVE') { %><button type="button" class="btn-tech primary compact" data-bs-toggle="modal" data-bs-target="#debtPayModal" data-debt-id="<%= row.id %>" data-debt-type-label="<%= row.record_type==='DEBT'?'Hutang':'Piutang' %>" data-debt-party="<%= row.party_name %>" data-debt-purpose="<%= row.purpose %>" data-debt-site="<%= row.site_code %>" data-debt-principal="<%= principal %>" data-debt-paid="<%= paid %>" data-debt-remaining="<%= Math.floor(remaining) %>"><i class="bi bi-cash-coin"></i> Catat Cicilan</button><% } %>
-          <% if (row.status!=='ARCHIVED') { %><form method="post" action="/debts/<%= row.id %>/archive" onsubmit="return confirm('Arsipkan data ini? Riwayat pembayaran tetap tersimpan.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn-tech compact" type="submit" title="Arsipkan"><i class="bi bi-archive"></i></button></form><% } %>
-          </div>
-        </div>
-      </article>
-      <% }) %>
+          </td>
+        </tr>
+        <% }) %>
+        </tbody>
+      </table>
     </div>
+    <% } %>
   </div>
 
   <div class="debt-note"><i class="bi bi-info-circle"></i><span>Modul ini tidak otomatis masuk ke Closing. Hanya pembayaran pada periode tersebut yang Anda input sebagai pengeluaran Closing agar tidak dihitung dua kali.</span></div>
 </div>
+
+<!-- v1.28 -- satu modal "Detail" per baris: rincian pembelian, jadwal cicilan, dan riwayat transaksi
+     yang dulu tersebar di <details> inline + dropdown Riwayat, sekarang jadi satu tempat. -->
+<% records.forEach(row => { const remaining=Number(row.remaining_amount||0); const paid=Number(row.paid_amount||0); const principal=Number(row.principal_amount||0); const progress=principal>0?Math.min(100,Math.round(paid/principal*100)):0; %>
+<div class="modal fade" id="debtDetailModal<%= row.id %>" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-lg">
+    <div class="modal-content nms-modal">
+      <div class="modal-header">
+        <div><div class="module-kicker"><%= row.record_type==='DEBT'?'HUTANG':'PIUTANG' %> · <%= row.site_code %></div><h5 class="modal-title"><%= row.party_name %></h5><small class="text-secondary"><%= row.purpose %></small></div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body debt-detail-body">
+        <div class="debt-money-grid"><div><span>Total</span><strong class="money">Rp <%= principal.toLocaleString('id-ID') %></strong></div><div><span>Terbayar</span><strong class="money paid">Rp <%= paid.toLocaleString('id-ID') %></strong></div><div class="remaining"><span>Sisa</span><strong class="money">Rp <%= remaining.toLocaleString('id-ID') %></strong></div></div>
+        <div class="debt-progress-wrap"><div><span>Progres pembayaran</span><b><%= progress %>%</b></div><div class="debt-progress"><span style="width:<%= progress %>%"></span></div></div>
+
+        <div class="debt-detail-section">
+          <h4><i class="bi bi-receipt"></i>Rincian Pembelian</h4>
+          <% if(!(row.items||[]).length){ %><small class="text-muted">Data lama belum memiliki rincian item.</small><% } %>
+          <% (row.items||[]).forEach(item=>{ %><div class="debt-breakdown-line"><span><%= item.item_name %><small><%= Number(item.quantity).toLocaleString('id-ID') %> × Rp <%= Number(item.unit_price).toLocaleString('id-ID') %></small></span><strong>Rp <%= Math.round(Number(item.quantity)*Number(item.unit_price)).toLocaleString('id-ID') %></strong></div><% }) %>
+        </div>
+
+        <div class="debt-detail-section">
+          <h4><i class="bi bi-list-check"></i>Jadwal <%= row.payment_method==='INSTALLMENT'?`${row.installment_months} bulan`:'Pembayaran' %></h4>
+          <% (row.installments||[]).forEach(item=>{ %><div class="debt-installment-line status-<%= item.status.toLowerCase() %>"><span><b><%= item.number %></b><%= item.dueDate %></span><strong>Rp <%= item.target.toLocaleString('id-ID') %><small><%= item.status==='PAID'?'Lunas':item.status==='PARTIAL'?`Sisa Rp ${item.remaining.toLocaleString('id-ID')}`:item.status==='OVERDUE'?'Terlambat':'Akan datang' %></small></strong></div><% }) %>
+        </div>
+
+        <div class="debt-detail-section">
+          <h4><i class="bi bi-clock-history"></i>Riwayat Transaksi (<%= row.timeline.length %>)</h4>
+          <div class="debt-timeline">
+            <% row.timeline.forEach(entry => { const entryKey=entry.entryStatus.toLowerCase(); %>
+            <div class="debt-timeline-item status-<%= entryKey %>">
+              <span class="debt-timeline-dot"></span>
+              <div class="debt-timeline-body">
+                <div class="debt-timeline-top">
+                  <div class="debt-timeline-when"><strong><%= formatDate(entry.date) %></strong><% if(entry.time){ %><small><%= formatTime(entry.time) %> WIB</small><% } %></div>
+                  <span class="debt-timeline-status <%= entryKey %>"><%= entry.kind==='created' ? (row.record_type==='DEBT'?'Hutang Dicatat':'Piutang Dicatat') : (entry.entryStatus==='LUNAS'?'Lunas':'Dicicil') %></span>
+                </div>
+                <div class="debt-timeline-mid">
+                  <strong class="debt-timeline-amount"><%= entry.kind==='created'?'':'+ ' %>Rp <%= entry.amount.toLocaleString('id-ID') %></strong>
+                  <% if(entry.method){ %><span class="debt-timeline-method"><i class="bi bi-credit-card-2-front"></i><%= statusLabel(entry.method) %></span><% } %>
+                </div>
+                <div class="debt-timeline-foot">
+                  <span>Sisa saldo: <b>Rp <%= entry.remainingAfter.toLocaleString('id-ID') %></b></span>
+                  <% if(entry.notes){ %><span class="debt-timeline-note"><%= entry.notes %></span><% } %>
+                </div>
+                <div class="debt-timeline-actions">
+                  <% if(entry.hasProof){ %><a href="/debts/<%= row.id %>/payments/<%= entry.id %>/proof" target="_blank" rel="noopener"><i class="bi bi-paperclip"></i>Lihat bukti</a><% } %>
+                  <% if(entry.kind==='payment' && row.status!=='ARCHIVED'){ %><form method="post" action="/debts/<%= row.id %>/payments/<%= entry.id %>/delete" onsubmit="return confirm('Hapus pembayaran ini? Sisa akan dihitung ulang.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn btn-link btn-sm text-danger" type="submit" title="Hapus pembayaran"><i class="bi bi-trash"></i> Hapus</button></form><% } %>
+                </div>
+              </div>
+            </div>
+            <% }) %>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-tech" data-bs-dismiss="modal">Tutup</button>
+      </div>
+    </div>
+  </div>
+</div>
+<% }) %>
 
 <template id="debtItemTemplate"><div class="debt-item-input"><input class="form-control form-control-sm" name="item_name[]" placeholder="Nama barang / keperluan" required><input class="form-control form-control-sm debt-item-qty" type="number" min="0.01" step="0.01" name="item_quantity[]" value="1" aria-label="Jumlah" required><input class="form-control form-control-sm debt-item-price" type="number" min="1" step="1" name="item_unit_price[]" placeholder="Harga satuan" required><input class="form-control form-control-sm" name="item_notes[]" placeholder="Catatan item"><button class="btn btn-link text-danger debt-remove-item" type="button" title="Hapus"><i class="bi bi-trash"></i></button><strong class="debt-item-subtotal">Rp 0</strong></div></template>
 
