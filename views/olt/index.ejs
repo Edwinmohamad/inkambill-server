@@ -1,6 +1,6 @@
 <section>
   <div class="module-head">
-    <div><div class="module-kicker">NETWORK INTEGRATION</div><h1>Registry OLT</h1><p>Kapasitas port PON dan status ONU per OLT, dihitung dari metadata jalur ONT yang sudah tercatat.</p></div>
+    <div><div class="module-kicker">REGISTRY &amp; KONFIGURASI · NETWORK INTEGRATION</div><h1>Registry OLT</h1><p>Kapasitas port PON dan status ONU per OLT, dihitung dari metadata jalur ONT yang sudah tercatat.</p></div>
     <div class="module-actions"><a class="btn-tech" href="/monitoring"><i class="bi bi-grid-1x2-fill"></i>Dashboard Monitoring</a><% if(isAdmin){ %><button class="btn-tech primary" data-bs-toggle="modal" data-bs-target="#oltModal"><i class="bi bi-hdd-network-fill"></i>Daftarkan OLT</button><% } %></div>
   </div>
   <% const totalOnu=olts.reduce((a,o)=>a+o.onu_total,0); const totalCritical=olts.reduce((a,o)=>a+o.onu_critical,0); const totalOffline=olts.reduce((a,o)=>a+o.onu_offline,0); %>

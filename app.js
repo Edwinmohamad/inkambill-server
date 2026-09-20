@@ -26,11 +26,12 @@ const { requireAuth, loadPermissions, requirePermission, requireAnyPermission, r
 const { generateMonthlyInvoices } = require('./services/invoiceService');
 const { runAutoIsolation } = require('./services/networkService');
 const { captureAllNmsTelemetry, backupAllRouters } = require('./services/nmsTelemetryService');
+const { evaluateNetworkIncidents } = require('./services/networkAlertService');
 const { syncDevices: syncAcsDevices } = require('./services/acsService');
 const { scanLowStock } = require('./services/inventoryService');
 const { deliverMobilePushes } = require('./services/mobilePushService');
 const { purgeOldLogs } = require('./services/logRetentionService');
-const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema } = require('./services/schemaService');
+const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema } = require('./services/schemaService');
 const { requireN8nToken } = require('./middleware/n8n');
 const { startGateway, hasSavedSession, processQueue, runAutoReminderSweep } = require('./services/whatsappGatewayService');
 
@@ -299,6 +300,7 @@ async function bootstrap() {
   await ensureV44Schema();
   await ensureV45Schema();
   await ensureV46Schema();
+  await ensureV47Schema();
   const [rows] = await db.query('SELECT COUNT(*) total FROM users');
   if (Number(rows[0].total) === 0) {
     const username = process.env.DEFAULT_ADMIN_USERNAME || 'admin';
@@ -358,6 +360,17 @@ async function bootstrap() {
     try { const result = await captureAllNmsTelemetry(); console.log('NMS telemetry:', result.routers, 'router(s)'); }
     catch (err) { console.error('NMS telemetry gagal:', err.message); }
     try { await scanLowStock(); } catch (err) { console.error('Stock alert gagal:', err.message); }
+  }, { timezone: 'Asia/Jakarta' });
+
+  // Network Incident & Alert Engine — dijalankan setelah telemetry di atas supaya status
+  // router/ONT/OLT yang dievaluasi sudah yang paling baru. Aman berjalan tiap 5 menit karena
+  // evaluateNetworkIncidents() sendiri idempotent (dedup via tabel network_incidents) dan
+  // tidak melakukan apa pun jika toggle WA/tiket di Settings > Tampilan & Aplikasi dimatikan.
+  cron.schedule('*/5 * * * *', async () => {
+    try {
+      const result = await evaluateNetworkIncidents();
+      if (result.opened || result.resolved || result.ticketsCreated) console.log('Network Alert Engine:', result);
+    } catch (err) { console.error('Network Alert Engine gagal:', err.message); }
   }, { timezone: 'Asia/Jakarta' });
 
   // If a WA Gateway session was already linked before this restart, reconnect silently (no QR needed —

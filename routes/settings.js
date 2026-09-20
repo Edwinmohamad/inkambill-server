@@ -79,7 +79,11 @@ router.post('/application',requireMasterAdmin,async(req,res)=>{
   // Disimpan di settings (bukan hardcode) supaya admin bisa mengubah kebijakan tanpa perlu patch aplikasi.
   const rawFlatCommission=Number(req.body.install_sales_flat_commission);
   const flatCommission=Number.isFinite(rawFlatCommission)&&rawFlatCommission>=0?rawFlatCommission:50000;
-  await db.execute(`UPDATE settings SET default_due_day=?,default_grace_days=?,invoice_generate_days=?,auto_isolate=?,default_theme=?,ui_palette=?,default_language=?,install_sales_flat_commission=? WHERE id=1`,[req.body.default_due_day,req.body.default_grace_days,req.body.invoice_generate_days,req.body.auto_isolate?1:0,theme,palette,req.body.default_language==='en'?'en':'id',flatCommission]);
+  // Network Incident & Alert Engine (services/networkAlertService.js) -- nomor WA dibersihkan
+  // ringan di sini (batas panjang kolom VARCHAR(500)); validasi format nomor per-nomor sudah
+  // dilakukan otomatis oleh whatsappGatewayService saat mengirim, jadi tidak perlu diulang di sini.
+  const networkAlertWaNumbers=String(req.body.network_alert_wa_numbers||'').trim().slice(0,500);
+  await db.execute(`UPDATE settings SET default_due_day=?,default_grace_days=?,invoice_generate_days=?,auto_isolate=?,default_theme=?,ui_palette=?,default_language=?,install_sales_flat_commission=?,network_alert_wa_enabled=?,network_alert_wa_numbers=?,network_alert_auto_ticket_enabled=? WHERE id=1`,[req.body.default_due_day,req.body.default_grace_days,req.body.invoice_generate_days,req.body.auto_isolate?1:0,theme,palette,req.body.default_language==='en'?'en':'id',flatCommission,req.body.network_alert_wa_enabled?1:0,networkAlertWaNumbers,req.body.network_alert_auto_ticket_enabled?1:0]);
   req.session.language=req.body.default_language==='en'?'en':'id';
   req.session.uiTheme=theme;req.session.uiPalette=palette;
   req.session.flash={type:'success',message:'Preferensi aplikasi disimpan.'};res.redirect('/settings?tab=application');

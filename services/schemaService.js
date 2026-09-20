@@ -892,4 +892,44 @@ async function ensureV46Schema(){
   )`);
 }
 
-module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema };
+
+async function ensureV47Schema() {
+  // Network Incident & Alert Engine (deteksi router offline / OLT bermasalah / lonjakan ONT kritis,
+  // notifikasi WhatsApp otomatis, dan opsional pembuatan tiket otomatis untuk insiden infrastruktur).
+  await db.query(`CREATE TABLE IF NOT EXISTS network_incidents (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    kind ENUM('router_offline','olt_critical','ont_mass_critical') NOT NULL,
+    entity_key VARCHAR(160) NOT NULL,
+    site_id BIGINT UNSIGNED NULL,
+    status ENUM('open','resolved') NOT NULL DEFAULT 'open',
+    summary VARCHAR(255) NULL,
+    ticket_id BIGINT UNSIGNED NULL,
+    wa_message_id BIGINT UNSIGNED NULL,
+    opened_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at DATETIME NULL,
+    last_alert_at DATETIME NULL,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_incident_entity(kind, entity_key),
+    INDEX idx_incident_status(status),
+    INDEX idx_incident_site(site_id)
+  )`);
+
+  const [settingsCols] = await db.query(`SHOW COLUMNS FROM settings LIKE 'network_alert_%'`);
+  const haveCols = new Set(settingsCols.map(c => c.Field));
+  if (!haveCols.has('network_alert_wa_enabled')) {
+    await db.query(`ALTER TABLE settings ADD COLUMN network_alert_wa_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER auto_isolate`);
+  }
+  if (!haveCols.has('network_alert_wa_numbers')) {
+    await db.query(`ALTER TABLE settings ADD COLUMN network_alert_wa_numbers VARCHAR(500) NULL AFTER network_alert_wa_enabled`);
+  }
+  if (!haveCols.has('network_alert_auto_ticket_enabled')) {
+    await db.query(`ALTER TABLE settings ADD COLUMN network_alert_auto_ticket_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER network_alert_wa_numbers`);
+  }
+
+  const [waTypeCol] = await db.query(`SHOW COLUMNS FROM wa_messages LIKE 'message_type'`);
+  if (waTypeCol.length && !/'network_alert'/.test(waTypeCol[0].Type)) {
+    await db.query(`ALTER TABLE wa_messages MODIFY COLUMN message_type ENUM('manual','blast','auto_reminder','network_alert') NOT NULL DEFAULT 'manual'`);
+  }
+}
+
+module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema };
