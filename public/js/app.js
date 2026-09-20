@@ -676,6 +676,90 @@
     document.querySelectorAll('.command-panel,.command-kpi,.command-pulse,.plan-card,.data-card,.filter-card').forEach(el=>observer.observe(el));
   }
 
+  // Apple-style redesign: replace native confirm() popups with a shared iOS-style alert sheet.
+  // Scans for the legacy onsubmit/onclick="return confirm('...')" pattern once at load, extracts
+  // the message, strips the inline attribute, and re-fires the original submit/click exactly once
+  // after the user confirms (guarded by a one-shot dataset flag so this listener lets it through
+  // the second time instead of looping).
+  (function () {
+    let overlay, titleEl, bodyEl, confirmBtn, cancelBtn, resolveFn;
+    function ensureOverlay() {
+      if (overlay) return;
+      overlay = document.createElement('div');
+      overlay.className = 'ios-alert-backdrop';
+      overlay.innerHTML =
+        '<div class="ios-alert-card" role="alertdialog" aria-modal="true">' +
+          '<div class="ios-alert-body"><h4></h4><p></p></div>' +
+          '<div class="ios-alert-actions">' +
+            '<button type="button" class="ios-alert-btn ios-alert-cancel">Batal</button>' +
+            '<button type="button" class="ios-alert-btn ios-alert-confirm"></button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(overlay);
+      titleEl = overlay.querySelector('h4');
+      bodyEl = overlay.querySelector('p');
+      confirmBtn = overlay.querySelector('.ios-alert-confirm');
+      cancelBtn = overlay.querySelector('.ios-alert-cancel');
+      function close(result) {
+        overlay.classList.remove('show');
+        if (resolveFn) { const r = resolveFn; resolveFn = null; r(result); }
+      }
+      overlay.addEventListener('click', function (e) { if (e.target === overlay) close(false); });
+      cancelBtn.addEventListener('click', function () { close(false); });
+      confirmBtn.addEventListener('click', function () { close(true); });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && overlay.classList.contains('show')) close(false);
+      });
+    }
+
+    window.iosConfirm = function (message, opts) {
+      opts = opts || {};
+      ensureOverlay();
+      const qIdx = message.indexOf('?');
+      const title = qIdx >= 0 ? message.slice(0, qIdx + 1).trim() : message.trim();
+      const body = qIdx >= 0 ? message.slice(qIdx + 1).trim() : '';
+      const isDanger = opts.danger !== undefined ? opts.danger : /hapus|reboot|putuskan|nonaktif|kunci|batalkan/i.test(title);
+      titleEl.textContent = title;
+      bodyEl.textContent = body;
+      bodyEl.hidden = !body;
+      const firstWord = (title.match(/^[A-Za-zÀ-ÿ]+/) || [''])[0];
+      confirmBtn.textContent = opts.confirmLabel || (firstWord ? ('Ya, ' + firstWord) : 'Lanjutkan');
+      confirmBtn.className = 'ios-alert-btn ios-alert-confirm' + (isDanger ? ' danger' : '');
+      overlay.classList.add('show');
+      return new Promise(function (resolve) {
+        resolveFn = resolve;
+        setTimeout(function () { confirmBtn.focus(); }, 10);
+      });
+    };
+
+    function bindConfirmIntercept(el, attr) {
+      const raw = el.getAttribute(attr);
+      const m = raw && raw.match(/confirm\(\s*(['"])([\s\S]*?)\1\s*\)/);
+      if (!m) return;
+      el.removeAttribute(attr);
+      const eventName = attr === 'onsubmit' ? 'submit' : 'click';
+      el.addEventListener(eventName, function (e) {
+        if (el.dataset.iosConfirmed === '1') { delete el.dataset.iosConfirmed; return; }
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        window.iosConfirm(m[2]).then(function (ok) {
+          if (!ok) return;
+          el.dataset.iosConfirmed = '1';
+          if (eventName === 'submit') {
+            if (el.requestSubmit) el.requestSubmit(); else el.submit();
+          } else if (el.form) {
+            el.form.requestSubmit(el);
+          } else {
+            el.click();
+          }
+        });
+      }, true);
+    }
+
+    document.querySelectorAll('[onsubmit*="confirm("]').forEach(function (el) { bindConfirmIntercept(el, 'onsubmit'); });
+    document.querySelectorAll('[onclick*="confirm("]').forEach(function (el) { bindConfirmIntercept(el, 'onclick'); });
+  })();
+
 })();
 
 // MikroTik NMS — isolated page controller. Router credentials never enter this client.

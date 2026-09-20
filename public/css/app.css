@@ -9,10 +9,11 @@
   --warning:#f4b64d;
   --danger:#ff6670;
   --info:#22d3ee;
-  /* v1.25.5 (susulan #11 — redesign): satu font sistem native OS untuk semua teks (bukan Inter yang dimuat
-     dari Google Fonts). --font-display disamakan dengan --font supaya setiap tempat yang tadinya memakai
-     Space Grotesk (judul halaman, angka KPI, dll) otomatis ikut berubah tanpa perlu diubah satu per satu. */
-  --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  /* v1.29 (Apple-style redesign): pakai "Geist" (sudah dimuat dari Google Fonts di layout.ejs tapi
+     sebelumnya tidak dipakai sama sekali) sebagai font utama — geometris & rapi, mendekati kesan SF Pro di
+     macOS/iOS — dengan fallback ke font sistem asli kalau Geist gagal dimuat. --font-display tetap disamakan
+     dengan --font supaya semua judul & angka KPI ikut berubah tanpa harus diubah satu per satu. */
+  --font:"Geist",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   --font-display:var(--font);
 }
 html[data-theme="dark"]{
@@ -73,7 +74,7 @@ a{color:inherit}.min-w-0{min-width:0}.app-shell{min-height:100vh}.main-panel{mar
    (Vercel/Stripe/Linear-style): satu rel gelap yang jadi identitas tetap, terlepas dari tema terang/gelap
    konten utama. Palet 6-warna tetap berpengaruh lewat aksen kiri menu aktif & warna hover (var(--brand-rgb)),
    jadi fitur ganti-tema tetap terasa. */
-.sidebar{position:fixed;inset:0 auto 0 0;width:var(--sidebar);z-index:1040;display:flex;flex-direction:column;background:#14161c;border-right:1px solid rgba(255,255,255,.08);box-shadow:none}
+.sidebar{position:fixed;inset:0 auto 0 0;width:var(--sidebar);z-index:1040;display:flex;flex-direction:column;background:rgba(11,11,13,.72);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-right:1px solid rgba(255,255,255,.08);box-shadow:none}
 .sidebar-brand{height:82px;padding:16px 17px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.08)}.brand-link{text-decoration:none;display:flex;align-items:center}.brand-logo-plate{width:142px;height:48px;display:grid;place-items:center;border-radius:3px;background:#fff;overflow:hidden;padding:5px 9px;box-shadow:none}.brand-logo-plate img{max-width:100%;max-height:100%;object-fit:contain}.sidebar-close{border:0;background:transparent;color:#9096a3}
 .sidebar-scroll{overflow-y:auto;overflow-x:hidden;padding:11px 12px 20px;scrollbar-width:thin}.sidebar-section-label{padding:16px 11px 7px;color:#676d7a;font-size:.58rem;font-weight:800;letter-spacing:.16em}.sidebar-nav{display:grid;gap:4px}.sidebar-link{position:relative;min-height:42px;padding:0 11px;display:flex;align-items:center;gap:11px;border-radius:3px;border-left:2px solid transparent;color:#9096a3;text-decoration:none;font-size:.76rem;font-weight:650;transition:.18s}.sidebar-link i{width:19px;text-align:center;font-size:.92rem}.sidebar-link em{margin-left:auto;font-style:normal;font-size:.58rem;color:#676d7a}.sidebar-link:hover{color:#fff;background:rgba(var(--brand-rgb),.14)}.sidebar-link.active{color:#fff;background:rgba(var(--brand-rgb),.16);border-left-color:var(--brand)}.sidebar-footer{margin-top:auto;padding:14px 14px 16px;border-top:1px solid rgba(255,255,255,.08)}.system-status{display:flex;align-items:center;gap:10px}.system-status .status-dot{width:9px;height:9px;border-radius:50%;background:var(--success);box-shadow:none;animation:none}.system-status strong{display:block;color:#e7e9ee;font-size:.69rem}.system-status small{display:block;color:#676d7a;font-size:.54rem;margin-top:2px}.version-pill{display:inline-flex;margin-top:11px;padding:4px 7px;border:1px solid rgba(255,255,255,.08);border-radius:999px;color:#676d7a;font-size:.5rem;font-weight:800;letter-spacing:.1em}
 @keyframes pulse{0%{box-shadow:none}70%{box-shadow:none}100%{box-shadow:none}}
@@ -141,47 +142,50 @@ input[type="checkbox"]:disabled,input[type="radio"]:disabled{opacity:.4;cursor:n
   --brand-red-2:#e28481;
   --brand-rgb:118,95,215;
   --brand-red-rgb:218,102,99;
-  --success:#2ed6a1;
-  --warning:#ffbb55;
-  --danger:#ff5a59;
-  --info:#22d3ee;
+  --success:#34c759;
+  --warning:#ff9f0a;
+  --danger:#ff453a;
+  --info:#0a84ff;
 }
 html[data-theme="dark"]{
-  --bg:#080b14;
-  --bg-2:#0b0f1b;
-  --panel:#101522;
-  --panel-2:#131a29;
-  --panel-3:#182033;
-  --sidebar-bg:#080b14;
-  --sidebar-bg2:#0b1020;
-  --topbar:rgba(8,11,20,.78);
-  --line:rgba(255,255,255,.065);
+  /* Opsi 1 "Graphite + Ungu": abu netral gelap (bukan navy/biru kebiruan seperti sebelumnya), aksen ungu
+     brand (--brand) dipertahankan seperti sebelumnya. */
+  --bg:#0b0b0d;
+  --bg-2:#0e0e10;
+  --panel:#18181b;
+  --panel-2:#1c1c1f;
+  --panel-3:#212124;
+  --sidebar-bg:#0b0b0d;
+  --sidebar-bg2:#0e0e10;
+  --topbar:rgba(11,11,13,.82);
+  --line:rgba(255,255,255,.07);
   --line-2:rgba(255,255,255,.12);
-  --text:#f4f5fb;
-  --muted:#929bb0;
-  --muted-2:#5f6a82;
-  --input:#0d1321;
-  --shadow:0 28px 80px rgba(0,0,0,.30);
-  --shadow-soft:0 14px 40px rgba(0,0,0,.18);
+  --text:#f5f5f7;
+  --muted:#9a9aa0;
+  --muted-2:#6e6e73;
+  --input:#18181b;
+  --shadow:0 24px 70px rgba(0,0,0,.35);
+  --shadow-soft:0 12px 34px rgba(0,0,0,.22);
   --glow:rgba(var(--brand-rgb),.18);
 }
 html[data-theme="light"]{
-  --bg:#e9e9f4;
-  --bg-2:#eff1f8;
-  --panel:#fff;
-  --panel-2:#ececf8;
-  --panel-3:#f1f2f8;
-  --sidebar-bg:#fff;
-  --sidebar-bg2:#ececf6;
-  --topbar:rgba(255,255,255,.82);
-  --line:rgba(25,29,50,.08);
-  --line-2:rgba(25,29,50,.14);
-  --text:#15182a;
-  --muted:#677087;
-  --muted-2:#9aa2b3;
-  --input:#fff;
-  --shadow:0 28px 80px rgba(46,40,85,.10);
-  --shadow-soft:0 12px 34px rgba(46,40,85,.07);
+  /* Opsi 4 "Light ala macOS": kanvas abu terang #f5f5f7 + kartu putih, seperti System Settings/Finder. */
+  --bg:#f5f5f7;
+  --bg-2:#f0f0f2;
+  --panel:#ffffff;
+  --panel-2:#f5f5f7;
+  --panel-3:#ececee;
+  --sidebar-bg:#ffffff;
+  --sidebar-bg2:#f5f5f7;
+  --topbar:rgba(245,245,247,.92);
+  --line:#e5e5ea;
+  --line-2:#d8d8dc;
+  --text:#1d1d1f;
+  --muted:#6e6e73;
+  --muted-2:#8e8e93;
+  --input:#ffffff;
+  --shadow:0 24px 60px rgba(0,0,0,.10);
+  --shadow-soft:0 8px 22px rgba(0,0,0,.06);
   --glow:rgba(var(--brand-rgb),.10);
 }
 body{position:relative;background:var(--bg);overflow-x:hidden}
@@ -1782,3 +1786,72 @@ body .ink-kpi strong{font-weight:600!important}
 html.lite-mode *,html.lite-mode *::before,html.lite-mode *::after{animation:none!important;transition-duration:.01ms!important;scroll-behavior:auto!important}html.lite-mode .ambient-grid,html.lite-mode .ambient-orb,html.lite-mode .signal-stream{display:none!important}html.lite-mode .fiber-line{filter:none!important;stroke-dasharray:none!important}html.lite-mode .data-card,html.lite-mode .metric-card,html.lite-mode .ink-panel{box-shadow:none!important;backdrop-filter:none!important}.partial-skeleton{position:relative;pointer-events:none}.partial-skeleton::after{content:"";position:absolute;inset:0;z-index:20;background:linear-gradient(90deg,transparent,rgba(255,255,255,.045),transparent),var(--panel);background-size:220% 100%;animation:skeletonSweep .8s linear infinite;opacity:.82}@keyframes skeletonSweep{to{background-position:-220% 0}}
 .acs-action-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:12px}.acs-action-grid form{display:grid;grid-template-columns:minmax(180px,1fr) auto;gap:8px}.acs-action-grid form:has([data-acs-confirm]){grid-template-columns:minmax(180px,1fr) minmax(180px,1fr) auto}@media(max-width:900px){.acs-action-grid{grid-template-columns:1fr}.acs-action-grid form,.acs-action-grid form:has([data-acs-confirm]){grid-template-columns:1fr}}
 .geo-map-shell{display:grid;grid-template-columns:270px 1fr;height:650px;overflow:hidden;border:1px solid var(--line);border-radius:5px;background:var(--panel)}.geo-map-sidebar{z-index:2;display:flex;min-width:0;flex-direction:column;padding:10px;border-right:1px solid var(--line);background:var(--panel)}.geo-map-sidebar .search-box{flex:0 0 auto}.geo-map-filters{display:flex;gap:4px;flex-wrap:wrap;margin:9px 0}.geo-map-filters button{padding:5px 7px;border:1px solid var(--line);border-radius:3px;background:var(--panel-2);color:var(--muted);font-size:.45rem}.geo-map-filters button.active{border-color:var(--accent);color:#fff;background:rgba(111,77,255,.18)}.geo-node-list{overflow:auto}.geo-node-list>button{display:flex;width:100%;align-items:center;gap:8px;padding:8px;border:0;border-bottom:1px solid var(--line);background:transparent;color:inherit;text-align:left}.geo-node-list>button:hover{background:var(--panel-2)}.geo-node-list i{display:grid;width:26px;height:26px;place-items:center;color:var(--accent);font-style:normal}.geo-node-list span{display:flex;min-width:0;flex-direction:column}.geo-node-list small{color:var(--muted)}#networkGeoMap{height:100%;background:#0a1020}.fiber-marker{display:grid!important;place-items:center;border-radius:50%;background:#11182a;border:2px solid #31d7a0;box-shadow:0 0 0 4px rgba(49,215,160,.15),0 0 15px rgba(49,215,160,.6);color:#fff;font-size:14px}.fiber-marker.warning{border-color:#ffb84d;box-shadow:0 0 0 4px rgba(255,184,77,.16),0 0 15px rgba(255,184,77,.65)}.fiber-marker.offline{border-color:#ff5263;box-shadow:0 0 0 4px rgba(255,82,99,.16),0 0 15px rgba(255,82,99,.65)}.fiber-marker.customer{width:24px!important;height:24px!important;margin:3px}.fiber-line{filter:drop-shadow(0 0 4px currentColor);stroke-dasharray:12 6;animation:fiberFlow 1.2s linear infinite}.fiber-line.offline{animation:none;stroke-dasharray:5 7}@keyframes fiberFlow{to{stroke-dashoffset:-18}}.map-popup{display:flex;min-width:170px;flex-direction:column;color:#172033}.map-popup small{color:#5d6574}.map-popup p{margin:5px 0 0}.map-summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}.map-summary-grid>div{display:flex;flex-direction:column;padding:11px;border:1px solid var(--line);border-radius:4px;background:var(--panel)}.map-summary-grid strong{font-size:1.1rem}.map-summary-grid small{color:var(--muted)}@media(max-width:767px){.geo-map-shell{grid-template-columns:1fr;height:auto}.geo-map-sidebar{height:210px;border-right:0;border-bottom:1px solid var(--line)}#networkGeoMap{height:520px}.map-summary-grid{grid-template-columns:repeat(2,1fr)}}
+
+/* =========================================================
+   v1.29 — Apple-style redesign, app-wide component layer.
+   Everything below is additive (new classes / scoped overrides only);
+   nothing here removes or renames an existing class, id, or data-attribute
+   that server-side templates or app.js rely on.
+   ========================================================= */
+
+/* Dashboard "Large Title": sentence case, bigger, no letter-spacing shout —
+   matches the .module-head h1 treatment already applied elsewhere in this file. */
+.ink-dashboard h1{font-size:1.18rem;letter-spacing:-.02em;text-transform:none;font-weight:700;line-height:1.25}
+@media(max-width:479.98px){.ink-dashboard h1{font-size:1rem}}
+
+/* Sidebar nav: drop the left accent bar in favor of a single soft rounded "pill"
+   highlight (closer to macOS Finder / System Settings sidebar selection). */
+.sidebar-link{border-left-color:transparent!important;border-radius:10px}
+.sidebar-link.active{background:rgba(var(--brand-rgb),.22)}
+
+/* Progress ring -- circular alternative to the linear .debt-progress bar.
+   Usage: <div class="progress-ring" style="--p:64"><span>64%</span></div> */
+.progress-ring{--p:0;position:relative;width:64px;height:64px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--brand) calc(var(--p)*1%),var(--panel-3) 0);flex:0 0 auto}
+.progress-ring::after{content:"";position:absolute;inset:7px;border-radius:50%;background:var(--panel)}
+.progress-ring span{position:relative;z-index:2;font-family:var(--font-display);font-weight:800;font-size:.72rem;color:var(--text)}
+.progress-ring.is-complete{background:conic-gradient(var(--success) calc(var(--p)*1%),var(--panel-3) 0)}
+.progress-ring.lg{width:104px;height:104px}
+.progress-ring.lg::after{inset:11px}
+.progress-ring.lg span{font-size:1.05rem}
+
+/* iOS-style alert sheet, driven by window.iosConfirm() in app.js -- replaces the
+   native confirm() popup app-wide without touching each template's markup. */
+.ios-alert-backdrop{position:fixed;inset:0;z-index:5000;display:grid;place-items:center;padding:20px;background:rgba(0,0,0,.32);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);opacity:0;visibility:hidden;transition:opacity .18s ease}
+.ios-alert-backdrop.show{opacity:1;visibility:visible}
+.ios-alert-card{width:min(340px,100%);border-radius:16px;background:var(--panel);border:1px solid var(--line);box-shadow:0 24px 60px rgba(0,0,0,.35);overflow:hidden;transform:scale(.92);transition:transform .18s cubic-bezier(.2,.9,.3,1.1)}
+.ios-alert-backdrop.show .ios-alert-card{transform:scale(1)}
+.ios-alert-body{padding:22px 20px 18px;text-align:center}
+.ios-alert-body h4{margin:0 0 6px;font-size:.86rem;font-weight:700;color:var(--text);line-height:1.35}
+.ios-alert-body p{margin:0;font-size:.72rem;line-height:1.55;color:var(--muted)}
+.ios-alert-body p[hidden]{display:none}
+.ios-alert-actions{display:flex;border-top:1px solid var(--line)}
+.ios-alert-btn{flex:1;height:46px;border:0;background:transparent;font-size:.76rem;font-weight:600;color:var(--brand);cursor:pointer;transition:background .12s}
+.ios-alert-btn:hover{background:rgba(var(--brand-rgb),.08)}
+.ios-alert-cancel{border-right:1px solid var(--line);color:var(--text);font-weight:500}
+.ios-alert-confirm.danger{color:var(--danger);font-weight:700}
+
+/* Inset-grouped list -- Apple Settings.app style row list. Flagship use: Piutang (debts) list.
+   Reuses the existing .ink-action-popover / .ink-action-item contextual-menu component for
+   row actions, so no new menu component or JS is needed alongside this. */
+.inset-list{border-radius:var(--radius);overflow:hidden;background:var(--panel);border:1px solid var(--line)}
+.inset-row{display:flex;align-items:center;gap:12px;padding:13px 15px;border-bottom:1px solid var(--line);color:inherit;transition:background .12s}
+.inset-row:last-child{border-bottom:0}
+.inset-row:hover{background:var(--panel-2)}
+.inset-row-lead{flex:0 0 auto}
+.inset-row-main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px}
+.inset-row-title{font-size:.74rem;font-weight:650;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.inset-row-sub{font-size:.6rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.inset-row-trail{display:flex;align-items:center;gap:10px;flex:0 0 auto;text-align:right}
+.inset-row-value{font-size:.74rem;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums}
+.inset-row-chevron{width:30px;height:30px;display:grid;place-items:center;border:0;background:transparent;color:var(--muted-2);border-radius:8px;cursor:pointer}
+.inset-row-chevron:hover{background:var(--panel-3);color:var(--text)}
+@media(max-width:575.98px){.inset-row{padding:12px 13px;gap:9px}}
+
+/* Piutang (debts) inset-list flagship: chip row for status/type/due badges, ring+copy for the
+   Detail modal's payment-progress section, and a scroll cap matching the previous table behavior. */
+.inset-row-chips{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:3px}
+.debt-list-card .inset-list{max-height:min(72vh,680px);overflow-y:auto}
+.debt-progress-wrap-ring{display:flex;align-items:center;gap:16px;margin:14px 0}
+.debt-progress-wrap-copy{display:flex;flex-direction:column;gap:3px}
+.debt-progress-wrap-copy span{color:var(--muted);font-size:.6rem;font-weight:700}
+.debt-progress-wrap-copy small{color:var(--muted-2);font-size:.58rem}
