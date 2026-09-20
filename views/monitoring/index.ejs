@@ -2,11 +2,24 @@
 <section class="mon-page" id="monApp" data-admin="<%= isAdmin?'1':'0' %>">
   <div class="module-head">
     <div><div class="module-kicker">INKAMNET · DASHBOARD MONITORING</div><h1>Monitoring ONT, MikroTik & OLT</h1><p>Kesehatan dan traffic jaringan real-time, langsung dari GenieACS, RouterOS REST, dan metadata OLT.</p></div>
-    <div class="module-actions">
+    <div class="module-actions mon-actions">
       <div class="seg" id="monSeg">
-        <button class="active" data-board="ont" type="button">ONT</button>
-        <button data-board="mikrotik" type="button">MikroTik</button>
-        <button data-board="olt" type="button">OLT</button>
+        <button class="active" data-board="ont" type="button" title="Alt/Ctrl+1">ONT</button>
+        <button data-board="mikrotik" type="button" title="Alt/Ctrl+2">MikroTik</button>
+        <button data-board="olt" type="button" title="Alt/Ctrl+3">OLT</button>
+      </div>
+      <div class="mon-filter-bar">
+        <select class="form-select mon-filter-select" id="monSiteFilter">
+          <option value="">Semua Site</option>
+          <% sites.forEach(s=>{ %><option value="<%= s.code %>"><%= s.code %> · <%= s.name %></option><% }) %>
+        </select>
+        <div class="seg seg-sm" id="monRangeSeg">
+          <button class="active" data-hours="24" type="button">24 Jam</button>
+          <button data-hours="168" type="button">7 Hari</button>
+          <button data-hours="720" type="button">30 Hari</button>
+        </div>
+        <button type="button" class="icon-button" id="monRefreshBtn" title="Refresh sekarang"><i class="bi bi-arrow-clockwise"></i></button>
+        <small class="mon-refresh-indicator" id="monRefreshIndicator">memuat...</small>
       </div>
     </div>
   </div>
@@ -14,7 +27,18 @@
   <div class="bento mon-skel" id="bento-ont"><div class="b-hero"><h4>Memuat...</h4></div></div>
   <div class="bento mon-skel" id="bento-mikrotik" style="display:none"><div class="b-hero"><h4>Memuat...</h4></div></div>
   <div class="bento mon-skel" id="bento-olt" style="display:none"><div class="b-hero"><h4>Memuat...</h4></div></div>
+
+  <div class="data-card mon-site-table">
+    <div class="data-card-head"><div><h3>Ringkasan per Site</h3><small>Gabungan ONT, Router, dan status jaringan. Klik baris untuk memfilter dashboard ke site tersebut.</small></div></div>
+    <div class="table-responsive"><table class="app-table" id="monSiteTable"><thead><tr><th>Site</th><th>ONT Online</th><th>ONT Kritis</th><th>Router Online</th></tr></thead><tbody id="monSiteTableBody"><tr><td colspan="4"><div class="empty-state"><i class="bi bi-hourglass-split"></i><small>Memuat data site...</small></div></td></tr></tbody></table></div>
+  </div>
 </section>
+
+<!-- Modal drill-down: daftar perangkat dari klik bar/agregat (Distribusi Sinyal, Utilisasi OLT, dst) -->
+<div class="modal fade" id="detailListModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content">
+  <div class="modal-header"><div><div class="module-kicker" id="detailListKicker">DETAIL</div><h5 class="modal-title" id="detailListTitle">Daftar Perangkat</h5></div><button class="btn-close" type="button" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body"><div id="detailListBody" class="mon-detail-list"><div class="mini-empty">Memuat...</div></div></div>
+</div></div></div>
 
 <!-- Modal aksi ONT: cari perangkat lalu jalankan Ping / Reboot / Ganti SSID / Ganti Password / Cek Redaman -->
 <div class="modal fade" id="ontActionModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content">

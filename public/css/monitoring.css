@@ -68,3 +68,41 @@
 .mon-page .mon-action-result{margin-top:10px;font-size:.65rem;color:var(--muted);border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--panel-2);white-space:pre-wrap}
 .mon-page .mon-action-result.success{color:var(--success);border-color:rgba(var(--brand-rgb),.2)}
 .mon-page .mon-action-result.danger{color:var(--danger)}
+
+/* -------- Task-14/15 additions: filters, refresh indicator, drill-down, deltas, site table -------- */
+.mon-page .mon-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.mon-page .mon-filter-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.mon-page .mon-filter-select{width:auto;min-width:150px;font-size:.66rem;padding:8px 30px 8px 12px;border-radius:999px;border:1px solid var(--line);background-color:var(--panel-2);color:var(--text)}
+.mon-page .seg.seg-sm button{padding:6px 11px;font-size:.6rem}
+.mon-page .mon-refresh-indicator{color:var(--muted-2);font-size:.56rem;white-space:nowrap}
+.mon-page #monRefreshBtn{transition:transform .3s}
+.mon-page #monRefreshBtn:active i{transform:rotate(180deg);display:inline-block}
+
+.mon-page .bar-row-click{cursor:pointer;border-radius:6px;margin:-3px -6px;padding:3px 6px;transition:.15s}
+.mon-page .bar-row-click:hover{background:var(--panel-3)}
+.mon-page .mon-drill{cursor:pointer;transition:.15s}
+.mon-page .mon-drill:hover{background:var(--panel-3)}
+.mon-page .bento .mini-list a[data-drill],.mon-page .bento .mini-list a[data-test-router]{cursor:pointer}
+
+.mon-page .mon-delta{display:inline-block;margin-top:4px;font-weight:700}
+.mon-page .mon-delta.good{color:var(--success)}
+.mon-page .mon-delta.bad{color:var(--danger)}
+.mon-page .mon-delta.flat{color:var(--muted-2);font-weight:600}
+
+.mon-page .mon-site-table{margin-top:14px}
+.mon-page .mon-site-row{cursor:pointer}
+.mon-page .mon-site-row.active{background:rgba(var(--brand-rgb),.08)}
+.mon-page .mon-site-row.active td:first-child{box-shadow:inset 3px 0 0 var(--brand)}
+
+.mon-page .mon-detail-list{display:flex;flex-direction:column;gap:6px;max-height:60vh;overflow-y:auto}
+.mon-page .mon-detail-row{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;border:1px solid var(--line);background:var(--panel-2);color:var(--text);border-radius:8px;padding:10px 12px;cursor:pointer;transition:.15s}
+.mon-page .mon-detail-row:hover{background:var(--panel-3);border-color:var(--line-2)}
+.mon-page .mon-detail-row strong{display:block;font-size:.68rem}
+.mon-page .mon-detail-row small{display:block;color:var(--muted-2);font-size:.56rem;margin-top:2px}
+.mon-page .mon-detail-row .status-badge{flex:0 0 auto}
+
+@media(max-width:900px){
+  .mon-page .mon-actions{flex-direction:column;align-items:stretch}
+  .mon-page .mon-filter-bar{justify-content:space-between}
+  .mon-page .mon-filter-select{flex:1;min-width:0}
+}

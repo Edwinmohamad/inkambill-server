@@ -135,14 +135,18 @@ router.post('/bulk',requireAdmin,async(req,res)=>{
 });
 
 router.post('/:id/test',async(req,res)=>{
+  const wantsJson=req.xhr||String(req.headers.accept||'').includes('application/json');
   const [rows]=await db.execute(`SELECT * FROM routers WHERE id=?`,[req.params.id]);
-  if(!rows.length)return res.status(404).send('Router tidak ditemukan');
+  if(!rows.length)return wantsJson?res.status(404).json({ok:false,error:'Router tidak ditemukan'}):res.status(404).send('Router tidak ditemukan');
   try{
     const info=await testConnection(rows[0]);
     await db.execute(`UPDATE routers SET last_status='online',last_error=NULL,last_seen_at=NOW() WHERE id=?`,[req.params.id]);
-    req.session.flash={type:'success',message:`Koneksi OK: ${info?.['board-name']||'MikroTik'} · RouterOS ${info?.version||'-'} · uptime ${info?.uptime||'-'}`};
+    const message=`Koneksi OK: ${info?.['board-name']||'MikroTik'} · RouterOS ${info?.version||'-'} · uptime ${info?.uptime||'-'}`;
+    if(wantsJson)return res.json({ok:true,message,info});
+    req.session.flash={type:'success',message};
   }catch(e){
     await db.execute(`UPDATE routers SET last_status='offline',last_error=? WHERE id=?`,[e.message.slice(0,500),req.params.id]);
+    if(wantsJson)return res.status(400).json({ok:false,error:e.message});
     req.session.flash={type:'danger',message:`Koneksi gagal: ${e.message}`};
   }
   res.redirect(routerReturn(req.body));

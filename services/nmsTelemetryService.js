@@ -45,7 +45,7 @@ async function captureInterfaceTraffic(router) {
     await db.execute(`INSERT INTO nms_interface_samples(router_id,interface_name,rx_bytes,tx_bytes,rx_bps,tx_bps,running) VALUES(?,?,?,?,?,?,?)`, [router.id, name, rx, tx, rxBps, txBps, item.running === true || String(item.running) === 'true' ? 1 : 0]);
     saved++;
   }
-  await db.execute(`DELETE FROM nms_interface_samples WHERE router_id=? AND sampled_at < DATE_SUB(NOW(),INTERVAL 14 DAY)`, [router.id]);
+  await db.execute(`DELETE FROM nms_interface_samples WHERE router_id=? AND sampled_at < DATE_SUB(NOW(),INTERVAL 32 DAY)`, [router.id]);
   return { routerId: router.id, interfaces: saved };
 }
 
@@ -57,7 +57,7 @@ async function captureResourceSample(router) {
   await db.execute(`INSERT INTO nms_resource_samples(router_id,cpu_load,free_memory,total_memory,uptime_seconds,board_name,version) VALUES(?,?,?,?,?,?,?)`,
     [router.id, Number.isFinite(cpuLoad) ? cpuLoad : null, freeMemory || null, totalMemory || null, uptimeSeconds(info?.uptime) || null, info?.['board-name'] || null, info?.version || null]);
   await db.execute(`UPDATE routers SET last_status='online',last_error=NULL,last_seen_at=NOW() WHERE id=?`, [router.id]);
-  await db.execute(`DELETE FROM nms_resource_samples WHERE router_id=? AND sampled_at < DATE_SUB(NOW(),INTERVAL 14 DAY)`, [router.id]);
+  await db.execute(`DELETE FROM nms_resource_samples WHERE router_id=? AND sampled_at < DATE_SUB(NOW(),INTERVAL 32 DAY)`, [router.id]);
   return { routerId: router.id, cpuLoad: Number.isFinite(cpuLoad) ? cpuLoad : null, freeMemory, totalMemory };
 }
 
@@ -101,7 +101,7 @@ async function captureAllNmsTelemetry() {
 }
 
 async function getTrafficTrend({ routerId, interfaceName = '', hours = 24 } = {}) {
-  const safeHours = Math.min(168, Math.max(1, Number(hours) || 24));
+  const safeHours = Math.min(744, Math.max(1, Number(hours) || 24));
   let sql = `SELECT router_id,interface_name,sampled_at,rx_bps,tx_bps,running FROM nms_interface_samples WHERE sampled_at >= DATE_SUB(NOW(),INTERVAL ? HOUR)`;
   const params = [safeHours];
   if (routerId) { sql += ' AND router_id=?'; params.push(Number(routerId)); }
@@ -123,7 +123,7 @@ async function getSessionHistory({ customerId, routerId, hours = 168 } = {}) {
 }
 
 async function getResourceTrend({ routerId, hours = 24 } = {}) {
-  const safeHours = Math.min(168, Math.max(1, Number(hours) || 24));
+  const safeHours = Math.min(744, Math.max(1, Number(hours) || 24));
   let sql = `SELECT router_id,sampled_at,cpu_load,free_memory,total_memory,uptime_seconds,board_name,version FROM nms_resource_samples WHERE sampled_at >= DATE_SUB(NOW(),INTERVAL ? HOUR)`;
   const params = [safeHours];
   if (routerId) { sql += ' AND router_id=?'; params.push(Number(routerId)); }
