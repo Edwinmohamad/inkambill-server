@@ -64,25 +64,30 @@
     <% if (records.length) { %>
     <div class="table-responsive">
       <table class="app-table debt-table">
-        <thead><tr><th class="app-seq-col">No.</th><th>Pihak & Keperluan</th><th>Jenis / Site</th><th>Status</th><th>Nominal</th><th>Jatuh Tempo</th><th class="debt-action-col">Aksi</th></tr></thead>
+        <thead><tr><th class="app-seq-col">No.</th><th>Pihak & Keperluan</th><th>Jenis / Site</th><th>Status</th><th class="debt-nominal-col">Nominal</th><th>Jatuh Tempo</th><th class="debt-action-col">Aksi</th></tr></thead>
         <tbody>
-        <% records.forEach((row,index) => { const remaining=Number(row.remaining_amount||0); const paid=Number(row.paid_amount||0); const principal=Number(row.principal_amount||0); const progress=principal>0?Math.min(100,Math.round(paid/principal*100)):0; const statusKey=row.payment_status.toLowerCase().replace(/\s+/g,'-'); const typeClass=row.record_type==='DEBT'?'type-debt':'type-receivable'; %>
+        <% records.forEach((row,index) => { const remaining=Number(row.remaining_amount||0); const paid=Number(row.paid_amount||0); const principal=Number(row.principal_amount||0); const progress=principal>0?Math.min(100,Math.round(paid/principal*100)):0; const statusKey=row.payment_status.toLowerCase().replace(/\s+/g,'-'); const typeClass=row.record_type==='DEBT'?'type-debt':'type-receivable'; const statusIcon=statusKey==='lunas'?'bi-check-circle-fill':statusKey==='dicicil'?'bi-arrow-repeat':statusKey==='terlambat'?'bi-exclamation-circle-fill':'bi-hourglass-split'; const partyInitial=String(row.party_name||'?').trim().charAt(0).toUpperCase()||'?'; %>
         <tr class="debt-item <%= typeClass %> <%= row.is_overdue ? 'is-overdue' : '' %>" data-debt-search="<%= [row.party_name,row.purpose,row.responsible_name,row.site_code].filter(Boolean).join(' ') %>">
           <td><span class="cell-main"><%= index+1 %></span></td>
           <td>
-            <span class="cell-main"><%= row.party_name %></span>
-            <span class="cell-sub"><%= row.purpose %></span>
-            <span class="cell-sub"><i class="bi bi-person"></i> <%= row.responsible_name || 'Belum ditentukan' %> &middot; <%= row.payment_method==='INSTALLMENT'?`Cicilan ${row.installment_months}x`:'Sekali bayar' %></span>
+            <div class="debt-party-cell">
+              <span class="debt-avatar <%= typeClass %>"><%= partyInitial %></span>
+              <div class="debt-party-copy">
+                <span class="cell-main"><%= row.party_name %></span>
+                <span class="cell-sub"><%= row.purpose %></span>
+                <span class="cell-sub"><i class="bi bi-person"></i> <%= row.responsible_name || 'Belum ditentukan' %> &middot; <%= row.payment_method==='INSTALLMENT'?`Cicilan ${row.installment_months}x`:'Sekali bayar' %></span>
+              </div>
+            </div>
           </td>
           <td>
             <span class="status-badge <%= row.record_type==='DEBT'?'purple':'green' %>"><%= row.record_type==='DEBT'?'HUTANG':'PIUTANG' %></span>
             <span class="debt-site"><%= row.site_code %></span>
           </td>
-          <td><span class="debt-status-badge status-<%= statusKey %>"><%= row.payment_status %></span></td>
+          <td><span class="debt-status-badge status-<%= statusKey %>"><i class="bi <%= statusIcon %>"></i><%= row.payment_status %></span></td>
           <td class="debt-nominal-cell">
             <span class="cell-main money">Rp <%= remaining.toLocaleString('id-ID') %></span>
             <span class="cell-sub">dari Rp <%= principal.toLocaleString('id-ID') %> &middot; terbayar Rp <%= paid.toLocaleString('id-ID') %></span>
-            <div class="debt-progress" title="<%= progress %>% terbayar"><span style="width:<%= progress %>%"></span></div>
+            <div class="debt-progress <%= progress>=100?'is-complete':'' %>" title="<%= progress %>% terbayar"><span style="width:<%= progress %>%"></span></div>
           </td>
           <td>
             <span class="debt-due-state <%= row.is_overdue?'danger':'safe' %>"><i class="bi <%= row.is_overdue?'bi-exclamation-circle-fill':'bi-calendar2-check' %>"></i><% if(row.is_overdue){ %>Terlambat<% } else if(row.days_to_due!==null && row.days_to_due>=0){ %><%= row.days_to_due %> hari lagi<% }else{ %>Tanpa jatuh tempo<% } %></span>
@@ -120,19 +125,25 @@
         <div class="debt-money-grid"><div><span>Total</span><strong class="money">Rp <%= principal.toLocaleString('id-ID') %></strong></div><div><span>Terbayar</span><strong class="money paid">Rp <%= paid.toLocaleString('id-ID') %></strong></div><div class="remaining"><span>Sisa</span><strong class="money">Rp <%= remaining.toLocaleString('id-ID') %></strong></div></div>
         <div class="debt-progress-wrap"><div><span>Progres pembayaran</span><b><%= progress %>%</b></div><div class="debt-progress"><span style="width:<%= progress %>%"></span></div></div>
 
-        <div class="debt-detail-section">
-          <h4><i class="bi bi-receipt"></i>Rincian Pembelian</h4>
+        <div class="debt-tab-nav" role="tablist">
+          <button class="debt-tab-btn active" type="button" data-bs-toggle="pill" data-bs-target="#debtTabItems<%= row.id %>"><i class="bi bi-receipt"></i>Rincian<% if((row.items||[]).length){ %><b><%= row.items.length %></b><% } %></button>
+          <button class="debt-tab-btn" type="button" data-bs-toggle="pill" data-bs-target="#debtTabSchedule<%= row.id %>"><i class="bi bi-list-check"></i>Jadwal<% if((row.installments||[]).length){ %><b><%= row.installments.length %></b><% } %></button>
+          <button class="debt-tab-btn" type="button" data-bs-toggle="pill" data-bs-target="#debtTabHistory<%= row.id %>"><i class="bi bi-clock-history"></i>Riwayat<b><%= row.timeline.length %></b></button>
+        </div>
+
+        <div class="tab-content debt-tab-content">
+          <div class="tab-pane fade show active" id="debtTabItems<%= row.id %>">
           <% if(!(row.items||[]).length){ %><small class="text-muted">Data lama belum memiliki rincian item.</small><% } %>
           <% (row.items||[]).forEach(item=>{ %><div class="debt-breakdown-line"><span><%= item.item_name %><small><%= Number(item.quantity).toLocaleString('id-ID') %> × Rp <%= Number(item.unit_price).toLocaleString('id-ID') %></small></span><strong>Rp <%= Math.round(Number(item.quantity)*Number(item.unit_price)).toLocaleString('id-ID') %></strong></div><% }) %>
-        </div>
+          </div>
 
-        <div class="debt-detail-section">
-          <h4><i class="bi bi-list-check"></i>Jadwal <%= row.payment_method==='INSTALLMENT'?`${row.installment_months} bulan`:'Pembayaran' %></h4>
+          <div class="tab-pane fade" id="debtTabSchedule<%= row.id %>">
+            <div class="debt-tab-subhead">Jadwal <%= row.payment_method==='INSTALLMENT'?`${row.installment_months} bulan`:'Pembayaran' %></div>
+            <% if(!(row.installments||[]).length){ %><small class="text-muted">Tidak ada jadwal cicilan.</small><% } %>
           <% (row.installments||[]).forEach(item=>{ %><div class="debt-installment-line status-<%= item.status.toLowerCase() %>"><span><b><%= item.number %></b><%= item.dueDate %></span><strong>Rp <%= item.target.toLocaleString('id-ID') %><small><%= item.status==='PAID'?'Lunas':item.status==='PARTIAL'?`Sisa Rp ${item.remaining.toLocaleString('id-ID')}`:item.status==='OVERDUE'?'Terlambat':'Akan datang' %></small></strong></div><% }) %>
-        </div>
+          </div>
 
-        <div class="debt-detail-section">
-          <h4><i class="bi bi-clock-history"></i>Riwayat Transaksi (<%= row.timeline.length %>)</h4>
+          <div class="tab-pane fade" id="debtTabHistory<%= row.id %>">
           <div class="debt-timeline">
             <% row.timeline.forEach(entry => { const entryKey=entry.entryStatus.toLowerCase(); %>
             <div class="debt-timeline-item status-<%= entryKey %>">
@@ -158,6 +169,7 @@
             </div>
             <% }) %>
           </div>
+        </div>
         </div>
       </div>
       <div class="modal-footer">

@@ -1401,7 +1401,10 @@ html[data-theme="light"] .dashboard-v119 .command-kpi,html[data-theme="light"] .
    scrolling through stacked cards. */
 .debt-list-card .data-card-body{padding:0}
 .debt-table .debt-action-col{text-align:right}
-.debt-table td{vertical-align:top}
+.debt-table .debt-nominal-col{text-align:right}
+.debt-table td{vertical-align:top;padding-top:14px;padding-bottom:14px}
+.debt-list-card .table-responsive{max-height:min(72vh,680px);overflow-y:auto}
+.debt-table thead th{position:sticky;top:0;z-index:2}
 .debt-item.type-debt td:first-child{box-shadow:inset 3px 0 0 #5b94e6}
 .debt-item.type-receivable td:first-child{box-shadow:inset 3px 0 0 var(--success)}
 .debt-item.is-overdue{background:rgba(255,102,112,.045)}
@@ -1409,13 +1412,20 @@ html[data-theme="light"] .dashboard-v119 .command-kpi,html[data-theme="light"] .
 .debt-item .cell-sub i{margin-right:3px;color:var(--muted-2)}
 .debt-site{display:inline-block;margin-left:6px;padding:2px 6px;border:1px solid var(--line);border-radius:3px;color:var(--muted);font-size:.48rem;font-weight:700;vertical-align:middle}
 
-.debt-nominal-cell{min-width:175px}
-.debt-nominal-cell .debt-progress{margin-top:6px;width:120px;max-width:100%}
+.debt-party-cell{display:flex;align-items:flex-start;gap:10px}
+.debt-avatar{width:32px;height:32px;flex:0 0 32px;display:grid;place-items:center;border-radius:50%;font-family:var(--font-display);font-weight:800;font-size:.64rem;color:#fff;background:var(--muted);margin-top:1px}
+.debt-avatar.type-debt{background:#5b94e6}
+.debt-avatar.type-receivable{background:var(--success)}
+.debt-party-copy{min-width:0}
+
+.debt-nominal-cell{min-width:175px;text-align:right}
+.debt-nominal-cell .debt-progress{margin-top:6px;margin-left:auto;width:120px;max-width:100%}
 
 .debt-due-state{display:inline-flex;align-items:center;gap:5px;font-weight:750;font-size:.62rem}
 .debt-due-state.safe{color:var(--success)}.debt-due-state.danger{color:var(--danger)}
 
-.debt-status-badge{display:inline-flex;align-items:center;padding:3px 8px;border-radius:3px;font-size:.46rem;font-weight:800;letter-spacing:.03em;text-transform:uppercase}
+.debt-status-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:3px;font-size:.46rem;font-weight:800;letter-spacing:.03em;text-transform:uppercase}
+.debt-status-badge i{font-size:.56rem}
 .debt-status-badge.status-lunas{color:var(--success);background:rgba(49,211,154,.12)}
 .debt-status-badge.status-dicicil{color:#5b94e6;background:rgba(91,148,230,.12)}
 .debt-status-badge.status-terlambat{color:var(--danger);background:rgba(255,102,112,.12)}
@@ -1429,7 +1439,8 @@ html[data-theme="light"] .dashboard-v119 .command-kpi,html[data-theme="light"] .
 .debt-money-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:center;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel-2);overflow:hidden}
 .debt-money-grid>div{min-width:0;padding:9px 12px;border-right:1px solid var(--line)}.debt-money-grid>div:last-child{border-right:0}.debt-money-grid span{display:block;margin-bottom:4px;color:var(--muted);font-size:.44rem;font-weight:750;text-transform:uppercase;letter-spacing:.04em}.debt-money-grid strong{display:block;color:var(--text);font-size:.66rem;white-space:nowrap}.debt-money-grid strong.paid{color:var(--success)}.debt-money-grid .remaining{background:rgba(var(--brand-rgb),.05)}.debt-money-grid .remaining strong{color:var(--brand);font-size:.72rem}
 
-.debt-progress{height:4px;border-radius:999px;background:var(--panel-3);overflow:hidden}.debt-progress span{display:block;height:100%;border-radius:inherit;background:var(--brand)}
+.debt-progress{height:5px;border-radius:999px;background:var(--panel-3);overflow:hidden}.debt-progress span{display:block;height:100%;border-radius:inherit;background:var(--brand);transition:width .25s ease}
+.debt-progress.is-complete span{background:var(--success)}
 .debt-progress-wrap{margin:12px 0}.debt-progress-wrap>div:first-child{display:flex;justify-content:space-between;margin-bottom:5px;color:var(--muted);font-size:.46rem}.debt-progress-wrap b{color:var(--text)}
 
 .debt-breakdown-line,.debt-installment-line{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px dashed var(--line);font-size:.58rem}.debt-breakdown-line:last-child,.debt-installment-line:last-child{border-bottom:0}.debt-breakdown-line span small,.debt-installment-line strong small{display:block;margin-top:2px;color:var(--muted);font-size:.48rem}.debt-installment-line span{display:flex;align-items:center;gap:6px}.debt-installment-line span b{display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:var(--panel-3);color:var(--muted);font-size:.46rem}.debt-installment-line.status-paid strong small{color:var(--success)}.debt-installment-line.status-overdue strong small{color:var(--danger)}.debt-installment-line.status-partial strong small{color:var(--warning)}
@@ -1442,6 +1453,14 @@ html[data-theme="light"] .dashboard-v119 .command-kpi,html[data-theme="light"] .
 .debt-detail-section+.debt-detail-section{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
 .debt-detail-section h4{display:flex;align-items:center;gap:7px;margin:0 0 9px;color:var(--text);font-size:.62rem;font-weight:800}
 .debt-detail-section h4 i{color:var(--brand)}
+
+.debt-tab-nav{display:flex;gap:4px;margin:14px 0 12px;padding:3px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel-3)}
+.debt-tab-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:8px 10px;border:0;border-radius:calc(var(--radius) - 1px);background:transparent;color:var(--muted);font-size:.6rem;font-weight:750;cursor:pointer;transition:.15s}
+.debt-tab-btn:hover{color:var(--text)}
+.debt-tab-btn.active{background:var(--panel);color:var(--text)}
+.debt-tab-btn b{padding:1px 6px;border-radius:999px;background:var(--panel-3);color:var(--muted-2);font-size:.48rem;font-weight:800}
+.debt-tab-btn.active b{background:rgba(var(--brand-rgb),.14);color:var(--brand)}
+.debt-tab-subhead{margin-bottom:8px;color:var(--muted);font-size:.55rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
 
 .debt-timeline{display:grid;gap:0}
 .debt-timeline-item{position:relative;display:grid;grid-template-columns:16px 1fr;gap:10px;padding:9px 2px}
