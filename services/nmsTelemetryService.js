@@ -49,6 +49,18 @@ async function captureInterfaceTraffic(router) {
   return { routerId: router.id, interfaces: saved };
 }
 
+async function captureResourceSample(router) {
+  const info = await mt.testConnection(router);
+  const cpuLoad = Number(info?.['cpu-load']);
+  const freeMemory = number(info?.['free-memory']);
+  const totalMemory = number(info?.['total-memory']);
+  await db.execute(`INSERT INTO nms_resource_samples(router_id,cpu_load,free_memory,total_memory,uptime_seconds,board_name,version) VALUES(?,?,?,?,?,?,?)`,
+    [router.id, Number.isFinite(cpuLoad) ? cpuLoad : null, freeMemory || null, totalMemory || null, uptimeSeconds(info?.uptime) || null, info?.['board-name'] || null, info?.version || null]);
+  await db.execute(`UPDATE routers SET last_status='online',last_error=NULL,last_seen_at=NOW() WHERE id=?`, [router.id]);
+  await db.execute(`DELETE FROM nms_resource_samples WHERE router_id=? AND sampled_at < DATE_SUB(NOW(),INTERVAL 14 DAY)`, [router.id]);
+  return { routerId: router.id, cpuLoad: Number.isFinite(cpuLoad) ? cpuLoad : null, freeMemory, totalMemory };
+}
+
 async function capturePppoeSessions(router) {
   const active = await mt.listActive(router);
   const seen = new Set();
@@ -75,8 +87,11 @@ async function capturePppoeSessions(router) {
 }
 
 async function captureRouterTelemetry(router) {
-  const results = await Promise.allSettled([captureInterfaceTraffic(router), capturePppoeSessions(router)]);
-  return { routerId: router.id, traffic: results[0].status === 'fulfilled' ? results[0].value : { error: results[0].reason.message }, sessions: results[1].status === 'fulfilled' ? results[1].value : { error: results[1].reason.message } };
+  const results = await Promise.allSettled([captureInterfaceTraffic(router), capturePppoeSessions(router), captureResourceSample(router)]);
+  if (results[2].status === 'rejected') {
+    await db.execute(`UPDATE routers SET last_status='offline',last_error=? WHERE id=?`, [String(results[2].reason.message || 'Gagal terhubung').slice(0, 500), router.id]).catch(() => {});
+  }
+  return { routerId: router.id, traffic: results[0].status === 'fulfilled' ? results[0].value : { error: results[0].reason.message }, sessions: results[1].status === 'fulfilled' ? results[1].value : { error: results[1].reason.message }, resource: results[2].status === 'fulfilled' ? results[2].value : { error: results[2].reason.message } };
 }
 
 async function captureAllNmsTelemetry() {
@@ -105,6 +120,16 @@ async function getSessionHistory({ customerId, routerId, hours = 168 } = {}) {
   sql += ' ORDER BY h.last_seen_at DESC LIMIT 5000';
   const [rows] = await db.execute(sql, params);
   return rows;
+}
+
+async function getResourceTrend({ routerId, hours = 24 } = {}) {
+  const safeHours = Math.min(168, Math.max(1, Number(hours) || 24));
+  let sql = `SELECT router_id,sampled_at,cpu_load,free_memory,total_memory,uptime_seconds,board_name,version FROM nms_resource_samples WHERE sampled_at >= DATE_SUB(NOW(),INTERVAL ? HOUR)`;
+  const params = [safeHours];
+  if (routerId) { sql += ' AND router_id=?'; params.push(Number(routerId)); }
+  sql += ' ORDER BY sampled_at ASC LIMIT 10000';
+  const [rows] = await db.execute(sql, params);
+  return rows.map(row => ({ ...row, cpu_load: row.cpu_load === null ? null : Number(row.cpu_load), free_memory: number(row.free_memory), total_memory: number(row.total_memory) }));
 }
 
 function backupRoot() {
@@ -154,4 +179,4 @@ async function backupAllRouters(types) {
   return settled.flat();
 }
 
-module.exports = { uptimeSeconds, captureRouterTelemetry, captureAllNmsTelemetry, getTrafficTrend, getSessionHistory, runRouterBackup, backupAllRouters };
+module.exports = { uptimeSeconds, captureRouterTelemetry, captureAllNmsTelemetry, getTrafficTrend, getSessionHistory, getResourceTrend, captureResourceSample, runRouterBackup, backupAllRouters };

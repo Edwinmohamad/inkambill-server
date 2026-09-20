@@ -1,0 +1,45 @@
+<link rel="stylesheet" href="/css/monitoring.css?v=<%= assetVersion %>">
+<section class="mon-page" id="monApp" data-admin="<%= isAdmin?'1':'0' %>">
+  <div class="module-head">
+    <div><div class="module-kicker">INKAMNET · DASHBOARD MONITORING</div><h1>Monitoring ONT, MikroTik & OLT</h1><p>Kesehatan dan traffic jaringan real-time, langsung dari GenieACS, RouterOS REST, dan metadata OLT.</p></div>
+    <div class="module-actions">
+      <div class="seg" id="monSeg">
+        <button class="active" data-board="ont" type="button">ONT</button>
+        <button data-board="mikrotik" type="button">MikroTik</button>
+        <button data-board="olt" type="button">OLT</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="bento mon-skel" id="bento-ont"><div class="b-hero"><h4>Memuat...</h4></div></div>
+  <div class="bento mon-skel" id="bento-mikrotik" style="display:none"><div class="b-hero"><h4>Memuat...</h4></div></div>
+  <div class="bento mon-skel" id="bento-olt" style="display:none"><div class="b-hero"><h4>Memuat...</h4></div></div>
+</section>
+
+<!-- Modal aksi ONT: cari perangkat lalu jalankan Ping / Reboot / Ganti SSID / Ganti Password / Cek Redaman -->
+<div class="modal fade" id="ontActionModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+  <div class="modal-header"><div><div class="module-kicker">MONITORING ONT</div><h5 class="modal-title">Aksi ONT Pelanggan</h5></div><button class="btn-close" type="button" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <div class="mon-search-wrap">
+      <input class="form-control" id="ontSearchInput" placeholder="Cari nama pelanggan / serial number ONT...">
+      <div class="mon-search-results" id="ontSearchResults" hidden></div>
+    </div>
+    <div id="ontPickedWrap" hidden>
+      <div class="mon-device-picked">
+        <div><strong id="ontPickedName">-</strong><small id="ontPickedMeta">-</small></div>
+        <button type="button" class="btn-tech" id="ontPickedClear"><i class="bi bi-x-lg"></i></button>
+      </div>
+      <div class="mon-action-list">
+        <button type="button" id="ontActPing"><i class="bi bi-broadcast"></i>Test Ping</button>
+        <button type="button" id="ontActRedaman"><i class="bi bi-reception-4"></i>Cek Redaman</button>
+        <button type="button" id="ontActSsid"><i class="bi bi-wifi"></i>Ganti SSID</button>
+        <button type="button" id="ontActPassword"><i class="bi bi-key-fill"></i>Ganti Password</button>
+        <button type="button" id="ontActReboot" class="text-danger-soft" style="grid-column:1/-1"><i class="bi bi-power"></i>Reboot ONT</button>
+      </div>
+      <div class="mon-action-result" id="ontActResult" hidden></div>
+    </div>
+  </div>
+</div></div></div>
+
+<div class="nms-toast" id="monToast" hidden></div>
+<script src="/js/monitoring.js?v=<%= assetVersion %>"></script>

@@ -1,0 +1,57 @@
+<section>
+  <div class="module-head">
+    <div><div class="module-kicker">NETWORK INTEGRATION</div><h1>Registry OLT</h1><p>Kapasitas port PON dan status ONU per OLT, dihitung dari metadata jalur ONT yang sudah tercatat.</p></div>
+    <div class="module-actions"><a class="btn-tech" href="/monitoring"><i class="bi bi-grid-1x2-fill"></i>Dashboard Monitoring</a><% if(isAdmin){ %><button class="btn-tech primary" data-bs-toggle="modal" data-bs-target="#oltModal"><i class="bi bi-hdd-network-fill"></i>Daftarkan OLT</button><% } %></div>
+  </div>
+  <% const totalOnu=olts.reduce((a,o)=>a+o.onu_total,0); const totalCritical=olts.reduce((a,o)=>a+o.onu_critical,0); const totalOffline=olts.reduce((a,o)=>a+o.onu_offline,0); %>
+  <div class="metric-grid">
+    <article class="metric-card"><div class="metric-top"><span class="metric-label">Total OLT</span><span class="metric-icon"><i class="bi bi-hdd-network-fill"></i></span></div><strong><%= olts.length %></strong><small><%= olts.filter(o=>o.is_registered).length %> terdaftar lengkap</small></article>
+    <article class="metric-card"><div class="metric-top"><span class="metric-label">Total ONU</span><span class="metric-icon"><i class="bi bi-broadcast-pin"></i></span></div><strong><%= totalOnu %></strong><small>Terhubung ke seluruh OLT</small></article>
+    <article class="metric-card red"><div class="metric-top"><span class="metric-label">ONU Offline</span><span class="metric-icon"><i class="bi bi-wifi-off"></i></span></div><strong><%= totalOffline %></strong><small>Perlu dicek</small></article>
+    <article class="metric-card <%= totalCritical?'red':'green' %>"><div class="metric-top"><span class="metric-label">Redaman Kritis</span><span class="metric-icon"><i class="bi bi-reception-1"></i></span></div><strong><%= totalCritical %></strong><small>RX di bawah ambang aman</small></article>
+  </div>
+
+  <div class="data-card">
+    <div class="data-card-head"><div><h3>Daftar OLT & Utilisasi Port PON</h3><small>OLT yang muncul pada metadata ONT namun belum didaftarkan tetap tampil dengan kapasitas default 64 port/PON.</small></div></div>
+    <div class="table-responsive"><table class="app-table"><thead><tr><th>OLT</th><th>Vendor</th><th>IP Manajemen</th><th>Port PON Terpakai</th><th>ONU</th><th>Kondisi</th><th>Rata-rata RX</th><th>Action</th></tr></thead><tbody>
+      <% olts.forEach(o=>{ const bad=o.onu_offline+o.onu_critical; %><tr>
+        <td><span class="cell-main"><%= o.name %></span><% if(!o.is_registered){ %><span class="cell-sub text-warning">Belum terdaftar</span><% } %></td>
+        <td><%= o.vendor||'-' %></td>
+        <td><code class="text-purple"><%= o.management_ip||'-' %></code></td>
+        <td><%= o.pon_ports_used %> port aktif <small>(kapasitas <%= o.pon_port_capacity %> ONU/port)</small></td>
+        <td><%= o.onu_online %>/<%= o.onu_total %> online<% if(o.onu_no_port){ %><span class="cell-sub">· <%= o.onu_no_port %> tanpa data port</span><% } %></td>
+        <td><span class="status-badge <%= bad?(o.onu_critical?'red':'orange'):'green' %>"><%= bad?(o.onu_critical?'KRITIS':'PERHATIAN'):'NORMAL' %></span></td>
+        <td><%= o.avg_rx!==null?o.avg_rx+' dBm':'-' %></td>
+        <td><div class="router-action-group">
+          <a class="btn-tech" href="/acs?q=<%= encodeURIComponent(o.name) %>" title="Lihat ONT di OLT ini"><i class="bi bi-search"></i>ONT</a>
+          <% if(isAdmin){ %><button type="button" class="btn-tech" data-olt-edit data-id="<%= o.id %>" data-name="<%= o.name %>" data-vendor="<%= o.vendor||'' %>" data-ip="<%= o.management_ip||'' %>" data-site="<%= o.site_id||'' %>" data-capacity="<%= o.pon_port_capacity %>" data-notes="<%= o.notes||'' %>" data-bs-toggle="modal" data-bs-target="#oltEditModal"><i class="bi bi-pencil-square"></i>Edit</button>
+          <% if(o.is_registered){ %><form method="post" action="/olt/<%= o.id %>/delete" onsubmit="return confirm('Hapus registrasi OLT <%= o.name %>? Metadata ONT tidak akan terhapus.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn-tech danger" title="Hapus registrasi"><i class="bi bi-trash3"></i></button></form><% } %><% } %>
+        </div></td>
+      </tr><% }) %>
+      <% if(!olts.length){ %><tr><td colspan="8"><div class="empty-state"><i class="bi bi-hdd-network"></i><strong>Belum ada data OLT</strong><small>OLT akan muncul otomatis setelah metadata jalur ONT (OLT/PON/ODP) diisi di halaman Monitoring ONT.</small></div></td></tr><% } %>
+    </tbody></table></div>
+  </div>
+</section>
+
+<% if(isAdmin){ %>
+<div class="modal fade" id="oltModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><form class="modal-content" method="post" action="/olt"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><div class="modal-header"><h5 class="modal-title">Daftarkan OLT</h5><button class="btn-close" type="button" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="row g-3">
+  <div class="col-12"><label class="form-label">Nama OLT</label><input class="form-control" name="name" required placeholder="Sesuai nama yang dipakai di metadata jalur ONT"></div>
+  <div class="col-6"><label class="form-label">Vendor</label><input class="form-control" name="vendor" placeholder="ZTE / Huawei / FiberHome"></div>
+  <div class="col-6"><label class="form-label">IP Manajemen</label><input class="form-control" name="management_ip" placeholder="192.168.x.x (opsional)"></div>
+  <div class="col-6"><label class="form-label">Site</label><select class="form-select" name="site_id"><option value="">- Tidak diset -</option><% sites.forEach(s=>{ %><option value="<%= s.id %>"><%= s.code %> · <%= s.name %></option><% }) %></select></div>
+  <div class="col-6"><label class="form-label">Kapasitas per Port PON</label><input class="form-control" type="number" name="pon_port_capacity" value="64" min="1" max="4096"></div>
+  <div class="col-12"><label class="form-label">Catatan</label><textarea class="form-control" name="notes" rows="2"></textarea></div>
+</div></div><div class="modal-footer"><button class="btn-tech primary"><i class="bi bi-check2-circle"></i>Simpan OLT</button></div></form></div></div>
+
+<div class="modal fade" id="oltEditModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><form class="modal-content" method="post" id="oltEditForm"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><div class="modal-header"><h5 class="modal-title">Edit OLT</h5><button class="btn-close" type="button" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="row g-3">
+  <div class="col-12"><label class="form-label">Nama OLT</label><input class="form-control" name="name" id="oltEditName" required></div>
+  <div class="col-6"><label class="form-label">Vendor</label><input class="form-control" name="vendor" id="oltEditVendor"></div>
+  <div class="col-6"><label class="form-label">IP Manajemen</label><input class="form-control" name="management_ip" id="oltEditIp"></div>
+  <div class="col-6"><label class="form-label">Site</label><select class="form-select" name="site_id" id="oltEditSite"><option value="">- Tidak diset -</option><% sites.forEach(s=>{ %><option value="<%= s.id %>"><%= s.code %> · <%= s.name %></option><% }) %></select></div>
+  <div class="col-6"><label class="form-label">Kapasitas per Port PON</label><input class="form-control" type="number" name="pon_port_capacity" id="oltEditCapacity" min="1" max="4096"></div>
+  <div class="col-12"><label class="form-label">Catatan</label><textarea class="form-control" name="notes" id="oltEditNotes" rows="2"></textarea></div>
+</div></div><div class="modal-footer"><button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button><button class="btn-tech primary"><i class="bi bi-check2-circle"></i>Simpan Perubahan</button></div></form></div></div>
+<script>
+(()=>{document.querySelectorAll('[data-olt-edit]').forEach(btn=>btn.addEventListener('click',()=>{const f=document.getElementById('oltEditForm');f.action=`/olt/${btn.dataset.id}/update`;f.elements.name.value=btn.dataset.name||'';f.elements.vendor.value=btn.dataset.vendor||'';f.elements.management_ip.value=btn.dataset.ip||'';f.elements.site_id.value=btn.dataset.site||'';f.elements.pon_port_capacity.value=btn.dataset.capacity||64;f.elements.notes.value=btn.dataset.notes||'';}));})();
+</script>
+<% } %>

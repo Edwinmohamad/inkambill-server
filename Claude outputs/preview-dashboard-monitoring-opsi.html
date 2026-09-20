@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Preview: Opsi Dashboard Monitoring ONT / MikroTik / OLT</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --radius:10px;--radius-sm:8px;
+  --brand:#765fd7;--brand-2:#a78bfa;--brand-rgb:118,95,215;
+  --success:#34c759;--warning:#ff9f0a;--danger:#ff453a;--info:#0a84ff;
+  --font:"Geist",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+html[data-theme="dark"]{
+  --bg:#0b0b0d;--bg-2:#0e0e10;--panel:#18181b;--panel-2:#1c1c1f;--panel-3:#212124;
+  --line:rgba(255,255,255,.07);--line-2:rgba(255,255,255,.12);
+  --text:#f5f5f7;--muted:#9a9aa0;--muted-2:#6e6e73;
+  --shadow-soft:0 12px 34px rgba(0,0,0,.22);--shadow:0 24px 70px rgba(0,0,0,.35);
+}
+html[data-theme="light"]{
+  --bg:#f5f5f7;--bg-2:#f0f0f2;--panel:#ffffff;--panel-2:#f5f5f7;--panel-3:#ececee;
+  --line:#e5e5ea;--line-2:#d8d8dc;
+  --text:#1d1d1f;--muted:#6e6e73;--muted-2:#8e8e93;
+  --shadow-soft:0 8px 22px rgba(0,0,0,.06);--shadow:0 24px 60px rgba(0,0,0,.10);
+}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;transition:background .25s,color .25s}
+a{color:inherit;text-decoration:none}
+.topbar{position:sticky;top:0;z-index:40;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 22px;background:var(--bg);border-bottom:1px solid var(--line)}
+.topbar h1{font-size:.95rem;margin:0;font-weight:700}
+.topbar-right{display:flex;align-items:center;gap:10px}
+.seg{display:inline-flex;padding:3px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);gap:2px}
+.seg button{height:30px;padding:0 14px;border:0;border-radius:999px;background:transparent;color:var(--muted);font-size:.68rem;font-weight:700;cursor:pointer}
+.seg button.active{background:var(--panel);color:var(--text);box-shadow:var(--shadow-soft)}
+.theme-toggle{height:32px;padding:0 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--text);font-size:.66rem;font-weight:700;cursor:pointer}
+.wrap{max-width:1280px;margin:0 auto;padding:24px 22px 60px}
+.opt-label{color:var(--muted);font-size:.72rem;margin:0 0 16px;line-height:1.6}
+.opt-label b{color:var(--text)}
+.opt{display:none}
+.opt.active{display:block}
+
+/* shared bits */
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.kpi{padding:15px 16px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);box-shadow:var(--shadow-soft)}
+.kpi span{display:block;color:var(--muted);font-size:.64rem;font-weight:650}
+.kpi strong{display:block;font-size:1.15rem;margin-top:11px}
+.kpi small{display:block;color:var(--muted-2);font-size:.58rem;margin-top:3px}
+.kpi.warn strong{color:var(--warning)}
+.kpi.bad strong{color:var(--danger)}
+.kpi.good strong{color:var(--success)}
+
+.panel{border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);box-shadow:var(--shadow-soft);overflow:hidden}
+.panel-head{padding:13px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+.panel-head h3{margin:0;font-size:.82rem;display:flex;align-items:center;gap:8px}
+.panel-head small{color:var(--muted);font-size:.6rem}
+.pill{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;font-size:.56rem;font-weight:700}
+.pill.success{color:var(--success);background:rgba(52,199,89,.14)}
+.pill.warning{color:var(--warning);background:rgba(255,159,10,.14)}
+.pill.danger{color:var(--danger);background:rgba(255,69,58,.14)}
+.pill.info{color:var(--info);background:rgba(10,132,255,.14)}
+.pill.muted{color:var(--muted);background:var(--panel-3)}
+
+.inset-row{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.inset-row:last-child{border-bottom:0}
+.inset-row:hover{background:var(--panel-2)}
+.avatar{width:30px;height:30px;flex:0 0 30px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:.6rem;color:#fff}
+.row-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.row-title{font-size:.74rem;font-weight:650}
+.row-sub{font-size:.6rem;color:var(--muted)}
+.row-trail{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.icon-btn{width:28px;height:28px;border:0;background:var(--panel-3);color:var(--muted);border-radius:8px;display:grid;place-items:center;cursor:pointer;font-size:.68rem}
+.icon-btn:hover{color:var(--text);background:var(--line-2)}
+.icon-btn.primary{background:rgba(var(--brand-rgb),.16);color:var(--brand-2)}
+.icon-btn.danger{background:rgba(255,69,58,.12);color:var(--danger)}
+
+.ring{--p:0;width:52px;height:52px;border-radius:50%;position:relative;display:grid;place-items:center;background:conic-gradient(var(--brand) calc(var(--p)*1%),var(--panel-3) 0);flex:0 0 auto}
+.ring::after{content:"";position:absolute;inset:5px;border-radius:50%;background:var(--panel)}
+.ring span{position:relative;z-index:2;font-weight:800;font-size:.58rem}
+.ring.lg{width:120px;height:120px}
+.ring.lg::after{inset:12px}
+.ring.lg span{font-size:1.15rem}
+.ring.good{background:conic-gradient(var(--success) calc(var(--p)*1%),var(--panel-3) 0)}
+.ring.warn{background:conic-gradient(var(--warning) calc(var(--p)*1%),var(--panel-3) 0)}
+.ring.bad{background:conic-gradient(var(--danger) calc(var(--p)*1%),var(--panel-3) 0)}
+
+.bar-row{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.bar-row:last-child{border-bottom:0}
+.bar-row .row-title{min-width:120px}
+.bar-track{flex:1;height:8px;border-radius:999px;background:var(--panel-3);overflow:hidden}
+.bar-track span{display:block;height:100%;border-radius:inherit;background:var(--brand)}
+.bar-track.warn span{background:var(--warning)}
+.bar-track.bad span{background:var(--danger)}
+.bar-num{min-width:70px;text-align:right;font-size:.64rem;color:var(--muted);font-weight:650}
+
+.spark{display:flex;align-items:flex-end;gap:2px;height:26px}
+.spark i{display:block;width:4px;border-radius:2px;background:var(--info)}
+
+/* ===== OPTION A: command center grid ===== */
+.a-grid{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:12px}
+@media(max-width:1000px){.a-grid{grid-template-columns:1fr}}
+
+/* ===== OPTION B: master-detail split ===== */
+.b-shell{display:grid;grid-template-columns:300px 1fr;gap:14px;align-items:flex-start}
+.b-tabs{display:flex;gap:4px;padding:10px;border-bottom:1px solid var(--line)}
+.b-tabs button{flex:1;height:30px;border:0;border-radius:8px;background:transparent;color:var(--muted);font-size:.64rem;font-weight:700;cursor:pointer}
+.b-tabs button.active{background:var(--panel-3);color:var(--text)}
+.b-list .inset-row{cursor:pointer}
+.b-list .inset-row.selected{background:rgba(var(--brand-rgb),.10);border-left:2px solid var(--brand)}
+.b-detail{padding:22px}
+.b-detail-head{display:flex;align-items:center;gap:18px;margin-bottom:20px}
+.b-detail-head h2{margin:0 0 4px;font-size:1.05rem}
+.b-detail-head p{margin:0;color:var(--muted);font-size:.68rem}
+.quick-actions{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}
+.qa-btn{padding:14px 10px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel-2);color:var(--text);display:flex;flex-direction:column;align-items:center;gap:7px;font-size:.64rem;font-weight:650;cursor:pointer}
+.qa-btn:hover{border-color:var(--line-2);transform:translateY(-1px)}
+.qa-btn i{font-size:1.05rem;color:var(--brand-2)}
+.qa-btn.danger i{color:var(--danger)}
+.detail-meta{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px}
+.detail-meta div{padding:12px 14px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--panel-2)}
+.detail-meta span{display:block;color:var(--muted);font-size:.6rem;font-weight:650}
+.detail-meta strong{display:block;margin-top:5px;font-size:.78rem}
+
+/* ===== OPTION C: full-width segmented sections ===== */
+.c-seg{margin-bottom:16px}
+.c-cards{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+@media(max-width:900px){.c-cards{grid-template-columns:1fr}}
+.router-card{padding:16px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);box-shadow:var(--shadow-soft)}
+.router-card-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
+.router-card-head strong{font-size:.82rem;display:block}
+.router-card-head small{color:var(--muted);font-size:.6rem}
+.router-metrics{display:flex;gap:16px;align-items:center}
+.router-metrics .ring{width:64px;height:64px}
+.router-metrics .ring::after{inset:6px}
+.router-metrics .ring span{font-size:.66rem}
+.traffic-line{display:flex;justify-content:space-between;font-size:.64rem;color:var(--muted);margin-top:4px}
+.traffic-line b{color:var(--text)}
+
+.foot-note{margin-top:22px;padding:14px 16px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel-2);color:var(--muted);font-size:.68rem;line-height:1.6}
+
+.ios-backdrop{position:fixed;inset:0;z-index:999;display:none;place-items:center;padding:20px;background:rgba(0,0,0,.32);backdrop-filter:blur(6px)}
+.ios-backdrop.show{display:grid}
+.ios-card{width:min(320px,100%);border-radius:16px;background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);overflow:hidden}
+.ios-body{padding:20px 18px 16px;text-align:center}
+.ios-body h4{margin:0 0 6px;font-size:.84rem}
+.ios-body p{margin:0;font-size:.7rem;color:var(--muted);line-height:1.5}
+.ios-actions{display:flex;border-top:1px solid var(--line)}
+.ios-btn{flex:1;height:44px;border:0;background:transparent;font-size:.74rem;font-weight:600;color:var(--brand);cursor:pointer}
+.ios-btn.cancel{border-right:1px solid var(--line);color:var(--text);font-weight:500}
+
+/* ===== OPTION D: bento grid (benar-benar berbeda dari A/B/C) ===== */
+.bento{display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:112px;gap:12px}
+.bento>div{border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);box-shadow:var(--shadow-soft);padding:16px;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden}
+.bento .b-hero{grid-column:span 2;grid-row:span 2;background:linear-gradient(155deg,rgba(var(--brand-rgb),.16),var(--panel) 60%)}
+.bento .b-hero strong{font-size:1.6rem}
+.bento .b-wide{grid-column:span 2}
+.bento .b-tall{grid-row:span 2}
+.bento h4{margin:0;font-size:.68rem;color:var(--muted);font-weight:650}
+.bento strong{font-size:1.05rem}
+.bento small{color:var(--muted-2);font-size:.58rem}
+.bento .mini-list{display:flex;flex-direction:column;gap:6px;overflow:hidden}
+.bento .mini-list div{display:flex;justify-content:space-between;font-size:.62rem;color:var(--text)}
+.bento .mini-list span{color:var(--muted)}
+.bento .action-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.bento .action-grid button{border:1px solid var(--line);background:var(--panel-2);color:var(--text);border-radius:8px;font-size:.58rem;font-weight:700;padding:6px;cursor:pointer}
+@media(max-width:900px){.bento{grid-template-columns:repeat(2,1fr)}.bento .b-hero{grid-column:span 2}}
+
+/* ===== OPTION B2: kartu grid + detail bottom sheet (variasi Opsi B) ===== */
+.card-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+@media(max-width:900px){.card-grid{grid-template-columns:repeat(2,1fr)}}
+.device-card{border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);box-shadow:var(--shadow-soft);padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:10px;text-align:center;align-items:center}
+.device-card:hover{border-color:var(--line-2);transform:translateY(-2px)}
+.device-card .row-title{font-size:.7rem}
+.device-card .row-sub{font-size:.58rem}
+.sheet-backdrop{position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.32);backdrop-filter:blur(4px);opacity:0;visibility:hidden;transition:opacity .2s ease}
+.sheet-backdrop.show{opacity:1;visibility:visible}
+.sheet{position:fixed;left:0;right:0;bottom:0;max-height:78vh;overflow-y:auto;background:var(--panel);border-top:1px solid var(--line);border-radius:20px 20px 0 0;box-shadow:var(--shadow);transform:translateY(100%);transition:transform .28s cubic-bezier(.2,.9,.3,1.1);z-index:501}
+.sheet.show{transform:translateY(0)}
+.sheet-handle{display:flex;justify-content:center;padding:10px}
+.sheet-handle span{width:36px;height:4px;border-radius:999px;background:var(--line-2)}
+.sheet-body{padding:4px 22px 26px}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>Preview Dashboard Monitoring &mdash; ONT / MikroTik / OLT</h1>
+  <div class="topbar-right">
+    <div class="seg" id="optSeg">
+      <button data-opt="a">Opsi A &middot; Command Center</button>
+      <button data-opt="b">Opsi B &middot; Master-Detail</button>
+      <button data-opt="c">Opsi C &middot; Tab per Kategori</button>
+      <button data-opt="b2">Opsi B2 &middot; Kartu + Detail Bawah</button>
+      <button class="active" data-opt="d">Opsi D &middot; Bento Grid ★ dipilih</button>
+    </div>
+    <button class="theme-toggle" onclick="toggleTheme()"><span id="themeIcon">☀</span> Ganti tema</button>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <!-- ============ OPTION A ============ -->
+  <div class="opt" id="opt-a">
+    <p class="opt-label"><b>Opsi A &mdash; Command Center:</b> satu layar, tiga panel berdampingan (ONT / MikroTik / OLT) + KPI strip di atas. Cocok untuk dipasang permanen di layar NOC atau dilihat sekali untuk tahu semua kondisi tanpa klik apa pun.</p>
+
+    <div class="kpi-row">
+      <div class="kpi good"><span>ONT Online</span><strong>842 / 861</strong><small>19 offline</small></div>
+      <div class="kpi warn"><span>Redaman Kritis</span><strong>7 ONT</strong><small>RX &le; -28 dBm</small></div>
+      <div class="kpi good"><span>Router Online</span><strong>14 / 14</strong><small>Semua site normal</small></div>
+      <div class="kpi"><span>OLT PON Utilization</span><strong>68%</strong><small>rata-rata seluruh port</small></div>
+    </div>
+
+    <div class="a-grid">
+      <div class="panel">
+        <div class="panel-head"><h3>📶 ONT Pelanggan</h3><small>861 perangkat</small></div>
+        <div class="inset-row">
+          <span class="avatar" style="background:#5b94e6">T</span>
+          <div class="row-main"><span class="row-title">Toko Jaya Makmur</span><span class="row-sub">RX -19 dBm &middot; PPPoE toko.jaya</span></div>
+          <div class="row-trail"><span class="pill success">Normal</span></div>
+        </div>
+        <div class="inset-row">
+          <span class="avatar" style="background:var(--danger)">A</span>
+          <div class="row-main"><span class="row-title">Ahmad Fauzi</span><span class="row-sub">RX -29.4 dBm &middot; PPPoE ahmad.f</span></div>
+          <div class="row-trail"><span class="pill danger">Kritis</span><button class="icon-btn" title="Ping">📡</button><button class="icon-btn primary" title="Reboot">⟲</button></div>
+        </div>
+        <div class="inset-row">
+          <span class="avatar" style="background:var(--warning)">R</span>
+          <div class="row-main"><span class="row-title">Rumah Bu Rina</span><span class="row-sub">RX -25.8 dBm &middot; PPPoE rina.rumah</span></div>
+          <div class="row-trail"><span class="pill warning">Waspada</span><button class="icon-btn" title="Ping">📡</button></div>
+        </div>
+        <div class="inset-row">
+          <span class="avatar" style="background:var(--muted-2)">?</span>
+          <div class="row-main"><span class="row-title">ONT belum terhubung</span><span class="row-sub">Serial ZTE-8821 &middot; 3 hari offline</span></div>
+          <div class="row-trail"><span class="pill muted">Offline</span></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>🛜 MikroTik Router</h3><small>14 router</small></div>
+        <div class="inset-row">
+          <div class="ring good" style="--p:22"><span>22%</span></div>
+          <div class="row-main"><span class="row-title">RB-CDS-Core01</span><span class="row-sub">↓ 84 Mbps &middot; ↑ 21 Mbps</span></div>
+          <div class="row-trail"><span class="pill success">Online</span></div>
+        </div>
+        <div class="inset-row">
+          <div class="ring warn" style="--p:71"><span>71%</span></div>
+          <div class="row-main"><span class="row-title">RB-KBG-Edge02</span><span class="row-sub">↓ 340 Mbps &middot; ↑ 92 Mbps</span></div>
+          <div class="row-trail"><span class="pill warning">CPU tinggi</span></div>
+        </div>
+        <div class="inset-row">
+          <div class="ring good" style="--p:35"><span>35%</span></div>
+          <div class="row-main"><span class="row-title">RB-GLOBAL-Distro01</span><span class="row-sub">↓ 156 Mbps &middot; ↑ 44 Mbps</span></div>
+          <div class="row-trail"><span class="pill success">Online</span></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>🗄 OLT</h3><small>2 chassis &middot; 8 PON port</small></div>
+        <div class="bar-row"><span class="row-title">OLT-CDS PON 1/1</span><div class="bar-track"><span style="width:66%"></span></div><span class="bar-num">42/64 ONU</span></div>
+        <div class="bar-row"><span class="row-title">OLT-CDS PON 1/2</span><div class="bar-track warn"><span style="width:88%"></span></div><span class="bar-num">56/64 ONU</span></div>
+        <div class="bar-row"><span class="row-title">OLT-KBG PON 1/1</span><div class="bar-track"><span style="width:40%"></span></div><span class="bar-num">26/64 ONU</span></div>
+        <div class="bar-row"><span class="row-title">OLT-KBG PON 1/2</span><div class="bar-track bad"><span style="width:97%"></span></div><span class="bar-num">62/64 ONU &middot; hampir penuh</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ OPTION B ============ -->
+  <div class="opt" id="opt-b">
+    <p class="opt-label"><b>Opsi B &mdash; Master-Detail:</b> daftar perangkat di kiri (bisa cari/filter), detail + aksi lengkap di kanan &mdash; ala Mail/System Settings macOS. Klik tab ONT/MikroTik/OLT untuk ganti kategori, lalu klik baris mana pun di kiri &mdash; panel kanan ganti isi &amp; tombol aksinya otomatis.</p>
+
+    <div class="b-shell">
+      <div class="panel b-list">
+        <div class="b-tabs" id="bTabs">
+          <button class="active" data-cat="ont">ONT</button>
+          <button data-cat="mikrotik">MikroTik</button>
+          <button data-cat="olt">OLT</button>
+        </div>
+        <div id="bListOnt">
+          <div class="inset-row selected" onclick="selectRow(this,'ont1')">
+            <span class="avatar" style="background:var(--danger)">A</span>
+            <div class="row-main"><span class="row-title">Ahmad Fauzi</span><span class="row-sub">RX -29.4 dBm</span></div>
+            <span class="pill danger">Kritis</span>
+          </div>
+          <div class="inset-row" onclick="selectRow(this,'ont2')">
+            <span class="avatar" style="background:#5b94e6">T</span>
+            <div class="row-main"><span class="row-title">Toko Jaya Makmur</span><span class="row-sub">RX -19 dBm</span></div>
+            <span class="pill success">Normal</span>
+          </div>
+          <div class="inset-row" onclick="selectRow(this,'ont3')">
+            <span class="avatar" style="background:var(--warning)">R</span>
+            <div class="row-main"><span class="row-title">Rumah Bu Rina</span><span class="row-sub">RX -25.8 dBm</span></div>
+            <span class="pill warning">Waspada</span>
+          </div>
+        </div>
+        <div id="bListMikrotik" style="display:none">
+          <div class="inset-row selected" onclick="selectRow(this,'mikro1')">
+            <span class="avatar" style="background:var(--warning)">R2</span>
+            <div class="row-main"><span class="row-title">RB-KBG-Edge02</span><span class="row-sub">CPU 71%</span></div>
+            <span class="pill warning">CPU tinggi</span>
+          </div>
+          <div class="inset-row" onclick="selectRow(this,'mikro2')">
+            <span class="avatar" style="background:var(--success)">R1</span>
+            <div class="row-main"><span class="row-title">RB-CDS-Core01</span><span class="row-sub">CPU 22%</span></div>
+            <span class="pill success">Normal</span>
+          </div>
+        </div>
+        <div id="bListOlt" style="display:none">
+          <div class="inset-row selected" onclick="selectRow(this,'olt1')">
+            <span class="avatar" style="background:var(--danger)">P2</span>
+            <div class="row-main"><span class="row-title">OLT-KBG PON 1/2</span><span class="row-sub">62/64 ONU</span></div>
+            <span class="pill danger">Hampir penuh</span>
+          </div>
+          <div class="inset-row" onclick="selectRow(this,'olt2')">
+            <span class="avatar" style="background:var(--success)">P1</span>
+            <div class="row-main"><span class="row-title">OLT-KBG PON 1/1</span><span class="row-sub">26/64 ONU</span></div>
+            <span class="pill success">Normal</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel b-detail" id="bDetail">
+        <!-- konten diisi ulang oleh JS deviceData saat baris di kiri diklik -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ OPTION C ============ -->
+  <div class="opt" id="opt-c">
+    <p class="opt-label"><b>Opsi C &mdash; Tab per Kategori:</b> satu halaman penuh per kategori, pindah lewat segmented control &mdash; kepadatan info paling tinggi per kategori, mirip pola tab Rincian/Jadwal/Riwayat yang sudah ada di halaman Piutang.</p>
+
+    <div class="seg c-seg" id="cSeg">
+      <button class="active" data-c="ont">ONT</button>
+      <button data-c="mikrotik">MikroTik</button>
+      <button data-c="olt">OLT</button>
+    </div>
+
+    <div id="c-ont">
+      <div class="kpi-row">
+        <div class="kpi good"><span>Online</span><strong>842</strong><small>dari 861 ONT</small></div>
+        <div class="kpi warn"><span>Waspada</span><strong>12</strong><small>RX -25 s/d -28 dBm</small></div>
+        <div class="kpi bad"><span>Kritis</span><strong>7</strong><small>RX &le; -28 dBm</small></div>
+        <div class="kpi"><span>Offline</span><strong>19</strong><small>&gt;10 menit tanpa inform</small></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>Daftar ONT</h3><small>diurutkan: kritis &rarr; waspada &rarr; offline &rarr; normal</small></div>
+        <div class="inset-row">
+          <span class="avatar" style="background:var(--danger)">A</span>
+          <div class="row-main"><span class="row-title">Ahmad Fauzi</span><span class="row-sub">RX -29.4 dBm &middot; ZTE F670L</span></div>
+          <div class="row-trail"><span class="pill danger">Kritis</span><button class="icon-btn" title="Ping">📡</button><button class="icon-btn primary" title="Reboot">⟲</button><button class="icon-btn" title="Lainnya">⋯</button></div>
+        </div>
+        <div class="inset-row">
+          <span class="avatar" style="background:var(--warning)">R</span>
+          <div class="row-main"><span class="row-title">Rumah Bu Rina</span><span class="row-sub">RX -25.8 dBm &middot; Huawei HG8245</span></div>
+          <div class="row-trail"><span class="pill warning">Waspada</span><button class="icon-btn" title="Ping">📡</button><button class="icon-btn" title="Lainnya">⋯</button></div>
+        </div>
+        <div class="inset-row">
+          <span class="avatar" style="background:#5b94e6">T</span>
+          <div class="row-main"><span class="row-title">Toko Jaya Makmur</span><span class="row-sub">RX -19 dBm &middot; ZTE F609</span></div>
+          <div class="row-trail"><span class="pill success">Normal</span><button class="icon-btn" title="Lainnya">⋯</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="c-mikrotik" style="display:none">
+      <div class="c-cards">
+        <div class="router-card">
+          <div class="router-card-head"><div><strong>RB-KBG-Edge02</strong><small>RouterOS 7.15 &middot; uptime 41 hari</small></div><span class="pill warning">CPU tinggi</span></div>
+          <div class="router-metrics">
+            <div class="ring warn" style="--p:71"><span>71%</span></div>
+            <div style="flex:1">
+              <div class="traffic-line"><span>Traffic ether1-WAN</span><b>↓340 / ↑92 Mbps</b></div>
+              <div class="spark" style="margin-top:8px" data-spark="18,22,30,45,60,71,65,58,44,38,50,71"></div>
+              <div class="traffic-line"><span>RAM</span><b>612 / 1024 MB</b></div>
+            </div>
+          </div>
+        </div>
+        <div class="router-card">
+          <div class="router-card-head"><div><strong>RB-CDS-Core01</strong><small>RouterOS 7.15 &middot; uptime 96 hari</small></div><span class="pill success">Normal</span></div>
+          <div class="router-metrics">
+            <div class="ring good" style="--p:22"><span>22%</span></div>
+            <div style="flex:1">
+              <div class="traffic-line"><span>Traffic ether1-WAN</span><b>↓84 / ↑21 Mbps</b></div>
+              <div class="spark" style="margin-top:8px" data-spark="10,12,15,20,18,22,19,17,14,16,18,22"></div>
+              <div class="traffic-line"><span>RAM</span><b>210 / 1024 MB</b></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="c-olt" style="display:none">
+      <div class="panel">
+        <div class="panel-head"><h3>OLT-KBG</h3><small>chassis temp 41&deg;C &middot; uptime 120 hari</small></div>
+        <div class="bar-row"><span class="row-title">PON 1/1</span><div class="bar-track"><span style="width:40%"></span></div><span class="bar-num">26/64 ONU</span></div>
+        <div class="bar-row"><span class="row-title">PON 1/2</span><div class="bar-track bad"><span style="width:97%"></span></div><span class="bar-num">62/64 ONU</span></div>
+        <div class="bar-row"><span class="row-title">PON 1/3</span><div class="bar-track"><span style="width:55%"></span></div><span class="bar-num">35/64 ONU</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ OPTION B2 (variasi Opsi B): kartu + detail bottom sheet ============ -->
+  <div class="opt" id="opt-b2">
+    <p class="opt-label"><b>Opsi B2 &mdash; Kartu + Detail di Bawah:</b> variasi dari Opsi B &mdash; tetap konsepnya "pilih perangkat &rarr; lihat detail & aksi", tapi daftarnya jadi kartu grid (bukan list), dan detailnya muncul sebagai sheet yang naik dari bawah layar (ala aplikasi peta/maps di HP) alih-alih panel di samping. Cocok kalau layar kerja kamu lebih sering di tablet/laptop kecil.</p>
+    <div class="seg" id="b2Tabs">
+      <button class="active" data-cat="ont">ONT</button>
+      <button data-cat="mikrotik">MikroTik</button>
+      <button data-cat="olt">OLT</button>
+    </div>
+    <div class="card-grid" id="b2CardsOnt" style="margin-top:14px">
+      <div class="device-card" onclick="openSheet('ont1')"><span class="avatar" style="background:var(--danger)">A</span><span class="row-title">Ahmad Fauzi</span><span class="row-sub">RX -29.4 dBm</span><span class="pill danger">Kritis</span></div>
+      <div class="device-card" onclick="openSheet('ont2')"><span class="avatar" style="background:#5b94e6">T</span><span class="row-title">Toko Jaya Makmur</span><span class="row-sub">RX -19 dBm</span><span class="pill success">Normal</span></div>
+      <div class="device-card" onclick="openSheet('ont3')"><span class="avatar" style="background:var(--warning)">R</span><span class="row-title">Rumah Bu Rina</span><span class="row-sub">RX -25.8 dBm</span><span class="pill warning">Waspada</span></div>
+    </div>
+    <div class="card-grid" id="b2CardsMikrotik" style="margin-top:14px;display:none">
+      <div class="device-card" onclick="openSheet('mikro1')"><div class="ring warn" style="--p:71"><span>71%</span></div><span class="row-title">RB-KBG-Edge02</span><span class="pill warning">CPU tinggi</span></div>
+      <div class="device-card" onclick="openSheet('mikro2')"><div class="ring good" style="--p:22"><span>22%</span></div><span class="row-title">RB-CDS-Core01</span><span class="pill success">Normal</span></div>
+    </div>
+    <div class="card-grid" id="b2CardsOlt" style="margin-top:14px;display:none">
+      <div class="device-card" onclick="openSheet('olt1')"><div class="ring bad" style="--p:97"><span>97%</span></div><span class="row-title">OLT-KBG PON 1/2</span><span class="pill danger">Hampir penuh</span></div>
+      <div class="device-card" onclick="openSheet('olt2')"><div class="ring good" style="--p:40"><span>40%</span></div><span class="row-title">OLT-KBG PON 1/1</span><span class="pill success">Normal</span></div>
+    </div>
+  </div>
+
+  <!-- ============ OPTION D: bento grid (gaya baru) ============ -->
+  <div class="opt active" id="opt-d">
+    <p class="opt-label"><b>Opsi D &mdash; Bento Grid (dipilih, revisi):</b> dipecah jadi tiga papan terpisah &mdash; ONT, MikroTik, OLT &mdash; masing-masing dengan widget yang relevan ke kategorinya sendiri, ketimbang dicampur semua di satu grid. Pindah kategori lewat tombol di bawah ini.</p>
+    <div class="seg" id="dSeg">
+      <button class="active" data-d="ont">ONT</button>
+      <button data-d="mikrotik">MikroTik</button>
+      <button data-d="olt">OLT</button>
+    </div>
+
+    <div class="bento" id="bento-ont" style="margin-top:14px">
+      <div class="b-hero">
+        <h4>Kesehatan ONT</h4>
+        <div><strong>842/861</strong><br><small>ONT online sekarang</small></div>
+        <div class="ring lg good" style="--p:98;align-self:center"><span>98%</span></div>
+      </div>
+      <div class="b-wide">
+        <h4>Distribusi Sinyal</h4>
+        <div class="bar-row" style="padding:0;border:0"><span class="row-title" style="min-width:60px;font-size:.6rem">Normal</span><div class="bar-track"><span style="width:84%"></span></div><span class="bar-num">723</span></div>
+        <div class="bar-row" style="padding:0;border:0"><span class="row-title" style="min-width:60px;font-size:.6rem">Waspada</span><div class="bar-track warn"><span style="width:14%"></span></div><span class="bar-num">131</span></div>
+        <div class="bar-row" style="padding:0;border:0"><span class="row-title" style="min-width:60px;font-size:.6rem">Kritis</span><div class="bar-track bad"><span style="width:8%"></span></div><span class="bar-num">7</span></div>
+      </div>
+      <div><h4>RX Rata-rata</h4><strong>-22.4 dBm</strong><small>seluruh ONT online</small></div>
+      <div><h4>Offline &gt;1 jam</h4><strong>19 ONT</strong><small>tanpa inform ke ACS</small></div>
+      <div class="b-tall">
+        <h4>Perlu Tindakan</h4>
+        <div class="mini-list">
+          <div><span>Ahmad Fauzi</span>-29.4 dBm</div>
+          <div><span>Rumah Bu Rina</span>-25.8 dBm</div>
+          <div><span>Warung Pak Dedi</span>Offline 3 hari</div>
+          <div><span>Kios Bu Nani</span>-27.1 dBm</div>
+        </div>
+      </div>
+      <div class="b-wide b-tall">
+        <h4>Tren RX Rata-rata (24 jam)</h4>
+        <div class="spark" style="height:56px" data-spark="20,21,21,22,22,23,24,24,23,22,22,22"></div>
+        <small>rata-rata seluruh ONT, sample tiap 15 menit</small>
+      </div>
+      <div>
+        <h4>Aksi Cepat</h4>
+        <div class="action-grid">
+          <button onclick="showToast('Sinkronisasi ACS dijalankan.')">Sync ACS</button>
+          <button onclick="showToast('Ping massal ke 7 ONT kritis dijalankan.')">Ping Kritis</button>
+        </div>
+      </div>
+      <div><h4>Reboot 24 Jam</h4><strong>12 ONT</strong><small>dari aksi manual admin</small></div>
+    </div>
+
+    <div class="bento" id="bento-mikrotik" style="margin-top:14px;display:none">
+      <div class="b-hero">
+        <h4>Kesehatan Router</h4>
+        <div><strong>14/14</strong><br><small>router online</small></div>
+        <div class="ring lg good" style="--p:100;align-self:center"><span>100%</span></div>
+      </div>
+      <div class="b-wide">
+        <h4>Beban CPU Tertinggi</h4>
+        <div class="bar-row" style="padding:0;border:0"><span class="row-title" style="min-width:110px;font-size:.6rem">RB-KBG-Edge02</span><div class="bar-track warn"><span style="width:71%"></span></div><span class="bar-num">71%</span></div>
+        <div class="bar-row" style="padding:0;border:0"><span class="row-title" style="min-width:110px;font-size:.6rem">RB-GLOBAL-Distro01</span><div class="bar-track"><span style="width:35%"></span></div><span class="bar-num">35%</span></div>
+        <div class="bar-row" style="padding:0;border:0"><span class="row-title" style="min-width:110px;font-size:.6rem">RB-CDS-Core01</span><div class="bar-track"><span style="width:22%"></span></div><span class="bar-num">22%</span></div>
+      </div>
+      <div><h4>CPU Tertinggi</h4><strong>71%</strong><small>RB-KBG-Edge02</small></div>
+      <div><h4>Sesi PPPoE Aktif</h4><strong>1.240</strong><small>dari 1.310 secret</small></div>
+      <div class="b-tall">
+        <h4>Perlu Perhatian</h4>
+        <div class="mini-list">
+          <div><span>RB-KBG-Edge02</span>CPU 71%</div>
+          <div><span>RB-KBG-Edge02</span>RAM 60%</div>
+          <div><span>RB-GLOBAL-Distro01</span>70 rogue secret</div>
+          <div><span>RB-CDS-Core01</span>Normal</div>
+        </div>
+      </div>
+      <div class="b-wide b-tall">
+        <h4>Traffic Gabungan (jam terakhir)</h4>
+        <div class="spark" style="height:56px" data-spark="40,55,60,72,90,110,130,145,120,100,90,80"></div>
+        <small>total &darr;580 Mbps / &uarr;134 Mbps, 14 router</small>
+      </div>
+      <div>
+        <h4>Aksi Cepat</h4>
+        <div class="action-grid">
+          <button onclick="showToast('Test koneksi ke 14 router dijalankan.')">Test Semua</button>
+          <button onclick="showToast('Daftar sesi PPPoE aktif akan tampil di sini.')">Lihat Sesi</button>
+        </div>
+      </div>
+      <div><h4>Rata-rata Uptime</h4><strong>68 hari</strong><small>seluruh router</small></div>
+    </div>
+
+    <div class="bento" id="bento-olt" style="margin-top:14px;display:none">
+      <div class="b-hero">
+        <h4>Utilisasi ONU</h4>
+        <div><strong>1.240/1.824</strong><br><small>slot ONU terpakai</small></div>
+        <div class="ring lg warn" style="--p:68;align-self:center"><span>68%</span></div>
+      </div>
+      <div class="b-wide">
+        <h4>Utilisasi per PON Port</h4>
+        <div class="bar-row" style="padding:0;border:0"><span class="row-title" style="min-width:110px;font-size:.6rem">OLT-KBG PON 1/2</span><div class="bar-track bad"><span style="width:97%"></span></div><span class="bar-num">62/64</span></div>
+        <div class="bar-row" style="padding:0;border:0"><span class="row-title" style="min-width:110px;font-size:.6rem">OLT-CDS PON 1/2</span><div class="bar-track warn"><span style="width:88%"></span></div><span class="bar-num">56/64</span></div>
+        <div class="bar-row" style="padding:0;border:0"><span class="row-title" style="min-width:110px;font-size:.6rem">OLT-KBG PON 1/1</span><div class="bar-track"><span style="width:40%"></span></div><span class="bar-num">26/64</span></div>
+      </div>
+      <div><h4>Port Hampir Penuh</h4><strong>3 port</strong><small>utilisasi &gt;90%</small></div>
+      <div><h4>Total Chassis</h4><strong>2 OLT</strong><small>OLT-KBG &amp; OLT-CDS</small></div>
+      <div class="b-tall">
+        <h4>Perlu Perhatian</h4>
+        <div class="mini-list">
+          <div><span>OLT-KBG PON 1/2</span>97% penuh</div>
+          <div><span>OLT-CDS PON 1/2</span>88% penuh</div>
+          <div><span>OLT-KBG chassis</span>41&deg;C</div>
+          <div><span>OLT-CDS chassis</span>38&deg;C</div>
+        </div>
+      </div>
+      <div class="b-wide b-tall">
+        <h4>Pertumbuhan ONU (7 hari)</h4>
+        <div class="spark" style="height:56px" data-spark="1180,1190,1195,1205,1215,1225,1232,1240"></div>
+        <small>total ONU terhubung, seluruh chassis</small>
+      </div>
+      <div>
+        <h4>Aksi Cepat</h4>
+        <div class="action-grid">
+          <button onclick="showToast('Catatan rencana tambah kapasitas dibuat.')">Tambah Kapasitas</button>
+          <button onclick="showToast('Laporan utilisasi PON diekspor.')">Export Laporan</button>
+        </div>
+      </div>
+      <div><h4>Uptime Chassis</h4><strong>120 hari</strong><small>rata-rata kedua OLT</small></div>
+    </div>
+  </div>
+
+  <div class="foot-note">
+    Catatan teknis singkat: monitoring RX/redaman &amp; aksi Reboot/Refresh untuk ONT sebenarnya <b>sudah ada</b> di modul <code>/acs</code> (via GenieACS). Yang baru perlu ditambah: <b>Test Ping</b>, <b>Ganti SSID</b>, dan <b>Ganti Password Wi-Fi</b> (perintah TR-069 tambahan ke ONT). Untuk MikroTik, koneksi REST API &amp; data trafik interface juga sudah tersedia di backend &mdash; yang belum ada baru dashboard health+trafik seperti di atas. Untuk OLT, saya belum menemukan integrasi apa pun di kode &mdash; ini butuh info merek OLT kamu (Huawei/ZTE/VSOL/Fiberhome/dll.) untuk menentukan SNMP OID atau API yang cocok.
+  </div>
+</div>
+
+<div class="sheet-backdrop" id="sheetBackdrop" onclick="closeSheet()"></div>
+<div class="sheet" id="sheet">
+  <div class="sheet-handle" onclick="closeSheet()"><span></span></div>
+  <div class="sheet-body" id="sheetBody"></div>
+</div>
+
+<div class="ios-backdrop" id="iosBackdrop">
+  <div class="ios-card">
+    <div class="ios-body"><h4 id="iosTitle"></h4><p id="iosBody"></p></div>
+    <div class="ios-actions">
+      <button class="ios-btn cancel" onclick="closeAlert()">Batal</button>
+      <button class="ios-btn confirm" onclick="closeAlert()">Ya, Lanjutkan</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function toggleTheme(){
+  const html=document.documentElement;
+  const isDark=html.getAttribute('data-theme')==='dark';
+  html.setAttribute('data-theme',isDark?'light':'dark');
+  document.getElementById('themeIcon').textContent=isDark?'☾':'☀';
+}
+document.getElementById('optSeg').addEventListener('click',e=>{
+  const btn=e.target.closest('button');if(!btn)return;
+  document.querySelectorAll('#optSeg button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.opt').forEach(o=>o.classList.remove('active'));
+  document.getElementById('opt-'+btn.dataset.opt).classList.add('active');
+});
+document.getElementById('cSeg').addEventListener('click',e=>{
+  const btn=e.target.closest('button');if(!btn)return;
+  document.querySelectorAll('#cSeg button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  ['ont','mikrotik','olt'].forEach(c=>document.getElementById('c-'+c).style.display=c===btn.dataset.c?'':'none');
+});
+document.getElementById('bTabs').addEventListener('click',e=>{
+  const btn=e.target.closest('button');if(!btn)return;
+  document.querySelectorAll('#bTabs button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  ['ont','mikrotik','olt'].forEach(c=>document.getElementById('bList'+c[0].toUpperCase()+c.slice(1)).style.display=c===btn.dataset.cat?'':'none');
+  const firstId={ont:'ont1',mikrotik:'mikro1',olt:'olt1'}[btn.dataset.cat];
+  renderDetail(firstId);
+});
+function selectRow(el,id){
+  document.querySelectorAll('.b-list .inset-row').forEach(r=>r.classList.remove('selected'));
+  el.classList.add('selected');
+  renderDetail(id);
+}
+const deviceData={
+  ont1:{ring:{cls:'bad',p:60,label:'-29.4'},title:'Ahmad Fauzi',sub:'ZTE F670L &middot; PPPoE ahmad.f &middot; Site GLOBAL &middot; OLT-KBG PON 1/2',
+    meta:[['Status','Redaman Kritis','var(--danger)'],['SSID saat ini','INKAMNET-AhmadF',''],['Klien Wi-Fi aktif','6 perangkat','']],
+    actions:[['📡','Test Ping',"showToast('Ping dikirim ke ONT. Hasil: 4/4 reply, rata-rata 3ms.')"],
+             ['⟲','Reboot',"showAlert('Reboot ONT ini?','Koneksi pelanggan akan putus sementara kurang lebih 1-2 menit.')",'danger'],
+             ['📶','Ganti SSID',"showToast('Form ganti SSID akan tampil di sini.')"],
+             ['🔑','Ganti Password',"showToast('Form ganti password Wi-Fi akan tampil di sini.')"]],
+    extra:'<div class="panel"><div class="panel-head"><h3>Riwayat Redaman (RX) 24 jam</h3><small>update tiap 15 menit</small></div><div style="padding:16px" class="spark" id="rxSpark"></div></div>'},
+  ont2:{ring:{cls:'good',p:88,label:'-19'},title:'Toko Jaya Makmur',sub:'ZTE F609 &middot; PPPoE toko.jaya &middot; Site GLOBAL',
+    meta:[['Status','Normal','var(--success)'],['SSID saat ini','INKAMNET-Toko',''],['Klien Wi-Fi aktif','9 perangkat','']],
+    actions:[['📡','Test Ping',"showToast('Ping dikirim ke ONT. Hasil: 4/4 reply, rata-rata 2ms.')"],
+             ['⟲','Reboot',"showAlert('Reboot ONT ini?','Koneksi pelanggan akan putus sementara kurang lebih 1-2 menit.')",'danger'],
+             ['📶','Ganti SSID',"showToast('Form ganti SSID akan tampil di sini.')"],
+             ['🔑','Ganti Password',"showToast('Form ganti password Wi-Fi akan tampil di sini.')"]],extra:''},
+  ont3:{ring:{cls:'warn',p:72,label:'-25.8'},title:'Rumah Bu Rina',sub:'Huawei HG8245 &middot; PPPoE rina.rumah &middot; Site KBG',
+    meta:[['Status','Waspada','var(--warning)'],['SSID saat ini','INKAMNET-Rina',''],['Klien Wi-Fi aktif','3 perangkat','']],
+    actions:[['📡','Test Ping',"showToast('Ping dikirim ke ONT. Hasil: 4/4 reply, rata-rata 5ms.')"],
+             ['⟲','Reboot',"showAlert('Reboot ONT ini?','Koneksi pelanggan akan putus sementara kurang lebih 1-2 menit.')",'danger'],
+             ['📶','Ganti SSID',"showToast('Form ganti SSID akan tampil di sini.')"],
+             ['🔑','Ganti Password',"showToast('Form ganti password Wi-Fi akan tampil di sini.')"]],extra:''},
+  mikro1:{ring:{cls:'warn',p:71,label:'71%'},title:'RB-KBG-Edge02',sub:'RouterOS 7.15 &middot; uptime 41 hari &middot; Site KBG',
+    meta:[['CPU Load','71%','var(--warning)'],['RAM','612 / 1024 MB',''],['Traffic WAN','&darr;340 / &uarr;92 Mbps','']],
+    actions:[['📊','Lihat Interface',"showToast('Daftar interface & traffic detail akan tampil di sini.')"],
+             ['👥','Sesi PPPoE Aktif',"showToast('Daftar sesi PPPoE aktif di router ini akan tampil di sini.')"],
+             ['🔄','Test Koneksi',"showToast('Koneksi OK &middot; RouterOS 7.15 &middot; uptime 41 hari.')"],
+             ['⚠️','Lihat Log',"showToast('Log router akan tampil di sini.')"]],
+    extra:'<div class="panel"><div class="panel-head"><h3>Traffic ether1-WAN (jam terakhir)</h3><small>sample tiap 5 menit</small></div><div style="padding:16px" class="spark" data-spark="18,22,30,45,60,71,65,58,44,38,50,71"></div></div>'},
+  mikro2:{ring:{cls:'good',p:22,label:'22%'},title:'RB-CDS-Core01',sub:'RouterOS 7.15 &middot; uptime 96 hari &middot; Site CDS',
+    meta:[['CPU Load','22%','var(--success)'],['RAM','210 / 1024 MB',''],['Traffic WAN','&darr;84 / &uarr;21 Mbps','']],
+    actions:[['📊','Lihat Interface',"showToast('Daftar interface & traffic detail akan tampil di sini.')"],
+             ['👥','Sesi PPPoE Aktif',"showToast('Daftar sesi PPPoE aktif di router ini akan tampil di sini.')"],
+             ['🔄','Test Koneksi',"showToast('Koneksi OK &middot; RouterOS 7.15 &middot; uptime 96 hari.')"],
+             ['⚠️','Lihat Log',"showToast('Log router akan tampil di sini.')"]],
+    extra:'<div class="panel"><div class="panel-head"><h3>Traffic ether1-WAN (jam terakhir)</h3><small>sample tiap 5 menit</small></div><div style="padding:16px" class="spark" data-spark="10,12,15,20,18,22,19,17,14,16,18,22"></div></div>'},
+  olt1:{ring:{cls:'bad',p:97,label:'97%'},title:'OLT-KBG PON 1/2',sub:'Chassis OLT-KBG &middot; Site KBG &middot; temp 41&deg;C',
+    meta:[['ONU Terpakai','62 / 64','var(--danger)'],['Uptime OLT','120 hari',''],['Status','Hampir penuh','var(--danger)']],
+    actions:[['➕','Tambah Kapasitas',"showToast('Rencana penambahan port/splitter akan dicatat di sini.')"],
+             ['📋','Daftar ONU',"showToast('Daftar ONU terhubung di port ini akan tampil di sini.')"],
+             ['📈','Riwayat Traffic',"showToast('Grafik traffic PON port ini akan tampil di sini.')"],
+             ['🌡️','Cek Suhu Chassis',"showToast('Suhu chassis OLT-KBG saat ini 41°C, dalam batas normal.')"]],extra:''},
+  olt2:{ring:{cls:'good',p:40,label:'40%'},title:'OLT-KBG PON 1/1',sub:'Chassis OLT-KBG &middot; Site KBG &middot; temp 41&deg;C',
+    meta:[['ONU Terpakai','26 / 64','var(--success)'],['Uptime OLT','120 hari',''],['Status','Normal','var(--success)']],
+    actions:[['➕','Tambah Kapasitas',"showToast('Rencana penambahan port/splitter akan dicatat di sini.')"],
+             ['📋','Daftar ONU',"showToast('Daftar ONU terhubung di port ini akan tampil di sini.')"],
+             ['📈','Riwayat Traffic',"showToast('Grafik traffic PON port ini akan tampil di sini.')"],
+             ['🌡️','Cek Suhu Chassis',"showToast('Suhu chassis OLT-KBG saat ini 41°C, dalam batas normal.')"]],extra:''}
+};
+function renderDetail(id,containerId){
+  containerId=containerId||'bDetail';
+  const d=deviceData[id];if(!d)return;
+  const actionsHtml=d.actions.map(a=>`<button class="qa-btn${a[3]?' '+a[3]:''}" onclick="${a[2]}"><i>${a[0]}</i>${a[1]}</button>`).join('');
+  const metaHtml=d.meta.map(m=>`<div><span>${m[0]}</span><strong${m[2]?` style="color:${m[2]}"`:''}>${m[1]}</strong></div>`).join('');
+  const container=document.getElementById(containerId);if(!container)return;
+  container.innerHTML=`
+    <div class="b-detail-head">
+      <div class="ring lg ${d.ring.cls}" style="--p:${d.ring.p}"><span>${d.ring.label}</span></div>
+      <div><h2>${d.title}</h2><p>${d.sub}</p></div>
+    </div>
+    <div class="detail-meta">${metaHtml}</div>
+    <div class="quick-actions">${actionsHtml}</div>
+    ${d.extra}
+  `;
+  const spark=container.querySelector('#rxSpark');
+  if(spark){spark.innerHTML=[-19,-20,-21,-23,-25,-27,-28,-29,-29.4,-28,-27,-26].map(v=>{const h=Math.max(4,Math.round((v+35)/16*26));const color=v<=-28?'var(--danger)':v<=-25?'var(--warning)':'var(--brand)';return `<i style="height:${h}px;background:${color}"></i>`;}).join('');}
+  container.querySelectorAll('[data-spark]').forEach(el=>{const vals=el.dataset.spark.split(',').map(Number);const max=Math.max(...vals);el.innerHTML=vals.map(v=>`<i style="height:${Math.max(4,Math.round(v/max*26))}px"></i>`).join('');});
+}
+renderDetail('ont1');
+
+document.getElementById('dSeg').addEventListener('click',e=>{
+  const btn=e.target.closest('button');if(!btn)return;
+  document.querySelectorAll('#dSeg button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  ['ont','mikrotik','olt'].forEach(c=>document.getElementById('bento-'+c).style.display=c===btn.dataset.d?'':'none');
+});
+document.getElementById('b2Tabs').addEventListener('click',e=>{
+  const btn=e.target.closest('button');if(!btn)return;
+  document.querySelectorAll('#b2Tabs button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  ['ont','mikrotik','olt'].forEach(c=>document.getElementById('b2Cards'+c[0].toUpperCase()+c.slice(1)).style.display=c===btn.dataset.cat?'':'none');
+});
+function openSheet(id){
+  renderDetail(id,'sheetBody');
+  document.getElementById('sheetBackdrop').classList.add('show');
+  document.getElementById('sheet').classList.add('show');
+}
+function closeSheet(){
+  document.getElementById('sheetBackdrop').classList.remove('show');
+  document.getElementById('sheet').classList.remove('show');
+}
+function showAlert(title,body){
+  document.getElementById('iosTitle').textContent=title;
+  document.getElementById('iosBody').textContent=body;
+  document.getElementById('iosBackdrop').classList.add('show');
+}
+function closeAlert(){document.getElementById('iosBackdrop').classList.remove('show');}
+function showToast(msg){showAlert('Info',msg);}
+// simple sparkline bars from data-spark attr
+document.querySelectorAll('.a-grid [data-spark], .c-cards [data-spark], .bento [data-spark]').forEach(el=>{
+  const vals=el.dataset.spark.split(',').map(Number);const max=Math.max(...vals);
+  el.innerHTML=vals.map(v=>`<i style="height:${Math.max(4,Math.round(v/max*26))}px"></i>`).join('');
+});
+</script>
+</body>
+</html>

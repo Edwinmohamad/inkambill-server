@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Preview: Tampilan Final INKAMNET Control Center</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --sidebar:230px;
+  --radius:10px;--radius-sm:8px;
+  --brand:#765fd7;--brand-2:#a78bfa;--brand-rgb:118,95,215;
+  --success:#34c759;--warning:#ff9f0a;--danger:#ff453a;--info:#0a84ff;
+  --font:"Geist",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+html[data-theme="dark"]{
+  --bg:#0b0b0d;--bg-2:#0e0e10;--panel:#18181b;--panel-2:#1c1c1f;--panel-3:#212124;
+  --line:rgba(255,255,255,.07);--line-2:rgba(255,255,255,.12);
+  --text:#f5f5f7;--muted:#9a9aa0;--muted-2:#6e6e73;
+  --shadow-soft:0 12px 34px rgba(0,0,0,.22);--shadow:0 24px 70px rgba(0,0,0,.35);
+}
+html[data-theme="light"]{
+  --bg:#f5f5f7;--bg-2:#f0f0f2;--panel:#ffffff;--panel-2:#f5f5f7;--panel-3:#ececee;
+  --line:#e5e5ea;--line-2:#d8d8dc;
+  --text:#1d1d1f;--muted:#6e6e73;--muted-2:#8e8e93;
+  --shadow-soft:0 8px 22px rgba(0,0,0,.06);--shadow:0 24px 60px rgba(0,0,0,.10);
+}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;transition:background .25s,color .25s}
+a{color:inherit;text-decoration:none}
+
+/* Sidebar -- selalu gelap + blur, tidak ikut ganti tema (sengaja, identitas rel navigasi) */
+.sidebar{position:fixed;inset:0 auto 0 0;width:var(--sidebar);display:flex;flex-direction:column;background:rgba(11,11,13,.72);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-right:1px solid rgba(255,255,255,.08)}
+.sidebar-brand{height:74px;padding:0 18px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,.08);color:#fff;font-weight:800;letter-spacing:.02em}
+.sidebar-brand i{color:var(--brand-2)}
+.sidebar-nav{padding:12px;display:grid;gap:3px}
+.sidebar-link{display:flex;align-items:center;gap:11px;min-height:40px;padding:0 12px;border-radius:10px;color:#9096a3;font-size:.78rem;font-weight:600;border-left:2px solid transparent}
+.sidebar-link i{width:18px;text-align:center}
+.sidebar-link:hover{background:rgba(var(--brand-rgb),.14);color:#fff}
+.sidebar-link.active{background:rgba(var(--brand-rgb),.22);color:#fff}
+.sidebar-foot{margin-top:auto;padding:14px 16px;border-top:1px solid rgba(255,255,255,.08);color:#676d7a;font-size:.6rem}
+
+.main{margin-left:var(--sidebar);padding:26px 30px 50px;max-width:1200px}
+.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;gap:16px}
+.theme-toggle{height:36px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--text);font-size:.72rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:7px}
+
+.module-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:20px}
+.module-kicker{font-size:.68rem;color:var(--muted);font-weight:600;margin-bottom:4px}
+.module-head h1{font-size:1.3rem;letter-spacing:-.02em;font-weight:700;margin:0;line-height:1.25}
+.module-head p{color:var(--muted);font-size:.76rem;margin:6px 0 0;max-width:520px;line-height:1.55}
+.btn-primary{height:38px;padding:0 15px;border:0;border-radius:10px;background:var(--brand);color:#fff;font-size:.72rem;font-weight:700;display:inline-flex;align-items:center;gap:7px;cursor:pointer;box-shadow:0 6px 18px rgba(var(--brand-rgb),.35)}
+
+.metric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+.metric-card{padding:16px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);box-shadow:var(--shadow-soft)}
+.metric-label{color:var(--muted);font-size:.66rem;font-weight:650}
+.metric-card strong{display:block;font-size:1.15rem;margin-top:13px}
+.metric-card small{display:block;color:var(--muted-2);font-size:.58rem;margin-top:4px}
+
+.data-card{border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);box-shadow:var(--shadow-soft);overflow:visible}
+.data-card-head{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+.data-card-head h3{margin:0;font-size:.86rem}
+.data-card-head small{color:var(--muted);font-size:.62rem}
+
+/* Inset-grouped list ala Settings.app */
+.inset-list{overflow:visible}
+.inset-row{position:relative;display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid var(--line)}
+.inset-row:last-child{border-bottom:0}
+.inset-row:hover{background:var(--panel-2)}
+.avatar{width:32px;height:32px;flex:0 0 32px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:.64rem;color:#fff}
+.avatar.debt{background:#5b94e6}
+.avatar.receivable{background:var(--success)}
+.row-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.row-title{font-size:.76rem;font-weight:650}
+.row-title span{color:var(--muted);font-weight:500;font-size:.68rem}
+.row-sub{font-size:.63rem;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;font-size:.56rem;font-weight:700}
+.chip.type-debt{color:var(--brand-2);background:rgba(var(--brand-rgb),.14)}
+.chip.type-receivable{color:var(--success);background:rgba(52,199,89,.14)}
+.chip.status-lunas{color:var(--success);background:rgba(52,199,89,.14)}
+.chip.status-dicicil{color:#5b94e6;background:rgba(91,148,230,.14)}
+.chip.status-terlambat{color:var(--danger);background:rgba(255,69,58,.14)}
+.chip.due-danger{color:var(--danger)}
+.chip.due-safe{color:var(--muted)}
+.row-trail{display:flex;align-items:center;gap:10px;flex:0 0 auto;text-align:right}
+.nominal{display:flex;flex-direction:column;align-items:flex-end;min-width:150px}
+.nominal .money{font-weight:700;font-size:.78rem}
+.nominal small{color:var(--muted-2);font-size:.6rem;margin-top:1px}
+.bar{width:110px;height:5px;border-radius:999px;background:var(--panel-3);overflow:hidden;margin-top:6px}
+.bar span{display:block;height:100%;background:var(--brand);border-radius:inherit}
+.bar.complete span{background:var(--success)}
+.icon-btn{width:30px;height:30px;border:0;background:transparent;color:var(--muted-2);border-radius:8px;display:grid;place-items:center;cursor:pointer}
+.icon-btn:hover{background:var(--panel-3);color:var(--text)}
+
+/* Contextual menu popover */
+.action-pop{position:absolute;top:52px;right:8px;width:220px;border-radius:14px;background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);overflow:hidden;z-index:50;display:none}
+.action-pop.show{display:block}
+.action-pop-head{padding:12px 14px;border-bottom:1px solid var(--line)}
+.action-pop-head small{color:var(--muted);font-size:.55rem;font-weight:700}
+.action-pop-head strong{display:block;font-size:.74rem;margin-top:1px}
+.action-item{display:flex;align-items:center;gap:10px;width:100%;padding:10px 14px;border:0;background:transparent;color:var(--text);font-size:.7rem;font-weight:600;text-align:left;cursor:pointer}
+.action-item:hover{background:var(--panel-2)}
+.action-item i{width:16px;color:var(--muted)}
+.action-item.danger{color:var(--danger)}
+.action-item.danger i{color:var(--danger)}
+.action-sep{height:1px;background:var(--line);margin:4px 0}
+
+/* Progress ring */
+.ring{--p:0;width:88px;height:88px;border-radius:50%;position:relative;display:grid;place-items:center;background:conic-gradient(var(--brand) calc(var(--p)*1%),var(--panel-3) 0)}
+.ring::after{content:"";position:absolute;inset:9px;border-radius:50%;background:var(--panel)}
+.ring span{position:relative;z-index:2;font-weight:800;font-size:.92rem}
+
+.detail-panel{margin-top:18px;padding:18px;display:flex;align-items:center;gap:18px}
+.detail-copy span{color:var(--muted);font-size:.66rem;font-weight:700;display:block}
+.detail-copy small{color:var(--muted-2);font-size:.62rem}
+
+/* iOS alert sheet */
+.ios-backdrop{position:fixed;inset:0;z-index:999;display:none;place-items:center;padding:20px;background:rgba(0,0,0,.32);backdrop-filter:blur(6px)}
+.ios-backdrop.show{display:grid}
+.ios-card{width:min(320px,100%);border-radius:16px;background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);overflow:hidden}
+.ios-body{padding:20px 18px 16px;text-align:center}
+.ios-body h4{margin:0 0 6px;font-size:.84rem}
+.ios-body p{margin:0;font-size:.7rem;color:var(--muted);line-height:1.5}
+.ios-actions{display:flex;border-top:1px solid var(--line)}
+.ios-btn{flex:1;height:44px;border:0;background:transparent;font-size:.74rem;font-weight:600;color:var(--brand);cursor:pointer}
+.ios-btn.cancel{border-right:1px solid var(--line);color:var(--text);font-weight:500}
+.ios-btn.confirm.danger{color:var(--danger);font-weight:700}
+
+.foot-note{margin-top:22px;padding:14px 16px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel-2);color:var(--muted);font-size:.68rem;line-height:1.6}
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-brand"><i class="bi">◆</i> INKAMNET</div>
+  <nav class="sidebar-nav">
+    <a class="sidebar-link"><i>▦</i> Dashboard</a>
+    <a class="sidebar-link active"><i>◈</i> Hutang &amp; Piutang</a>
+    <a class="sidebar-link"><i>▤</i> Tagihan</a>
+    <a class="sidebar-link"><i>◐</i> Pembayaran</a>
+    <a class="sidebar-link"><i>◎</i> Pelanggan</a>
+  </nav>
+  <div class="sidebar-foot">v1.29 &middot; Apple redesign</div>
+</div>
+
+<div class="main">
+  <div class="topbar">
+    <div></div>
+    <button class="theme-toggle" onclick="toggleTheme()"><span id="themeIcon">☀</span> <span id="themeLabel">Ganti ke Light</span></button>
+  </div>
+
+  <div class="module-head">
+    <div>
+      <div class="module-kicker">KEUANGAN &middot; MONITORING</div>
+      <h1>Hutang &amp; Piutang</h1>
+      <p>Pantau kewajiban, tagihan masuk, jatuh tempo, dan pembayaran dalam satu daftar yang gampang dipindai.</p>
+    </div>
+    <button class="btn-primary">+ Catat Baru</button>
+  </div>
+
+  <div class="metric-grid">
+    <div class="metric-card"><span class="metric-label">Sisa Hutang</span><strong>Rp 1.500.000</strong><small>2 kewajiban aktif</small></div>
+    <div class="metric-card"><span class="metric-label">Sisa Piutang</span><strong>Rp 1.500.000</strong><small>1 tagihan aktif</small></div>
+    <div class="metric-card"><span class="metric-label">Lewat Jatuh Tempo</span><strong>Rp 900.000</strong><small>Perlu ditindaklanjuti</small></div>
+    <div class="metric-card"><span class="metric-label">Total Outstanding</span><strong>Rp 3.900.000</strong><small>Hutang + piutang gabungan</small></div>
+  </div>
+
+  <div class="data-card">
+    <div class="data-card-head"><h3>Daftar Hutang &amp; Piutang</h3><small>3 data ditemukan</small></div>
+    <div class="inset-list">
+
+      <div class="inset-row">
+        <span class="avatar receivable">T</span>
+        <div class="row-main">
+          <span class="row-title">Toko Jaya Makmur <span>&middot; GLOBAL</span></span>
+          <span class="row-sub">Router Mikrotik &middot; Edwin</span>
+          <div class="chips">
+            <span class="chip type-receivable">Piutang</span>
+            <span class="chip status-dicicil">↻ Dicicil</span>
+            <span class="chip due-safe">📅 12 hari lagi</span>
+          </div>
+        </div>
+        <div class="row-trail">
+          <div class="nominal">
+            <span class="money">Rp 1.500.000</span>
+            <small>dari Rp 2.000.000</small>
+            <div class="bar"><span style="width:25%"></span></div>
+          </div>
+          <button class="icon-btn" title="Detail" onclick="openDetail()">›</button>
+          <button class="icon-btn" title="Tindakan" onclick="togglePop(this)">⋯</button>
+          <div class="action-pop">
+            <div class="action-pop-head"><small>PIUTANG &middot; GLOBAL</small><strong>Toko Jaya Makmur</strong></div>
+            <button class="action-item" onclick="openDetail()">🕐 <span>Detail</span></button>
+            <button class="action-item">💵 <span>Catat Cicilan</span></button>
+            <div class="action-sep"></div>
+            <button class="action-item" onclick="openAlert(this)">🗄 <span>Arsipkan</span></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="inset-row">
+        <span class="avatar debt">P</span>
+        <div class="row-main">
+          <span class="row-title">PT Prima Vendor <span>&middot; CDS</span></span>
+          <span class="row-sub">Sewa lokasi tower &middot; Bopung</span>
+          <div class="chips">
+            <span class="chip type-debt">Hutang</span>
+            <span class="chip status-terlambat">! Terlambat</span>
+            <span class="chip due-danger">! Terlambat</span>
+          </div>
+        </div>
+        <div class="row-trail">
+          <div class="nominal">
+            <span class="money">Rp 900.000</span>
+            <small>dari Rp 1.000.000</small>
+            <div class="bar"><span style="width:10%"></span></div>
+          </div>
+          <button class="icon-btn" title="Detail" onclick="openDetail()">›</button>
+          <button class="icon-btn" title="Tindakan" onclick="togglePop(this)">⋯</button>
+          <div class="action-pop">
+            <div class="action-pop-head"><small>HUTANG &middot; CDS</small><strong>PT Prima Vendor</strong></div>
+            <button class="action-item" onclick="openDetail()">🕐 <span>Detail</span></button>
+            <button class="action-item">💵 <span>Catat Cicilan</span></button>
+            <div class="action-sep"></div>
+            <button class="action-item" onclick="openAlert(this)">🗄 <span>Arsipkan</span></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="inset-row">
+        <span class="avatar receivable">A</span>
+        <div class="row-main">
+          <span class="row-title">Ahmad Fauzi <span>&middot; KBG</span></span>
+          <span class="row-sub">Instalasi ONT &middot; Jon</span>
+          <div class="chips">
+            <span class="chip type-receivable">Piutang</span>
+            <span class="chip status-lunas">✓ Lunas</span>
+            <span class="chip due-safe">📅 Tanpa jatuh tempo</span>
+          </div>
+        </div>
+        <div class="row-trail">
+          <div class="nominal">
+            <span class="money">Rp 0</span>
+            <small>dari Rp 500.000</small>
+            <div class="bar complete"><span style="width:100%"></span></div>
+          </div>
+          <button class="icon-btn" title="Detail" onclick="openDetail()">›</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div id="detailPanel" class="data-card detail-panel" style="display:none">
+    <div class="ring" style="--p:75"><span>75%</span></div>
+    <div class="detail-copy">
+      <span>Progres pembayaran</span>
+      <small>Rp 1.500.000 dari Rp 2.000.000 &middot; sisa Rp 500.000</small>
+    </div>
+  </div>
+
+  <div class="foot-note">
+    Ini contoh statis (tanpa server) yang meniru persis token warna, font, radius, dan komponen yang sudah diterapkan di <code>public/css/app.css</code> &amp; <code>public/js/app.js</code> milikmu &mdash; termasuk daftar inset-grouped, progress ring, menu kontekstual "⋯", dan alert ala iOS. Klik "⋯" pada baris, tombol "›", atau "Arsipkan" di menu untuk mencoba interaksinya.
+  </div>
+</div>
+
+<div class="ios-backdrop" id="iosBackdrop">
+  <div class="ios-card">
+    <div class="ios-body">
+      <h4>Arsipkan data ini?</h4>
+      <p>Riwayat pembayaran tetap tersimpan.</p>
+    </div>
+    <div class="ios-actions">
+      <button class="ios-btn cancel" onclick="closeAlert()">Batal</button>
+      <button class="ios-btn confirm" onclick="closeAlert()">Ya, Arsipkan</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function toggleTheme(){
+  const html=document.documentElement;
+  const isDark=html.getAttribute('data-theme')==='dark';
+  html.setAttribute('data-theme',isDark?'light':'dark');
+  document.getElementById('themeIcon').textContent=isDark?'☾':'☀';
+  document.getElementById('themeLabel').textContent=isDark?'Ganti ke Dark':'Ganti ke Light';
+}
+let openPop=null;
+function togglePop(btn){
+  const pop=btn.nextElementSibling;
+  if(openPop && openPop!==pop) openPop.classList.remove('show');
+  pop.classList.toggle('show');
+  openPop=pop.classList.contains('show')?pop:null;
+}
+document.addEventListener('click',e=>{
+  if(!e.target.closest('.icon-btn') && !e.target.closest('.action-pop') && openPop){
+    openPop.classList.remove('show'); openPop=null;
+  }
+});
+function openDetail(){
+  document.getElementById('detailPanel').style.display='flex';
+  document.getElementById('detailPanel').scrollIntoView({behavior:'smooth',block:'center'});
+  if(openPop){openPop.classList.remove('show');openPop=null;}
+}
+function openAlert(){
+  if(openPop){openPop.classList.remove('show');openPop=null;}
+  document.getElementById('iosBackdrop').classList.add('show');
+}
+function closeAlert(){
+  document.getElementById('iosBackdrop').classList.remove('show');
+}
+</script>
+</body>
+</html>

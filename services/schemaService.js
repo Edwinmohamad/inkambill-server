@@ -857,4 +857,39 @@ async function ensureV45Schema(){
   await db.query(`ALTER TABLE finance_debt_payments ADD COLUMN IF NOT EXISTS proof_mime VARCHAR(100) NULL AFTER proof_original_name`);
 }
 
-module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema };
+async function ensureV46Schema(){
+  // v1.27 -- Monitoring Dashboard (Bento Grid): MikroTik CPU/RAM history (mirrors the
+  // existing nms_interface_samples traffic history, same 14-day retention pattern) plus
+  // a real OLT registry so ONU-per-PON-port utilization can be computed from the ONT
+  // metadata operators already maintain (acs_devices.olt_name/pon_port), instead of a
+  // hardcoded assumption.
+  await db.query(`CREATE TABLE IF NOT EXISTS nms_resource_samples (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    router_id BIGINT UNSIGNED NOT NULL,
+    sampled_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    cpu_load DECIMAL(5,2) NULL,
+    free_memory BIGINT UNSIGNED NULL,
+    total_memory BIGINT UNSIGNED NULL,
+    uptime_seconds BIGINT UNSIGNED NULL,
+    board_name VARCHAR(120) NULL,
+    version VARCHAR(80) NULL,
+    INDEX idx_nms_resource_router_time(router_id,sampled_at),
+    INDEX idx_nms_resource_time(sampled_at)
+  )`);
+  await db.query(`CREATE TABLE IF NOT EXISTS olt_devices (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(120) NOT NULL,
+    vendor VARCHAR(80) NULL,
+    management_ip VARCHAR(80) NULL,
+    site_id BIGINT UNSIGNED NULL,
+    pon_port_capacity INT UNSIGNED NOT NULL DEFAULT 64,
+    notes VARCHAR(500) NULL,
+    created_by BIGINT UNSIGNED NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_olt_name(name),
+    INDEX idx_olt_site(site_id)
+  )`);
+}
+
+module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema };

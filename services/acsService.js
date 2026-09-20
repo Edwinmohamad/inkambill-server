@@ -1,4 +1,5 @@
 const db=require('../config/db');
+const {execFile}=require('child_process');
 
 const valueAt=(source,path)=>{
   let current=source;
@@ -22,7 +23,7 @@ async function acsFetch(path,params={}){
   catch(err){throw new Error(err.name==='AbortError'?'GenieACS timeout':err.message);}finally{clearTimeout(timeout);}
 }
 async function acsTask(deviceId,task){
-  const allowed=new Set(['refreshObject','reboot']);if(!allowed.has(task.name))throw new Error('Aksi ACS tidak diizinkan.');
+  const allowed=new Set(['refreshObject','reboot','setParameterValues']);if(!allowed.has(task.name))throw new Error('Aksi ACS tidak diizinkan.');
   const cfg=config();if(!/^https?:\/\//.test(cfg.baseUrl))throw new Error('GENIEACS_NBI_URL belum dikonfigurasi.');
   const url=new URL(`${cfg.baseUrl}/devices/${encodeURIComponent(deviceId)}/tasks`);url.searchParams.set('connection_request','');
   const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),Number(process.env.ACS_TIMEOUT_MS||12000));
@@ -59,4 +60,39 @@ async function syncDevices(){
   }catch(err){try{await conn.rollback();}catch(_){}if(logId)await conn.execute(`UPDATE acs_sync_logs SET status='failed',message=?,finished_at=NOW() WHERE id=?`,[err.message.slice(0,700),logId]);throw err;}
   finally{if(locked)try{await conn.query(`DO RELEASE_LOCK('inkambilling_acs_sync')`);}catch(_){}conn.release();}
 }
-module.exports={config,testConnection,syncDevices,normalizeDevice,acsTask};
+function wifiSsidPath(){return String(process.env.ACS_WIFI_SSID_PATH||'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID');}
+function wifiPasswordPath(){return String(process.env.ACS_WIFI_PASSWORD_PATH||'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.KeyPassphrase');}
+
+async function setWifiSsid(deviceId,ssid){
+  const value=String(ssid||'').trim();
+  if(!value)throw new Error('Nama WiFi (SSID) tidak boleh kosong.');
+  if(value.length>32)throw new Error('Nama WiFi (SSID) maksimal 32 karakter.');
+  return acsTask(deviceId,{name:'setParameterValues',parameterValues:[[wifiSsidPath(),value,'xsd:string']]});
+}
+
+async function setWifiPassword(deviceId,password){
+  const value=String(password||'');
+  if(value.length<8||value.length>63)throw new Error('Password WiFi harus 8-63 karakter (standar WPA2).');
+  return acsTask(deviceId,{name:'setParameterValues',parameterValues:[[wifiPasswordPath(),value,'xsd:string']]});
+}
+
+const IPV4_RE=/^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
+function pingHost(host){
+  return new Promise((resolve,reject)=>{
+    const target=String(host||'').trim();
+    if(!IPV4_RE.test(target))return reject(new Error('IP ONT tidak tersedia atau tidak valid untuk di-ping.'));
+    const isWindows=process.platform==='win32';
+    const args=isWindows?['-n','4','-w','2000',target]:['-c','4','-W','2',target];
+    execFile('ping',args,{timeout:15000},(err,stdout)=>{
+      const output=String(stdout||'');
+      const lossMatch=output.match(/(\d+)%\s*(?:packet)?\s*loss/i);
+      const lossPercent=lossMatch?Number(lossMatch[1]):(err?100:null);
+      const timeMatches=[...output.matchAll(/time[=<]\s*([\d.]+)\s*ms/gi)].map(m=>Number(m[1]));
+      const avgMs=timeMatches.length?Math.round((timeMatches.reduce((a,b)=>a+b,0)/timeMatches.length)*100)/100:null;
+      const reachable=lossPercent!==null?lossPercent<100:!err;
+      resolve({host:target,reachable,lossPercent,avgMs,raw:output.split(/\r?\n/).filter(Boolean).slice(-6).join('\n')});
+    });
+  });
+}
+
+module.exports={config,testConnection,syncDevices,normalizeDevice,acsTask,setWifiSsid,setWifiPassword,pingHost};
