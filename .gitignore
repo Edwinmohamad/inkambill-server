@@ -24,6 +24,10 @@ storage/profile-photos/*
 storage/cash-proofs/*
 !storage/cash-proofs/.gitkeep
 
+# Closing reset backups (JSON dump of financial data before wipe) — private
+storage/closing-reset-backups/*
+!storage/closing-reset-backups/.gitkeep
+
 # Logs
 *.log
 /logs/

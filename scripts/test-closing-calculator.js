@@ -74,25 +74,50 @@ assert.equal(aliases.blocks.krwclm.expense, 100000, 'CLM harus tetap masuk total
 assert.equal(aliases.salaryByOwner.edwin + aliases.salaryByOwner.jon + aliases.salaryByOwner.bopung, 1, 'Pembagian gaji harus tepat tanpa selisih pembulatan');
 assert.equal(aliases.blocks.other.revenue, 0, 'Alias lokasi yang dikenal tidak boleh masuk lokasi belum dipetakan');
 
-// Closing must remain a true manual calculator. Guard the route itself so a
-// future edit cannot quietly reintroduce billing/payment/cash synchronisation.
+// v2 — Closing punya dua mode (Manual/Otomatis) per periode, tapi kalkulasi inti
+// (loadClosing) harus TETAP selalu membaca dari closing_entries saja, apa pun
+// modenya — tidak boleh diam-diam membaca payments/cash_transactions langsung
+// di dalam loadClosing. Sinkronisasi Data Kas hanya boleh masuk lewat jalur
+// terpisah dan auditable: closingSyncService.js menulis baris ke closing_entries
+// (bukan menghitung langsung), lalu loadClosing membacanya sama seperti baris
+// manual biasa.
 const closingRoute = fs.readFileSync(require.resolve('../routes/closing'), 'utf8');
 const loadStart = closingRoute.indexOf('async function loadClosing');
 const loadEnd = closingRoute.indexOf('async function ensureDraftPeriod');
 assert(loadStart >= 0 && loadEnd > loadStart, 'loadClosing route section is missing');
 const loadSource = closingRoute.slice(loadStart, loadEnd);
-assert(!/FROM\s+payments\b/i.test(loadSource), 'Closing tidak boleh membaca payments');
-assert(!/FROM\s+cash_transactions\b/i.test(loadSource), 'Closing tidak boleh membaca cash_transactions');
+assert(!/FROM\s+payments\b/i.test(loadSource), 'loadClosing tidak boleh membaca payments langsung');
+assert(!/FROM\s+cash_transactions\b/i.test(loadSource), 'loadClosing tidak boleh membaca cash_transactions langsung');
 assert(!/settlement_status/i.test(loadSource), 'Closing tidak boleh memakai status settlement billing');
-assert(loadSource.includes('FROM closing_entries'), 'Closing harus memakai closing_entries sebagai sumber angka manual');
-assert(closingRoute.includes("mode: 'manual'"), 'Mode Closing harus dipaksa manual');
+assert(loadSource.includes('FROM closing_entries'), 'Closing harus memakai closing_entries sebagai sumber angka, baik manual maupun hasil sync');
+assert(loadSource.includes('closing.mode'), 'Mode closing harus dibaca dari data periode (closing_periods.mode), bukan konstanta tetap');
 
-// Financial control: manual calculation remains independent, but the period can
-// be locked/reopened by Master Admin so back-dated changes cannot slip in.
+// Sinkronisasi Data Kas: harus lewat service terpisah, hanya menarik transaksi
+// APPROVED, dan menandai baris hasil sync supaya tidak tertarik dobel.
+const syncServiceSource = fs.readFileSync(require.resolve('../services/closingSyncService'), 'utf8');
+assert(syncServiceSource.includes('FROM cash_transactions'), 'closingSyncService harus menarik dari cash_transactions');
+assert(/approval_status[^\n]*APPROVED/.test(syncServiceSource), "closingSyncService hanya boleh menarik transaksi APPROVED");
+assert(syncServiceSource.includes("'cash_sync'"), 'Baris hasil sync harus ditandai source_type cash_sync');
+assert(syncServiceSource.includes('cash_transaction_id'), 'Baris hasil sync harus melacak cash_transaction_id supaya sync berikutnya tidak dobel');
+
+// Endpoint /mode dan /sync wajib ada dan dijaga: sync hanya boleh jalan kalau
+// periode masih DRAFT dan mode-nya AUTO.
+assert(closingRoute.includes("router.post('/mode'"), 'Route ganti mode closing wajib tersedia');
+assert(closingRoute.includes("router.post('/sync'"), 'Route sinkronisasi Data Kas wajib tersedia');
+const syncStart = closingRoute.indexOf("router.post('/sync'");
+const syncEnd = closingRoute.indexOf("router.post('/period-lock'");
+const syncRouteSource = closingRoute.slice(syncStart, syncEnd);
+assert(/status\s*===\s*['"]LOCKED['"]/.test(syncRouteSource), 'Route /sync wajib menolak periode yang sudah LOCKED');
+assert(/mode[^\n]*!==\s*['"]AUTO['"]/.test(syncRouteSource), 'Route /sync wajib menolak kalau mode periode bukan AUTO');
+
+// Financial control: kalkulasi tetap independen, periode bisa dikunci/dibuka
+// kembali oleh Master Admin, dan setiap ganti mode/sync harus tercatat di audit log.
 assert(closingRoute.includes("router.post('/period-lock'"), 'Route kunci periode wajib tersedia');
 assert(closingRoute.includes("router.post('/period-reopen'"), 'Route buka kembali periode wajib tersedia');
 assert(!/router\.(get|post)\(['"]\/router-assets/.test(closingRoute), 'Route /router-assets harus sudah dihapus');
 assert(/status\s*===\s*['"]LOCKED['"]/.test(closingRoute), 'Guard status LOCKED wajib tersedia');
 assert(closingRoute.includes("router.post('/entries/:id/update'"), 'Route edit entry (closing_entries) harus tersedia');
 assert(closingRoute.includes("router.post('/adjustments/:id/update'"), 'Route edit penyesuaian (closing_adjustments) harus tersedia');
-console.log('Closing calculator validation OK: manual-only source, cluster revenue, combined expenses, salary, cash, and per-location adjustments reconcile without double counting; router ownership no longer auto-rewards.');
+assert(closingRoute.includes("action:'set_closing_mode'") || closingRoute.includes("action: 'set_closing_mode'"), 'Ganti mode wajib tercatat di financialAudit');
+assert(closingRoute.includes("action:'sync_closing_cash'") || closingRoute.includes("action: 'sync_closing_cash'"), 'Sinkronisasi Data Kas wajib tercatat di financialAudit');
+console.log('Closing calculator validation OK: entries-based source (manual & sinkron Data Kas), cluster revenue, combined expenses, salary, cash, and per-location adjustments reconcile without double counting; router ownership no longer auto-rewards; mode switch & sync are DRAFT/AUTO-gated and audited.');

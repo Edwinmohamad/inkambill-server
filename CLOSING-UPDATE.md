@@ -2,15 +2,38 @@
 
 Modul ini adalah kalkulator pembagian hasil bulanan INKAMBILLING. Semua angka dihitung berdasarkan tanggal transaksi yang dipilih, bukan tanggal saat tombol closing ditekan.
 
+## Dua mode input (v2)
+
+Setiap **periode** closing (bukan global) punya salah satu dari dua mode, tersimpan di `closing_periods.mode`:
+
+- **Manual** (default untuk periode baru) — semua angka diketik sendiri lewat form Langkah 2, persis seperti sebelumnya.
+- **Otomatis** — tombol **Sync dari Data Kas** menarik transaksi `cash_transactions` yang sudah **APPROVED** Master Admin dalam rentang tanggal periode ke `closing_entries`, sebagai titik awal. Baris hasil sync tetap bisa diedit, dihapus, atau ditambah manual seperti baris biasa — jadi "otomatis" bukan berarti terkunci, cuma titik awal yang lebih cepat.
+
+Mode hanya bisa diganti selama periode masih **DRAFT**; begitu periode dikunci, mode ikut membeku bersama snapshotnya. Tombol ganti mode dan tombol Sync ada di halaman Closing, tepat di bawah header.
+
+Sinkronisasi bersifat **idempoten dan inkremental**: tombol Sync bisa ditekan berkali-kali, transaksi Data Kas yang sudah pernah ditarik (dilacak lewat `cash_transaction_id` pada baris `closing_entries`) tidak akan ditarik dobel — hanya transaksi baru yang belum pernah ditarik yang ditambahkan. Catatan: kalau sebuah baris hasil sync **dihapus manual** dari Closing, baris itu dianggap "belum ada" lagi dan **bisa tertarik ulang** pada sync berikutnya — kalau memang tidak mau dihitung, gunakan Langkah 3 (penyesuaian/potongan) daripada menghapus baris sync-nya.
+
+Data Kas hanya mencatat berdasarkan site (CDS/KBG), belum ada pemisahan cluster KRW/CLM, sehingga baris hasil sync untuk CDS tidak dipecah per cluster (pembagian hasil CDS memang digabung, jadi ini tidak memengaruhi perhitungan — hanya tampilan rincian per cluster).
+
 ## Periode dan sumber data
 
 - Contoh: transaksi 1–31 Agustus diproses saat closing 5/6 September dengan memilih `from=YYYY-08-01` dan `to=YYYY-08-31`.
 - Tanggal September tidak ikut masuk ke closing Agustus.
-- Closing sekarang **full manual**. Route Closing tidak membaca tabel billing, pembayaran, jurnal kas, atau cash yang masih dipegang tim.
-- Isi satu baris untuk setiap angka pendapatan dan pengeluaran. Pendapatan dapat diberi site `CDS` atau `KBG`; pendapatan CDS dapat diberi cluster `KRW` atau `CLM`.
+- Isi satu baris untuk setiap angka pendapatan dan pengeluaran (manual, atau hasil sync yang lalu diedit). Pendapatan dapat diberi site `CDS` atau `KBG`; pendapatan CDS dapat diberi cluster `KRW` atau `CLM`.
 - Pengeluaran dijumlahkan sekali berdasarkan site. Cluster pada pengeluaran hanya keterangan, sehingga KRW dan CLM tidak menggandakan biaya CDS.
-- Data `closing_router_assets` tetap merupakan daftar manual khusus INVEST ROUTER; data ini bukan sinkronisasi billing.
-- Gaji, carry-over, cash belum setor, potongan/tambahan, dan catatan juga diisi dari menu Closing.
+- Data `closing_router_assets` tetap merupakan daftar manual khusus INVEST ROUTER; data ini bukan sinkronisasi billing dan tidak ikut direset oleh `scripts/reset-closing-data.js`.
+- Gaji, carry-over, cash belum setor, potongan/tambahan, dan catatan juga diisi dari menu Closing (berlaku di kedua mode).
+
+## Reset data Closing
+
+`scripts/reset-closing-data.js` menghapus **semua** `closing_periods`, `closing_entries`, dan `closing_adjustments` (termasuk periode yang sudah terkunci/riwayat lama), setelah lebih dulu menulis backup JSON ke `storage/closing-reset-backups/`. Defaultnya dry run:
+
+```bash
+node scripts/reset-closing-data.js            # dry run: cuma backup + tampilkan jumlah data
+node scripts/reset-closing-data.js --yes       # backup lalu benar-benar hapus semuanya
+```
+
+Jalankan ini sekali secara manual di server (bukan bagian dari migrasi otomatis saat deploy) kalau memang ingin closing mulai bersih dari nol.
 
 ## Aturan pembagian
 
@@ -51,7 +74,7 @@ Setiap PDF memuat pendapatan pelanggan/pemasukan, pengeluaran lengkap beserta ka
 
 ## Deploy melalui GitHub Desktop
 
-Salin file paket ini ke path yang sama di repo lokal, commit, lalu push ke `main`. Workflow deploy akan menjalankan migrasi Closing (`ensureV35Schema` sampai `ensureV37Schema`) saat aplikasi start. Jangan menimpa `.env` produksi.
+Salin file paket ini ke path yang sama di repo lokal, commit, lalu push ke `main`. Workflow deploy akan menjalankan migrasi Closing (`ensureV35Schema` sampai `ensureV37Schema`, plus `ensureV48Schema` untuk kolom mode/sinkron) saat aplikasi start. Jangan menimpa `.env` produksi.
 
 ## Validasi
 

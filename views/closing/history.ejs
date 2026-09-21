@@ -23,18 +23,20 @@
     <div class="card-body">
       <div class="closing-section-head"><div><span class="closing-card-kicker">REKAP <%= year %></span><h2>Ringkasan per periode</h2></div><span class="closing-count"><%= rows.length %> periode</span></div>
       <div class="table-responsive mt-3"><table class="table table-sm align-middle closing-table">
-        <thead><tr><th>Periode</th><th>Baris input</th><th class="text-end">Pendapatan</th><th class="text-end">Pengeluaran</th><th class="text-end">Laba Bersih</th><th>Aksi</th></tr></thead>
+        <thead><tr><th>Periode</th><th>Mode</th><th>Status</th><th>Baris input</th><th class="text-end">Pendapatan</th><th class="text-end">Pengeluaran</th><th class="text-end">Laba Bersih</th><th>Aksi</th></tr></thead>
         <tbody>
-          <% if (!rows.length) { %><tr><td colspan="6" class="text-muted text-center py-3">Belum ada closing untuk filter ini.</td></tr><% } %>
+          <% if (!rows.length) { %><tr><td colspan="8" class="text-muted text-center py-3">Belum ada closing untuk filter ini.</td></tr><% } %>
           <% rows.forEach(row => { %>
           <tr>
             <td><strong><%= row.start %></strong> s/d <%= row.end %></td>
+            <td><span class="badge text-bg-<%= row.mode==='AUTO' ? 'primary' : 'secondary' %>"><%= row.mode==='AUTO' ? 'OTOMATIS' : 'MANUAL' %></span></td>
+            <td><span class="badge text-bg-<%= row.status==='LOCKED' ? 'success' : 'warning' %>"><%= row.status==='LOCKED' ? 'TERKUNCI' : 'DRAFT' %></span></td>
             <td><%= row.entryCount %></td>
             <td class="text-end">Rp <%= money(row.totalRevenue).toLocaleString('id-ID') %></td>
             <td class="text-end">Rp <%= money(row.totalExpense).toLocaleString('id-ID') %></td>
             <td class="text-end"><strong>Rp <%= money(row.totalProfit).toLocaleString('id-ID') %></strong></td>
             <td>
-              <a class="btn btn-outline-primary btn-sm" href="/closing?from=<%= row.start %>&to=<%= row.end %>&mode=manual"><i class="bi bi-box-arrow-up-right me-1"></i>Buka</a>
+              <a class="btn btn-outline-primary btn-sm" href="/closing?from=<%= row.start %>&to=<%= row.end %>"><i class="bi bi-box-arrow-up-right me-1"></i>Buka</a>
               <a class="btn btn-outline-secondary btn-sm" href="/closing/export.xlsx?from=<%= row.start %>&to=<%= row.end %>"><i class="bi bi-file-earmark-spreadsheet"></i></a>
             </td>
           </tr>

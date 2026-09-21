@@ -3,7 +3,8 @@ const crypto = require('crypto');
 const ExcelJS = require('exceljs');
 const db = require('../config/db');
 const { createClosingReportPdf, rupiah, date } = require('../services/reportPdf');
-const { money, personKey, siteBlock, locationText, buildClosingCalculation } = require('../services/closingCalculator');
+const { money, personKey, siteBlock, locationText, normalizeSiteCluster, buildClosingCalculation } = require('../services/closingCalculator');
+const { syncCashDataIntoClosing } = require('../services/closingSyncService');
 const { requireMasterAdmin } = require('../middleware/auth');
 const { financialAudit } = require('../services/financialControlService');
 
@@ -50,24 +51,8 @@ function selectedPeriod(req) {
   return {
     start: dateOr(req.query.from || req.body?.from, previousStart),
     end: dateOr(req.query.to || req.body?.to, previousEnd),
-    // Closing is deliberately manual-only. Keep the mode property for old
-    // links/forms, but never allow a request to switch back to billing sync.
-    mode: 'manual',
     hideEdwin: String(req.query.hide_edwin || req.body?.hide_edwin || '') === '1'
   };
-}
-
-function normalizeSiteCluster(rawSite, rawCluster) {
-  const inputSite = String(rawSite || 'CDS').trim().toUpperCase();
-  const inputCluster = String(rawCluster || '').trim().toUpperCase();
-  const legacyCluster = inputSite === 'KRW' || inputSite === 'CLM' ? inputSite : '';
-  const normalizedSite = inputSite === 'KUBANG' || inputSite.includes('KUBANG') ? 'KBG' : inputSite;
-  const site = legacyCluster ? 'CDS' : normalizedSite;
-  if (!['CDS', 'KBG'].includes(site)) return null;
-  const cluster = site === 'CDS' && ['KRW', 'CLM'].includes(legacyCluster || inputCluster)
-    ? (legacyCluster || inputCluster)
-    : null;
-  return { site, cluster };
 }
 
 function manualIncomeRow(row) {
@@ -83,6 +68,7 @@ function manualIncomeRow(row) {
     category: row.category,
     notes: row.description,
     source_type: 'closing_manual',
+    entry_source: row.source_type === 'cash_sync' ? 'cash_sync' : 'manual',
     entry_id: row.id
   };
 }
@@ -98,26 +84,30 @@ function manualExpenseRow(row) {
     amount: row.amount,
     notes: row.description,
     source_type: 'closing_manual',
+    entry_source: row.source_type === 'cash_sync' ? 'cash_sync' : 'manual',
     entry_id: row.id
   };
 }
 
 async function loadClosing(start, end) {
-  const selectedMode = 'manual';
   const [[period]] = await db.execute('SELECT * FROM closing_periods WHERE period_start=? AND period_end=? LIMIT 1', [start, end]);
-  const closing = period || { status: 'DRAFT', manual_revenue: 0, manual_expense: 0, manual_carry: 0, manual_salary_agung: 500000, manual_salary_padilah: 1000000, notes: '' };
+  const closing = period || { status: 'DRAFT', mode: 'MANUAL', manual_revenue: 0, manual_expense: 0, manual_carry: 0, manual_salary_agung: 500000, manual_salary_padilah: 1000000, notes: '' };
+  const selectedMode = String(closing.mode || 'MANUAL').toUpperCase() === 'AUTO' ? 'auto' : 'manual';
 
   // v1.29 — Closing is fully flexible now: every period always recalculates from
   // the live rows below (no more frozen snapshot_json / LOCKED short-circuit), so
   // edits made after a period was previously marked LOCKED show up immediately.
-  // Manual-only source: Closing never reads billing, payments, cash journals,
-  // or staff-held cash. Every amount must be entered in this module.
+  // v2 — Mode Manual: semua angka diketik lewat form di bawah. Mode Otomatis:
+  // /closing/sync menarik transaksi Data Kas APPROVED ke closing_entries (masih
+  // bisa diedit/ditambah manual di atasnya). Baik manual maupun sync selalu
+  // masuk lewat closing_entries, jadi kalkulasi di bawah ini sama untuk keduanya.
   const [adjustments] = period ? await db.execute('SELECT * FROM closing_adjustments WHERE closing_id=? ORDER BY id', [period.id]) : [[]];
   const [lineItems] = period ? await db.execute('SELECT * FROM closing_entries WHERE closing_id=? ORDER BY entry_date DESC,id DESC', [period.id]) : [[]];
   const manualPayments = lineItems.filter((row) => row.entry_type === 'INCOME').map(manualIncomeRow);
   const manualExpenses = lineItems.filter((row) => row.entry_type === 'EXPENSE').map(manualExpenseRow);
   const calculated = buildClosingCalculation({ payments: manualPayments, expenses: manualExpenses, heldCash: [], adjustments, closing, mode: selectedMode, lineItems });
-  return { ...calculated, closing, period, payments: manualPayments, expenses: manualExpenses, heldCash: [] };
+  const lastSyncedText = closing.last_synced_at ? localDateKey(closing.last_synced_at) + ' ' + new Date(closing.last_synced_at).toTimeString().slice(0, 5) : null;
+  return { ...calculated, closing, period, payments: manualPayments, expenses: manualExpenses, heldCash: [], lastSyncedText };
 }
 
 async function ensureDraftPeriod(conn, start, end, userId) {
@@ -194,11 +184,11 @@ async function loadUnpaidCustomers(end) {
 
 router.get('/', async (req, res, next) => {
   try {
-    const { start, end, mode, hideEdwin } = selectedPeriod(req);
+    const { start, end, hideEdwin } = selectedPeriod(req);
     if (start > end) return res.status(400).send('Periode tidak valid.');
     const data = await loadClosing(start, end);
     const unpaid = await loadUnpaidCustomers(end);
-    res.render('closing/index', { title: 'Closing', pageTitle: 'Closing', pageSubtitle: `${start} s/d ${end}`, start, end, mode, hideEdwin, money, locationText, ...data, ...unpaid });
+    res.render('closing/index', { title: 'Closing', pageTitle: 'Closing', pageSubtitle: `${start} s/d ${end}`, start, end, hideEdwin, money, locationText, ...data, ...unpaid });
   } catch (err) { next(err); }
 });
 
@@ -223,8 +213,57 @@ router.post('/save', async (req, res, next) => {
     if (old) await db.execute('UPDATE closing_periods SET manual_revenue=?,manual_expense=?,manual_carry=?,manual_salary_agung=?,manual_salary_padilah=?,notes=? WHERE id=?', [...values, old.id]);
     else await db.execute('INSERT INTO closing_periods(period_start,period_end,closing_date,manual_revenue,manual_expense,manual_carry,manual_salary_agung,manual_salary_padilah,notes,created_by) VALUES(?,?,CURDATE(),?,?,?,?,?,?,?)', [start, end, ...values, req.session.user.id]);
     req.session.flash = { type: 'success', message: 'Pengaturan Closing tersimpan.' };
-    res.redirect(`/closing?from=${start}&to=${end}&mode=manual`);
+    res.redirect(`/closing?from=${start}&to=${end}`);
   } catch (err) { next(err); }
+});
+
+// v2 — Mode per periode. Hanya boleh diganti selama periode masih DRAFT; begitu
+// dikunci, mode ikut membeku bersama snapshot periode itu.
+router.post('/mode', async (req, res, next) => {
+  const { start, end } = selectedPeriod(req);
+  const requested = String(req.body.mode || '').trim().toUpperCase();
+  let conn;
+  try {
+    if (start > end) return res.status(400).send('Periode tidak valid.');
+    if (!['MANUAL', 'AUTO'].includes(requested)) return res.status(400).send('Mode tidak valid.');
+    conn = await db.getConnection();
+    await conn.beginTransaction();
+    const period = await ensureDraftPeriod(conn, start, end, req.session.user.id);
+    const before = { mode: period.mode || 'MANUAL' };
+    await conn.execute('UPDATE closing_periods SET mode=? WHERE id=?', [requested, period.id]);
+    await financialAudit({ conn, userId: req.session.user.id, action: 'set_closing_mode', entityType: 'closing_period', entityId: period.id, before, after: { mode: requested }, reason: `Ganti mode closing periode ${start} s/d ${end}`, ip: req.ip });
+    await conn.commit();
+    req.session.flash = { type: 'success', message: `Mode closing diganti ke ${requested === 'AUTO' ? 'Otomatis (sinkron Data Kas)' : 'Manual'}.` };
+    res.redirect(`/closing?from=${start}&to=${end}`);
+  } catch (err) { if (conn) await conn.rollback(); next(err); } finally { if (conn) conn.release(); }
+});
+
+// v2 — Mode Otomatis: tarik transaksi Data Kas (cash_transactions) yang sudah
+// APPROVED Master Admin ke closing_entries periode ini. Idempoten lewat
+// cash_transaction_id (lihat services/closingSyncService.js) sehingga tombol ini
+// aman ditekan berkali-kali — hanya transaksi baru yang belum pernah ditarik
+// yang ditambahkan.
+router.post('/sync', async (req, res, next) => {
+  const { start, end } = selectedPeriod(req);
+  let conn;
+  try {
+    if (start > end) return res.status(400).send('Periode tidak valid.');
+    conn = await db.getConnection();
+    await conn.beginTransaction();
+    const [[existing]] = await conn.execute('SELECT * FROM closing_periods WHERE period_start=? AND period_end=? FOR UPDATE', [start, end]);
+    if (!existing) throw new Error('Aktifkan mode otomatis untuk periode ini terlebih dahulu sebelum sinkronisasi.');
+    if (existing.status === 'LOCKED') throw new Error('Periode Closing sudah dikunci.');
+    if (String(existing.mode || 'MANUAL').toUpperCase() !== 'AUTO') throw new Error('Aktifkan mode otomatis untuk periode ini terlebih dahulu sebelum sinkronisasi.');
+    const result = await syncCashDataIntoClosing({ conn, closingId: existing.id, start, end, userId: req.session.user.id });
+    await conn.execute('UPDATE closing_periods SET last_synced_at=NOW() WHERE id=?', [existing.id]);
+    await financialAudit({ conn, userId: req.session.user.id, action: 'sync_closing_cash', entityType: 'closing_period', entityId: existing.id, before: {}, after: result, reason: `Sinkron Data Kas periode ${start} s/d ${end}`, ip: req.ip });
+    await conn.commit();
+    const parts = [];
+    if (result.inserted) parts.push(`${result.inserted} transaksi ditarik dari Data Kas`);
+    if (result.skippedUnmapped) parts.push(`${result.skippedUnmapped} dilewati (lokasi bukan CDS/KBG)`);
+    req.session.flash = { type: result.inserted ? 'success' : 'warning', message: parts.length ? `${parts.join(', ')}.` : 'Tidak ada transaksi Data Kas baru untuk periode ini.' };
+    res.redirect(`/closing?from=${start}&to=${end}`);
+  } catch (err) { if (conn) await conn.rollback(); next(err); } finally { if (conn) conn.release(); }
 });
 
 router.post('/period-lock', async (req, res, next) => {
@@ -277,7 +316,7 @@ router.post('/entries', async (req, res, next) => {
     await conn.execute('INSERT INTO closing_entries(closing_id,entry_type,site_code,cluster_name,category,amount,entry_date,description,created_by) VALUES(?,?,?,?,?,?,?,?,?)', [period.id, entryType, site.site, site.cluster, category, amount, entryDate, description, req.session.user.id]);
     await conn.commit();
     req.session.flash = { type: 'success', message: `${entryType === 'INCOME' ? 'Pendapatan' : 'Pengeluaran'} ditambahkan ke kalkulator.` };
-    res.redirect(`/closing?from=${start}&to=${end}&mode=manual`);
+    res.redirect(`/closing?from=${start}&to=${end}`);
   } catch (err) { if (conn) await conn.rollback(); next(err); } finally { if (conn) conn.release(); }
 });
 
@@ -300,7 +339,7 @@ router.post('/entries/:id/update', async (req, res, next) => {
     const description = String(req.body.description || '').trim().slice(0, 255) || null;
     await db.execute('UPDATE closing_entries SET site_code=?,cluster_name=?,category=?,amount=?,entry_date=?,description=? WHERE id=?', [site.site, site.cluster, category, amount, entryDate, description, id]);
     req.session.flash = { type: 'success', message: 'Baris kalkulator diperbarui.' };
-    res.redirect(`/closing?from=${start}&to=${end}&mode=manual`);
+    res.redirect(`/closing?from=${start}&to=${end}`);
   } catch (err) { next(err); }
 });
 
@@ -314,7 +353,7 @@ router.post('/entries/:id/delete', async (req, res, next) => {
     if (!entry) return res.status(404).send('Transaksi tidak ditemukan.');
     await db.execute('DELETE FROM closing_entries WHERE id=?', [id]);
     req.session.flash = { type: 'success', message: 'Baris kalkulator dihapus.' };
-    res.redirect(`/closing?from=${start}&to=${end}&mode=manual`);
+    res.redirect(`/closing?from=${start}&to=${end}`);
   } catch (err) { next(err); }
 });
 
@@ -340,7 +379,7 @@ router.post('/adjustments', async (req, res, next) => {
     await conn.execute('INSERT INTO closing_adjustments(closing_id,adjustment_type,site_code,recipient_name,amount,direction,description,created_by) VALUES(?,?,?,?,?,?,?,?)', [period.id, adjustmentType, site.site, recipient, amount, direction, description, req.session.user.id]);
     await conn.commit();
     req.session.flash = { type: 'success', message: 'Potongan/penyesuaian per orang tersimpan.' };
-    res.redirect(`/closing?from=${start}&to=${end}&mode=manual`);
+    res.redirect(`/closing?from=${start}&to=${end}`);
   } catch (err) { if (conn) await conn.rollback(); next(err); } finally { if (conn) conn.release(); }
 });
 
@@ -366,7 +405,7 @@ router.post('/adjustments/:id/update', async (req, res, next) => {
     if (!site || amount <= 0) return res.status(400).send('Lokasi dan nominal penyesuaian wajib valid.');
     await db.execute('UPDATE closing_adjustments SET adjustment_type=?,site_code=?,recipient_name=?,amount=?,direction=?,description=? WHERE id=?', [adjustmentType, site.site, recipient, amount, direction, description, id]);
     req.session.flash = { type: 'success', message: 'Penyesuaian diperbarui.' };
-    res.redirect(`/closing?from=${start}&to=${end}&mode=manual`);
+    res.redirect(`/closing?from=${start}&to=${end}`);
   } catch (err) { next(err); }
 });
 
@@ -380,7 +419,7 @@ router.post('/adjustments/:id/delete', async (req, res, next) => {
     if (!adjustment) return res.status(404).send('Penyesuaian tidak ditemukan.');
     await db.execute('DELETE FROM closing_adjustments WHERE id=?', [id]);
     req.session.flash = { type: 'success', message: 'Penyesuaian dihapus.' };
-    res.redirect(`/closing?from=${start}&to=${end}&mode=manual`);
+    res.redirect(`/closing?from=${start}&to=${end}`);
   } catch (err) { next(err); }
 });
 
@@ -423,12 +462,14 @@ function buildTransactionRows(data, allowedBlocks) {
     const blockKey = siteBlock(row.site_code, row.cluster_name, row.site_name);
     if (!allowedBlocks.has(blockKey)) return;
     const manual = row.source_type === 'closing_manual';
-    rows.push({ tanggal: date(row.paid_date), lokasi: locationText(row), jenis: 'Pendapatan', keterangan: manual ? `${row.category || 'Manual'}${row.notes ? ` · ${row.notes}` : ''}` : (row.method || '-'), nominal: money(row.amount) });
+    const syncTag = row.entry_source === 'cash_sync' ? ' · Data Kas' : '';
+    rows.push({ tanggal: date(row.paid_date), lokasi: locationText(row), jenis: 'Pendapatan', keterangan: (manual ? `${row.category || 'Manual'}${row.notes ? ` · ${row.notes}` : ''}` : (row.method || '-')) + syncTag, nominal: money(row.amount) });
   });
   (data.expenses || []).forEach((row) => {
     const blockKey = siteBlock(row.site_code, row.site_name, row.cluster_name);
     if (!allowedBlocks.has(blockKey)) return;
-    rows.push({ tanggal: date(row.transaction_date), lokasi: locationText(row), jenis: 'Pengeluaran', keterangan: `${row.category}${row.notes ? ` · ${row.notes}` : ''}`, nominal: money(row.amount) });
+    const syncTag = row.entry_source === 'cash_sync' ? ' · Data Kas' : '';
+    rows.push({ tanggal: date(row.transaction_date), lokasi: locationText(row), jenis: 'Pengeluaran', keterangan: `${row.category}${row.notes ? ` · ${row.notes}` : ''}${syncTag}`, nominal: money(row.amount) });
   });
   rows.sort((a, b) => (a.tanggal < b.tanggal ? 1 : a.tanggal > b.tanggal ? -1 : 0));
   return rows;
@@ -436,12 +477,12 @@ function buildTransactionRows(data, allowedBlocks) {
 
 router.get('/pdf', async (req, res, next) => {
   try {
-    const { start, end, mode, hideEdwin } = selectedPeriod(req);
+    const { start, end, hideEdwin } = selectedPeriod(req);
     if (start > end) return res.status(400).send('Periode tidak valid.');
     const recipient = personFromReport(req.query.report);
     if (!recipient) return res.status(400).send('Penerima PDF tidak valid.');
     const data = await loadClosing(start, end);
-    const effectiveMode = data.mode || mode;
+    const effectiveMode = data.mode || 'manual';
     let grossTotal = 0;
     let netTotal = 0;
     const allowedBlocks = recipient.key === 'mang ali' ? new Set(['kbg']) : new Set(['krwclm', 'kbg']);
@@ -493,7 +534,7 @@ router.get('/history', async (req, res, next) => {
       const totalRevenue = money(data.blocks.krwclm.revenue) + money(data.blocks.kbg.revenue);
       const totalExpense = money(data.blocks.krwclm.expense) + money(data.blocks.kbg.expense);
       const totalProfit = money(data.blocks.krwclm.profit) + money(data.blocks.kbg.profit);
-      rows.push({ start, end, totalRevenue, totalExpense, totalProfit, entryCount: data.lineItems.length });
+      rows.push({ start, end, totalRevenue, totalExpense, totalProfit, entryCount: data.lineItems.length, mode: data.closing.mode === 'AUTO' ? 'AUTO' : 'MANUAL', status: data.closing.status === 'LOCKED' ? 'LOCKED' : 'DRAFT' });
     }
     res.render('closing/history', { title: 'Rekap Closing', pageTitle: 'Rekap Bulanan Closing', money, year, month, rows });
   } catch (err) { next(err); }

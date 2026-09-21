@@ -932,4 +932,30 @@ async function ensureV47Schema() {
   }
 }
 
-module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema };
+async function ensureV48Schema() {
+  // Closing v2 — mode per periode (MANUAL vs AUTO/sinkron Data Kas) dan penandaan
+  // baris hasil sinkron supaya sinkronisasi berikutnya tidak menarik dobel.
+  const [periodCols] = await db.query(`SHOW COLUMNS FROM closing_periods LIKE 'mode'`);
+  if (!periodCols.length) {
+    await db.query(`ALTER TABLE closing_periods ADD COLUMN mode ENUM('MANUAL','AUTO') NOT NULL DEFAULT 'MANUAL' AFTER status`);
+  }
+  const [syncCols] = await db.query(`SHOW COLUMNS FROM closing_periods LIKE 'last_synced_at'`);
+  if (!syncCols.length) {
+    await db.query(`ALTER TABLE closing_periods ADD COLUMN last_synced_at DATETIME NULL AFTER mode`);
+  }
+
+  const [sourceCols] = await db.query(`SHOW COLUMNS FROM closing_entries LIKE 'source_type'`);
+  if (!sourceCols.length) {
+    await db.query(`ALTER TABLE closing_entries ADD COLUMN source_type ENUM('manual','cash_sync') NOT NULL DEFAULT 'manual' AFTER entry_type`);
+  }
+  const [cashTxCols] = await db.query(`SHOW COLUMNS FROM closing_entries LIKE 'cash_transaction_id'`);
+  if (!cashTxCols.length) {
+    await db.query(`ALTER TABLE closing_entries ADD COLUMN cash_transaction_id BIGINT UNSIGNED NULL AFTER source_type`);
+  }
+  const [cashTxIndex] = await db.query(`SHOW INDEX FROM closing_entries WHERE Key_name='uq_closing_entry_cash_tx'`);
+  if (!cashTxIndex.length) {
+    await db.query(`ALTER TABLE closing_entries ADD UNIQUE KEY uq_closing_entry_cash_tx (closing_id, cash_transaction_id)`);
+  }
+}
+
+module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema };

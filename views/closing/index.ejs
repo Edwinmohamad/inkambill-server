@@ -1,34 +1,64 @@
 <div class="closing-page closing-manual-only">
   <header class="closing-head page-header">
     <div>
-      <div class="closing-eyebrow">INKAMNET CONTROL CENTER · KALKULATOR MANUAL</div>
+      <div class="closing-eyebrow"><%= closing.mode === 'AUTO' ? 'INKAMNET CONTROL CENTER \u00b7 KALKULATOR OTOMATIS' : 'INKAMNET CONTROL CENTER \u00b7 KALKULATOR MANUAL' %></div>
       <h1><i class="bi bi-calculator-fill me-2"></i>Closing</h1>
       <p class="text-muted mb-0">Isi angka untuk periode <strong><%= start %> s/d <%= end %></strong>. Status: <strong><%= closing.status==='LOCKED'?'TERKUNCI':'DRAFT' %></strong>.</p>
     </div>
     <form class="closing-period-form" method="get" action="/closing">
       <label class="closing-field"><span>Mulai</span><input class="form-control form-control-sm" type="date" name="from" value="<%= start %>" required></label>
       <label class="closing-field"><span>Sampai</span><input class="form-control form-control-sm" type="date" name="to" value="<%= end %>" required></label>
-      <input type="hidden" name="mode" value="manual">
       <button class="btn btn-primary btn-sm closing-period-submit" type="submit"><i class="bi bi-arrow-repeat me-1"></i>Hitung</button>
       <label class="closing-toggle"><input class="form-check-input" type="checkbox" name="hide_edwin" value="1" <%= hideEdwin ? 'checked' : '' %>><span><i class="bi bi-eye-slash"></i>Sembunyikan bagian Edwin pada PDF pihak lain</span></label>
     </form>
   </header>
+
+  <div class="closing-mode-switch" role="group" aria-label="Mode closing">
+    <% if (closing.status==='LOCKED') { %>
+      <span class="closing-mode-pill is-locked"><i class="bi <%= closing.mode==='AUTO' ? 'bi-arrow-repeat' : 'bi-pencil-square' %>"></i>Mode <%= closing.mode==='AUTO' ? 'Otomatis' : 'Manual' %> (terkunci bersama periode)</span>
+    <% } else { %>
+      <form method="post" action="/closing/mode" data-loading-message="Mengganti mode...">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="mode" value="MANUAL">
+        <button class="closing-mode-pill <%= closing.mode!=='AUTO' ? 'is-active' : '' %>" type="submit" <%= closing.mode!=='AUTO' ? 'disabled' : '' %>><i class="bi bi-pencil-square"></i>Manual</button>
+      </form>
+      <form method="post" action="/closing/mode" data-loading-message="Mengganti mode...">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="mode" value="AUTO">
+        <button class="closing-mode-pill <%= closing.mode==='AUTO' ? 'is-active' : '' %>" type="submit" <%= closing.mode==='AUTO' ? 'disabled' : '' %>><i class="bi bi-arrow-repeat"></i>Otomatis · Sinkron Data Kas</button>
+      </form>
+    <% } %>
+  </div>
 
   <div class="closing-toolbar">
     <div class="closing-pdf-actions">
       <a class="btn btn-outline-primary btn-sm" href="/closing/history"><i class="bi bi-clock-history me-1"></i>Rekap Bulanan</a>
       <a class="btn btn-outline-primary btn-sm" href="/closing/export.xlsx?from=<%= start %>&to=<%= end %>"><i class="bi bi-file-earmark-spreadsheet me-1"></i>Export Excel</a>
       <% [['edwin','Edwin'],['jon','Jon'],['bopung','Bopung'],['mang-ali','Mang Ali']].forEach(([key,label]) => { %>
-        <a class="btn btn-outline-secondary btn-sm" href="/closing/pdf?from=<%= start %>&to=<%= end %>&mode=manual&report=<%= key %><%= hideEdwin ? '&hide_edwin=1' : '' %>" target="_blank" rel="noopener"><i class="bi bi-file-earmark-pdf me-1"></i><%= label %></a>
+        <a class="btn btn-outline-secondary btn-sm" href="/closing/pdf?from=<%= start %>&to=<%= end %>&report=<%= key %><%= hideEdwin ? '&hide_edwin=1' : '' %>" target="_blank" rel="noopener"><i class="bi bi-file-earmark-pdf me-1"></i><%= label %></a>
       <% }) %>
     </div>
     <% if(closing.status==='LOCKED'){ %><form method="post" action="/closing/period-reopen" data-loading-message="Membuka kembali periode..."><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input class="form-control form-control-sm" name="reason" minlength="5" placeholder="Alasan buka kembali" required><button class="btn btn-outline-warning btn-sm"><i class="bi bi-unlock"></i> Buka Kembali</button></form><% }else{ %><form method="post" action="/closing/period-lock" data-loading-message="Memvalidasi dan mengunci periode..." onsubmit="return confirm('Kunci periode ini? Transaksi bertanggal dalam periode ini akan ditolak.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="reason" value="Closing periode selesai"><button class="btn btn-danger btn-sm"><i class="bi bi-lock"></i> Kunci Periode</button></form><% } %>
   </div>
 
+  <% if (closing.mode === 'AUTO') { %>
+  <div class="closing-mode-banner is-auto">
+    <i class="bi bi-arrow-repeat"></i>
+    <div>
+      <strong>Mode otomatis · sinkron Data Kas · <%= closing.status==='LOCKED'?'periode terkunci':'masih dapat diedit' %></strong>
+      <span>Transaksi Data Kas yang sudah <b>APPROVED</b> Master Admin pada rentang tanggal ini bisa ditarik ke bawah dengan tombol Sync. Baris hasil sync tetap boleh diedit/dihapus/ditambah manual seperti baris biasa.<%= typeof lastSyncedText !== 'undefined' && lastSyncedText ? ` Terakhir sync: ${lastSyncedText}.` : ' Belum pernah disinkron.' %></span>
+    </div>
+    <% if (closing.status!=='LOCKED') { %>
+    <form method="post" action="/closing/sync" data-loading-message="Menarik transaksi Data Kas..." class="closing-sync-form">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>">
+      <button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-cloud-download me-1"></i>Sync dari Data Kas</button>
+    </form>
+    <% } %>
+  </div>
+  <% } else { %>
   <div class="closing-mode-banner is-manual">
     <i class="bi bi-pencil-square"></i>
-    <div><strong>Mode manual penuh · <%= closing.status==='LOCKED'?'periode terkunci':'masih dapat diedit' %></strong><span>Closing tidak mengambil data billing, pembayaran, kas, atau cash tim. Setelah dikunci, transaksi keuangan pada rentang tanggal tersebut ditolak sampai Master Admin membuka kembali dengan alasan.</span></div>
+    <div><strong>Mode manual · <%= closing.status==='LOCKED'?'periode terkunci':'masih dapat diedit' %></strong><span>Semua angka diketik sendiri di bawah. Pindah ke mode Otomatis kalau mau menarik pemasukan/pengeluaran dari Data Kas sebagai titik awal (tetap bisa ditambah/diedit manual).</span></div>
   </div>
+  <% } %>
 
   <% if (typeof unpaidSummary !== 'undefined' && unpaidSummary && unpaidSummary.count > 0) { %>
   <div class="closing-unmapped-alert closing-unpaid-note">
@@ -69,7 +99,7 @@
       <div class="closing-section-head"><div><span class="closing-card-kicker">LANGKAH 2 · INPUT UTAMA</span><h2>Pendapatan dan pengeluaran</h2><small class="text-muted">Isi nominal per lokasi. Pengeluaran CDS boleh diberi cluster hanya sebagai keterangan.</small></div><span class="closing-count"><%= lineItems.length %> baris</span></div>
         <div class="closing-entry-grid">
           <form class="closing-entry-box closing-entry-form" method="post" action="/closing/entries">
-            <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="entry_type" value="INCOME"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="mode" value="manual">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="entry_type" value="INCOME"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>">
             <div class="closing-entry-title"><i class="bi bi-plus-circle"></i><span>Pendapatan</span></div>
             <div class="closing-form-grid">
               <label><span>Lokasi</span><select class="form-select form-select-sm" name="site_code"><option value="CDS">CDS</option><option value="KBG">KBG</option></select></label>
@@ -83,7 +113,7 @@
           </form>
 
           <form class="closing-entry-box closing-entry-form" method="post" action="/closing/entries">
-            <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="entry_type" value="EXPENSE"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="mode" value="manual">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="entry_type" value="EXPENSE"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>">
             <div class="closing-entry-title"><i class="bi bi-dash-circle"></i><span>Pengeluaran</span></div>
             <div class="closing-form-grid">
               <label><span>Lokasi</span><select class="form-select form-select-sm" name="site_code"><option value="CDS">CDS</option><option value="KBG">KBG</option></select></label>
@@ -98,7 +128,7 @@
         </div>
         <datalist id="closingExpenseCategories"><option value="Petty cash"><option value="Maintenance"><option value="Operasional"><option value="Internet / ISP"><option value="Transportasi"><option value="Material jaringan"><option value="Gaji / Honor"><option value="Lain-lain"></datalist>
         <form class="closing-settings-grid" method="post" action="/closing/save">
-          <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="mode" value="manual">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>">
           <label><span>Carry-over</span><input class="form-control form-control-sm" type="number" step="1" name="manual_carry" value="<%= closing.manual_carry || 0 %>"></label>
           <label><span>Gaji Agung</span><input class="form-control form-control-sm" type="number" min="0" step="1" name="manual_salary_agung" value="<%= closing.manual_salary_agung ?? 500000 %>"></label>
           <label><span>Gaji Padilah</span><input class="form-control form-control-sm" type="number" min="0" step="1" name="manual_salary_padilah" value="<%= closing.manual_salary_padilah ?? 1000000 %>"></label>
@@ -110,7 +140,7 @@
   </section>
 
   <div class="modal fade" id="editEntryModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-lg modal-dialog-centered"><form class="modal-content" method="post" id="editEntryForm">
-    <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="mode" value="manual">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>">
     <div class="modal-header"><h5 class="modal-title">Edit Baris Manual</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
     <div class="modal-body closing-form-grid">
       <label><span>Lokasi</span><select class="form-select form-select-sm" name="site_code" id="editEntrySite"><option value="CDS">CDS</option><option value="KBG">KBG</option></select></label>
@@ -128,7 +158,7 @@
       <div class="closing-section-head"><div><span class="closing-card-kicker">RIWAYAT INPUT</span><h2>Rincian angka manual</h2></div><span class="closing-count"><%= lineItems.length %> baris</span></div>
       <div class="table-responsive mt-3"><table class="table table-sm align-middle closing-table"><thead><tr><th>Tanggal</th><th>Jenis</th><th>Lokasi</th><th>Kategori</th><th>Keterangan</th><th class="text-end">Nominal</th><th>Aksi</th></tr></thead><tbody>
         <% if (!lineItems.length) { %><tr><td colspan="7" class="text-muted text-center py-3">Belum ada angka manual. Isi form pendapatan atau pengeluaran di atas.</td></tr><% } %>
-        <% lineItems.forEach(row => { %><tr><td><%= row.entry_date %></td><td><span class="badge text-bg-<%= row.entry_type === 'INCOME' ? 'success' : 'warning' %>"><%= row.entry_type === 'INCOME' ? 'PENDAPATAN' : 'PENGELUARAN' %></span></td><td><%= row.site_code %><%= row.cluster_name ? ` / ${row.cluster_name}` : '' %></td><td><%= row.category %></td><td><%= row.description || '-' %></td><td class="text-end">Rp <%= money(row.amount).toLocaleString('id-ID') %></td><td class="closing-row-actions">
+        <% lineItems.forEach(row => { %><tr><td><%= row.entry_date %></td><td><span class="badge text-bg-<%= row.entry_type === 'INCOME' ? 'success' : 'warning' %>"><%= row.entry_type === 'INCOME' ? 'PENDAPATAN' : 'PENGELUARAN' %></span> <% if (row.source_type === 'cash_sync') { %><span class="badge closing-source-badge" title="Ditarik dari Data Kas"><i class="bi bi-cloud-download"></i> Data Kas</span><% } %></td><td><%= row.site_code %><%= row.cluster_name ? ` / ${row.cluster_name}` : '' %></td><td><%= row.category %></td><td><%= row.description || '-' %></td><td class="text-end">Rp <%= money(row.amount).toLocaleString('id-ID') %></td><td class="closing-row-actions">
           <button type="button" class="btn btn-outline-secondary btn-sm" title="Edit" onclick='openEditEntry(<%- safeJson({id:row.id,site_code:row.site_code,cluster_name:row.cluster_name||"",entry_date:String(row.entry_date).slice(0,10),category:row.category,amount:row.amount,description:row.description||""}) %>)'><i class="bi bi-pencil"></i></button>
           <form method="post" action="/closing/entries/<%= row.id %>/delete" onsubmit="return confirm('Hapus baris ini?')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><button class="btn btn-outline-danger btn-sm" type="submit" title="Hapus"><i class="bi bi-trash"></i></button></form>
         </td></tr><% }) %>
@@ -140,7 +170,7 @@
     <div class="card-body">
       <div class="closing-section-head"><div><span class="closing-card-kicker">LANGKAH 3 · PENYESUAIAN</span><h2>Potongan dan tambahan per orang</h2><small class="text-muted">Cash belum setor otomatis mengurangi hak penerima.</small></div><span class="closing-count"><%= adjustments.length %> baris</span></div>
         <form class="closing-adjustment-grid mt-3" method="post" action="/closing/adjustments">
-          <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="mode" value="manual">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>">
           <label><span>Penerima</span><select class="form-select form-select-sm" name="recipient_name"><option>Edwin</option><option>Jon</option><option>Bopung</option><option>Mang Ali</option></select></label>
           <label><span>Lokasi</span><select class="form-select form-select-sm" name="site_code"><option value="CDS">CDS</option><option value="KBG">KBG</option></select></label>
           <label><span>Jenis</span><select class="form-select form-select-sm" name="adjustment_type"><option value="CASH_HOLD">Cash belum setor</option><option value="MANUAL">Potongan / tambahan lain</option></select></label>
@@ -160,7 +190,7 @@
   </section>
 
   <div class="modal fade" id="editAdjustmentModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-lg modal-dialog-centered"><form class="modal-content" method="post" id="editAdjustmentForm">
-    <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="mode" value="manual">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>">
     <div class="modal-header"><h5 class="modal-title">Edit Penyesuaian</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
     <div class="modal-body closing-adjustment-grid closing-modal-grid">
       <label><span>Penerima</span><select class="form-select form-select-sm" name="recipient_name" id="editAdjRecipient"><option>Edwin</option><option>Jon</option><option>Bopung</option><option>Mang Ali</option></select></label>

@@ -33,6 +33,22 @@ const locationText = (row) => {
   return cluster && site === 'CDS' ? `CDS / ${cluster}` : site;
 };
 
+// Shared site/cluster normalizer — dipakai baik oleh input manual (routes/closing.js)
+// maupun sinkronisasi Data Kas (services/closingSyncService.js) supaya aturan
+// pemetaan lokasi selalu konsisten di kedua mode.
+const normalizeSiteCluster = (rawSite, rawCluster) => {
+  const inputSite = String(rawSite || 'CDS').trim().toUpperCase();
+  const inputCluster = String(rawCluster || '').trim().toUpperCase();
+  const legacyCluster = inputSite === 'KRW' || inputSite === 'CLM' ? inputSite : '';
+  const normalizedSite = inputSite === 'KUBANG' || inputSite.includes('KUBANG') ? 'KBG' : inputSite;
+  const site = legacyCluster ? 'CDS' : normalizedSite;
+  if (!['CDS', 'KBG'].includes(site)) return null;
+  const cluster = site === 'CDS' && ['KRW', 'CLM'].includes(legacyCluster || inputCluster)
+    ? (legacyCluster || inputCluster)
+    : null;
+  return { site, cluster };
+};
+
 const mapAdd = (map, key, value) => map.set(key, (map.get(key) || 0) + money(value));
 
 function buildClosingCalculation({ payments = [], expenses = [], heldCash = [], routerAssets = [], adjustments = [], closing = {}, mode = 'auto', lineItems = [] }) {
@@ -64,8 +80,13 @@ function buildClosingCalculation({ payments = [], expenses = [], heldCash = [], 
   // Keep old manual totals readable for legacy periods that have no detailed
   // rows yet. Once a period has closing_entries, the visible manual rows are
   // the single source of truth so hidden legacy fields cannot double count.
+  // Field manual_revenue/manual_expense adalah sisa struktur lama (sebelum ada
+  // closing_entries per baris). Berlaku di kedua mode selama belum ada baris
+  // detail sama sekali, supaya periode lama yang belum diisi ulang tidak
+  // mendadak kosong; begitu ada baris (manual atau hasil sync), baris itu jadi
+  // satu-satunya sumber kebenaran.
   const hasDetailedManualRows = Array.isArray(lineItems) && lineItems.length > 0;
-  if (selectedMode === 'manual' && !hasDetailedManualRows) {
+  if (!hasDetailedManualRows) {
     blocks.krwclm.revenue += money(closing.manual_revenue);
     blocks.krwclm.expense += money(closing.manual_expense);
     if (money(closing.manual_revenue)) blocks.krwclm.clusterRevenue.LAINNYA = (blocks.krwclm.clusterRevenue.LAINNYA || 0) + money(closing.manual_revenue);
@@ -73,7 +94,10 @@ function buildClosingCalculation({ payments = [], expenses = [], heldCash = [], 
   }
 
   Object.values(blocks).forEach((block) => { block.profit = block.revenue - block.expense; });
-  if (selectedMode === 'manual') blocks.krwclm.profit += money(closing.manual_carry);
+  // Carry-over saldo (mis. minus bulan lalu) adalah input manual terpisah dari
+  // sumber pendapatan/pengeluaran, jadi selalu berlaku baik mode manual maupun
+  // otomatis.
+  blocks.krwclm.profit += money(closing.manual_carry);
 
   // Cash held belongs to the block where the transaction is installed. It must
   // never be applied to both CDS and KBG.
@@ -142,4 +166,4 @@ function buildClosingCalculation({ payments = [], expenses = [], heldCash = [], 
   };
 }
 
-module.exports = { money, personKey, siteBlock, clusterKey, locationText, buildClosingCalculation };
+module.exports = { money, personKey, siteBlock, clusterKey, locationText, normalizeSiteCluster, buildClosingCalculation };
