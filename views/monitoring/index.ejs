@@ -1,17 +1,12 @@
 <link rel="stylesheet" href="/css/monitoring.css?v=<%= assetVersion %>">
-<section class="mon-page" id="monApp" data-admin="<%= isAdmin?'1':'0' %>">
+<section class="mon-page cc-page" id="monApp" data-admin="<%= isAdmin?'1':'0' %>">
   <div class="module-head">
-    <div><div class="module-kicker">KELOLA PERANGKAT</div><h1>ONT, MikroTik & OLT</h1><p>Detail dan aksi per perangkat &mdash; ping &amp; reboot router MikroTik, ping OLT, ping/reboot/ganti SSID/password ONT pelanggan. Untuk ringkasan menyeluruh, buka <a href="/noc">NOC Terpadu</a>.</p></div>
+    <div><div class="module-kicker">KELOLA PERANGKAT</div><h1>Pusat Kendali Perangkat</h1><p>Satu tampilan untuk MikroTik, OLT &amp; ONT pelanggan &mdash; pilih perangkat lalu ping, reboot, ganti SSID/password, atau buka aksesnya langsung dari panel di kanan.</p></div>
     <div class="module-actions mon-actions">
-      <div class="seg" id="monSeg">
-        <button class="active" data-board="ont" type="button" title="Alt/Ctrl+1">ONT</button>
-        <button data-board="mikrotik" type="button" title="Alt/Ctrl+2">MikroTik</button>
-        <button data-board="olt" type="button" title="Alt/Ctrl+3">OLT</button>
-      </div>
       <div class="mon-filter-bar">
         <select class="form-select mon-filter-select" id="monSiteFilter">
           <option value="">Semua Site</option>
-          <% sites.forEach(s=>{ %><option value="<%= s.code %>"><%= s.code %> · <%= s.name %></option><% }) %>
+          <% sites.forEach(s=>{ %><option value="<%= s.code %>"><%= s.code %> &middot; <%= s.name %></option><% }) %>
         </select>
         <button type="button" class="icon-button" id="monRefreshBtn" title="Refresh sekarang"><i class="bi bi-arrow-clockwise"></i></button>
         <small class="mon-refresh-indicator" id="monRefreshIndicator">memuat...</small>
@@ -19,91 +14,83 @@
     </div>
   </div>
 
-  <div class="bento mon-skel" id="bento-ont"><div class="b-hero"><h4>Memuat...</h4></div></div>
-  <div class="bento mon-skel" id="bento-mikrotik" style="display:none"><div class="b-hero"><h4>Memuat...</h4></div></div>
-  <div class="bento mon-skel" id="bento-olt" style="display:none"><div class="b-hero"><h4>Memuat...</h4></div></div>
+  <div class="cc-shell">
+    <!-- Left nav: switches board -- counts/dots always visible so you see trouble before clicking in -->
+    <nav class="cc-nav" id="ccNav">
+      <button type="button" class="cc-nav-item active" data-board="ont" title="Alt/Ctrl+1">
+        <i class="bi bi-wifi"></i>
+        <span class="cc-nav-label"><strong>ONT Pelanggan</strong><small id="ccNavOnt">memuat&hellip;</small></span>
+        <em class="cc-nav-dot" id="ccDotOnt"></em>
+      </button>
+      <button type="button" class="cc-nav-item" data-board="mikrotik" title="Alt/Ctrl+2">
+        <i class="bi bi-router-fill"></i>
+        <span class="cc-nav-label"><strong>Router MikroTik</strong><small id="ccNavMikrotik">memuat&hellip;</small></span>
+        <em class="cc-nav-dot" id="ccDotMikrotik"></em>
+      </button>
+      <button type="button" class="cc-nav-item" data-board="olt" title="Alt/Ctrl+3">
+        <i class="bi bi-hdd-network-fill"></i>
+        <span class="cc-nav-label"><strong>OLT</strong><small id="ccNavOlt">memuat&hellip;</small></span>
+        <em class="cc-nav-dot" id="ccDotOlt"></em>
+      </button>
+      <div class="cc-nav-sep"></div>
+      <div class="cc-nav-sites">
+        <div class="cc-nav-sites-label">RINGKASAN SITE</div>
+        <div id="ccNavSites"></div>
+      </div>
+    </nav>
+
+    <!-- Center: one template reused by all three boards (KPI row -> attention list -> full table) -->
+    <div class="cc-center">
+      <div class="cc-board-head">
+        <div><div class="cc-board-kicker">BOARD AKTIF</div><h2 id="ccBoardTitle">ONT Pelanggan</h2></div>
+        <div class="cc-board-actions" id="ccBoardActions"></div>
+      </div>
+      <div class="cc-kpis" id="ccKpis"></div>
+      <div class="cc-board-body">
+        <div class="data-card cc-attention">
+          <div class="data-card-head"><h3 id="ccAttentionTitle">Perlu Tindakan</h3></div>
+          <div class="cc-attention-list" id="ccAttentionList"></div>
+        </div>
+        <div class="data-card cc-table-card">
+          <div class="table-responsive"><table class="app-table"><thead id="ccTableHead"></thead><tbody id="ccTableBody"></tbody></table></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: persistent inspector -- replaces per-board pop-up modals. Search, pick, act. -->
+    <aside class="cc-inspector" id="ccInspector">
+      <div class="mon-search-wrap">
+        <input class="form-control" id="ccSearchInput" placeholder="Cari perangkat di board ini&hellip;">
+        <div class="mon-search-results" id="ccSearchResults" hidden></div>
+      </div>
+      <div id="ccEmptyPick" class="mini-empty">Pilih perangkat dari daftar, tabel, atau pencarian di atas.</div>
+      <div id="ccPickedWrap" hidden>
+        <div class="mon-device-picked">
+          <div><strong id="ccPickedName">-</strong><small id="ccPickedMeta">-</small></div>
+          <button type="button" class="btn-tech" id="ccPickedClear"><i class="bi bi-x-lg"></i></button>
+        </div>
+
+        <div class="cc-remote" id="ccRemote" hidden>
+          <div class="cc-remote-label">AKSES REMOTE</div>
+          <div class="cc-remote-row">
+            <code id="ccRemoteIp">-</code>
+            <button type="button" class="btn-tech sm" id="ccRemoteOpen" hidden title="Buka di tab baru"><i class="bi bi-box-arrow-up-right"></i></button>
+            <button type="button" class="btn-tech sm" id="ccRemoteCopy" title="Salin IP"><i class="bi bi-clipboard"></i></button>
+          </div>
+          <small id="ccRemoteNote"></small>
+        </div>
+
+        <div class="mon-action-list" id="ccActionList"></div>
+        <div class="mon-action-result" id="ccActResult" hidden></div>
+      </div>
+    </aside>
+  </div>
 
   <div class="data-card mon-site-table">
     <div class="data-card-head"><div><h3>Ringkasan per Site</h3><small>Gabungan ONT, Router, dan status jaringan. Klik baris untuk memfilter dashboard ke site tersebut.</small></div></div>
     <div class="table-responsive"><table class="app-table" id="monSiteTable"><thead><tr><th>Site</th><th>ONT Online</th><th>ONT Kritis</th><th>Router Online</th></tr></thead><tbody id="monSiteTableBody"><tr><td colspan="4"><div class="empty-state"><i class="bi bi-hourglass-split"></i><small>Memuat data site...</small></div></td></tr></tbody></table></div>
   </div>
 </section>
-
-<!-- Modal drill-down: daftar perangkat dari klik bar/agregat (Distribusi Sinyal, Utilisasi OLT, dst) -->
-<div class="modal fade" id="detailListModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content">
-  <div class="modal-header"><div><div class="module-kicker" id="detailListKicker">DETAIL</div><h5 class="modal-title" id="detailListTitle">Daftar Perangkat</h5></div><button class="btn-close" type="button" data-bs-dismiss="modal"></button></div>
-  <div class="modal-body"><div id="detailListBody" class="mon-detail-list"><div class="mini-empty">Memuat...</div></div></div>
-</div></div></div>
-
-<!-- Modal aksi ONT: cari perangkat lalu jalankan Ping / Reboot / Ganti SSID / Ganti Password / Cek Redaman -->
-<div class="modal fade" id="ontActionModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content">
-  <div class="modal-header"><div><div class="module-kicker">MONITORING ONT</div><h5 class="modal-title">Aksi ONT Pelanggan</h5></div><button class="btn-close" type="button" data-bs-dismiss="modal"></button></div>
-  <div class="modal-body">
-    <div class="mon-search-wrap">
-      <input class="form-control" id="ontSearchInput" placeholder="Cari nama pelanggan / serial number ONT...">
-      <div class="mon-search-results" id="ontSearchResults" hidden></div>
-    </div>
-    <div id="ontPickedWrap" hidden>
-      <div class="mon-device-picked">
-        <div><strong id="ontPickedName">-</strong><small id="ontPickedMeta">-</small></div>
-        <button type="button" class="btn-tech" id="ontPickedClear"><i class="bi bi-x-lg"></i></button>
-      </div>
-      <div class="mon-action-list">
-        <button type="button" id="ontActPing"><i class="bi bi-broadcast"></i>Test Ping</button>
-        <button type="button" id="ontActRedaman"><i class="bi bi-reception-4"></i>Cek Redaman</button>
-        <button type="button" id="ontActSsid"><i class="bi bi-wifi"></i>Ganti SSID</button>
-        <button type="button" id="ontActPassword"><i class="bi bi-key-fill"></i>Ganti Password</button>
-        <button type="button" id="ontActReboot" class="text-danger-soft" style="grid-column:1/-1"><i class="bi bi-power"></i>Reboot ONT</button>
-      </div>
-      <div class="mon-action-result" id="ontActResult" hidden></div>
-    </div>
-  </div>
-</div></div></div>
-
-<!-- Modal aksi Router MikroTik: cari router lalu jalankan Test Koneksi / Ping / Reboot -->
-<div class="modal fade" id="mikrotikActionModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content">
-  <div class="modal-header"><div><div class="module-kicker">MONITORING ROUTER</div><h5 class="modal-title">Aksi Router MikroTik</h5></div><button class="btn-close" type="button" data-bs-dismiss="modal"></button></div>
-  <div class="modal-body">
-    <div class="mon-search-wrap">
-      <input class="form-control" id="mtSearchInput" placeholder="Cari nama router / kode site...">
-      <div class="mon-search-results" id="mtSearchResults" hidden></div>
-    </div>
-    <div id="mtPickedWrap" hidden>
-      <div class="mon-device-picked">
-        <div><strong id="mtPickedName">-</strong><small id="mtPickedMeta">-</small></div>
-        <button type="button" class="btn-tech" id="mtPickedClear"><i class="bi bi-x-lg"></i></button>
-      </div>
-      <div class="mon-action-list">
-        <button type="button" id="mtActTest"><i class="bi bi-plug-fill"></i>Test Koneksi</button>
-        <button type="button" id="mtActPing"><i class="bi bi-broadcast"></i>Test Ping</button>
-        <button type="button" id="mtActReboot" class="text-danger-soft" style="grid-column:1/-1"><i class="bi bi-power"></i>Reboot Router</button>
-      </div>
-      <div class="mon-action-result" id="mtActResult" hidden></div>
-    </div>
-  </div>
-</div></div></div>
-
-<!-- Modal aksi OLT: cari OLT lalu jalankan Ping manual -->
-<div class="modal fade" id="oltActionModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content">
-  <div class="modal-header"><div><div class="module-kicker">MONITORING OLT</div><h5 class="modal-title">Aksi OLT</h5></div><button class="btn-close" type="button" data-bs-dismiss="modal"></button></div>
-  <div class="modal-body">
-    <div class="mon-search-wrap">
-      <input class="form-control" id="oltSearchInput" placeholder="Cari nama OLT...">
-      <div class="mon-search-results" id="oltSearchResults" hidden></div>
-    </div>
-    <div id="oltPickedWrap" hidden>
-      <div class="mon-device-picked">
-        <div><strong id="oltPickedName">-</strong><small id="oltPickedMeta">-</small></div>
-        <button type="button" class="btn-tech" id="oltPickedClear"><i class="bi bi-x-lg"></i></button>
-      </div>
-      <div class="mon-action-list">
-        <button type="button" id="oltActPing" style="grid-column:1/-1"><i class="bi bi-broadcast"></i>Test Ping</button>
-      </div>
-      <small class="text-muted d-block mt-2">Reboot jarak jauh belum tersedia untuk OLT &mdash; tiap vendor punya mekanisme berbeda. Gunakan akses manajemen OLT langsung bila perlu reboot.</small>
-      <div class="mon-action-result" id="oltActResult" hidden></div>
-    </div>
-  </div>
-</div></div></div>
 
 <div class="nms-toast" id="monToast" hidden></div>
 <script src="/js/monitoring.js?v=<%= assetVersion %>"></script>

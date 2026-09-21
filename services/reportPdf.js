@@ -131,17 +131,22 @@ function drawAdjustmentTable(doc,rows,title,subtitle){
   let xx=x;cols.forEach((c,i)=>{doc.fillColor(COLORS.muted).font('Helvetica-Bold').fontSize(6.6).text(c.label.toUpperCase(),xx+10,headY+9,{width:widths[i]-16,align:c.align||'left',height:9,lineBreak:false,ellipsis:true});xx+=widths[i];});
   doc.restore();doc.y=headY+26;
   rows.forEach((row,ri)=>{
-    const rh=24;
+    // v2.5 — tinggi baris dihitung dari panjang keterangan sebenarnya (bukan
+    // fixed 24px) supaya keterangan panjang membungkus ke baris baru alih-alih
+    // dipotong jadi "...".
+    const keteranganText=safe(row.keterangan);
+    const keteranganH=doc.font('Helvetica').fontSize(7.4).heightOfString(keteranganText,{width:widths[2]-16,lineGap:1});
+    const rh=Math.min(96,Math.max(24,keteranganH+14));
     if(doc.y+rh>bottomLimit){doc.addPage();drawBrandHeader(doc,title,subtitle,true);}
     const y=doc.y;doc.save();
     if(ri%2===1)doc.rect(x,y,total,rh).fill('#FBFCFE');
     doc.strokeColor(COLORS.line).lineWidth(.6).moveTo(x,y+rh).lineTo(x+total,y+rh).stroke();
     let xx2=x;
-    doc.fillColor(COLORS.black).font('Helvetica').fontSize(7.4).text(safe(row.jenis),xx2+10,y+7,{width:widths[0]-16,height:11,lineBreak:false,ellipsis:true});xx2+=widths[0];
-    doc.fillColor(COLORS.muted).font('Helvetica').fontSize(7.4).text(safe(row.lokasi),xx2+10,y+7,{width:widths[1]-16,height:11,lineBreak:false,ellipsis:true});xx2+=widths[1];
-    doc.fillColor(COLORS.black).font('Helvetica').fontSize(7.4).text(safe(row.keterangan),xx2+10,y+7,{width:widths[2]-16,height:11,lineBreak:false,ellipsis:true});xx2+=widths[2];
+    doc.fillColor(COLORS.black).font('Helvetica').fontSize(7.4).text(safe(row.jenis),xx2+10,y+7,{width:widths[0]-16,height:rh-10,lineBreak:false,ellipsis:true});xx2+=widths[0];
+    doc.fillColor(COLORS.muted).font('Helvetica').fontSize(7.4).text(safe(row.lokasi),xx2+10,y+7,{width:widths[1]-16,height:rh-10,lineBreak:false,ellipsis:true});xx2+=widths[1];
+    doc.fillColor(COLORS.black).font('Helvetica').fontSize(7.4).text(keteranganText,xx2+10,y+7,{width:widths[2]-16,height:rh-10,lineGap:1});xx2+=widths[2];
     const deduct=row.nominal<0;
-    doc.fillColor(deduct?COLORS.red:COLORS.green).font('Helvetica-Bold').fontSize(7.6).text(`${deduct?'- ':'+ '}${rupiah(Math.abs(row.nominal))}`,xx2+10,y+7,{width:widths[3]-16,align:'right',height:11,lineBreak:false,ellipsis:true});
+    doc.fillColor(deduct?COLORS.red:COLORS.green).font('Helvetica-Bold').fontSize(7.6).text(`${deduct?'- ':'+ '}${rupiah(Math.abs(row.nominal))}`,xx2+10,y+7,{width:widths[3]-16,align:'right',height:rh-10,lineBreak:false,ellipsis:true});
     doc.restore();doc.y=y+rh;
   });
   const netTotal=rows.reduce((a,r)=>a+r.nominal,0);
@@ -155,7 +160,11 @@ function drawTransactionTable(doc,rows,title,subtitle){
   drawSectionLabel(doc,'Rincian Pendapatan & Pengeluaran',`${rows.length} baris`);
   const x=doc.page.margins.left,total=doc.page.width-doc.page.margins.left-doc.page.margins.right;
   const bottomLimit=doc.page.height-doc.page.margins.bottom-30;
-  const cols=[{label:'Tanggal',w:.13},{label:'Lokasi',w:.1},{label:'Jenis',w:.14},{label:'Keterangan',w:.40},{label:'Nominal',w:.23,align:'right'}];
+  // v2.5 — Lokasi diperlebar (0.10 -> 0.15) supaya label seperti "Lokasi belum
+  // dipetakan" tidak lagi terpotong jadi "...", dan tinggi baris di bawah kini
+  // dihitung dinamis dari isi Lokasi & Keterangan yang sebenarnya (bukan fixed
+  // 24px) supaya teks panjang membungkus alih-alih dipotong.
+  const cols=[{label:'Tanggal',w:.12},{label:'Lokasi',w:.15},{label:'Jenis',w:.12},{label:'Keterangan',w:.38},{label:'Nominal',w:.23,align:'right'}];
   const widths=cols.map(c=>c.w*total);
   function drawHead(){
     const hy=doc.y;doc.save();
@@ -171,18 +180,54 @@ function drawTransactionTable(doc,rows,title,subtitle){
     doc.restore();doc.y+=46;return;
   }
   rows.forEach((row,ri)=>{
-    const rh=24;
+    const lokasiText=safe(row.lokasi);
+    const keteranganText=safe(row.keterangan);
+    const lokasiH=doc.font('Helvetica-Bold').fontSize(7.3).heightOfString(lokasiText,{width:widths[1]-16,lineGap:1});
+    const keteranganH=doc.font('Helvetica').fontSize(7.3).heightOfString(keteranganText,{width:widths[3]-16,lineGap:1});
+    const rh=Math.min(96,Math.max(24,lokasiH+14,keteranganH+14));
     if(doc.y+rh>bottomLimit){doc.addPage();drawBrandHeader(doc,title,subtitle,true);drawHead();}
     const y=doc.y;doc.save();
     if(ri%2===1)doc.rect(x,y,total,rh).fill('#FBFCFE');
     doc.strokeColor(COLORS.line).lineWidth(.6).moveTo(x,y+rh).lineTo(x+total,y+rh).stroke();
     let xx=x;
-    doc.fillColor(COLORS.muted).font('Helvetica').fontSize(7.3).text(safe(row.tanggal),xx+10,y+7,{width:widths[0]-16,height:11,lineBreak:false,ellipsis:true});xx+=widths[0];
-    doc.fillColor(COLORS.black).font('Helvetica-Bold').fontSize(7.3).text(safe(row.lokasi),xx+10,y+7,{width:widths[1]-16,height:11,lineBreak:false,ellipsis:true});xx+=widths[1];
+    doc.fillColor(COLORS.muted).font('Helvetica').fontSize(7.3).text(safe(row.tanggal),xx+10,y+7,{width:widths[0]-16,height:rh-10,lineBreak:false,ellipsis:true});xx+=widths[0];
+    doc.fillColor(COLORS.black).font('Helvetica-Bold').fontSize(7.3).text(lokasiText,xx+10,y+7,{width:widths[1]-16,height:rh-10,lineGap:1});xx+=widths[1];
     const income=row.jenis==='Pendapatan';
-    doc.fillColor(income?COLORS.green:'#B54708').font('Helvetica-Bold').fontSize(6.8).text(safe(row.jenis).toUpperCase(),xx+10,y+8,{width:widths[2]-16,height:9,lineBreak:false,ellipsis:true});xx+=widths[2];
-    doc.fillColor(COLORS.black).font('Helvetica').fontSize(7.3).text(safe(row.keterangan),xx+10,y+7,{width:widths[3]-16,height:11,lineBreak:false,ellipsis:true});xx+=widths[3];
-    doc.fillColor(COLORS.black).font('Helvetica-Bold').fontSize(7.4).text(rupiah(row.nominal),xx+10,y+7,{width:widths[4]-16,align:'right',height:11,lineBreak:false,ellipsis:true});
+    doc.fillColor(income?COLORS.green:'#B54708').font('Helvetica-Bold').fontSize(6.8).text(safe(row.jenis).toUpperCase(),xx+10,y+8,{width:widths[2]-16,height:rh-12,lineBreak:false,ellipsis:true});xx+=widths[2];
+    doc.fillColor(COLORS.black).font('Helvetica').fontSize(7.3).text(keteranganText,xx+10,y+7,{width:widths[3]-16,height:rh-10,lineGap:1});xx+=widths[3];
+    doc.fillColor(COLORS.black).font('Helvetica-Bold').fontSize(7.4).text(rupiah(row.nominal),xx+10,y+7,{width:widths[4]-16,align:'right',height:rh-10,lineBreak:false,ellipsis:true});
+    doc.restore();doc.y=y+rh;
+  });
+  doc.y+=18;
+}
+// v2.5 — tabel ringkas: berapa PSB (pemasangan baru), pelanggan off, dan status
+// bayar/belum bayar tagihan bulan ini per lokasi. Sumbernya tabel customers/
+// invoices asli (lihat loadCustomerActivitySummary di routes/closing.js),
+// bukan input manual closing_entries — jadi ini murni informasi pendukung dan
+// tidak pernah memengaruhi angka pembagian hasil di atasnya.
+function drawCustomerActivityTable(doc,rows,title,subtitle){
+  if(!Array.isArray(rows)||!rows.length)return;
+  drawSectionLabel(doc,'PSB, Pelanggan Off & Status Bayar',`${rows.length} lokasi`);
+  const x=doc.page.margins.left,total=doc.page.width-doc.page.margins.left-doc.page.margins.right;
+  const bottomLimit=doc.page.height-doc.page.margins.bottom-30;
+  const cols=[{label:'Lokasi',w:.26},{label:'PSB',w:.18,align:'center'},{label:'Pelanggan Off',w:.22,align:'center'},{label:'Bayar',w:.17,align:'center'},{label:'Belum Bayar',w:.17,align:'center'}];
+  const widths=cols.map(c=>c.w*total);
+  const headY=doc.y;doc.save();
+  doc.roundedRect(x,headY,total,24,6).fill(COLORS.soft);
+  let xx=x;cols.forEach((c,i)=>{doc.fillColor(COLORS.muted).font('Helvetica-Bold').fontSize(6.6).text(c.label.toUpperCase(),xx+10,headY+9,{width:widths[i]-16,align:c.align||'left',height:9,lineBreak:false,ellipsis:true});xx+=widths[i];});
+  doc.restore();doc.y=headY+26;
+  rows.forEach((row,ri)=>{
+    const rh=27;
+    if(doc.y+rh>bottomLimit){doc.addPage();drawBrandHeader(doc,title,subtitle,true);}
+    const y=doc.y;doc.save();
+    if(ri%2===1)doc.rect(x,y,total,rh).fill('#FBFCFE');
+    doc.strokeColor(COLORS.line).lineWidth(.6).moveTo(x,y+rh).lineTo(x+total,y+rh).stroke();
+    let xx2=x;
+    doc.fillColor(COLORS.black).font('Helvetica-Bold').fontSize(7.8).text(safe(row.lokasi),xx2+10,y+9,{width:widths[0]-16,height:12,lineBreak:false,ellipsis:true});xx2+=widths[0];
+    doc.fillColor(COLORS.green).font('Helvetica-Bold').fontSize(8.4).text(String(row.psb||0),xx2+10,y+8,{width:widths[1]-16,align:'center',height:13,lineBreak:false,ellipsis:true});xx2+=widths[1];
+    doc.fillColor(COLORS.red).font('Helvetica-Bold').fontSize(8.4).text(String(row.off||0),xx2+10,y+8,{width:widths[2]-16,align:'center',height:13,lineBreak:false,ellipsis:true});xx2+=widths[2];
+    doc.fillColor(COLORS.green).font('Helvetica-Bold').fontSize(7.8).text(String(row.bayar||0),xx2+10,y+9,{width:widths[3]-16,align:'center',height:12,lineBreak:false,ellipsis:true});xx2+=widths[3];
+    doc.fillColor(COLORS.red).font('Helvetica-Bold').fontSize(7.8).text(String(row.belumBayar||0),xx2+10,y+9,{width:widths[4]-16,align:'center',height:12,lineBreak:false,ellipsis:true});
     doc.restore();doc.y=y+rh;
   });
   doc.y+=18;

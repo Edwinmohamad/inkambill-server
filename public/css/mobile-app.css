@@ -1,9 +1,9 @@
 /* INKAMNET GO native-like shell. Every rule is scoped so desktop remains unchanged. */
-body.inkamnet-go-app{--go-purple:#6d45f4;--go-purple-2:#8a67ff;--go-bg:#f5f4fa;--go-card:#fff;--go-ink:#171429;--go-muted:#77738b;--go-line:#ebe9f3;background:var(--go-bg);padding-bottom:calc(78px + env(safe-area-inset-bottom));}
+body.inkamnet-go-app{--go-purple:var(--brand,#6C4FE0);--go-purple-2:var(--brand-2,#8F7AF0);--go-bg:#f5f4fa;--go-card:#fff;--go-ink:#171429;--go-muted:#77738b;--go-line:#ebe9f3;background:var(--go-bg);padding-bottom:calc(78px + env(safe-area-inset-bottom));}
 body.inkamnet-go-app .ambient-grid,body.inkamnet-go-app .ambient-orb,body.inkamnet-go-app .signal-stream,body.inkamnet-go-app .sidebar,body.inkamnet-go-app .sidebar-backdrop{display:none!important}
 body.inkamnet-go-app .main-panel{margin:0!important;width:100%;min-width:0;background:var(--go-bg)}
 body.inkamnet-go-app .topbar{position:sticky;top:0;z-index:1030;min-height:68px!important;padding:calc(8px + env(safe-area-inset-top)) 16px 8px!important;border:0!important;background:linear-gradient(135deg,var(--go-purple),var(--go-purple-2))!important;color:white;box-shadow:0 8px 24px rgba(76,45,171,.18)}
-body.inkamnet-go-app .topbar [data-sidebar-open],body.inkamnet-go-app .topbar-kicker,body.inkamnet-go-app .palette-switcher,body.inkamnet-go-app .language-switch,body.inkamnet-go-app .theme-toggle,body.inkamnet-go-app [data-lite-toggle]{display:none!important}
+body.inkamnet-go-app .topbar [data-sidebar-open],body.inkamnet-go-app .topbar-kicker,body.inkamnet-go-app .language-switch,body.inkamnet-go-app .theme-toggle,body.inkamnet-go-app [data-lite-toggle]{display:none!important}
 body.inkamnet-go-app .topbar-title{font-size:1.08rem;color:#fff;font-weight:750}
 body.inkamnet-go-app .topbar-title-wrap:before{content:'INKAMNET GO';display:block;font-size:.61rem;letter-spacing:.13em;color:rgba(255,255,255,.72);font-weight:700}
 body.inkamnet-go-app .topbar-actions{gap:5px}

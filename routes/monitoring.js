@@ -56,7 +56,7 @@ router.get('/api/ont',async(req,res,next)=>{try{
   const score=total?clampScore(((online-critical)/total)*100):null;
 
   const attnScope=ids?' AND d.id IN (?)':'';
-  const [attention]=await db.query(`SELECT d.id,d.serial_number,d.rx_power,d.temperature,d.online_status,d.signal_status,d.olt_name,d.pon_port,d.last_inform,c.name customer_name,s.code site_code
+  const [attention]=await db.query(`SELECT d.id,d.serial_number,d.wan_ip,d.rx_power,d.temperature,d.online_status,d.signal_status,d.olt_name,d.pon_port,d.last_inform,c.name customer_name,s.code site_code
     FROM acs_devices d LEFT JOIN customer_ont_links l ON l.acs_device_id=d.id LEFT JOIN customers c ON c.id=l.customer_id LEFT JOIN sites s ON s.id=c.site_id
     WHERE (d.online_status='offline' OR d.signal_status IN ('critical','warning'))${attnScope}
     ORDER BY FIELD(d.online_status,'offline','unknown','online'),FIELD(d.signal_status,'critical','warning','unknown','normal'),d.last_inform DESC LIMIT 8`,ids?[ids]:[]);
@@ -83,7 +83,7 @@ router.get('/api/ont/list',async(req,res,next)=>{try{
   if(req.query.olt){where.push('d.olt_name=?');params.push(String(req.query.olt).slice(0,120));}
   const site=safeSite(req.query.site);
   if(site){where.push('s.code=?');params.push(site);}
-  const [rows]=await db.query(`SELECT d.id,d.serial_number,d.device_id,d.rx_power,d.signal_status,d.online_status,d.olt_name,d.pon_port,c.name customer_name,s.code site_code
+  const [rows]=await db.query(`SELECT d.id,d.serial_number,d.device_id,d.wan_ip,d.rx_power,d.signal_status,d.online_status,d.olt_name,d.pon_port,c.name customer_name,s.code site_code
     FROM acs_devices d LEFT JOIN customer_ont_links l ON l.acs_device_id=d.id LEFT JOIN customers c ON c.id=l.customer_id LEFT JOIN sites s ON s.id=c.site_id
     WHERE ${where.join(' AND ')} ORDER BY FIELD(d.online_status,'offline','unknown','online'),FIELD(d.signal_status,'critical','warning','unknown','normal'),c.name LIMIT 150`,params);
   res.json({ok:true,devices:rows});
@@ -103,7 +103,7 @@ router.get('/api/mikrotik',async(req,res,next)=>{try{
   const total=Number(summary.total||0),online=Number(summary.online||0),offline=Number(summary.offline||0),never=Number(summary.never||0);
   const score=total?clampScore((online/total)*100):null;
 
-  const [routerRows]=await db.query(`SELECT id,name,last_status,last_error,last_seen_at FROM routers WHERE is_active=1${siteScope} ORDER BY name`,siteParams);
+  const [routerRows]=await db.query(`SELECT id,name,base_url,last_status,last_error,last_seen_at FROM routers WHERE is_active=1${siteScope} ORDER BY name`,siteParams);
   const routerIds=routerRows.map(r=>Number(r.id));
 
   const [[sessionRow]]=routerIds.length
@@ -118,7 +118,7 @@ router.get('/api/mikrotik',async(req,res,next)=>{try{
   const enriched=routerRows.map(r=>{const cpu=cpuByRouter.get(Number(r.id));return {...r,cpu_load:cpu?Number(cpu.cpu_load):null,free_memory:cpu?Number(cpu.free_memory):null,total_memory:cpu?Number(cpu.total_memory):null};});
   const attention=enriched.filter(r=>r.last_status==='offline'||(r.cpu_load!==null&&r.cpu_load>=85)).sort((a,b)=>(a.last_status==='offline'?0:1)-(b.last_status==='offline'?0:1)).slice(0,8);
 
-  res.set('Cache-Control','no-store').json({ok:true,summary:{total,online,offline,never,score,activeSessions:Number(sessionRow.active_sessions||0),customersOnline:Number(custRow.online||0),customersIsolated:Number(custRow.isolated||0),customersTotal:Number(custRow.total||0)},attention,site});
+  res.set('Cache-Control','no-store').json({ok:true,summary:{total,online,offline,never,score,activeSessions:Number(sessionRow.active_sessions||0),customersOnline:Number(custRow.online||0),customersIsolated:Number(custRow.isolated||0),customersTotal:Number(custRow.total||0)},attention,devices:enriched,site});
 }catch(err){next(err);}});
 
 router.post('/api/mikrotik/test/:routerId',async(req,res,next)=>{try{

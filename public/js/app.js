@@ -47,17 +47,6 @@
   applyTheme(localStorage.getItem('inkamnet-theme') || html.dataset.theme || 'dark');
   document.querySelectorAll('[data-theme-toggle]').forEach(btn => btn.addEventListener('click', () => applyTheme(html.dataset.theme === 'dark' ? 'light' : 'dark')));
 
-  const paletteNames=new Set(['nebula','ocean','emerald','sunset','rose','ice']);
-  const applyPalette=palette=>{
-    palette=paletteNames.has(palette)?palette:'nebula';
-    html.dataset.palette=palette;localStorage.setItem('inkamnet-palette',palette);
-    document.querySelectorAll('[data-palette-value]').forEach(button=>button.classList.toggle('active',button.dataset.paletteValue===palette));
-    window.dispatchEvent(new CustomEvent('inkamnet:palette',{detail:{palette}}));
-  };
-  applyPalette(localStorage.getItem('inkamnet-palette')||html.dataset.palette||'nebula');
-  document.querySelectorAll('[data-palette-value]').forEach(button=>button.addEventListener('click',()=>applyPalette(button.dataset.paletteValue)));
-  document.querySelectorAll('input[name="ui_palette"]').forEach(input=>input.addEventListener('change',()=>applyPalette(input.value)));
-
   document.querySelectorAll('.metric-card,.data-card,.filter-card,.ink-kpi,.ink-panel').forEach((el,index)=>{
     el.style.setProperty('--enter-delay', `${Math.min(index*26,150)}ms`); el.classList.add('reveal-item');
   });

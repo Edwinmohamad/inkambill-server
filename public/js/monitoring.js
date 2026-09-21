@@ -2,502 +2,553 @@
   const app = document.getElementById('monApp');
   if (!app) return;
   const isAdmin = app.dataset.admin === '1';
-  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const toastEl = document.getElementById('monToast');
-  const toast = (message, type = 'success') => {
-    if (!toastEl) return;
-    toastEl.className = `nms-toast ${type}`;
-    toastEl.innerHTML = `<i class="bi ${type === 'danger' ? 'bi-x-octagon-fill' : 'bi-check-circle-fill'}"></i>${esc(message)}`;
-    toastEl.hidden = false;
-    clearTimeout(toastEl._t);
-    toastEl._t = setTimeout(() => { toastEl.hidden = true; }, 4500);
-  };
-  const confirmAction = (message) => window.iosConfirm ? window.iosConfirm(message) : Promise.resolve(window.confirm(message));
+  const TONE = { ok: 'var(--success)', warn: 'var(--warning)', bad: 'var(--danger)', muted: 'var(--muted-2)' };
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
-  // ---------------- Filter state ----------------
-  let currentSite = '';
-  const lastLoadAt = { ont: null, mikrotik: null, olt: null };
-  const getActiveBoard = () => document.querySelector('#monSeg button.active')?.dataset.board || 'ont';
-  const siteQuery = () => (currentSite ? `&site=${encodeURIComponent(currentSite)}` : '');
-  const queryString = () => (currentSite ? `site=${encodeURIComponent(currentSite)}` : '');
+  const toastEl = document.getElementById('monToast');
+  let toastTimer = null;
+  function toast(message, type = 'success') {
+    if (!toastEl) return;
+    toastEl.textContent = message;
+    toastEl.className = `nms-toast ${type}`;
+    toastEl.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toastEl.hidden = true; }, 4000);
+  }
+  function confirmAction(message) {
+    return window.iosConfirm ? window.iosConfirm(message) : Promise.resolve(window.confirm(message));
+  }
 
   async function jsonFetch(url, opts = {}) {
-    const response = await fetch(url, {
-      ...opts,
-      headers: { Accept: 'application/json', ...(opts.body ? { 'Content-Type': 'application/json' } : {}), 'X-CSRF-Token': csrfToken, ...(opts.headers || {}) }
-    });
+    const headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    if (meta) headers['X-CSRF-Token'] = meta.content;
+    const res = await fetch(url, Object.assign({ credentials: 'same-origin' }, opts, { headers }));
     let data = null;
-    try { data = await response.json(); } catch (_) { /* noop */ }
-    if (!response.ok || !data || data.ok === false) throw new Error(data?.error || `Permintaan gagal (${response.status})`);
-    return data;
+    try { data = await res.json(); } catch (_) { /* no body */ }
+    if (!res.ok || (data && data.ok === false)) throw new Error((data && data.message) || `Gagal memuat (${res.status})`);
+    return data || {};
   }
 
-  function ringHtml(pct, size = '') {
-    if (pct === null || pct === undefined) return `<div class="m-ring ${size}" style="--p:0"><span>N/A</span></div>`;
-    const cls = pct >= 90 ? '' : pct >= 70 ? 'warn' : 'bad';
-    return `<div class="m-ring ${size} ${cls}" style="--p:${pct}"><span>${pct}%</span></div>`;
+  // ---------------- Filter / board state ----------------
+  let currentSite = '';
+  let currentBoard = 'ont';
+  const cache = { ont: null, mikrotik: null, olt: null };
+  let picked = { board: null, data: null };
+
+  const queryString = () => (currentSite ? `site=${encodeURIComponent(currentSite)}` : '');
+
+  function setNavBadge(board, text, tone) {
+    const label = document.getElementById(`ccNav${cap(board)}`);
+    const dot = document.getElementById(`ccDot${cap(board)}`);
+    if (label) label.textContent = text;
+    if (dot) dot.className = `cc-nav-dot ${tone}`;
   }
 
-  function barRow(label, value, total, tone = '', drill = null) {
-    const pct = total ? Math.round((value / total) * 100) : 0;
-    const cls = 'bar-row' + (drill ? ' bar-row-click' : '');
-    const attrs = drill ? ` data-drill='${esc(JSON.stringify(drill))}' role="button" tabindex="0"` : '';
-    return `<div class="${cls}"${attrs}><span class="row-title" title="${esc(label)}">${esc(label)}</span><div class="bar-track ${tone}"><span style="width:${pct}%"></span></div><span class="bar-num">${value}</span></div>`;
+  function kpiHtml(items) {
+    return items.map((k) => `<div class="cc-kpi"><span>${esc(k.label)}</span><strong class="${k.tone || ''}">${esc(k.value)}</strong>${k.sub ? `<span>${esc(k.sub)}</span>` : ''}</div>`).join('');
   }
 
-  function timeAgo(iso) {
-    if (!iso) return 'belum pernah';
-    const diffMin = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
-    if (diffMin < 1) return 'baru saja';
-    if (diffMin < 60) return `${diffMin} menit lalu`;
-    const hours = Math.round(diffMin / 60);
-    if (hours < 24) return `${hours} jam lalu`;
-    return `${Math.round(hours / 24)} hari lalu`;
+  function attentionRowHtml(board, item, meta) {
+    return `<div class="cc-row ${meta.picked ? 'picked' : ''}" data-pick-board="${board}" data-pick='${esc(JSON.stringify(item))}'>
+      <span class="cc-row-dot" style="background:${meta.color}"></span>
+      <div class="cc-row-main"><strong>${esc(meta.name)}</strong><small>${esc(meta.sub)}</small></div>
+      <span class="cc-row-status" style="color:${meta.color}">${esc(meta.statusText)}</span>
+    </div>`;
   }
 
-  // ---------------- Generic drill-down list modal ----------------
-  let detailModalInstance = null;
-  function getDetailModal() {
-    if (!detailModalInstance && window.bootstrap) detailModalInstance = new window.bootstrap.Modal(document.getElementById('detailListModal'));
-    return detailModalInstance;
-  }
-  async function openDetailList({ title, kicker, url }) {
-    document.getElementById('detailListTitle').textContent = title;
-    document.getElementById('detailListKicker').textContent = kicker;
-    const body = document.getElementById('detailListBody');
-    body.innerHTML = '<div class="mini-empty">Memuat...</div>';
-    getDetailModal()?.show();
-    try {
-      const r = await jsonFetch(url);
-      body.innerHTML = r.devices.length
-        ? r.devices.map((dv) => `<button type="button" class="mon-detail-row" data-pick='${esc(JSON.stringify(dv))}'>
-            <div><strong>${esc(dv.customer_name || dv.serial_number || dv.device_id || ('#' + dv.id))}</strong>
-            <small>${esc(dv.serial_number || dv.device_id || '-')}${dv.site_code ? ' · ' + esc(dv.site_code) : ''}${dv.olt_name ? ' · ' + esc(dv.olt_name) + (dv.pon_port ? '/' + esc(dv.pon_port) : '') : ''}</small></div>
-            <span class="status-badge ${dv.online_status === 'offline' ? 'red' : dv.signal_status === 'critical' ? 'red' : dv.signal_status === 'warning' ? 'orange' : 'green'}">${dv.online_status === 'offline' ? 'Offline' : (dv.rx_power !== null && dv.rx_power !== undefined ? dv.rx_power + ' dBm' : (dv.signal_status || 'Online'))}</span>
-          </button>`).join('')
-        : '<div class="mini-empty">Tidak ada perangkat yang cocok dengan kategori ini.</div>';
-      body.querySelectorAll('[data-pick]').forEach((btn) => btn.addEventListener('click', () => {
-        const picked = JSON.parse(btn.dataset.pick);
-        getDetailModal()?.hide();
-        setTimeout(() => openOntModal(picked), 300);
-      }));
-    } catch (err) { body.innerHTML = `<div class="mini-empty">${esc(err.message)}</div>`; }
-  }
-  function wireDrillTargets(container) {
-    container.querySelectorAll('[data-drill]').forEach((el) => el.addEventListener('click', () => openDetailList(JSON.parse(el.dataset.drill))));
+  function wirePickTargets(container, board) {
+    container.querySelectorAll('[data-pick]').forEach((el) => {
+      el.addEventListener('click', () => setPicked(board, JSON.parse(el.dataset.pick)));
+    });
   }
 
-  // ---------------- ONT board ----------------
-  function renderOnt(d) {
-    const s = d.summary;
-    const normal = Math.max(0, s.total - s.warning - s.critical);
-    const attentionHtml = d.attention.length
-      ? d.attention.map((a) => `<a href="#" data-open-device="${a.id}"><span>${esc(a.customer_name || a.serial_number || 'ONT #' + a.id)}</span><span>${a.online_status === 'offline' ? 'Offline' : (a.rx_power !== null ? a.rx_power + ' dBm' : a.signal_status)}</span></a>`).join('')
+  // ================= ONT board =================
+  function ontTone(d) {
+    if (d.online_status === 'offline') return 'bad';
+    if (d.signal_status === 'critical') return 'bad';
+    if (d.signal_status === 'warning') return 'warn';
+    return 'ok';
+  }
+  function ontStatusText(d) {
+    if (d.online_status === 'offline') return 'OFFLINE';
+    if (d.signal_status === 'critical') return 'KRITIS';
+    if (d.signal_status === 'warning') return 'LEMAH';
+    return 'ONLINE';
+  }
+  function renderOntKpis(s) {
+    document.getElementById('ccKpis').innerHTML = kpiHtml([
+      { label: 'Total ONT', value: s.total },
+      { label: 'Online', value: s.online, sub: s.total ? Math.round((s.online / s.total) * 100) + '%' : '', tone: 'ok' },
+      { label: 'Offline', value: s.offline, tone: s.offline ? 'bad' : '' },
+      { label: 'Skor Kesehatan', value: s.score == null ? 'N/A' : s.score, sub: s.score == null ? '' : '/100', tone: s.score >= 90 ? 'ok' : s.score >= 70 ? 'warn' : 'bad' }
+    ]);
+  }
+  function renderOntAttention(list, pickedId) {
+    document.getElementById('ccAttentionTitle').textContent = 'Perlu Tindakan';
+    const box = document.getElementById('ccAttentionList');
+    box.innerHTML = list && list.length
+      ? list.map((a) => attentionRowHtml('ont', a, { name: a.customer_name || a.serial_number || ('ONT #' + a.id), sub: `${a.serial_number || a.device_id || '-'} · ${a.site_code || '-'}`, statusText: ontStatusText(a), color: TONE[ontTone(a)], picked: a.id === pickedId })).join('')
       : '<div class="mini-empty">Semua ONT dalam kondisi normal.</div>';
-    const container = document.getElementById('bento-ont');
-    container.innerHTML = `
-      <div class="b-hero"><h4>Kesehatan ONT</h4><div><strong>${s.online}/${s.total}</strong><br><small>ONT online sekarang</small></div>${ringHtml(s.score, 'lg')}</div>
-      <div class="b-wide"><h4>Distribusi Sinyal</h4>
-        ${barRow('Normal', normal, s.total, '', { title: 'ONT Sinyal Normal', kicker: 'DISTRIBUSI SINYAL', url: `/monitoring/api/ont/list?signal=normal_group${siteQuery()}` })}
-        ${barRow('Waspada', s.warning, s.total, 'warn', { title: 'ONT Sinyal Waspada', kicker: 'DISTRIBUSI SINYAL', url: `/monitoring/api/ont/list?signal=warning${siteQuery()}` })}
-        ${barRow('Kritis', s.critical, s.total, 'bad', { title: 'ONT Sinyal Kritis', kicker: 'DISTRIBUSI SINYAL', url: `/monitoring/api/ont/list?signal=critical${siteQuery()}` })}
-      </div>
-      <div class="mon-drill" data-drill='${esc(JSON.stringify({ title: 'ONT Offline', kicker: 'STATUS ONT', url: `/monitoring/api/ont/list?status=offline${siteQuery()}` }))}'><h4>ONT Offline</h4><strong>${s.offline}</strong><small>dari ${s.total} total ONT</small></div>
-      <div><h4>Belum Ter-link</h4><strong>${s.unlinked}</strong><small>ONT tanpa data pelanggan</small></div>
-      <div class="b-tall"><h4>Perlu Tindakan</h4><div class="mini-list">${attentionHtml}</div></div>
-      <div><h4>Aksi Cepat</h4><div class="action-grid">
-        <button type="button" id="ontActionOpen">Kelola ONT</button>
-        <button type="button" id="ontSyncNow" ${d.acsConfigured ? '' : 'disabled title="GENIEACS_NBI_URL belum dikonfigurasi"'}>Sync ACS</button>
-      </div></div>
-      <div><h4>Sinkron Terakhir</h4><strong>${d.lastSync ? timeAgo(d.lastSync.finished_at) : 'belum pernah'}</strong><small>${d.lastSync ? esc(d.lastSync.status) : 'ACS belum sinkron'}</small></div>`;
-
-    wireDrillTargets(container);
-    document.getElementById('ontActionOpen')?.addEventListener('click', () => openOntModal());
-    document.getElementById('ontSyncNow')?.addEventListener('click', async (e) => {
-      const btn = e.currentTarget; btn.disabled = true;
-      try { const r = await jsonFetch('/acs/sync', { method: 'POST' }); toast(r.message); loadOnt(); }
+    wirePickTargets(box, 'ont');
+  }
+  function renderOntTable(devices, pickedId) {
+    document.getElementById('ccTableHead').innerHTML = '<tr><th>Status</th><th>Pelanggan / ONT</th><th>Site</th><th>RX Power</th></tr>';
+    const body = document.getElementById('ccTableBody');
+    body.innerHTML = devices && devices.length
+      ? devices.map((d) => `<tr class="${d.id === pickedId ? 'picked' : ''}" data-pick-board="ont" data-pick='${esc(JSON.stringify(d))}'>
+          <td><span style="color:${TONE[ontTone(d)]};font-weight:700;font-size:.62rem;">${ontStatusText(d)}</span></td>
+          <td><strong>${esc(d.customer_name || 'Belum dipetakan')}</strong><small>${esc(d.serial_number || d.device_id || '-')}</small></td>
+          <td>${esc(d.site_code || '-')}</td>
+          <td style="color:${TONE[ontTone(d)]}">${d.rx_power == null ? 'N/A' : Number(d.rx_power).toFixed(2) + ' dBm'}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="4"><div class="empty-state"><small>Tidak ada data.</small></div></td></tr>';
+    wirePickTargets(body, 'ont');
+  }
+  function renderOntBoardActions(acsConfigured) {
+    document.getElementById('ccBoardActions').innerHTML = `<button type="button" class="btn-tech sm" id="ccOntSync"${acsConfigured ? '' : ' disabled title="GENIEACS_NBI_URL belum dikonfigurasi"'}><i class="bi bi-arrow-repeat"></i>Sync ACS</button>`;
+    const btn = document.getElementById('ccOntSync');
+    if (btn) btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try { const r = await jsonFetch('/acs/sync', { method: 'POST' }); toast(r.message || 'Sinkronisasi dijalankan.'); loadOnt(); }
       catch (err) { toast(err.message, 'danger'); }
       finally { btn.disabled = false; }
     });
-    container.querySelectorAll('[data-open-device]').forEach((el) => el.addEventListener('click', (e) => {
-      e.preventDefault();
-      const attn = d.attention.find((a) => String(a.id) === el.dataset.openDevice);
-      openOntModal(attn ? { id: attn.id, serial_number: attn.serial_number, customer_name: attn.customer_name, online_status: attn.online_status, signal_status: attn.signal_status, rx_power: attn.rx_power } : null);
-    }));
   }
-
   async function loadOnt() {
-    try { const d = await jsonFetch(`/monitoring/api/ont?${queryString()}`); renderOnt(d); lastLoadAt.ont = Date.now(); }
-    catch (err) { document.getElementById('bento-ont').innerHTML = `<div class="b-hero"><h4>Gagal memuat</h4><small>${esc(err.message)}</small></div>`; }
+    try {
+      const [summaryRes, listRes] = await Promise.all([
+        jsonFetch(`/monitoring/api/ont?${queryString()}`),
+        jsonFetch(`/monitoring/api/ont/list?${queryString()}`)
+      ]);
+      const s = summaryRes.summary;
+      setNavBadge('ont', `${s.online}/${s.total} online`, s.offline ? 'bad' : ((summaryRes.attention || []).length ? 'warn' : 'ok'));
+      cache.ont = { summary: s, attention: summaryRes.attention || [], devices: listRes.devices || [], acsConfigured: summaryRes.acsConfigured };
+      if (currentBoard === 'ont') applyBoard('ont');
+    } catch (err) {
+      setNavBadge('ont', 'gagal memuat', 'bad');
+      if (currentBoard === 'ont') toast(err.message, 'danger');
+    }
   }
 
-  // ---------------- MikroTik board ----------------
-  function renderMikrotik(d) {
-    const s = d.summary;
-    const topCpu = [...d.attention].filter((r) => r.cpu_load !== null).sort((a, b) => b.cpu_load - a.cpu_load).slice(0, 3);
-    const cpuBars = topCpu.length
-      ? topCpu.map((r) => `<div class="bar-row bar-row-click" data-test-router="${r.id}" title="Klik untuk test koneksi sekarang"><span class="row-title" title="${esc(r.name)}">${esc(r.name)}</span><div class="bar-track ${r.cpu_load >= 85 ? 'bad' : r.cpu_load >= 60 ? 'warn' : ''}"><span style="width:${Math.min(100, r.cpu_load)}%"></span></div><span class="bar-num">${r.cpu_load}%</span></div>`).join('')
-      : '<small>Belum ada data CPU historis (menunggu siklus telemetry berikutnya).</small>';
-    const attentionHtml = d.attention.length
-      ? d.attention.map((r) => `<a href="#" data-test-router="${r.id}"><span>${esc(r.name)}</span><span>${r.last_status === 'offline' ? 'Offline' : (r.cpu_load !== null ? 'CPU ' + r.cpu_load + '%' : '-')}</span></a>`).join('')
-      : '<div class="mini-empty">Semua router normal.</div>';
-    const container = document.getElementById('bento-mikrotik');
-    container.innerHTML = `
-      <div class="b-hero"><h4>Kesehatan Router</h4><div><strong>${s.online}/${s.total}</strong><br><small>router online</small></div>${ringHtml(s.score, 'lg')}</div>
-      <div class="b-wide"><h4>Beban CPU &ndash; Perlu Perhatian</h4>${cpuBars}</div>
-      <div><h4>Sesi PPPoE Aktif</h4><strong>${s.activeSessions}</strong><small>koneksi berjalan</small></div>
-      <div><h4>Pelanggan Isolir</h4><strong>${s.customersIsolated}</strong><small>dari ${s.customersTotal} pelanggan aktif</small></div>
-      <div class="b-tall"><h4>Perlu Perhatian</h4><div class="mini-list">${attentionHtml}</div></div>
-      <div><h4>Aksi Cepat</h4><div class="action-grid">
-        <button type="button" id="mtActionOpen">Kelola Router</button>
-        <button type="button" id="mtCaptureNow">Capture Now</button>
-        <a class="btn-tech" href="/network/monitor" style="text-decoration:none;text-align:center;display:flex;align-items:center;justify-content:center;grid-column:1/-1">NMS Monitor</a>
-      </div></div>
-      <div><h4>Belum Pernah Lapor</h4><strong>${s.never}</strong><small>router belum ada telemetry masuk</small></div>`;
-
-    document.getElementById('mtActionOpen')?.addEventListener('click', () => openMikrotikModal());
-    document.getElementById('mtCaptureNow')?.addEventListener('click', async (e) => {
-      const btn = e.currentTarget; btn.disabled = true;
-      try { const r = await jsonFetch('/network/api/telemetry/capture', { method: 'POST' }); toast(`Telemetry ${r.result.routers} router diperbarui.`); loadMikrotik(); }
+  // ================= MikroTik board =================
+  function mtTone(d) {
+    if (d.last_status === 'offline') return 'bad';
+    if (d.cpu_load != null && d.cpu_load >= 85) return 'bad';
+    if (d.cpu_load != null && d.cpu_load >= 60) return 'warn';
+    return d.last_status === 'online' ? 'ok' : 'muted';
+  }
+  function mtStatusText(d) {
+    if (d.last_status === 'offline') return 'OFFLINE';
+    if (d.cpu_load != null && d.cpu_load >= 85) return 'PANAS';
+    if (d.cpu_load != null && d.cpu_load >= 60) return 'WASPADA';
+    if (d.last_status === 'online') return 'ONLINE';
+    return 'BELUM DITES';
+  }
+  function mtHost(d) {
+    try { return new URL(d.base_url).host; } catch (_) { return d.base_url || '-'; }
+  }
+  function renderMikrotikKpis(s) {
+    document.getElementById('ccKpis').innerHTML = kpiHtml([
+      { label: 'Total Router', value: s.total },
+      { label: 'Online', value: s.online, sub: s.total ? Math.round((s.online / s.total) * 100) + '%' : '', tone: 'ok' },
+      { label: 'Sesi PPPoE Aktif', value: s.activeSessions },
+      { label: 'Pelanggan Isolir', value: s.customersIsolated, sub: '/ ' + s.customersTotal, tone: s.customersIsolated ? 'warn' : '' }
+    ]);
+  }
+  function renderMikrotikAttention(list, pickedId) {
+    document.getElementById('ccAttentionTitle').textContent = 'Perlu Tindakan';
+    const box = document.getElementById('ccAttentionList');
+    box.innerHTML = list && list.length
+      ? list.map((d) => attentionRowHtml('mikrotik', d, { name: d.name, sub: mtHost(d), statusText: mtStatusText(d), color: TONE[mtTone(d)], picked: d.id === pickedId })).join('')
+      : '<div class="mini-empty">Semua router dalam kondisi normal.</div>';
+    wirePickTargets(box, 'mikrotik');
+  }
+  function renderMikrotikTable(devices, pickedId) {
+    document.getElementById('ccTableHead').innerHTML = '<tr><th>Status</th><th>Router</th><th>CPU</th></tr>';
+    const body = document.getElementById('ccTableBody');
+    body.innerHTML = devices && devices.length
+      ? devices.map((d) => `<tr class="${d.id === pickedId ? 'picked' : ''}" data-pick-board="mikrotik" data-pick='${esc(JSON.stringify(d))}'>
+          <td><span style="color:${TONE[mtTone(d)]};font-weight:700;font-size:.62rem;">${mtStatusText(d)}</span></td>
+          <td><strong>${esc(d.name)}</strong><small>${esc(mtHost(d))}</small></td>
+          <td style="color:${TONE[mtTone(d)]}">${d.cpu_load != null ? d.cpu_load + '%' : '-'}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="3"><div class="empty-state"><small>Tidak ada data.</small></div></td></tr>';
+    wirePickTargets(body, 'mikrotik');
+  }
+  function renderMikrotikBoardActions() {
+    document.getElementById('ccBoardActions').innerHTML = `<button type="button" class="btn-tech sm" id="ccMtCapture"><i class="bi bi-lightning-charge"></i>Capture Now</button><a class="btn-tech sm" href="/network/monitor"><i class="bi bi-broadcast-pin"></i>NMS Monitor</a>`;
+    const btn = document.getElementById('ccMtCapture');
+    if (btn) btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try { const r = await jsonFetch('/network/api/telemetry/capture', { method: 'POST' }); toast(`Telemetry ${r.result ? r.result.routers : ''} router diperbarui.`); loadMikrotik(); }
       catch (err) { toast(err.message, 'danger'); }
       finally { btn.disabled = false; }
     });
-    container.querySelectorAll('[data-test-router]').forEach((el) => el.addEventListener('click', async (e) => {
-      e.preventDefault();
-      const id = el.dataset.testRouter;
-      try { const r = await jsonFetch(`/monitoring/api/mikrotik/test/${id}`, { method: 'POST' }); toast(r.message); loadMikrotik(); }
-      catch (err) { toast(err.message, 'danger'); }
-    }));
   }
-
   async function loadMikrotik() {
-    try { const d = await jsonFetch(`/monitoring/api/mikrotik?${queryString()}`); renderMikrotik(d); lastLoadAt.mikrotik = Date.now(); }
-    catch (err) { document.getElementById('bento-mikrotik').innerHTML = `<div class="b-hero"><h4>Gagal memuat</h4><small>${esc(err.message)}</small></div>`; }
+    try {
+      const d = await jsonFetch(`/monitoring/api/mikrotik?${queryString()}`);
+      const s = d.summary;
+      setNavBadge('mikrotik', `${s.online}/${s.total} online`, s.offline ? 'bad' : ((d.attention || []).length ? 'warn' : 'ok'));
+      cache.mikrotik = { summary: s, attention: d.attention || [], devices: d.devices || [] };
+      if (currentBoard === 'mikrotik') applyBoard('mikrotik');
+    } catch (err) {
+      setNavBadge('mikrotik', 'gagal memuat', 'bad');
+      if (currentBoard === 'mikrotik') toast(err.message, 'danger');
+    }
   }
 
-  // ---------------- OLT board ----------------
-  function renderOlt(d) {
-    const s = d.summary;
-    const withUtil = d.olts.map((o) => ({ ...o, util: o.pon_ports_used ? Math.min(999, Math.round((o.onu_total / (o.pon_ports_used * o.pon_port_capacity)) * 100)) : 0 }));
-    const topUtil = [...withUtil].sort((a, b) => b.util - a.util).slice(0, 3);
-    const utilBars = topUtil.length
-      ? topUtil.map((o) => barRow(o.name, Math.min(100, o.util), 100, o.util >= 90 ? 'bad' : o.util >= 70 ? 'warn' : '', { title: `ONT di ${o.name}`, kicker: 'UTILISASI OLT', url: `/monitoring/api/ont/list?olt=${encodeURIComponent(o.name)}${siteQuery()}` })).join('')
-      : '<small>Belum ada OLT dengan data PON port.</small>';
-    const attentionHtml = d.attention.length
-      ? d.attention.map((o) => `<a href="#" data-drill='${esc(JSON.stringify({ title: `ONT di ${o.name}`, kicker: 'PERLU PERHATIAN', url: `/monitoring/api/ont/list?olt=${encodeURIComponent(o.name)}${siteQuery()}` }))}'><span>${esc(o.name)}</span><span>${o.onu_offline} offline · ${o.onu_critical} kritis</span></a>`).join('')
+  // ================= OLT board =================
+  function oltTone(o) {
+    if (o.onu_critical > 0) return 'bad';
+    if (o.last_status === 'offline') return 'bad';
+    if (o.onu_offline > 0 || o.onu_warning > 0) return 'warn';
+    return 'ok';
+  }
+  function oltStatusText(o) {
+    if (o.onu_critical > 0) return 'KRITIS';
+    if (o.last_status === 'offline') return 'TDK TERJANGKAU';
+    if (o.onu_offline > 0) return 'ADA OFFLINE';
+    if (o.onu_warning > 0) return 'WASPADA';
+    return 'NORMAL';
+  }
+  function renderOltKpis(s) {
+    document.getElementById('ccKpis').innerHTML = kpiHtml([
+      { label: 'Total OLT', value: s.total },
+      { label: 'ONU Online', value: `${s.online}/${s.totalOnu}`, tone: 'ok' },
+      { label: 'Redaman Kritis', value: s.critical, tone: s.critical ? 'bad' : '' },
+      { label: 'Skor Kesehatan', value: s.score == null ? 'N/A' : s.score, sub: s.score == null ? '' : '/100', tone: s.score >= 90 ? 'ok' : s.score >= 70 ? 'warn' : 'bad' }
+    ]);
+  }
+  function renderOltAttention(list, pickedId) {
+    document.getElementById('ccAttentionTitle').textContent = 'Perlu Tindakan';
+    const box = document.getElementById('ccAttentionList');
+    box.innerHTML = list && list.length
+      ? list.map((o) => attentionRowHtml('olt', o, { name: o.name, sub: o.management_ip || 'IP belum diisi', statusText: oltStatusText(o), color: TONE[oltTone(o)], picked: o.id === pickedId })).join('')
       : '<div class="mini-empty">Semua OLT dalam kondisi normal.</div>';
-    const container = document.getElementById('bento-olt');
-    container.innerHTML = `
-      <div class="b-hero"><h4>Utilisasi ONU</h4><div><strong>${s.online}/${s.totalOnu}</strong><br><small>ONU online, seluruh OLT</small></div>${ringHtml(s.score, 'lg')}</div>
-      <div class="b-wide"><h4>Utilisasi PON per OLT</h4>${utilBars}</div>
-      <div><h4>Total OLT</h4><strong>${s.total}</strong><small>chassis terdeteksi/terdaftar</small></div>
-      <div><h4>Redaman Kritis</h4><strong>${s.critical}</strong><small>ONU RX di bawah ambang aman</small></div>
-      <div class="b-tall"><h4>Perlu Perhatian</h4><div class="mini-list">${attentionHtml}</div></div>
-      <div><h4>Aksi Cepat</h4><div class="action-grid">
-        <button type="button" id="oltActionOpen">Kelola OLT</button>
-        <a class="btn-tech" href="/olt" style="text-decoration:none;text-align:center;display:flex;align-items:center;justify-content:center">Registry OLT</a>
-        <a class="btn-tech" href="/acs?signal=critical" style="text-decoration:none;text-align:center;display:flex;align-items:center;justify-content:center;grid-column:1/-1">ONT Kritis</a>
-      </div></div>
-      <div><h4>Ø ONU / OLT</h4><strong>${s.total ? Math.round(s.totalOnu / s.total) : 0}</strong><small>rata-rata per chassis</small></div>`;
-    wireDrillTargets(container);
-    document.getElementById('oltActionOpen')?.addEventListener('click', () => openOltModal());
+    wirePickTargets(box, 'olt');
   }
-
+  function renderOltTable(olts, pickedId) {
+    document.getElementById('ccTableHead').innerHTML = '<tr><th>Status</th><th>OLT</th><th>ONU Online</th><th>Redaman Rata2</th></tr>';
+    const body = document.getElementById('ccTableBody');
+    body.innerHTML = olts && olts.length
+      ? olts.map((o) => `<tr class="${o.id === pickedId ? 'picked' : ''}" data-pick-board="olt" data-pick='${esc(JSON.stringify(o))}'>
+          <td><span style="color:${TONE[oltTone(o)]};font-weight:700;font-size:.62rem;">${oltStatusText(o)}</span></td>
+          <td><strong>${esc(o.name)}</strong><small>${esc(o.management_ip || 'IP belum diisi')}</small></td>
+          <td>${o.onu_online ?? 0}/${o.onu_total ?? 0}</td>
+          <td style="color:${TONE[oltTone(o)]}">${o.avg_rx == null ? 'N/A' : o.avg_rx + ' dBm'}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="4"><div class="empty-state"><small>Tidak ada data.</small></div></td></tr>';
+    wirePickTargets(body, 'olt');
+  }
+  function renderOltBoardActions() {
+    document.getElementById('ccBoardActions').innerHTML = `<a class="btn-tech sm" href="/network/olt"><i class="bi bi-hdd-network"></i>Registry OLT</a>`;
+  }
   async function loadOlt() {
-    try { const d = await jsonFetch(`/monitoring/api/olt?${queryString()}`); renderOlt(d); lastLoadAt.olt = Date.now(); }
-    catch (err) { document.getElementById('bento-olt').innerHTML = `<div class="b-hero"><h4>Gagal memuat</h4><small>${esc(err.message)}</small></div>`; }
+    try {
+      const d = await jsonFetch(`/monitoring/api/olt?${queryString()}`);
+      const s = d.summary;
+      setNavBadge('olt', `${s.online}/${s.totalOnu} ONU online`, s.critical ? 'bad' : ((d.attention || []).length ? 'warn' : 'ok'));
+      cache.olt = { summary: s, attention: d.attention || [], olts: d.olts || [] };
+      if (currentBoard === 'olt') applyBoard('olt');
+    } catch (err) {
+      setNavBadge('olt', 'gagal memuat', 'bad');
+      if (currentBoard === 'olt') toast(err.message, 'danger');
+    }
   }
 
-  // ---------------- Per-site summary table ----------------
+  // ================= Board switching / shared render =================
+  const boards = { ont: loadOnt, mikrotik: loadMikrotik, olt: loadOlt };
+  const titles = { ont: 'ONT Pelanggan', mikrotik: 'Router MikroTik', olt: 'OLT' };
+
+  function applyBoard(board) {
+    const c = cache[board];
+    if (!c) {
+      document.getElementById('ccKpis').innerHTML = '';
+      document.getElementById('ccAttentionList').innerHTML = '<div class="mini-empty">Memuat...</div>';
+      document.getElementById('ccTableHead').innerHTML = '';
+      document.getElementById('ccTableBody').innerHTML = '';
+      document.getElementById('ccBoardActions').innerHTML = '';
+      return;
+    }
+    const pickedId = picked.board === board ? picked.data && picked.data.id : null;
+    if (board === 'ont') {
+      renderOntKpis(c.summary);
+      renderOntAttention(c.attention, pickedId);
+      renderOntTable(c.devices, pickedId);
+      renderOntBoardActions(c.acsConfigured);
+    } else if (board === 'mikrotik') {
+      renderMikrotikKpis(c.summary);
+      renderMikrotikAttention(c.attention, pickedId);
+      renderMikrotikTable(c.devices, pickedId);
+      renderMikrotikBoardActions();
+    } else {
+      renderOltKpis(c.summary);
+      renderOltAttention(c.attention, pickedId);
+      renderOltTable(c.olts, pickedId);
+      renderOltBoardActions();
+    }
+  }
+
+  function switchBoard(board) {
+    currentBoard = board;
+    document.querySelectorAll('.cc-nav-item').forEach((b) => b.classList.toggle('active', b.dataset.board === board));
+    document.getElementById('ccBoardTitle').textContent = titles[board];
+    document.getElementById('ccSearchInput').value = '';
+    document.getElementById('ccSearchResults').hidden = true;
+    applyBoard(board);
+    boards[board]();
+  }
+  document.querySelectorAll('.cc-nav-item').forEach((btn) => btn.addEventListener('click', () => switchBoard(btn.dataset.board)));
+  document.addEventListener('keydown', (e) => {
+    if (!(e.altKey || e.ctrlKey || e.metaKey)) return;
+    if (e.key === '1') { e.preventDefault(); switchBoard('ont'); }
+    else if (e.key === '2') { e.preventDefault(); switchBoard('mikrotik'); }
+    else if (e.key === '3') { e.preventDefault(); switchBoard('olt'); }
+  });
+
+  // ================= Inspector panel (picked device) =================
+  function clearPicked() {
+    picked = { board: null, data: null };
+    document.getElementById('ccPickedWrap').hidden = true;
+    document.getElementById('ccEmptyPick').hidden = false;
+    applyBoard(currentBoard);
+  }
+  document.getElementById('ccPickedClear')?.addEventListener('click', clearPicked);
+
+  function remoteInfo(board, d) {
+    if (board === 'ont') {
+      return { ip: d.wan_ip || '', openUrl: null, note: 'IP WAN pelanggan, umumnya di balik CGNAT sehingga tidak bisa diakses langsung. Untuk kontrol jarak jauh gunakan aksi TR-069 di bawah (ping, cek redaman, ganti SSID/password, reboot).' };
+    }
+    if (board === 'mikrotik') {
+      let ip = '', openUrl = null;
+      try { const u = new URL(d.base_url); ip = u.host; openUrl = `${u.protocol}//${u.host}/`; } catch (_) { ip = d.base_url || ''; }
+      return { ip, openUrl, note: 'Membuka halaman login WebFig router ini di tab baru.' };
+    }
+    const raw = d.management_ip || '';
+    const openUrl = raw ? (/^https?:\/\//i.test(raw) ? raw : `http://${raw}/`) : null;
+    return { ip: raw, openUrl, note: 'Membuka antarmuka web OLT (tergantung dukungan vendor).' };
+  }
+  function renderRemote(board, d) {
+    const info = remoteInfo(board, d);
+    const wrap = document.getElementById('ccRemote');
+    if (!info.ip) { wrap.hidden = true; return; }
+    wrap.hidden = false;
+    document.getElementById('ccRemoteIp').textContent = info.ip;
+    const openBtn = document.getElementById('ccRemoteOpen');
+    openBtn.hidden = !info.openUrl;
+    openBtn.onclick = () => window.open(info.openUrl, '_blank', 'noopener');
+    document.getElementById('ccRemoteCopy').onclick = async () => {
+      try { await navigator.clipboard.writeText(info.ip); toast('IP disalin ke clipboard.'); }
+      catch (_) { toast('Gagal menyalin IP.', 'danger'); }
+    };
+    document.getElementById('ccRemoteNote').textContent = info.note;
+  }
+
+  function showResult(message, tone) {
+    const box = document.getElementById('ccActResult');
+    box.hidden = false;
+    box.className = `mon-action-result ${tone}`;
+    box.textContent = message;
+  }
+  function pingLine(r) {
+    return `${r.reachable ? 'Reachable' : 'Timeout'} · loss ${r.lossPercent ?? '?'}%${r.avgMs != null ? ' · avg ' + r.avgMs + 'ms' : ''}`;
+  }
+
+  function ontActionsHtml() {
+    return `<button type="button" id="ccActPing"><i class="bi bi-broadcast"></i>Test Ping</button>
+      <button type="button" id="ccActRedaman"><i class="bi bi-reception-4"></i>Cek Redaman</button>
+      <button type="button" id="ccActSsid"><i class="bi bi-wifi"></i>Ganti SSID</button>
+      <button type="button" id="ccActPassword"><i class="bi bi-key-fill"></i>Ganti Password</button>
+      <button type="button" id="ccActReboot" style="grid-column:1/-1;color:var(--danger)"><i class="bi bi-power"></i>Reboot ONT</button>`;
+  }
+  function mtActionsHtml() {
+    return `<button type="button" id="ccActTest"><i class="bi bi-plug-fill"></i>Test Koneksi</button>
+      <button type="button" id="ccActPing"><i class="bi bi-broadcast"></i>Test Ping</button>
+      <button type="button" id="ccActReboot" style="grid-column:1/-1;color:var(--danger)"><i class="bi bi-power"></i>Reboot Router</button>`;
+  }
+  function oltActionsHtml() {
+    return `<button type="button" id="ccActPing" style="grid-column:1/-1"><i class="bi bi-broadcast"></i>Test Ping</button>`;
+  }
+
+  function wireOntActions(d) {
+    const ids = ['ccActPing', 'ccActRedaman', 'ccActSsid', 'ccActPassword', 'ccActReboot'];
+    if (!isAdmin) {
+      ids.forEach((id) => { const el = document.getElementById(id); if (el) el.disabled = true; });
+      toast('Hanya Admin yang dapat menjalankan aksi ONT.', 'danger');
+      return;
+    }
+    document.getElementById('ccActPing').onclick = async () => {
+      try { const r = await jsonFetch(`/acs/devices/${d.id}/ping`, { method: 'POST' }); showResult(pingLine(r.result), r.result.reachable ? 'success' : 'danger'); }
+      catch (err) { showResult(err.message, 'danger'); }
+    };
+    document.getElementById('ccActRedaman').onclick = async () => {
+      try { const r = await jsonFetch(`/acs/devices/${d.id}/redaman`, { method: 'POST' }); showResult(`RX ${r.rxPower ?? 'N/A'} dBm · Suhu ${r.temperature ?? 'N/A'} · ${r.message || ''}`, 'success'); }
+      catch (err) { showResult(err.message, 'danger'); }
+    };
+    document.getElementById('ccActSsid').onclick = async () => {
+      const ssid = window.prompt('Nama WiFi (SSID) baru:');
+      if (!ssid) return;
+      try { const r = await jsonFetch(`/acs/devices/${d.id}/wifi-ssid`, { method: 'POST', body: JSON.stringify({ ssid }) }); showResult(r.message, 'success'); toast(r.message); }
+      catch (err) { showResult(err.message, 'danger'); }
+    };
+    document.getElementById('ccActPassword').onclick = async () => {
+      const password = window.prompt('Password WiFi baru (8-63 karakter):');
+      if (!password) return;
+      const ok = await confirmAction('Ganti password WiFi perangkat ini? Semua perangkat pelanggan yang terhubung akan terputus sementara.');
+      if (!ok) return;
+      try { const r = await jsonFetch(`/acs/devices/${d.id}/wifi-password`, { method: 'POST', body: JSON.stringify({ password }) }); showResult(r.message, 'success'); toast(r.message); }
+      catch (err) { showResult(err.message, 'danger'); }
+    };
+    document.getElementById('ccActReboot').onclick = async () => {
+      const confirmValue = window.prompt(`Ketik ulang serial number "${d.serial_number || d.device_id}" untuk konfirmasi reboot:`);
+      if (!confirmValue) return;
+      try { const r = await jsonFetch(`/acs/devices/${d.id}/reboot`, { method: 'POST', body: JSON.stringify({ confirm: confirmValue }) }); showResult(r.message, 'success'); toast(r.message); }
+      catch (err) { showResult(err.message, 'danger'); }
+    };
+  }
+  function wireMikrotikActions(d) {
+    document.getElementById('ccActTest').onclick = async () => {
+      try { const r = await jsonFetch(`/monitoring/api/mikrotik/test/${d.id}`, { method: 'POST' }); showResult(r.message, 'success'); toast(r.message); }
+      catch (err) { showResult(err.message, 'danger'); }
+    };
+    document.getElementById('ccActPing').onclick = async () => {
+      try { const r = await jsonFetch(`/monitoring/api/mikrotik/${d.id}/ping`, { method: 'POST' }); showResult(pingLine(r.result), r.result.reachable ? 'success' : 'danger'); }
+      catch (err) { showResult(err.message, 'danger'); }
+    };
+    const rebootBtn = document.getElementById('ccActReboot');
+    if (!isAdmin) { rebootBtn.disabled = true; toast('Hanya Admin yang dapat me-reboot router.', 'danger'); }
+    rebootBtn.onclick = async () => {
+      const confirmValue = window.prompt(`Ketik ulang nama router "${d.name}" untuk konfirmasi reboot. Semua sesi PPPoE pelanggan di router ini akan terputus sementara:`);
+      if (!confirmValue) return;
+      try { const r = await jsonFetch(`/monitoring/api/mikrotik/${d.id}/reboot`, { method: 'POST', body: JSON.stringify({ confirm: confirmValue }) }); showResult(r.message, 'success'); toast(r.message); loadMikrotik(); }
+      catch (err) { showResult(err.message, 'danger'); }
+    };
+  }
+  function wireOltActions(d) {
+    document.getElementById('ccActPing').onclick = async () => {
+      try { const r = await jsonFetch(`/monitoring/api/olt/${d.id}/ping`, { method: 'POST' }); showResult(pingLine(r.result), r.result.reachable ? 'success' : 'danger'); loadOlt(); }
+      catch (err) { showResult(err.message, 'danger'); }
+    };
+  }
+
+  function setPicked(board, data) {
+    if (!data) { clearPicked(); return; }
+    picked = { board, data };
+    document.getElementById('ccEmptyPick').hidden = true;
+    document.getElementById('ccPickedWrap').hidden = false;
+    document.getElementById('ccActResult').hidden = true;
+
+    let name, meta;
+    if (board === 'ont') {
+      name = data.customer_name || data.serial_number || ('ONT #' + data.id);
+      meta = `${data.serial_number || data.device_id || '-'} · ${data.online_status === 'offline' ? 'Offline' : 'Online'}${data.rx_power != null ? ' · RX ' + data.rx_power + ' dBm' : ''}`;
+    } else if (board === 'mikrotik') {
+      name = data.name;
+      meta = `${data.site_code ? data.site_code + ' · ' : ''}${data.last_status === 'offline' ? 'Offline' : data.last_status === 'online' ? 'Online' : 'Belum dites'}${data.cpu_load != null ? ' · CPU ' + data.cpu_load + '%' : ''}`;
+    } else {
+      name = data.name;
+      meta = `${data.management_ip || 'IP belum diisi'} · ${data.onu_online ?? 0}/${data.onu_total ?? 0} ONU online`;
+    }
+    document.getElementById('ccPickedName').textContent = name;
+    document.getElementById('ccPickedMeta').textContent = meta;
+
+    renderRemote(board, data);
+
+    const list = document.getElementById('ccActionList');
+    list.innerHTML = board === 'ont' ? ontActionsHtml() : board === 'mikrotik' ? mtActionsHtml() : oltActionsHtml();
+    if (board === 'ont') wireOntActions(data);
+    else if (board === 'mikrotik') wireMikrotikActions(data);
+    else wireOltActions(data);
+
+    if (currentBoard === board) applyBoard(board);
+  }
+
+  // ================= Global search (per active board) =================
+  let searchTimer = null;
+  document.getElementById('ccSearchInput')?.addEventListener('input', (e) => {
+    clearTimeout(searchTimer);
+    const q = e.target.value.trim();
+    const box = document.getElementById('ccSearchResults');
+    if (q.length < 2) { box.hidden = true; return; }
+    searchTimer = setTimeout(async () => {
+      try {
+        const board = currentBoard;
+        const url = board === 'ont' ? `/monitoring/api/ont/search?q=${encodeURIComponent(q)}`
+          : board === 'mikrotik' ? `/monitoring/api/mikrotik/search?q=${encodeURIComponent(q)}`
+          : `/monitoring/api/olt/search?q=${encodeURIComponent(q)}`;
+        const key = board === 'ont' ? 'devices' : board === 'mikrotik' ? 'routers' : 'olts';
+        const r = await jsonFetch(url);
+        const items = r[key] || [];
+        box.innerHTML = items.length
+          ? items.map((it) => `<button type="button" data-pick='${esc(JSON.stringify(it))}'>${esc(it.customer_name || it.name || it.serial_number || it.device_id)}<small>${esc(it.serial_number || it.device_id || it.site_code || it.management_ip || '-')}</small></button>`).join('')
+          : '<button type="button" disabled>Tidak ditemukan</button>';
+        box.hidden = false;
+        box.querySelectorAll('[data-pick]').forEach((btn) => btn.addEventListener('click', () => {
+          setPicked(board, JSON.parse(btn.dataset.pick));
+          box.hidden = true;
+          e.target.value = '';
+        }));
+      } catch (err) { toast(err.message, 'danger'); }
+    }, 300);
+  });
+  document.addEventListener('click', (e) => {
+    const wrap = document.getElementById('ccSearchInput')?.closest('.mon-search-wrap');
+    if (wrap && !wrap.contains(e.target)) document.getElementById('ccSearchResults').hidden = true;
+  });
+
+  // ================= Site filter / nav site summary / bottom table =================
+  async function loadNavSites() {
+    try {
+      const r = await jsonFetch('/monitoring/api/sites');
+      const box = document.getElementById('ccNavSites');
+      box.innerHTML = (r.sites || []).length
+        ? r.sites.map((s) => `<div class="cc-nav-site-row ${currentSite === s.code ? 'active' : ''}" data-site="${esc(s.code)}"><span>${esc(s.code)}</span><span style="color:${s.ontCritical ? 'var(--danger)' : 'var(--muted-2)'}">${s.ontOnline}/${s.ontTotal}</span></div>`).join('')
+        : '<div class="mini-empty">-</div>';
+      box.querySelectorAll('[data-site]').forEach((row) => row.addEventListener('click', () => {
+        currentSite = currentSite === row.dataset.site ? '' : row.dataset.site;
+        applyFilterChange();
+      }));
+    } catch (_) { /* non-critical */ }
+  }
   async function loadSiteTable() {
     const body = document.getElementById('monSiteTableBody');
     try {
       const r = await jsonFetch('/monitoring/api/sites');
-      body.innerHTML = r.sites.length
-        ? r.sites.map((s) => `<tr class="mon-site-row ${currentSite === s.code ? 'active' : ''}" data-site="${esc(s.code)}" role="button" tabindex="0">
-            <td><span class="cell-main">${esc(s.code)}</span><span class="cell-sub">${esc(s.name)}</span></td>
-            <td>${s.ontOnline}/${s.ontTotal}</td>
-            <td>${s.ontCritical}</td>
+      body.innerHTML = (r.sites || []).length
+        ? r.sites.map((s) => `<tr class="mon-site-row" data-site="${esc(s.code)}" style="cursor:pointer">
+            <td><strong>${esc(s.code)}</strong><small>${esc(s.name || '')}</small></td>
+            <td style="color:${s.ontCritical ? 'var(--danger)' : ''}">${s.ontOnline}/${s.ontTotal}</td>
+            <td style="color:${s.ontCritical ? 'var(--danger)' : ''}">${s.ontCritical}</td>
             <td>${s.routerOnline}/${s.routerTotal}</td>
           </tr>`).join('')
-        : '<tr><td colspan="4"><div class="empty-state"><small>Belum ada site aktif.</small></div></td></tr>';
+        : '<tr><td colspan="4"><div class="empty-state"><small>Tidak ada data site.</small></div></td></tr>';
       body.querySelectorAll('[data-site]').forEach((row) => row.addEventListener('click', () => {
-        const code = row.dataset.site;
-        currentSite = currentSite === code ? '' : code;
-        document.getElementById('monSiteFilter').value = currentSite;
-        loaded.clear();
-        boards[getActiveBoard()]();
-        loadSiteTable();
+        currentSite = currentSite === row.dataset.site ? '' : row.dataset.site;
+        applyFilterChange();
       }));
-    } catch (err) { body.innerHTML = `<tr><td colspan="4">${esc(err.message)}</td></tr>`; }
-  }
-
-  // ---------------- Segmented board control + filters ----------------
-  const boards = { ont: loadOnt, mikrotik: loadMikrotik, olt: loadOlt };
-  const loaded = new Set();
-  function switchBoard(board) {
-    document.querySelectorAll('#monSeg button').forEach((b) => b.classList.toggle('active', b.dataset.board === board));
-    Object.keys(boards).forEach((key) => { document.getElementById('bento-' + key).style.display = key === board ? '' : 'none'; });
-    if (!loaded.has(board)) { loaded.add(board); boards[board](); }
-    tickIndicator();
-  }
-  document.querySelectorAll('#monSeg button').forEach((btn) => btn.addEventListener('click', () => switchBoard(btn.dataset.board)));
-
-  document.getElementById('monSiteFilter')?.addEventListener('change', (e) => {
-    currentSite = e.target.value;
-    loaded.clear();
-    boards[getActiveBoard()]();
-    loadSiteTable();
-  });
-  document.getElementById('monRefreshBtn')?.addEventListener('click', () => { boards[getActiveBoard()](); loadSiteTable(); });
-
-  function tickIndicator() {
-    const el = document.getElementById('monRefreshIndicator');
-    if (!el) return;
-    const t = lastLoadAt[getActiveBoard()];
-    el.textContent = t ? `diperbarui ${Math.max(0, Math.round((Date.now() - t) / 1000))} detik lalu` : 'memuat...';
-  }
-  setInterval(tickIndicator, 1000);
-
-  // Auto-refresh the currently visible board every 30s so the dashboard stays live.
-  setInterval(() => { boards[getActiveBoard()](); }, 30000);
-
-  // Keyboard shortcuts 1/2/3 to jump between boards, ignored while typing in a field.
-  document.addEventListener('keydown', (e) => {
-    const tag = (e.target?.tagName || '').toLowerCase();
-    if (['input', 'select', 'textarea'].includes(tag)) return;
-    const map = { '1': 'ont', '2': 'mikrotik', '3': 'olt' };
-    if (map[e.key]) switchBoard(map[e.key]);
-  });
-
-  loaded.add('ont'); loadOnt(); loadSiteTable();
-
-  // ---------------- ONT action modal ----------------
-  let ontModalInstance = null;
-  let pickedDevice = null;
-  function getOntModal() {
-    if (!ontModalInstance && window.bootstrap) ontModalInstance = new window.bootstrap.Modal(document.getElementById('ontActionModal'));
-    return ontModalInstance;
-  }
-  function setPicked(device) {
-    pickedDevice = device;
-    const wrap = document.getElementById('ontPickedWrap');
-    const resultBox = document.getElementById('ontActResult');
-    resultBox.hidden = true;
-    if (!device) { wrap.hidden = true; return; }
-    wrap.hidden = false;
-    document.getElementById('ontPickedName').textContent = device.customer_name || device.serial_number || `ONT #${device.id}`;
-    document.getElementById('ontPickedMeta').textContent = `${device.serial_number || device.device_id || '-'} · ${device.online_status === 'offline' ? 'Offline' : 'Online'}${device.rx_power !== undefined && device.rx_power !== null ? ' · RX ' + device.rx_power + ' dBm' : ''}`;
-    const disabled = !isAdmin;
-    ['ontActPing', 'ontActRedaman', 'ontActSsid', 'ontActPassword', 'ontActReboot'].forEach((id) => { document.getElementById(id).disabled = disabled; });
-    if (disabled) toast('Hanya Admin yang dapat menjalankan aksi ONT.', 'danger');
-  }
-  function openOntModal(device) {
-    setPicked(device || null);
-    document.getElementById('ontSearchInput').value = '';
-    document.getElementById('ontSearchResults').hidden = true;
-    getOntModal()?.show();
-  }
-  document.getElementById('ontPickedClear')?.addEventListener('click', () => setPicked(null));
-
-  let searchTimer = null;
-  document.getElementById('ontSearchInput')?.addEventListener('input', (e) => {
-    clearTimeout(searchTimer);
-    const q = e.target.value.trim();
-    const box = document.getElementById('ontSearchResults');
-    if (q.length < 2) { box.hidden = true; return; }
-    searchTimer = setTimeout(async () => {
-      try {
-        const r = await jsonFetch(`/monitoring/api/ont/search?q=${encodeURIComponent(q)}`);
-        box.innerHTML = r.devices.length
-          ? r.devices.map((dv) => `<button type="button" data-pick='${esc(JSON.stringify(dv))}'>${esc(dv.customer_name || dv.serial_number || dv.device_id)}<small>${esc(dv.serial_number || dv.device_id)} · ${dv.online_status === 'offline' ? 'Offline' : 'Online'}</small></button>`).join('')
-          : '<button type="button" disabled>Tidak ditemukan</button>';
-        box.hidden = false;
-        box.querySelectorAll('[data-pick]').forEach((btn) => btn.addEventListener('click', () => {
-          setPicked(JSON.parse(btn.dataset.pick));
-          box.hidden = true;
-        }));
-      } catch (err) { toast(err.message, 'danger'); }
-    }, 300);
-  });
-
-  function showActResult(message, tone) {
-    const box = document.getElementById('ontActResult');
-    box.hidden = false;
-    box.className = `mon-action-result ${tone}`;
-    box.textContent = message;
-  }
-
-  document.getElementById('ontActPing')?.addEventListener('click', async () => {
-    if (!pickedDevice) return;
-    try { const r = await jsonFetch(`/acs/devices/${pickedDevice.id}/ping`, { method: 'POST' }); showActResult(`${r.result.reachable ? 'Reachable' : 'Timeout'} · loss ${r.result.lossPercent ?? '?'}%${r.result.avgMs !== null ? ' · avg ' + r.result.avgMs + 'ms' : ''}`, r.result.reachable ? 'success' : 'danger'); }
-    catch (err) { showActResult(err.message, 'danger'); }
-  });
-  document.getElementById('ontActRedaman')?.addEventListener('click', async () => {
-    if (!pickedDevice) return;
-    try { const r = await jsonFetch(`/acs/devices/${pickedDevice.id}/redaman`, { method: 'POST' }); showActResult(`RX ${r.rxPower ?? 'N/A'} dBm · Suhu ${r.temperature ?? 'N/A'} · ${r.message}`, 'success'); }
-    catch (err) { showActResult(err.message, 'danger'); }
-  });
-  document.getElementById('ontActSsid')?.addEventListener('click', async () => {
-    if (!pickedDevice) return;
-    const ssid = window.prompt('Nama WiFi (SSID) baru:');
-    if (!ssid) return;
-    try { const r = await jsonFetch(`/acs/devices/${pickedDevice.id}/wifi-ssid`, { method: 'POST', body: JSON.stringify({ ssid }) }); showActResult(r.message, 'success'); toast(r.message); }
-    catch (err) { showActResult(err.message, 'danger'); }
-  });
-  document.getElementById('ontActPassword')?.addEventListener('click', async () => {
-    if (!pickedDevice) return;
-    const password = window.prompt('Password WiFi baru (8-63 karakter):');
-    if (!password) return;
-    const ok = await confirmAction('Ganti password WiFi perangkat ini? Semua perangkat pelanggan yang terhubung akan terputus sementara.');
-    if (!ok) return;
-    try { const r = await jsonFetch(`/acs/devices/${pickedDevice.id}/wifi-password`, { method: 'POST', body: JSON.stringify({ password }) }); showActResult(r.message, 'success'); toast(r.message); }
-    catch (err) { showActResult(err.message, 'danger'); }
-  });
-  document.getElementById('ontActReboot')?.addEventListener('click', async () => {
-    if (!pickedDevice) return;
-    const confirmValue = window.prompt(`Ketik ulang serial number "${pickedDevice.serial_number || pickedDevice.device_id}" untuk konfirmasi reboot:`);
-    if (!confirmValue) return;
-    try { const r = await jsonFetch(`/acs/devices/${pickedDevice.id}/reboot`, { method: 'POST', body: JSON.stringify({ confirm: confirmValue }) }); showActResult(r.message, 'success'); toast(r.message); }
-    catch (err) { showActResult(err.message, 'danger'); }
-  });
-
-  // ---------------- MikroTik action modal ----------------
-  let mtModalInstance = null;
-  let pickedRouter = null;
-  function getMtModal() {
-    if (!mtModalInstance && window.bootstrap) mtModalInstance = new window.bootstrap.Modal(document.getElementById('mikrotikActionModal'));
-    return mtModalInstance;
-  }
-  function setPickedRouter(r) {
-    pickedRouter = r;
-    const wrap = document.getElementById('mtPickedWrap');
-    const resultBox = document.getElementById('mtActResult');
-    resultBox.hidden = true;
-    if (!r) { wrap.hidden = true; return; }
-    wrap.hidden = false;
-    document.getElementById('mtPickedName').textContent = r.name;
-    document.getElementById('mtPickedMeta').textContent = `${r.site_code ? r.site_code + ' \u00b7 ' : ''}${r.last_status === 'offline' ? 'Offline' : r.last_status === 'online' ? 'Online' : 'Belum pernah dites'}`;
-    // Test Koneksi & Ping are read-only diagnostics open to any network user; only Reboot is admin-gated
-    // server-side, so only that button needs to be disabled here.
-    document.getElementById('mtActReboot').disabled = !isAdmin;
-    if (!isAdmin) toast('Hanya Admin yang dapat me-reboot router.', 'danger');
-  }
-  function openMikrotikModal(routerPick) {
-    setPickedRouter(routerPick || null);
-    document.getElementById('mtSearchInput').value = '';
-    document.getElementById('mtSearchResults').hidden = true;
-    getMtModal()?.show();
-  }
-  document.getElementById('mtPickedClear')?.addEventListener('click', () => setPickedRouter(null));
-
-  let mtSearchTimer = null;
-  document.getElementById('mtSearchInput')?.addEventListener('input', (e) => {
-    clearTimeout(mtSearchTimer);
-    const q = e.target.value.trim();
-    const box = document.getElementById('mtSearchResults');
-    if (q.length < 2) { box.hidden = true; return; }
-    mtSearchTimer = setTimeout(async () => {
-      try {
-        const r = await jsonFetch(`/monitoring/api/mikrotik/search?q=${encodeURIComponent(q)}`);
-        box.innerHTML = r.routers.length
-          ? r.routers.map((rt) => `<button type="button" data-pick='${esc(JSON.stringify(rt))}'>${esc(rt.name)}<small>${esc(rt.site_code || '-')} \u00b7 ${rt.last_status === 'offline' ? 'Offline' : rt.last_status === 'online' ? 'Online' : 'Belum dites'}</small></button>`).join('')
-          : '<button type="button" disabled>Tidak ditemukan</button>';
-        box.hidden = false;
-        box.querySelectorAll('[data-pick]').forEach((btn) => btn.addEventListener('click', () => {
-          setPickedRouter(JSON.parse(btn.dataset.pick));
-          box.hidden = true;
-        }));
-      } catch (err) { toast(err.message, 'danger'); }
-    }, 300);
-  });
-
-  function showMtResult(message, tone) {
-    const box = document.getElementById('mtActResult');
-    box.hidden = false;
-    box.className = `mon-action-result ${tone}`;
-    box.textContent = message;
-  }
-
-  document.getElementById('mtActTest')?.addEventListener('click', async () => {
-    if (!pickedRouter) return;
-    try { const r = await jsonFetch(`/monitoring/api/mikrotik/test/${pickedRouter.id}`, { method: 'POST' }); showMtResult(r.message, 'success'); toast(r.message); }
-    catch (err) { showMtResult(err.message, 'danger'); }
-  });
-  document.getElementById('mtActPing')?.addEventListener('click', async () => {
-    if (!pickedRouter) return;
-    try {
-      const r = await jsonFetch(`/monitoring/api/mikrotik/${pickedRouter.id}/ping`, { method: 'POST' });
-      showMtResult(`${r.result.reachable ? 'Reachable' : 'Timeout'} \u00b7 loss ${r.result.lossPercent ?? '?'}%${r.result.avgMs !== null ? ' \u00b7 avg ' + r.result.avgMs + 'ms' : ''}`, r.result.reachable ? 'success' : 'danger');
-    } catch (err) { showMtResult(err.message, 'danger'); }
-  });
-  document.getElementById('mtActReboot')?.addEventListener('click', async () => {
-    if (!pickedRouter) return;
-    const confirmValue = window.prompt(`Ketik ulang nama router "${pickedRouter.name}" untuk konfirmasi reboot. Semua sesi PPPoE pelanggan di router ini akan terputus sementara:`);
-    if (!confirmValue) return;
-    try { const r = await jsonFetch(`/monitoring/api/mikrotik/${pickedRouter.id}/reboot`, { method: 'POST', body: JSON.stringify({ confirm: confirmValue }) }); showMtResult(r.message, 'success'); toast(r.message); loadMikrotik(); }
-    catch (err) { showMtResult(err.message, 'danger'); }
-  });
-
-  // ---------------- OLT action modal ----------------
-  let oltModalInstance = null;
-  let pickedOlt = null;
-  function getOltModal() {
-    if (!oltModalInstance && window.bootstrap) oltModalInstance = new window.bootstrap.Modal(document.getElementById('oltActionModal'));
-    return oltModalInstance;
-  }
-  function setPickedOlt(o) {
-    pickedOlt = o;
-    const wrap = document.getElementById('oltPickedWrap');
-    const resultBox = document.getElementById('oltActResult');
-    resultBox.hidden = true;
-    if (!o) { wrap.hidden = true; return; }
-    wrap.hidden = false;
-    document.getElementById('oltPickedName').textContent = o.name;
-    document.getElementById('oltPickedMeta').textContent = `${o.management_ip || 'IP belum diatur'} \u00b7 ${o.last_status === 'offline' ? 'Offline' : o.last_status === 'online' ? 'Online' : 'Belum pernah dites'}`;
-  }
-  function openOltModal(oltPick) {
-    setPickedOlt(oltPick || null);
-    document.getElementById('oltSearchInput').value = '';
-    document.getElementById('oltSearchResults').hidden = true;
-    getOltModal()?.show();
-  }
-  document.getElementById('oltPickedClear')?.addEventListener('click', () => setPickedOlt(null));
-
-  let oltSearchTimer = null;
-  document.getElementById('oltSearchInput')?.addEventListener('input', (e) => {
-    clearTimeout(oltSearchTimer);
-    const q = e.target.value.trim();
-    const box = document.getElementById('oltSearchResults');
-    if (q.length < 2) { box.hidden = true; return; }
-    oltSearchTimer = setTimeout(async () => {
-      try {
-        const r = await jsonFetch(`/monitoring/api/olt/search?q=${encodeURIComponent(q)}`);
-        box.innerHTML = r.olts.length
-          ? r.olts.map((o) => `<button type="button" data-pick='${esc(JSON.stringify(o))}'>${esc(o.name)}<small>${esc(o.management_ip || '-')} \u00b7 ${o.last_status === 'offline' ? 'Offline' : o.last_status === 'online' ? 'Online' : 'Belum dites'}</small></button>`).join('')
-          : '<button type="button" disabled>Tidak ditemukan</button>';
-        box.hidden = false;
-        box.querySelectorAll('[data-pick]').forEach((btn) => btn.addEventListener('click', () => {
-          setPickedOlt(JSON.parse(btn.dataset.pick));
-          box.hidden = true;
-        }));
-      } catch (err) { toast(err.message, 'danger'); }
-    }, 300);
-  });
-
-  document.getElementById('oltActPing')?.addEventListener('click', async () => {
-    if (!pickedOlt) return;
-    const box = document.getElementById('oltActResult');
-    try {
-      const r = await jsonFetch(`/monitoring/api/olt/${pickedOlt.id}/ping`, { method: 'POST' });
-      box.hidden = false;
-      box.className = `mon-action-result ${r.result.reachable ? 'success' : 'danger'}`;
-      box.textContent = `${r.result.reachable ? 'Reachable' : 'Timeout'} \u00b7 loss ${r.result.lossPercent ?? '?'}%${r.result.avgMs !== null ? ' \u00b7 avg ' + r.result.avgMs + 'ms' : ''}`;
     } catch (err) {
-      box.hidden = false;
-      box.className = 'mon-action-result danger';
-      box.textContent = err.message;
+      body.innerHTML = `<tr><td colspan="4"><div class="empty-state"><small>${esc(err.message)}</small></div></td></tr>`;
     }
-  });
+  }
+  function applyFilterChange() {
+    const sel = document.getElementById('monSiteFilter');
+    if (sel) sel.value = currentSite;
+    loadOnt(); loadMikrotik(); loadOlt(); loadSiteTable(); loadNavSites();
+  }
+  document.getElementById('monSiteFilter')?.addEventListener('change', (e) => { currentSite = e.target.value; applyFilterChange(); });
+
+  const refreshBtn = document.getElementById('monRefreshBtn');
+  const refreshIndicator = document.getElementById('monRefreshIndicator');
+  function refreshAll() {
+    loadOnt(); loadMikrotik(); loadOlt(); loadSiteTable(); loadNavSites();
+    if (refreshIndicator) refreshIndicator.textContent = `diperbarui ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+  }
+  refreshBtn?.addEventListener('click', refreshAll);
+
+  // ================= Init =================
+  refreshAll();
+  setInterval(refreshAll, 30000);
 })();

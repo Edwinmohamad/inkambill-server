@@ -200,12 +200,88 @@ async function loadUnpaidCustomers(end) {
   }
 }
 
+// v2.5 — ringkasan aktivitas pelanggan riil untuk periode closing: berapa PSB
+// (pemasangan baru), berapa pelanggan off (nonaktif), dan berapa tagihan yang
+// sudah/belum dibayar pada periode ini. Murni informasi pendukung dari tabel
+// customers/invoices — sama seperti loadUnpaidCustomers, TIDAK PERNAH ikut ke
+// buildClosingCalculation sehingga tidak bisa mengubah angka pembagian hasil.
+// Dikelompokkan per lokasi (CDS/KBG) memakai siteBlock() yang sama dengan
+// kalkulator supaya konsisten dengan rincian di bawahnya.
+function emptyActivityBucket() {
+  return { total: 0, krwclm: 0, kbg: 0, other: 0, list: [] };
+}
+function monthPairsInRange(start, end) {
+  const pairs = [];
+  let cursor = new Date(`${start}T00:00:00`);
+  cursor = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+  const last = new Date(`${end}T00:00:00`);
+  const lastStart = new Date(last.getFullYear(), last.getMonth(), 1);
+  while (cursor <= lastStart) {
+    pairs.push([cursor.getFullYear(), cursor.getMonth() + 1]);
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+  }
+  return pairs;
+}
+async function loadCustomerActivitySummary(start, end) {
+  const empty = () => ({
+    psb: emptyActivityBucket(),
+    off: emptyActivityBucket(),
+    billing: { total: 0, paid: 0, unpaid: 0, krwclm: { paid: 0, unpaid: 0 }, kbg: { paid: 0, unpaid: 0 }, other: { paid: 0, unpaid: 0 }, billedTotal: 0, collectedTotal: 0, outstandingTotal: 0 }
+  });
+  try {
+    const [psbRows] = await db.execute(`SELECT c.id,c.customer_code,c.name,c.activation_date,s.code site_code,cl.name cluster_name
+        FROM customers c JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id
+        WHERE c.archived_at IS NULL AND c.customer_source='new_install' AND c.activation_date BETWEEN ? AND ?
+        ORDER BY c.activation_date DESC,c.id DESC`, [start, end]);
+    const psb = emptyActivityBucket();
+    psb.list = psbRows;
+    psbRows.forEach((row) => { psb.total += 1; psb[siteBlock(row.site_code, row.cluster_name)] += 1; });
+
+    const [offRows] = await db.execute(`SELECT c.id,c.customer_code,c.name,c.customer_status,
+        COALESCE(c.status_changed_at,c.updated_at,c.created_at) changed_at,s.code site_code,cl.name cluster_name
+        FROM customers c JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id
+        WHERE c.archived_at IS NULL AND c.customer_status<>'active'
+          AND COALESCE(c.status_changed_at,c.updated_at,c.created_at) BETWEEN ? AND ?
+        ORDER BY changed_at DESC,c.id DESC`, [`${start} 00:00:00`, `${end} 23:59:59`]);
+    const off = emptyActivityBucket();
+    off.list = offRows;
+    offRows.forEach((row) => { off.total += 1; off[siteBlock(row.site_code, row.cluster_name)] += 1; });
+
+    const monthPairs = monthPairsInRange(start, end);
+    const monthCond = monthPairs.map(() => '(i.period_year=? AND i.period_month=?)').join(' OR ');
+    const monthParams = monthPairs.flat();
+    const [billingRows] = monthPairs.length ? await db.execute(`SELECT s.code site_code,cl.name cluster_name,i.status,COUNT(*) cnt,
+          COALESCE(SUM(i.total),0) total_amt,COALESCE(SUM(i.paid_amount),0) paid_amt,COALESCE(SUM(i.outstanding),0) outstanding_amt
+        FROM invoices i JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id
+        WHERE i.status NOT IN ('cancelled','refunded') AND (${monthCond})
+        GROUP BY s.code,cl.name,i.status`, monthParams) : [[]];
+    const billing = { total: 0, paid: 0, unpaid: 0, krwclm: { paid: 0, unpaid: 0 }, kbg: { paid: 0, unpaid: 0 }, other: { paid: 0, unpaid: 0 }, billedTotal: 0, collectedTotal: 0, outstandingTotal: 0 };
+    billingRows.forEach((row) => {
+      const blockKey = siteBlock(row.site_code, row.cluster_name);
+      const isPaid = row.status === 'paid';
+      const cnt = Number(row.cnt) || 0;
+      billing.total += cnt;
+      billing.billedTotal += Number(row.total_amt) || 0;
+      billing.collectedTotal += Number(row.paid_amt) || 0;
+      billing.outstandingTotal += Number(row.outstanding_amt) || 0;
+      if (isPaid) { billing.paid += cnt; billing[blockKey].paid += cnt; }
+      else { billing.unpaid += cnt; billing[blockKey].unpaid += cnt; }
+    });
+
+    return { psb, off, billing };
+  } catch (err) {
+    console.error('Gagal memuat ringkasan aktivitas pelanggan untuk Closing:', err.message);
+    return empty();
+  }
+}
+
 router.get('/', async (req, res, next) => {
   try {
     const { start, end, hideEdwin } = selectedPeriod(req);
     if (start > end) return res.status(400).send('Periode tidak valid.');
     const data = await loadClosing(start, end);
     const unpaid = await loadUnpaidCustomers(end);
+    const customerActivity = await loadCustomerActivitySummary(start, end);
     // v2.1 — mode Otomatis + masih DRAFT: hitung berapa transaksi Data Kas yang
     // masih menunggu approval, dan berapa yang sudah APPROVED tapi belum ditarik,
     // supaya kelihatan di banner sebelum Master Admin sempat lupa sync.
@@ -268,7 +344,7 @@ router.get('/', async (req, res, next) => {
         prevLabel: `${prevPeriod.start} s/d ${prevPeriod.end}`
       };
     }
-    res.render('closing/index', { title: 'Closing', pageTitle: 'Closing', pageSubtitle: `${start} s/d ${end}`, start, end, hideEdwin, money, locationText, pending, estimate, prevPeriod, nextPeriod, trend, ...data, ...unpaid });
+    res.render('closing/index', { title: 'Closing', pageTitle: 'Closing', pageSubtitle: `${start} s/d ${end}`, start, end, hideEdwin, money, locationText, pending, estimate, prevPeriod, nextPeriod, trend, customerActivity, ...data, ...unpaid });
   } catch (err) { next(err); }
 });
 
@@ -558,6 +634,20 @@ function recipientShare(block, key) {
   return (Array.isArray(block?.shares) ? block.shares : []).find((share) => personKey(share.name) === key) || null;
 }
 
+// v2.5 — susun ringkasan PSB/off/bayar-belum bayar per lokasi (hanya lokasi yang
+// memang berlaku untuk penerima PDF ini) supaya bisa dirender sebagai tabel kecil
+// di PDF, persis seperti blocks[] pada drawLocationShareCards.
+function buildCustomerActivityRows(customerActivity, allowedBlocks) {
+  const labels = { krwclm: 'CDS', kbg: 'KBG' };
+  return ['krwclm', 'kbg'].filter((key) => allowedBlocks.has(key)).map((key) => ({
+    lokasi: labels[key],
+    psb: (customerActivity.psb && customerActivity.psb[key]) || 0,
+    off: (customerActivity.off && customerActivity.off[key]) || 0,
+    bayar: (customerActivity.billing && customerActivity.billing[key] && customerActivity.billing[key].paid) || 0,
+    belumBayar: (customerActivity.billing && customerActivity.billing[key] && customerActivity.billing[key].unpaid) || 0
+  }));
+}
+
 // v1.29 — replaces the old flat addPersonDetailRows()/rows[] builder. Builds the
 // structured {blocks, adjustmentRows, transactionRows} shape the redesigned
 // createClosingReportPdf() renders as separate sections instead of one long table.
@@ -583,20 +673,39 @@ function buildTransactionRows(data, allowedBlocks, periodStart, periodEnd) {
   // per LOKASI (CDS/KRW, CDS/CLM, dan KBG masing-masing baris sendiri — bukan
   // digabung jadi satu baris CDS) supaya output PDF ringkas. Jumlah transaksi
   // yang digabung tetap dicatat di keterangan sebagai jejak audit.
+  // v2.5 — pendapatan PSB (uang masuk pemasangan baru) dipisah dari pendapatan
+  // langganan biasa, jadi bisa langsung dibandingkan dengan baris "Komisi
+  // instalasi (PSB)" di bawah. Sebelumnya keduanya tercampur jadi satu baris
+  // "Pembayaran pelanggan" sehingga pendapatan PSB tidak kelihatan di PDF.
+  const isPsbRevenue = (category) => /psb|pasang baru/i.test(String(category || ''));
   const incomeTotals = new Map();
   const incomeOrder = [];
+  const psbRevenueTotals = new Map();
+  const psbRevenueOrder = [];
   (data.payments || []).forEach((row) => {
     const blockKey = siteBlock(row.site_code, row.cluster_name, row.site_name);
     if (!allowedBlocks.has(blockKey)) return;
     const label = locationText(row);
+    const amount = money(row.amount);
+    if (isPsbRevenue(row.category)) {
+      if (!psbRevenueTotals.has(label)) { psbRevenueTotals.set(label, { total: 0, count: 0 }); psbRevenueOrder.push(label); }
+      const psbEntry = psbRevenueTotals.get(label);
+      psbEntry.total += amount;
+      psbEntry.count += 1;
+      return;
+    }
     if (!incomeTotals.has(label)) { incomeTotals.set(label, { total: 0, count: 0 }); incomeOrder.push(label); }
     const entry = incomeTotals.get(label);
-    entry.total += money(row.amount);
+    entry.total += amount;
     entry.count += 1;
   });
   incomeOrder.forEach((label) => {
     const entry = incomeTotals.get(label);
     rows.push({ tanggal: periodLabel, lokasi: label, jenis: 'Pendapatan', keterangan: `Pembayaran pelanggan · ${entry.count} transaksi`, nominal: entry.total });
+  });
+  psbRevenueOrder.forEach((label) => {
+    const entry = psbRevenueTotals.get(label);
+    rows.push({ tanggal: periodLabel, lokasi: label, jenis: 'Pendapatan', keterangan: `Pendapatan PSB (pemasangan baru) · ${entry.count} pelanggan`, nominal: entry.total });
   });
   // Kategori PSB / komisi instalasi juga digabung per lokasi yang sama;
   // kategori pengeluaran lain tetap rinci per baris seperti sebelumnya.
@@ -620,7 +729,7 @@ function buildTransactionRows(data, allowedBlocks, periodStart, periodEnd) {
   });
   commissionOrder.forEach((label) => {
     const entry = commissionTotals.get(label);
-    rows.push({ tanggal: periodLabel, lokasi: label, jenis: 'Pengeluaran', keterangan: `Komisi instalasi (PSB) · ${entry.count} transaksi`, nominal: entry.total });
+    rows.push({ tanggal: periodLabel, lokasi: label, jenis: 'Pengeluaran', keterangan: `Komisi instalasi (PSB) · ${entry.count} pelanggan`, nominal: entry.total });
   });
   expenseRows.sort((a, b) => (a.tanggal < b.tanggal ? 1 : a.tanggal > b.tanggal ? -1 : 0));
   return [...rows, ...expenseRows];
@@ -633,6 +742,7 @@ router.get('/pdf', async (req, res, next) => {
     const recipient = personFromReport(req.query.report);
     if (!recipient) return res.status(400).send('Penerima PDF tidak valid.');
     const data = await loadClosing(start, end);
+    const customerActivity = await loadCustomerActivitySummary(start, end);
     const effectiveMode = data.mode || 'manual';
     let grossTotal = 0;
     let netTotal = 0;
@@ -646,6 +756,7 @@ router.get('/pdf', async (req, res, next) => {
     });
     const adjustmentRows = buildAdjustmentRows(data, recipient, allowedBlocks);
     const transactionRows = buildTransactionRows(data, allowedBlocks, start, end);
+    const customerActivityRows = buildCustomerActivityRows(customerActivity, allowedBlocks);
     const adjustmentTotal = netTotal - grossTotal;
     const hiddenNote = hideEdwin && recipient.key !== 'edwin' ? ' · bagian Edwin disembunyikan sesuai opsi' : '';
     createClosingReportPdf(res, {
@@ -657,7 +768,8 @@ router.get('/pdf', async (req, res, next) => {
       summaryItems: [{ label: 'Total Bruto', value: rupiah(grossTotal), color: '#3478F6' }, { label: 'Penyesuaian Bersih', value: `${adjustmentTotal < 0 ? '- ' : '+ '}${rupiah(Math.abs(adjustmentTotal))}`, color: adjustmentTotal < 0 ? '#FF433E' : '#18A979' }, { label: 'TOTAL DITERIMA', value: rupiah(netTotal), color: netTotal >= 0 ? '#18A979' : '#FF433E' }],
       blocks,
       adjustmentRows,
-      transactionRows
+      transactionRows,
+      customerActivityRows
     });
   } catch (err) { next(err); }
 });

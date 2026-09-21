@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="<%= language %>" data-theme="dark" data-palette="nebula">
+<html lang="<%= language %>" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -14,7 +14,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <link rel="stylesheet" href="/css/app.css?v=<%= assetVersion %>">
   <link rel="stylesheet" href="/css/mobile-app.css?v=<%= assetVersion %>">
-  <script>(()=>{try{const allowed=['nebula','ocean','emerald','sunset','rose','ice'];const pref=localStorage.getItem('inkamnet-theme')||<%- JSON.stringify(defaultTheme||'dark') %>;document.documentElement.dataset.theme=pref==='system'?(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'):pref;const palette=localStorage.getItem('inkamnet-palette')||<%- JSON.stringify(defaultUiPalette||'nebula') %>;document.documentElement.dataset.palette=allowed.includes(palette)?palette:'nebula';if(sessionStorage.getItem('inkamnet-instant-filter')==='1'){sessionStorage.removeItem('inkamnet-instant-filter');document.documentElement.classList.add('instant-filter-nav')}}catch(e){}})();</script>
+  <script>(()=>{try{const pref=localStorage.getItem('inkamnet-theme')||<%- JSON.stringify(defaultTheme||'dark') %>;document.documentElement.dataset.theme=pref==='system'?(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'):pref;if(sessionStorage.getItem('inkamnet-instant-filter')==='1'){sessionStorage.removeItem('inkamnet-instant-filter');document.documentElement.classList.add('instant-filter-nav')}}catch(e){}})();</script>
   <style id="inkamnet-critical-ui">
     /* Critical shell/loader CSS prevents FOUC while the main stylesheet is loading.
        v1.26 -- Apple-style loading overlay: no app logo here (the logo stays in the
@@ -45,11 +45,6 @@
   </style>
 </head>
 <body class="<%= isMobileApp?'inkamnet-go-app':'' %>">
-  <div class="ambient-grid" aria-hidden="true"></div>
-  <div class="ambient-orb orb-a" aria-hidden="true"></div>
-  <div class="ambient-orb orb-b" aria-hidden="true"></div>
-  <div class="signal-stream" aria-hidden="true"><span></span><span></span><span></span></div>
-
   <div class="app-loader" id="appLoader" aria-hidden="true">
     <div class="ios-spinner" role="status" aria-label="Memuat"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
     <p class="apple-loader-text">Memuat&hellip;</p>
@@ -234,10 +229,6 @@
           </div>
           <% if(can('settings')){ %><a class="icon-button wa-gateway-badge" href="/wa-gateway" title="WA Gateway: <%= waGatewayConnected?'Terhubung':'Terputus' %> — klik untuk kelola"><i class="bi bi-whatsapp"></i><span class="wa-gateway-dot <%= waGatewayConnected?'on':'off' %>"></span></a><% } %>
           <form method="post" action="/profile/language" class="language-switch"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="return_to" value="<%= currentPath %>"><select name="language" onchange="this.form.submit()" aria-label="Language"><option value="id" <%= language==='id'?'selected':'' %>>ID</option><option value="en" <%= language==='en'?'selected':'' %>>EN</option></select></form>
-          <div class="dropdown palette-switcher">
-            <button class="icon-button" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" title="Pilih kombinasi warna" aria-label="Pilih kombinasi warna"><i class="bi bi-palette2"></i></button>
-            <div class="dropdown-menu dropdown-menu-end app-dropdown palette-dropdown p-2"><div class="palette-dropdown-head"><span>WARNA UI</span><small>Pilih kombinasi favorit</small></div><% [['nebula','Nebula'],['ocean','Ocean'],['emerald','Emerald'],['sunset','Sunset'],['rose','Rose'],['ice','Ice']].forEach(p=>{ %><button type="button" class="palette-choice" data-palette-value="<%= p[0] %>"><i data-swatch="<%= p[0] %>"><b></b><b></b></i><span><%= p[1] %></span><em class="bi bi-check2"></em></button><% }) %></div>
-          </div>
           <button class="icon-button theme-toggle" type="button" data-theme-toggle title="Dark / Light Mode"><i class="bi bi-moon-stars-fill"></i></button>
           <button class="icon-button" type="button" data-lite-toggle title="Mode Ringan" aria-label="Aktifkan Mode Ringan"><i class="bi bi-lightning-charge"></i></button>
           <div class="user-menu dropdown">
