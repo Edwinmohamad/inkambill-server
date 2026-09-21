@@ -128,7 +128,15 @@ async function disconnectSecret(router,id){
   return {secret,disconnected:!!active};
 }
 
+// Triggers a RouterOS reboot via the REST API (equivalent to `/system reboot` in the CLI). RouterOS
+// tears the connection down as it restarts, so a socket-level error right after the request was
+// accepted does not necessarily mean the command failed -- callers should treat this as "best effort"
+// and confirm the router is back online afterwards (e.g. via testConnection once it resurfaces).
+async function reboot(router) {
+  return request(router, 'POST', '/system/reboot', {});
+}
+
 module.exports = {
   request, testConnection, findSecret, findActive, isolatePppoe, unisolatePppoe,
-  listSecrets, listActive, listProfiles, listInterfaces, createSecret, updateSecret, getSecret, deleteSecret, disconnectSecret
+  listSecrets, listActive, listProfiles, listInterfaces, createSecret, updateSecret, getSecret, deleteSecret, disconnectSecret, reboot
 };

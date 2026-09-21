@@ -1,7 +1,10 @@
 const express=require('express');
 const db=require('../config/db');
-const {config:acsConfig}=require('../services/acsService');
-const {oltSummaryRows}=require('../services/oltService');
+const {requireAdmin}=require('../middleware/auth');
+const {audit}=require('../services/auditService');
+const {config:acsConfig,pingHost}=require('../services/acsService');
+const {oltSummaryRows,pingOneOlt}=require('../services/oltService');
+const {reboot:rebootRouter}=require('../services/mikrotikRest');
 const router=express.Router();
 
 function clampScore(n){return Math.max(0,Math.min(100,Math.round(n)));}
@@ -132,6 +135,48 @@ router.post('/api/mikrotik/test/:routerId',async(req,res,next)=>{try{
   }
 }catch(err){next(err);}});
 
+// Free-text search over active routers (name or site code), for the Kelola Perangkat action modal's
+// device picker -- mirrors /api/ont/search's UX so operators can jump between boards without relearning.
+router.get('/api/mikrotik/search',async(req,res,next)=>{try{
+  const q=String(req.query.q||'').trim();
+  if(!q)return res.json({ok:true,routers:[]});
+  const like=`%${q}%`;
+  const [rows]=await db.query(`SELECT r.id,r.name,r.base_url,r.last_status,s.code site_code FROM routers r JOIN sites s ON s.id=r.site_id WHERE r.is_active=1 AND (r.name LIKE ? OR s.code LIKE ?) ORDER BY r.name LIMIT 10`,[like,like]);
+  res.json({ok:true,routers:rows});
+}catch(err){next(err);}});
+
+// ICMP ping against the router's REST hostname/IP (parsed from base_url) -- a lighter check than the
+// REST API test above, useful when the REST service itself is down but the box may still be reachable.
+router.post('/api/mikrotik/:routerId/ping',async(req,res,next)=>{try{
+  const [[router_]]=await db.query(`SELECT id,name,base_url FROM routers WHERE id=? AND is_active=1 LIMIT 1`,[req.params.routerId]);
+  if(!router_)return res.status(404).json({ok:false,error:'Router tidak ditemukan.'});
+  let host;
+  try{host=new URL(router_.base_url).hostname;}catch(_){return res.status(400).json({ok:false,error:'REST Base URL router tidak valid untuk diping.'});}
+  try{
+    const result=await pingHost(host);
+    res.json({ok:true,result,name:router_.name});
+  }catch(err){
+    res.status(400).json({ok:false,error:err.message});
+  }
+}catch(err){next(err);}});
+
+// Reboots a MikroTik router via RouterOS REST (`/system/reboot`). Admin-only and guarded by typing the
+// router's exact name as confirmation, same pattern as ONT reboot in routes/acs.js -- this drops every
+// PPPoE session on the router, so it is deliberately harder to fire by accident.
+router.post('/api/mikrotik/:routerId/reboot',requireAdmin,async(req,res,next)=>{try{
+  const [[router_]]=await db.query(`SELECT * FROM routers WHERE id=? AND is_active=1 LIMIT 1`,[req.params.routerId]);
+  if(!router_)return res.status(404).json({ok:false,error:'Router tidak ditemukan.'});
+  if(String(req.body.confirm||'').trim()!==router_.name)return res.status(400).json({ok:false,error:'Konfirmasi nama router tidak cocok.'});
+  try{
+    await rebootRouter(router_);
+    await audit({userId:req.session.user.id,action:'reboot_router',entityType:'router',entityId:router_.id,description:`Reboot router ${router_.name}`,ip:req.ip});
+    res.json({ok:true,message:`Perintah reboot terkirim ke ${router_.name}. Sesi PPPoE pelanggan pada router ini akan terputus sementara.`});
+  }catch(err){
+    await audit({userId:req.session.user.id,action:'reboot_router_failed',entityType:'router',entityId:router_.id,description:err.message.slice(0,700),ip:req.ip}).catch(()=>{});
+    res.status(400).json({ok:false,error:err.message});
+  }
+}catch(err){next(err);}});
+
 // ---------- OLT board ----------
 router.get('/api/olt',async(req,res,next)=>{try{
   const site=safeSite(req.query.site);
@@ -145,6 +190,27 @@ router.get('/api/olt',async(req,res,next)=>{try{
   const attention=[...olts].filter(o=>o.onu_offline||o.onu_critical).slice(0,8);
 
   res.set('Cache-Control','no-store').json({ok:true,summary:{total:olts.length,totalOnu,online,offline,warning,critical,score},olts,attention,site});
+}catch(err){next(err);}});
+
+// Free-text search over registered OLTs, for the Kelola Perangkat action modal's device picker.
+router.get('/api/olt/search',async(req,res,next)=>{try{
+  const q=String(req.query.q||'').trim();
+  if(!q)return res.json({ok:true,olts:[]});
+  const like=`%${q}%`;
+  const [rows]=await db.query(`SELECT id,name,management_ip,last_status FROM olt_devices WHERE name LIKE ? ORDER BY name LIMIT 10`,[like]);
+  res.json({ok:true,olts:rows});
+}catch(err){next(err);}});
+
+// Manual single-OLT ping (see oltService.pingOneOlt) -- forces a fresh reachability check outside the
+// scheduled sweep. OLT reboot is intentionally not offered here: unlike RouterOS/GenieACS there is no
+// vendor-neutral remote-reboot mechanism this codebase can call safely across OLT brands.
+router.post('/api/olt/:oltId/ping',async(req,res,next)=>{try{
+  try{
+    const {result,olt}=await pingOneOlt(req.params.oltId);
+    res.json({ok:true,result,name:olt.name});
+  }catch(err){
+    res.status(400).json({ok:false,error:err.message});
+  }
 }catch(err){next(err);}});
 
 module.exports=router;

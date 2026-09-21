@@ -61,4 +61,26 @@ async function pingAllOlts(){
   return {checked:olts.length,online,offline};
 }
 
-module.exports={oltSummaryRows,pingAllOlts};
+// Manual single-OLT ping, used by the "Kelola Perangkat" dashboard's OLT action panel (as opposed
+// to pingAllOlts(), which is the scheduled sweep over every registered OLT). Same ping mechanism and
+// same last_status/last_error/last_seen_at bookkeeping, scoped to one device so an operator can force
+// a fresh check without waiting for the next cron cycle.
+async function pingOneOlt(id){
+  const [[olt]]=await db.query(`SELECT id,name,management_ip FROM olt_devices WHERE id=? LIMIT 1`,[id]);
+  if(!olt)throw new Error('OLT tidak ditemukan.');
+  if(!olt.management_ip)throw new Error('OLT belum memiliki management IP terdaftar.');
+  try{
+    const result=await pingHost(olt.management_ip);
+    if(result.reachable){
+      await db.execute(`UPDATE olt_devices SET last_status='online',last_error=NULL,last_seen_at=NOW() WHERE id=?`,[olt.id]);
+    }else{
+      await db.execute(`UPDATE olt_devices SET last_status='offline',last_error=?,last_seen_at=NOW() WHERE id=?`,[`Ping timeout (loss ${result.lossPercent??'?'}%)`,olt.id]);
+    }
+    return {olt,result};
+  }catch(err){
+    await db.execute(`UPDATE olt_devices SET last_status='offline',last_error=?,last_seen_at=NOW() WHERE id=?`,[err.message.slice(0,500),olt.id]).catch(()=>{});
+    throw err;
+  }
+}
+
+module.exports={oltSummaryRows,pingAllOlts,pingOneOlt};

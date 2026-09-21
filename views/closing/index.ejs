@@ -6,14 +6,13 @@
       <p class="text-muted mb-0">Isi angka untuk periode <strong><%= start %> s/d <%= end %></strong>. Status: <strong><%= closing.status==='LOCKED'?'TERKUNCI':'DRAFT' %></strong>.</p>
     </div>
     <form class="closing-period-form" method="get" action="/closing">
-      <div class="closing-period-quick-nav">
-        <a class="btn btn-outline-secondary btn-sm" href="/closing?from=<%= prevPeriod.start %>&to=<%= prevPeriod.end %><%= hideEdwin ? '&hide_edwin=1' : '' %>" title="Pindah ke periode <%= prevPeriod.start %> s/d <%= prevPeriod.end %>"><i class="bi bi-chevron-left"></i> Bulan Kemarin</a>
-        <a class="btn btn-outline-secondary btn-sm" href="/closing?from=<%= nextPeriod.start %>&to=<%= nextPeriod.end %><%= hideEdwin ? '&hide_edwin=1' : '' %>" title="Pindah ke periode <%= nextPeriod.start %> s/d <%= nextPeriod.end %>">Bulan Berikutnya <i class="bi bi-chevron-right"></i></a>
+      <div class="closing-period-range">
+        <a class="btn btn-outline-secondary btn-sm closing-period-arrow" href="/closing?from=<%= prevPeriod.start %>&to=<%= prevPeriod.end %><%= hideEdwin ? '&hide_edwin=1' : '' %>" title="Periode sebelumnya: <%= prevPeriod.start %> s/d <%= prevPeriod.end %>"><i class="bi bi-chevron-left"></i></a>
+        <label class="closing-field"><span>Mulai</span><input class="form-control form-control-sm" type="date" name="from" value="<%= start %>" required></label>
+        <label class="closing-field"><span>Sampai</span><input class="form-control form-control-sm" type="date" name="to" value="<%= end %>" required></label>
+        <a class="btn btn-outline-secondary btn-sm closing-period-arrow" href="/closing?from=<%= nextPeriod.start %>&to=<%= nextPeriod.end %><%= hideEdwin ? '&hide_edwin=1' : '' %>" title="Periode berikutnya: <%= nextPeriod.start %> s/d <%= nextPeriod.end %>"><i class="bi bi-chevron-right"></i></a>
       </div>
-      <label class="closing-field"><span>Mulai</span><input class="form-control form-control-sm" type="date" name="from" value="<%= start %>" required></label>
-      <label class="closing-field"><span>Sampai</span><input class="form-control form-control-sm" type="date" name="to" value="<%= end %>" required></label>
       <button class="btn btn-primary btn-sm closing-period-submit" type="submit"><i class="bi bi-arrow-repeat me-1"></i>Hitung</button>
-      <label class="closing-toggle"><input class="form-check-input" type="checkbox" name="hide_edwin" value="1" <%= hideEdwin ? 'checked' : '' %>><span><i class="bi bi-eye-slash"></i>Sembunyikan bagian Edwin pada PDF pihak lain</span></label>
     </form>
   </header>
 
@@ -78,12 +77,26 @@
         <div class="closing-control-row-label"><i class="bi bi-file-earmark-bar-graph"></i><span>Laporan</span></div>
         <div class="closing-control-row-body">
           <div class="closing-pdf-actions">
-            <a class="btn btn-outline-primary btn-sm" href="/closing/history"><i class="bi bi-clock-history me-1"></i>Rekap Bulanan</a>
-            <a class="btn btn-outline-primary btn-sm" href="/closing/export.xlsx?from=<%= start %>&to=<%= end %>"><i class="bi bi-file-earmark-spreadsheet me-1"></i>Export Excel</a>
-            <% [['edwin','Edwin'],['jon','Jon'],['bopung','Bopung'],['mang-ali','Mang Ali']].forEach(([key,label]) => { %>
-              <a class="btn btn-outline-secondary btn-sm closing-pdf-report-link" href="/closing/pdf?from=<%= start %>&to=<%= end %>&report=<%= key %><%= hideEdwin ? '&hide_edwin=1' : '' %>" target="_blank" rel="noopener"><i class="bi bi-file-earmark-pdf me-1"></i><%= label %></a>
-            <% }) %>
-            <button type="button" id="closingDownloadAllPdf" class="btn btn-outline-secondary btn-sm" title="Membuka 4 PDF (Edwin, Jon, Bopung, Mang Ali) berurutan"><i class="bi bi-collection me-1"></i>Download Semua PDF</button>
+            <div class="dropdown closing-pdf-dropdown">
+              <button type="button" class="btn btn-primary btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-file-earmark-pdf me-1"></i>Unduh PDF</button>
+              <ul class="dropdown-menu closing-pdf-menu">
+                <li class="dropdown-header">PDF per penerima</li>
+                <% [['edwin','Edwin'],['jon','Jon'],['bopung','Bopung'],['mang-ali','Mang Ali']].forEach(([key,label]) => { %>
+                  <li><a class="dropdown-item closing-pdf-report-link" href="/closing/pdf?from=<%= start %>&to=<%= end %>&report=<%= key %><%= hideEdwin ? '&hide_edwin=1' : '' %>" target="_blank" rel="noopener"><i class="bi bi-file-earmark-pdf me-2"></i><%= label %></a></li>
+                <% }) %>
+                <li><hr class="dropdown-divider"></li>
+                <li><button type="button" id="closingDownloadAllPdf" class="dropdown-item" title="Membuka 4 PDF (Edwin, Jon, Bopung, Mang Ali) berurutan"><i class="bi bi-collection me-2"></i>Unduh Semua PDF</button></li>
+              </ul>
+            </div>
+            <a class="btn btn-outline-secondary btn-sm" href="/closing/history"><i class="bi bi-clock-history me-1"></i>Rekap Bulanan</a>
+            <a class="btn btn-outline-secondary btn-sm" href="/closing/export.xlsx?from=<%= start %>&to=<%= end %>"><i class="bi bi-file-earmark-spreadsheet me-1"></i>Export Excel</a>
+            <form class="closing-hide-edwin-form" method="get" action="/closing">
+              <input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>">
+              <label class="closing-toggle closing-hide-edwin" title="Berlaku untuk PDF penerima selain Edwin">
+                <input class="form-check-input" type="checkbox" name="hide_edwin" value="1" onchange="this.form.submit()" <%= hideEdwin ? 'checked' : '' %>>
+                <span><i class="bi bi-eye-slash"></i>Sembunyikan bagian Edwin</span>
+              </label>
+            </form>
           </div>
         </div>
       </div>

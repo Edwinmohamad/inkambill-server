@@ -575,23 +575,55 @@ function buildAdjustmentRows(data, recipient, allowedBlocks) {
   });
   return rows;
 }
-function buildTransactionRows(data, allowedBlocks) {
+function buildTransactionRows(data, allowedBlocks, periodStart, periodEnd) {
   const rows = [];
+  const periodLabel = `${date(periodStart)} - ${date(periodEnd)}`;
+  // v1.30 — pendapatan pelanggan tidak lagi dirinci per transaksi di PDF (bisa
+  // puluhan baris per bulan hasil sync Data Kas); digabung jadi satu baris total
+  // per LOKASI (CDS/KRW, CDS/CLM, dan KBG masing-masing baris sendiri — bukan
+  // digabung jadi satu baris CDS) supaya output PDF ringkas. Jumlah transaksi
+  // yang digabung tetap dicatat di keterangan sebagai jejak audit.
+  const incomeTotals = new Map();
+  const incomeOrder = [];
   (data.payments || []).forEach((row) => {
     const blockKey = siteBlock(row.site_code, row.cluster_name, row.site_name);
     if (!allowedBlocks.has(blockKey)) return;
-    const manual = row.source_type === 'closing_manual';
-    const syncTag = row.entry_source === 'cash_sync' ? ' · Data Kas' : '';
-    rows.push({ tanggal: date(row.paid_date), lokasi: locationText(row), jenis: 'Pendapatan', keterangan: (manual ? `${row.category || 'Manual'}${row.notes ? ` · ${row.notes}` : ''}` : (row.method || '-')) + syncTag, nominal: money(row.amount) });
+    const label = locationText(row);
+    if (!incomeTotals.has(label)) { incomeTotals.set(label, { total: 0, count: 0 }); incomeOrder.push(label); }
+    const entry = incomeTotals.get(label);
+    entry.total += money(row.amount);
+    entry.count += 1;
   });
+  incomeOrder.forEach((label) => {
+    const entry = incomeTotals.get(label);
+    rows.push({ tanggal: periodLabel, lokasi: label, jenis: 'Pendapatan', keterangan: `Pembayaran pelanggan · ${entry.count} transaksi`, nominal: entry.total });
+  });
+  // Kategori PSB / komisi instalasi juga digabung per lokasi yang sama;
+  // kategori pengeluaran lain tetap rinci per baris seperti sebelumnya.
+  const isInstallationCommission = (category) => /psb|komisi|instalasi/i.test(String(category || ''));
+  const commissionTotals = new Map();
+  const commissionOrder = [];
+  const expenseRows = [];
   (data.expenses || []).forEach((row) => {
     const blockKey = siteBlock(row.site_code, row.site_name, row.cluster_name);
     if (!allowedBlocks.has(blockKey)) return;
+    if (isInstallationCommission(row.category)) {
+      const label = locationText(row);
+      if (!commissionTotals.has(label)) { commissionTotals.set(label, { total: 0, count: 0 }); commissionOrder.push(label); }
+      const entry = commissionTotals.get(label);
+      entry.total += money(row.amount);
+      entry.count += 1;
+      return;
+    }
     const syncTag = row.entry_source === 'cash_sync' ? ' · Data Kas' : '';
-    rows.push({ tanggal: date(row.transaction_date), lokasi: locationText(row), jenis: 'Pengeluaran', keterangan: `${row.category}${row.notes ? ` · ${row.notes}` : ''}${syncTag}`, nominal: money(row.amount) });
+    expenseRows.push({ tanggal: date(row.transaction_date), lokasi: locationText(row), jenis: 'Pengeluaran', keterangan: `${row.category}${row.notes ? ` · ${row.notes}` : ''}${syncTag}`, nominal: money(row.amount) });
   });
-  rows.sort((a, b) => (a.tanggal < b.tanggal ? 1 : a.tanggal > b.tanggal ? -1 : 0));
-  return rows;
+  commissionOrder.forEach((label) => {
+    const entry = commissionTotals.get(label);
+    rows.push({ tanggal: periodLabel, lokasi: label, jenis: 'Pengeluaran', keterangan: `Komisi instalasi (PSB) · ${entry.count} transaksi`, nominal: entry.total });
+  });
+  expenseRows.sort((a, b) => (a.tanggal < b.tanggal ? 1 : a.tanggal > b.tanggal ? -1 : 0));
+  return [...rows, ...expenseRows];
 }
 
 router.get('/pdf', async (req, res, next) => {
@@ -613,7 +645,7 @@ router.get('/pdf', async (req, res, next) => {
       blocks.push({ label: block.label, revenue: block.revenue, expense: block.expense, profit: block.profit, share });
     });
     const adjustmentRows = buildAdjustmentRows(data, recipient, allowedBlocks);
-    const transactionRows = buildTransactionRows(data, allowedBlocks);
+    const transactionRows = buildTransactionRows(data, allowedBlocks, start, end);
     const adjustmentTotal = netTotal - grossTotal;
     const hiddenNote = hideEdwin && recipient.key !== 'edwin' ? ' · bagian Edwin disembunyikan sesuai opsi' : '';
     createClosingReportPdf(res, {

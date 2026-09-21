@@ -161,16 +161,20 @@
         <% } %>
 
         <% if(can('network')){ %>
-        <% const netDetailOpen = currentPath.startsWith('/sites') || currentPath.startsWith('/routers') || currentPath.startsWith('/olt') || currentPath.startsWith('/clusters') || currentPath.startsWith('/monitoring') || currentPath.startsWith('/network/monitor'); %>
+        <% const netDetailOpen = currentPath.startsWith('/sites') || currentPath.startsWith('/routers') || currentPath.startsWith('/olt') || currentPath.startsWith('/clusters'); %>
         <div class="sidebar-section-label"><%= language==='en'?'NETWORK':'JARINGAN' %></div>
         <nav class="sidebar-nav">
           <a class="sidebar-link <%= currentPath.startsWith('/noc') ? 'active' : '' %>" href="/noc"><i class="bi bi-speedometer2"></i><span>NOC Terpadu</span><em class="badge-live">LIVE</em></a>
           <a class="sidebar-link <%= currentPath.startsWith('/acs') ? 'active' : '' %>" href="/acs"><i class="bi bi-bezier2"></i><span>Network Map & ONT</span></a>
+          <!-- v-rebuild: "Kelola Perangkat" is the unified monitoring dashboard (MikroTik + OLT + ONT,
+               with ping/reboot/ganti SSID/password actions) -- promoted out of "Detail & Pengaturan" to
+               sit alongside the other live monitoring pages, since it's a live board, not a settings page. -->
+          <a class="sidebar-link <%= currentPath.startsWith('/monitoring') ? 'active' : '' %>" href="/monitoring"><i class="bi bi-grid-1x2-fill"></i><span>Kelola Perangkat</span><em class="badge-live">LIVE</em></a>
+          <!-- "Detail & Pengaturan" now only holds device-integration/registry pages (connecting &
+               configuring routers, OLTs, sites, clusters) -- no monitoring/NMS pages left in here. -->
           <details class="sidebar-nav-group infra-sidebar-group" <%= netDetailOpen ? 'open' : '' %>>
             <summary class="sidebar-link <%= netDetailOpen ? 'active' : '' %>"><i class="bi bi-hdd-rack-fill"></i><span>Detail & Pengaturan</span><em><i class="bi bi-chevron-down"></i></em></summary>
             <div class="sidebar-subnav infra-sidebar-subnav">
-              <a class="<%= currentPath.startsWith('/monitoring') ? 'active' : '' %>" href="/monitoring"><i class="bi bi-grid-1x2-fill"></i>Kelola Perangkat</a>
-              <a class="<%= currentPath.startsWith('/network/monitor') ? 'active' : '' %>" href="/network/monitor"><i class="bi bi-broadcast-pin"></i><%= t('monitor') %></a>
               <a class="<%= currentPath.startsWith('/routers') ? 'active' : '' %>" href="/routers"><i class="bi bi-router-fill"></i><%= t('routers') %></a>
               <a class="<%= currentPath.startsWith('/olt') ? 'active' : '' %>" href="/olt"><i class="bi bi-hdd-network-fill"></i>Registry OLT</a>
               <a class="<%= currentPath.startsWith('/sites') ? 'active' : '' %>" href="/sites"><i class="bi bi-hdd-rack-fill"></i><%= t('sites') %></a>

@@ -80,7 +80,7 @@ const IPV4_RE=/^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
 function pingHost(host){
   return new Promise((resolve,reject)=>{
     const target=String(host||'').trim();
-    if(!IPV4_RE.test(target))return reject(new Error('IP ONT tidak tersedia atau tidak valid untuk di-ping.'));
+    if(!IPV4_RE.test(target))return reject(new Error('IP perangkat tidak tersedia atau tidak valid untuk di-ping.'));
     const isWindows=process.platform==='win32';
     const args=isWindows?['-n','4','-w','2000',target]:['-c','4','-W','2',target];
     execFile('ping',args,{timeout:15000},(err,stdout)=>{

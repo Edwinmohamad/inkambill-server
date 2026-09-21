@@ -150,11 +150,13 @@
       <div><h4>Pelanggan Isolir</h4><strong>${s.customersIsolated}</strong><small>dari ${s.customersTotal} pelanggan aktif</small></div>
       <div class="b-tall"><h4>Perlu Perhatian</h4><div class="mini-list">${attentionHtml}</div></div>
       <div><h4>Aksi Cepat</h4><div class="action-grid">
+        <button type="button" id="mtActionOpen">Kelola Router</button>
         <button type="button" id="mtCaptureNow">Capture Now</button>
-        <a class="btn-tech" href="/network/monitor" style="text-decoration:none;text-align:center;display:flex;align-items:center;justify-content:center">NMS Monitor</a>
+        <a class="btn-tech" href="/network/monitor" style="text-decoration:none;text-align:center;display:flex;align-items:center;justify-content:center;grid-column:1/-1">NMS Monitor</a>
       </div></div>
       <div><h4>Belum Pernah Lapor</h4><strong>${s.never}</strong><small>router belum ada telemetry masuk</small></div>`;
 
+    document.getElementById('mtActionOpen')?.addEventListener('click', () => openMikrotikModal());
     document.getElementById('mtCaptureNow')?.addEventListener('click', async (e) => {
       const btn = e.currentTarget; btn.disabled = true;
       try { const r = await jsonFetch('/network/api/telemetry/capture', { method: 'POST' }); toast(`Telemetry ${r.result.routers} router diperbarui.`); loadMikrotik(); }
@@ -193,11 +195,13 @@
       <div><h4>Redaman Kritis</h4><strong>${s.critical}</strong><small>ONU RX di bawah ambang aman</small></div>
       <div class="b-tall"><h4>Perlu Perhatian</h4><div class="mini-list">${attentionHtml}</div></div>
       <div><h4>Aksi Cepat</h4><div class="action-grid">
+        <button type="button" id="oltActionOpen">Kelola OLT</button>
         <a class="btn-tech" href="/olt" style="text-decoration:none;text-align:center;display:flex;align-items:center;justify-content:center">Registry OLT</a>
-        <a class="btn-tech" href="/acs?signal=critical" style="text-decoration:none;text-align:center;display:flex;align-items:center;justify-content:center">ONT Kritis</a>
+        <a class="btn-tech" href="/acs?signal=critical" style="text-decoration:none;text-align:center;display:flex;align-items:center;justify-content:center;grid-column:1/-1">ONT Kritis</a>
       </div></div>
       <div><h4>Ø ONU / OLT</h4><strong>${s.total ? Math.round(s.totalOnu / s.total) : 0}</strong><small>rata-rata per chassis</small></div>`;
     wireDrillTargets(container);
+    document.getElementById('oltActionOpen')?.addEventListener('click', () => openOltModal());
   }
 
   async function loadOlt() {
@@ -357,5 +361,143 @@
     if (!confirmValue) return;
     try { const r = await jsonFetch(`/acs/devices/${pickedDevice.id}/reboot`, { method: 'POST', body: JSON.stringify({ confirm: confirmValue }) }); showActResult(r.message, 'success'); toast(r.message); }
     catch (err) { showActResult(err.message, 'danger'); }
+  });
+
+  // ---------------- MikroTik action modal ----------------
+  let mtModalInstance = null;
+  let pickedRouter = null;
+  function getMtModal() {
+    if (!mtModalInstance && window.bootstrap) mtModalInstance = new window.bootstrap.Modal(document.getElementById('mikrotikActionModal'));
+    return mtModalInstance;
+  }
+  function setPickedRouter(r) {
+    pickedRouter = r;
+    const wrap = document.getElementById('mtPickedWrap');
+    const resultBox = document.getElementById('mtActResult');
+    resultBox.hidden = true;
+    if (!r) { wrap.hidden = true; return; }
+    wrap.hidden = false;
+    document.getElementById('mtPickedName').textContent = r.name;
+    document.getElementById('mtPickedMeta').textContent = `${r.site_code ? r.site_code + ' \u00b7 ' : ''}${r.last_status === 'offline' ? 'Offline' : r.last_status === 'online' ? 'Online' : 'Belum pernah dites'}`;
+    // Test Koneksi & Ping are read-only diagnostics open to any network user; only Reboot is admin-gated
+    // server-side, so only that button needs to be disabled here.
+    document.getElementById('mtActReboot').disabled = !isAdmin;
+    if (!isAdmin) toast('Hanya Admin yang dapat me-reboot router.', 'danger');
+  }
+  function openMikrotikModal(routerPick) {
+    setPickedRouter(routerPick || null);
+    document.getElementById('mtSearchInput').value = '';
+    document.getElementById('mtSearchResults').hidden = true;
+    getMtModal()?.show();
+  }
+  document.getElementById('mtPickedClear')?.addEventListener('click', () => setPickedRouter(null));
+
+  let mtSearchTimer = null;
+  document.getElementById('mtSearchInput')?.addEventListener('input', (e) => {
+    clearTimeout(mtSearchTimer);
+    const q = e.target.value.trim();
+    const box = document.getElementById('mtSearchResults');
+    if (q.length < 2) { box.hidden = true; return; }
+    mtSearchTimer = setTimeout(async () => {
+      try {
+        const r = await jsonFetch(`/monitoring/api/mikrotik/search?q=${encodeURIComponent(q)}`);
+        box.innerHTML = r.routers.length
+          ? r.routers.map((rt) => `<button type="button" data-pick='${esc(JSON.stringify(rt))}'>${esc(rt.name)}<small>${esc(rt.site_code || '-')} \u00b7 ${rt.last_status === 'offline' ? 'Offline' : rt.last_status === 'online' ? 'Online' : 'Belum dites'}</small></button>`).join('')
+          : '<button type="button" disabled>Tidak ditemukan</button>';
+        box.hidden = false;
+        box.querySelectorAll('[data-pick]').forEach((btn) => btn.addEventListener('click', () => {
+          setPickedRouter(JSON.parse(btn.dataset.pick));
+          box.hidden = true;
+        }));
+      } catch (err) { toast(err.message, 'danger'); }
+    }, 300);
+  });
+
+  function showMtResult(message, tone) {
+    const box = document.getElementById('mtActResult');
+    box.hidden = false;
+    box.className = `mon-action-result ${tone}`;
+    box.textContent = message;
+  }
+
+  document.getElementById('mtActTest')?.addEventListener('click', async () => {
+    if (!pickedRouter) return;
+    try { const r = await jsonFetch(`/monitoring/api/mikrotik/test/${pickedRouter.id}`, { method: 'POST' }); showMtResult(r.message, 'success'); toast(r.message); }
+    catch (err) { showMtResult(err.message, 'danger'); }
+  });
+  document.getElementById('mtActPing')?.addEventListener('click', async () => {
+    if (!pickedRouter) return;
+    try {
+      const r = await jsonFetch(`/monitoring/api/mikrotik/${pickedRouter.id}/ping`, { method: 'POST' });
+      showMtResult(`${r.result.reachable ? 'Reachable' : 'Timeout'} \u00b7 loss ${r.result.lossPercent ?? '?'}%${r.result.avgMs !== null ? ' \u00b7 avg ' + r.result.avgMs + 'ms' : ''}`, r.result.reachable ? 'success' : 'danger');
+    } catch (err) { showMtResult(err.message, 'danger'); }
+  });
+  document.getElementById('mtActReboot')?.addEventListener('click', async () => {
+    if (!pickedRouter) return;
+    const confirmValue = window.prompt(`Ketik ulang nama router "${pickedRouter.name}" untuk konfirmasi reboot. Semua sesi PPPoE pelanggan di router ini akan terputus sementara:`);
+    if (!confirmValue) return;
+    try { const r = await jsonFetch(`/monitoring/api/mikrotik/${pickedRouter.id}/reboot`, { method: 'POST', body: JSON.stringify({ confirm: confirmValue }) }); showMtResult(r.message, 'success'); toast(r.message); loadMikrotik(); }
+    catch (err) { showMtResult(err.message, 'danger'); }
+  });
+
+  // ---------------- OLT action modal ----------------
+  let oltModalInstance = null;
+  let pickedOlt = null;
+  function getOltModal() {
+    if (!oltModalInstance && window.bootstrap) oltModalInstance = new window.bootstrap.Modal(document.getElementById('oltActionModal'));
+    return oltModalInstance;
+  }
+  function setPickedOlt(o) {
+    pickedOlt = o;
+    const wrap = document.getElementById('oltPickedWrap');
+    const resultBox = document.getElementById('oltActResult');
+    resultBox.hidden = true;
+    if (!o) { wrap.hidden = true; return; }
+    wrap.hidden = false;
+    document.getElementById('oltPickedName').textContent = o.name;
+    document.getElementById('oltPickedMeta').textContent = `${o.management_ip || 'IP belum diatur'} \u00b7 ${o.last_status === 'offline' ? 'Offline' : o.last_status === 'online' ? 'Online' : 'Belum pernah dites'}`;
+  }
+  function openOltModal(oltPick) {
+    setPickedOlt(oltPick || null);
+    document.getElementById('oltSearchInput').value = '';
+    document.getElementById('oltSearchResults').hidden = true;
+    getOltModal()?.show();
+  }
+  document.getElementById('oltPickedClear')?.addEventListener('click', () => setPickedOlt(null));
+
+  let oltSearchTimer = null;
+  document.getElementById('oltSearchInput')?.addEventListener('input', (e) => {
+    clearTimeout(oltSearchTimer);
+    const q = e.target.value.trim();
+    const box = document.getElementById('oltSearchResults');
+    if (q.length < 2) { box.hidden = true; return; }
+    oltSearchTimer = setTimeout(async () => {
+      try {
+        const r = await jsonFetch(`/monitoring/api/olt/search?q=${encodeURIComponent(q)}`);
+        box.innerHTML = r.olts.length
+          ? r.olts.map((o) => `<button type="button" data-pick='${esc(JSON.stringify(o))}'>${esc(o.name)}<small>${esc(o.management_ip || '-')} \u00b7 ${o.last_status === 'offline' ? 'Offline' : o.last_status === 'online' ? 'Online' : 'Belum dites'}</small></button>`).join('')
+          : '<button type="button" disabled>Tidak ditemukan</button>';
+        box.hidden = false;
+        box.querySelectorAll('[data-pick]').forEach((btn) => btn.addEventListener('click', () => {
+          setPickedOlt(JSON.parse(btn.dataset.pick));
+          box.hidden = true;
+        }));
+      } catch (err) { toast(err.message, 'danger'); }
+    }, 300);
+  });
+
+  document.getElementById('oltActPing')?.addEventListener('click', async () => {
+    if (!pickedOlt) return;
+    const box = document.getElementById('oltActResult');
+    try {
+      const r = await jsonFetch(`/monitoring/api/olt/${pickedOlt.id}/ping`, { method: 'POST' });
+      box.hidden = false;
+      box.className = `mon-action-result ${r.result.reachable ? 'success' : 'danger'}`;
+      box.textContent = `${r.result.reachable ? 'Reachable' : 'Timeout'} \u00b7 loss ${r.result.lossPercent ?? '?'}%${r.result.avgMs !== null ? ' \u00b7 avg ' + r.result.avgMs + 'ms' : ''}`;
+    } catch (err) {
+      box.hidden = false;
+      box.className = 'mon-action-result danger';
+      box.textContent = err.message;
+    }
   });
 })();

@@ -1,7 +1,7 @@
 <link rel="stylesheet" href="/css/monitoring.css?v=<%= assetVersion %>">
 <section class="mon-page" id="monApp" data-admin="<%= isAdmin?'1':'0' %>">
   <div class="module-head">
-    <div><div class="module-kicker">KELOLA PERANGKAT</div><h1>ONT, MikroTik & OLT</h1><p>Detail dan aksi per perangkat &mdash; ping, reboot, ganti SSID/password ONT, test koneksi router. Untuk ringkasan menyeluruh, buka <a href="/noc">NOC Terpadu</a>.</p></div>
+    <div><div class="module-kicker">KELOLA PERANGKAT</div><h1>ONT, MikroTik & OLT</h1><p>Detail dan aksi per perangkat &mdash; ping &amp; reboot router MikroTik, ping OLT, ping/reboot/ganti SSID/password ONT pelanggan. Untuk ringkasan menyeluruh, buka <a href="/noc">NOC Terpadu</a>.</p></div>
     <div class="module-actions mon-actions">
       <div class="seg" id="monSeg">
         <button class="active" data-board="ont" type="button" title="Alt/Ctrl+1">ONT</button>
@@ -56,6 +56,51 @@
         <button type="button" id="ontActReboot" class="text-danger-soft" style="grid-column:1/-1"><i class="bi bi-power"></i>Reboot ONT</button>
       </div>
       <div class="mon-action-result" id="ontActResult" hidden></div>
+    </div>
+  </div>
+</div></div></div>
+
+<!-- Modal aksi Router MikroTik: cari router lalu jalankan Test Koneksi / Ping / Reboot -->
+<div class="modal fade" id="mikrotikActionModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+  <div class="modal-header"><div><div class="module-kicker">MONITORING ROUTER</div><h5 class="modal-title">Aksi Router MikroTik</h5></div><button class="btn-close" type="button" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <div class="mon-search-wrap">
+      <input class="form-control" id="mtSearchInput" placeholder="Cari nama router / kode site...">
+      <div class="mon-search-results" id="mtSearchResults" hidden></div>
+    </div>
+    <div id="mtPickedWrap" hidden>
+      <div class="mon-device-picked">
+        <div><strong id="mtPickedName">-</strong><small id="mtPickedMeta">-</small></div>
+        <button type="button" class="btn-tech" id="mtPickedClear"><i class="bi bi-x-lg"></i></button>
+      </div>
+      <div class="mon-action-list">
+        <button type="button" id="mtActTest"><i class="bi bi-plug-fill"></i>Test Koneksi</button>
+        <button type="button" id="mtActPing"><i class="bi bi-broadcast"></i>Test Ping</button>
+        <button type="button" id="mtActReboot" class="text-danger-soft" style="grid-column:1/-1"><i class="bi bi-power"></i>Reboot Router</button>
+      </div>
+      <div class="mon-action-result" id="mtActResult" hidden></div>
+    </div>
+  </div>
+</div></div></div>
+
+<!-- Modal aksi OLT: cari OLT lalu jalankan Ping manual -->
+<div class="modal fade" id="oltActionModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+  <div class="modal-header"><div><div class="module-kicker">MONITORING OLT</div><h5 class="modal-title">Aksi OLT</h5></div><button class="btn-close" type="button" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <div class="mon-search-wrap">
+      <input class="form-control" id="oltSearchInput" placeholder="Cari nama OLT...">
+      <div class="mon-search-results" id="oltSearchResults" hidden></div>
+    </div>
+    <div id="oltPickedWrap" hidden>
+      <div class="mon-device-picked">
+        <div><strong id="oltPickedName">-</strong><small id="oltPickedMeta">-</small></div>
+        <button type="button" class="btn-tech" id="oltPickedClear"><i class="bi bi-x-lg"></i></button>
+      </div>
+      <div class="mon-action-list">
+        <button type="button" id="oltActPing" style="grid-column:1/-1"><i class="bi bi-broadcast"></i>Test Ping</button>
+      </div>
+      <small class="text-muted d-block mt-2">Reboot jarak jauh belum tersedia untuk OLT &mdash; tiap vendor punya mekanisme berbeda. Gunakan akses manajemen OLT langsung bila perlu reboot.</small>
+      <div class="mon-action-result" id="oltActResult" hidden></div>
     </div>
   </div>
 </div></div></div>
