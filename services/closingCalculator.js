@@ -49,20 +49,40 @@ const normalizeSiteCluster = (rawSite, rawCluster) => {
   return { site, cluster };
 };
 
+// v2.6 — deteksi pendapatan PSB (uang masuk pemasangan baru) dari teks kategori,
+// dipusatkan di sini supaya kalkulator, halaman web, dan PDF selalu pakai aturan
+// yang sama. Kategori hasil sinkron Data Kas untuk PSB bernama persis
+// "Pendapatan Pemasangan Baru" (lihat cash_categories kode PSB-IN di
+// schemaService.js) — versi lama cuma mencocokkan /psb|pasang baru/i yang TIDAK
+// PERNAH cocok dengan string itu ("pemasangan" beda ejaan dari "pasang"),
+// sehingga pendapatan PSB selalu kebaur jadi satu dengan "Pembayaran pelanggan"
+// biasa dan tidak pernah kelihatan sebagai baris/angka tersendiri. Sekarang juga
+// mencocokkan "pemasangan" supaya kategori hasil sync maupun input manual
+// ("PSB", "Pasang Baru", "Pemasangan Baru", dst) sama-sama terdeteksi.
+const isPsbRevenue = (category) => /psb|pasang\s*baru|pemasangan/i.test(String(category || ''));
+
 const mapAdd = (map, key, value) => map.set(key, (map.get(key) || 0) + money(value));
 
 function buildClosingCalculation({ payments = [], expenses = [], heldCash = [], routerAssets = [], adjustments = [], closing = {}, mode = 'auto', lineItems = [] }) {
   const selectedMode = mode === 'manual' ? 'manual' : 'auto';
   const blocks = {
-    krwclm: { label: 'CDS', revenue: 0, expense: 0, clusterRevenue: {}, expenseByCategory: {}, shares: [] },
-    kbg: { label: 'KBG', revenue: 0, expense: 0, clusterRevenue: {}, expenseByCategory: {}, shares: [] },
-    other: { label: 'Lokasi belum dipetakan', revenue: 0, expense: 0, clusterRevenue: {}, expenseByCategory: {}, shares: [] }
+    krwclm: { label: 'CDS', revenue: 0, expense: 0, psbRevenue: 0, psbCount: 0, clusterRevenue: {}, expenseByCategory: {}, shares: [] },
+    kbg: { label: 'KBG', revenue: 0, expense: 0, psbRevenue: 0, psbCount: 0, clusterRevenue: {}, expenseByCategory: {}, shares: [] },
+    other: { label: 'Lokasi belum dipetakan', revenue: 0, expense: 0, psbRevenue: 0, psbCount: 0, clusterRevenue: {}, expenseByCategory: {}, shares: [] }
   };
 
   payments.forEach((row) => {
     const blockKey = siteBlock(row.site_code, row.cluster_name, row.site_name);
     const amount = money(row.amount);
     blocks[blockKey].revenue += amount;
+    // v2.6 — catat berapa dari pendapatan ini yang berasal dari PSB (pemasangan
+    // baru) supaya bisa ditampilkan terpisah dari pendapatan langganan biasa.
+    // Tidak mengubah blocks[blockKey].revenue (total tetap sama seperti
+    // sebelumnya) — psbRevenue murni breakdown tambahan dari total itu.
+    if (isPsbRevenue(row.category)) {
+      blocks[blockKey].psbRevenue += amount;
+      blocks[blockKey].psbCount += 1;
+    }
     if (blockKey === 'krwclm') {
       const key = clusterKey(row.cluster_name || row.site_code);
       blocks[blockKey].clusterRevenue[key] = (blocks[blockKey].clusterRevenue[key] || 0) + amount;
@@ -93,7 +113,12 @@ function buildClosingCalculation({ payments = [], expenses = [], heldCash = [], 
     if (money(closing.manual_expense)) blocks.krwclm.expenseByCategory['Koreksi lama'] = (blocks.krwclm.expenseByCategory['Koreksi lama'] || 0) + money(closing.manual_expense);
   }
 
-  Object.values(blocks).forEach((block) => { block.profit = block.revenue - block.expense; });
+  Object.values(blocks).forEach((block) => {
+    block.profit = block.revenue - block.expense;
+    // v2.6 — sisa pendapatan di luar PSB (mis. langganan bulanan) supaya kedua
+    // angka ini bisa ditampilkan berdampingan tanpa dihitung dua kali.
+    block.subscriptionRevenue = block.revenue - block.psbRevenue;
+  });
   // Carry-over saldo (mis. minus bulan lalu) adalah input manual terpisah dari
   // sumber pendapatan/pengeluaran, jadi selalu berlaku baik mode manual maupun
   // otomatis.
@@ -166,4 +191,4 @@ function buildClosingCalculation({ payments = [], expenses = [], heldCash = [], 
   };
 }
 
-module.exports = { money, personKey, siteBlock, clusterKey, locationText, normalizeSiteCluster, buildClosingCalculation };
+module.exports = { money, personKey, siteBlock, clusterKey, locationText, normalizeSiteCluster, isPsbRevenue, buildClosingCalculation };

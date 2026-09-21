@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const ExcelJS = require('exceljs');
 const db = require('../config/db');
 const { createClosingReportPdf, rupiah, date } = require('../services/reportPdf');
-const { money, personKey, siteBlock, locationText, normalizeSiteCluster, buildClosingCalculation } = require('../services/closingCalculator');
+const { money, personKey, siteBlock, locationText, normalizeSiteCluster, isPsbRevenue, buildClosingCalculation } = require('../services/closingCalculator');
 const { syncCashDataIntoClosing, countPendingCashData, selectUnsyncedCashRows } = require('../services/closingSyncService');
 const { requireMasterAdmin } = require('../middleware/auth');
 const { financialAudit } = require('../services/financialControlService');
@@ -655,7 +655,10 @@ function buildAdjustmentRows(data, recipient, allowedBlocks) {
   const key = recipient.key;
   const rows = [];
   const salary = money(data.salaryByOwner?.[key] || 0);
-  if (salary && allowedBlocks.has('krwclm')) rows.push({ jenis: 'Potongan gaji', lokasi: 'CDS', keterangan: 'Beban Agung + Padilah sesuai persentase', nominal: -salary });
+  if (salary && allowedBlocks.has('krwclm')) {
+    const salaryPercent = key === 'edwin' ? 50 : (key === 'jon' || key === 'bopung') ? 25 : 0;
+    rows.push({ jenis: 'Potongan gaji', lokasi: 'CDS', keterangan: `${salaryPercent}% dari total gaji Agung + Padilah (${rupiah(data.salaryTotal)}) — Agung ${rupiah(money(data.closing.manual_salary_agung))}, Padilah ${rupiah(money(data.closing.manual_salary_padilah))}`, nominal: -salary });
+  }
   (data.adjustments || []).filter((item) => personKey(item.recipient_name) === key && allowedBlocks.has(siteBlock(item.site_code || 'CDS'))).forEach((item) => {
     const deduct = String(item.direction || '').toUpperCase() === 'DEDUCT';
     const jenis = String(item.adjustment_type || '').toUpperCase() === 'CASH_HOLD'
@@ -675,9 +678,14 @@ function buildTransactionRows(data, allowedBlocks, periodStart, periodEnd) {
   // yang digabung tetap dicatat di keterangan sebagai jejak audit.
   // v2.5 — pendapatan PSB (uang masuk pemasangan baru) dipisah dari pendapatan
   // langganan biasa, jadi bisa langsung dibandingkan dengan baris "Komisi
-  // instalasi (PSB)" di bawah. Sebelumnya keduanya tercampur jadi satu baris
-  // "Pembayaran pelanggan" sehingga pendapatan PSB tidak kelihatan di PDF.
-  const isPsbRevenue = (category) => /psb|pasang baru/i.test(String(category || ''));
+  // instalasi (PSB)" di bawah.
+  // v2.6 — deteksi PSB sekarang pakai isPsbRevenue() terpusat dari
+  // closingCalculator (sebelumnya /psb|pasang baru/i lokal di sini tidak pernah
+  // cocok dengan kategori hasil sync "Pendapatan Pemasangan Baru", jadi
+  // pendapatan PSB selalu kebaur ke "Pembayaran pelanggan" biasa). Pengeluaran
+  // juga sekarang digabung per KATEGORI + lokasi (bukan lagi satu baris per
+  // transaksi mentah) supaya tabel "Rincian Pendapatan & Pengeluaran" tetap
+  // ringkas dan enak dibaca, konsisten dengan cara pendapatan sudah digabung.
   const incomeTotals = new Map();
   const incomeOrder = [];
   const psbRevenueTotals = new Map();
@@ -687,15 +695,10 @@ function buildTransactionRows(data, allowedBlocks, periodStart, periodEnd) {
     if (!allowedBlocks.has(blockKey)) return;
     const label = locationText(row);
     const amount = money(row.amount);
-    if (isPsbRevenue(row.category)) {
-      if (!psbRevenueTotals.has(label)) { psbRevenueTotals.set(label, { total: 0, count: 0 }); psbRevenueOrder.push(label); }
-      const psbEntry = psbRevenueTotals.get(label);
-      psbEntry.total += amount;
-      psbEntry.count += 1;
-      return;
-    }
-    if (!incomeTotals.has(label)) { incomeTotals.set(label, { total: 0, count: 0 }); incomeOrder.push(label); }
-    const entry = incomeTotals.get(label);
+    const totals = isPsbRevenue(row.category) ? psbRevenueTotals : incomeTotals;
+    const order = isPsbRevenue(row.category) ? psbRevenueOrder : incomeOrder;
+    if (!totals.has(label)) { totals.set(label, { total: 0, count: 0 }); order.push(label); }
+    const entry = totals.get(label);
     entry.total += amount;
     entry.count += 1;
   });
@@ -707,31 +710,24 @@ function buildTransactionRows(data, allowedBlocks, periodStart, periodEnd) {
     const entry = psbRevenueTotals.get(label);
     rows.push({ tanggal: periodLabel, lokasi: label, jenis: 'Pendapatan', keterangan: `Pendapatan PSB (pemasangan baru) · ${entry.count} pelanggan`, nominal: entry.total });
   });
-  // Kategori PSB / komisi instalasi juga digabung per lokasi yang sama;
-  // kategori pengeluaran lain tetap rinci per baris seperti sebelumnya.
   const isInstallationCommission = (category) => /psb|komisi|instalasi/i.test(String(category || ''));
-  const commissionTotals = new Map();
-  const commissionOrder = [];
-  const expenseRows = [];
+  const expenseTotals = new Map();
+  const expenseOrder = [];
   (data.expenses || []).forEach((row) => {
     const blockKey = siteBlock(row.site_code, row.site_name, row.cluster_name);
     if (!allowedBlocks.has(blockKey)) return;
-    if (isInstallationCommission(row.category)) {
-      const label = locationText(row);
-      if (!commissionTotals.has(label)) { commissionTotals.set(label, { total: 0, count: 0 }); commissionOrder.push(label); }
-      const entry = commissionTotals.get(label);
-      entry.total += money(row.amount);
-      entry.count += 1;
-      return;
-    }
-    const syncTag = row.entry_source === 'cash_sync' ? ' · Data Kas' : '';
-    expenseRows.push({ tanggal: date(row.transaction_date), lokasi: locationText(row), jenis: 'Pengeluaran', keterangan: `${row.category}${row.notes ? ` · ${row.notes}` : ''}${syncTag}`, nominal: money(row.amount) });
+    const label = locationText(row);
+    const categoryLabel = isInstallationCommission(row.category) ? 'Komisi instalasi (PSB)' : (String(row.category || 'Lain-lain').trim() || 'Lain-lain');
+    const key = `${label}\u0001${categoryLabel}`;
+    if (!expenseTotals.has(key)) { expenseTotals.set(key, { label, categoryLabel, total: 0, count: 0 }); expenseOrder.push(key); }
+    const entry = expenseTotals.get(key);
+    entry.total += money(row.amount);
+    entry.count += 1;
   });
-  commissionOrder.forEach((label) => {
-    const entry = commissionTotals.get(label);
-    rows.push({ tanggal: periodLabel, lokasi: label, jenis: 'Pengeluaran', keterangan: `Komisi instalasi (PSB) · ${entry.count} pelanggan`, nominal: entry.total });
-  });
-  expenseRows.sort((a, b) => (a.tanggal < b.tanggal ? 1 : a.tanggal > b.tanggal ? -1 : 0));
+  const expenseRows = expenseOrder.map((key) => {
+    const entry = expenseTotals.get(key);
+    return { tanggal: periodLabel, lokasi: entry.label, jenis: 'Pengeluaran', keterangan: `${entry.categoryLabel} · ${entry.count} transaksi`, nominal: entry.total };
+  }).sort((a, b) => b.nominal - a.nominal);
   return [...rows, ...expenseRows];
 }
 
@@ -752,7 +748,7 @@ router.get('/pdf', async (req, res, next) => {
       if (!allowedBlocks.has(blockKey) || !block) return;
       const share = recipientShare(block, recipient.key);
       if (share) { grossTotal += money(share.gross); netTotal += money(share.amount); }
-      blocks.push({ label: block.label, revenue: block.revenue, expense: block.expense, profit: block.profit, share });
+      blocks.push({ label: block.label, revenue: block.revenue, expense: block.expense, profit: block.profit, share, psbRevenue: block.psbRevenue, subscriptionRevenue: block.subscriptionRevenue, clusterRevenue: block.clusterRevenue, expenseByCategory: block.expenseByCategory });
     });
     const adjustmentRows = buildAdjustmentRows(data, recipient, allowedBlocks);
     const transactionRows = buildTransactionRows(data, allowedBlocks, start, end);

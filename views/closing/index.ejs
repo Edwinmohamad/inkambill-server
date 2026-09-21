@@ -152,6 +152,7 @@
     <% [blocks.krwclm, blocks.kbg].forEach((block, blockIdx) => {
          var trendKey = blockIdx === 0 ? 'krwclm' : 'kbg';
          var trendPct = (typeof trend !== 'undefined' && trend) ? trend[trendKey] : null;
+         var expenseCategories = Object.entries(block.expenseByCategory || {}).sort(function(a, b){ return b[1] - a[1]; });
     %>
       <article class="card closing-card closing-result-card">
         <div class="card-body">
@@ -159,12 +160,20 @@
           <div class="closing-result-lines">
             <div><span>Pendapatan</span><strong>Rp <%= money(block.revenue).toLocaleString('id-ID') %></strong></div>
             <% if (block.label === 'CDS') { %><small>KRW <%= money(block.clusterRevenue?.KRW || 0).toLocaleString('id-ID') %> · CLM <%= money(block.clusterRevenue?.CLM || 0).toLocaleString('id-ID') %></small><% } %>
+            <% if (money(block.psbRevenue) > 0) { %><small>Langganan Rp <%= money(block.subscriptionRevenue).toLocaleString('id-ID') %> · PSB Rp <%= money(block.psbRevenue).toLocaleString('id-ID') %> (<%= block.psbCount %> pelanggan)</small><% } %>
             <div><span>Pengeluaran</span><strong>Rp <%= money(block.expense).toLocaleString('id-ID') %></strong></div>
+            <% if (expenseCategories.length) { %><small class="closing-expense-breakdown"><% expenseCategories.forEach(function(pair, i){ %><%= i > 0 ? ' · ' : '' %><%= pair[0] %> Rp <%= money(pair[1]).toLocaleString('id-ID') %><% }) %></small><% } %>
             <div class="closing-result-profit"><span>Laba bersih</span><strong>Rp <%= money(block.profit).toLocaleString('id-ID') %></strong><% if (trendPct !== null && trendPct !== undefined) { %> <span class="closing-trend-badge <%= trendPct > 0 ? 'is-up' : (trendPct < 0 ? 'is-down' : 'is-flat') %>" title="Dibanding periode <%= trend.prevLabel %>"><i class="bi <%= trendPct > 0 ? 'bi-arrow-up-short' : (trendPct < 0 ? 'bi-arrow-down-short' : 'bi-dash') %>"></i><%= Math.abs(trendPct).toFixed(1) %>%</span><% } %></div>
           </div>
         </div>
       </article>
     <% }) %>
+  </section>
+
+  <section class="closing-cluster-grid" aria-label="Ringkasan pendapatan per cluster" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:14px">
+    <article class="metric-card"><div class="metric-top"><span class="metric-label">Pendapatan KRW</span><span class="metric-icon"><i class="bi bi-signpost-split-fill"></i></span></div><strong>Rp <%= money(blocks.krwclm.clusterRevenue?.KRW || 0).toLocaleString('id-ID') %></strong><small>Cluster CDS</small></article>
+    <article class="metric-card"><div class="metric-top"><span class="metric-label">Pendapatan CLM</span><span class="metric-icon"><i class="bi bi-signpost-split-fill"></i></span></div><strong>Rp <%= money(blocks.krwclm.clusterRevenue?.CLM || 0).toLocaleString('id-ID') %></strong><small>Cluster CDS</small></article>
+    <article class="metric-card"><div class="metric-top"><span class="metric-label">Pendapatan KBG</span><span class="metric-icon"><i class="bi bi-hdd-rack-fill"></i></span></div><strong>Rp <%= money(blocks.kbg.revenue).toLocaleString('id-ID') %></strong><small>Site Kubang</small></article>
   </section>
 
   <% if (typeof customerActivity !== 'undefined' && customerActivity) { %>
@@ -356,7 +365,17 @@
   </section>
 
   <div class="closing-lower-grid">
-    <section class="card closing-card"><div class="card-body"><div class="closing-section-head"><div><span class="closing-card-kicker">POTONGAN DARI INPUT</span><h2>Gaji</h2></div></div><div class="closing-salary-list"><% salaryRows.forEach(row => { %><div><span><%= row.name %></span><strong>Rp <%= money(row.amount).toLocaleString('id-ID') %></strong></div><% }) %></div><small class="text-muted">Total gaji dibebankan ke CDS: Edwin 50%, Jon 25%, Bopung 25%. Mang Ali tidak dibebani.</small></div></section>
+    <section class="card closing-card"><div class="card-body"><div class="closing-section-head"><div><span class="closing-card-kicker">POTONGAN DARI INPUT</span><h2>Gaji</h2></div><span class="closing-count">Total Rp <%= money(salaryTotal).toLocaleString('id-ID') %></span></div>
+      <p class="text-muted mb-2" style="font-size:.6rem;font-weight:700;letter-spacing:.03em;text-transform:uppercase;margin-top:10px">Sumber gaji</p>
+      <div class="closing-salary-list"><% salaryRows.forEach(row => { %><div><span><%= row.name %></span><strong>Rp <%= money(row.amount).toLocaleString('id-ID') %></strong></div><% }) %></div>
+      <p class="text-muted mb-2" style="font-size:.6rem;font-weight:700;letter-spacing:.03em;text-transform:uppercase;margin-top:14px">Dipotong dari bagian (CDS)</p>
+      <div class="closing-salary-list">
+        <div><span>Edwin <small class="text-muted">50%</small></span><strong>Rp <%= money(salaryByOwner.edwin).toLocaleString('id-ID') %></strong></div>
+        <div><span>Jon <small class="text-muted">25%</small></span><strong>Rp <%= money(salaryByOwner.jon).toLocaleString('id-ID') %></strong></div>
+        <div><span>Bopung <small class="text-muted">25%</small></span><strong>Rp <%= money(salaryByOwner.bopung).toLocaleString('id-ID') %></strong></div>
+      </div>
+      <small class="text-muted">Mang Ali tidak dibebani gaji Agung/Padilah.</small>
+    </div></section>
 
     <section class="card closing-card"><div class="card-body"><div class="closing-section-head"><div><span class="closing-card-kicker">INFORMASI · TIDAK MEMENGARUHI PERHITUNGAN</span><h2>Pelanggan belum lunas</h2><small class="text-muted">Sekadar pengingat penagihan untuk periode ini — tidak dihitung ke Pendapatan/Bersih di atas.</small></div><% if (typeof unpaidSummary !== 'undefined' && unpaidSummary) { %><span class="closing-count"><%= unpaidSummary.count %> pelanggan</span><% } %></div>
       <% if (typeof unpaidCustomers === 'undefined' || !unpaidCustomers.length) { %>
