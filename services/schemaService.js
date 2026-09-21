@@ -958,4 +958,22 @@ async function ensureV48Schema() {
   }
 }
 
-module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema };
+async function ensureV49Schema() {
+  // Closing v2.1 — baris hasil sinkron Data Kas yang "dihapus" dari Closing tidak
+  // lagi benar-benar DELETE. Kalau di-DELETE, cash_transaction_id-nya hilang dan
+  // baris itu akan tertarik lagi (dianggap "belum pernah disinkron") di Sync
+  // berikutnya — membingungkan. Jadi baris cash_sync ditandai excluded_at/by saja
+  // (soft-exclude): tetap ada di DB (auditable + bisa dipulihkan), tapi tidak ikut
+  // dihitung dan tidak muncul di tabel utama. Baris manual tetap benar-benar DELETE
+  // seperti sebelumnya, tidak ada isu re-pull untuk baris itu.
+  const [excludedAtCols] = await db.query(`SHOW COLUMNS FROM closing_entries LIKE 'excluded_at'`);
+  if (!excludedAtCols.length) {
+    await db.query(`ALTER TABLE closing_entries ADD COLUMN excluded_at DATETIME NULL AFTER cash_transaction_id`);
+  }
+  const [excludedByCols] = await db.query(`SHOW COLUMNS FROM closing_entries LIKE 'excluded_by'`);
+  if (!excludedByCols.length) {
+    await db.query(`ALTER TABLE closing_entries ADD COLUMN excluded_by BIGINT UNSIGNED NULL AFTER excluded_at`);
+  }
+}
+
+module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema };

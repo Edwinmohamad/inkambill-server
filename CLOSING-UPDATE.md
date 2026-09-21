@@ -11,9 +11,21 @@ Setiap **periode** closing (bukan global) punya salah satu dari dua mode, tersim
 
 Mode hanya bisa diganti selama periode masih **DRAFT**; begitu periode dikunci, mode ikut membeku bersama snapshotnya. Tombol ganti mode dan tombol Sync ada di halaman Closing, tepat di bawah header.
 
-Sinkronisasi bersifat **idempoten dan inkremental**: tombol Sync bisa ditekan berkali-kali, transaksi Data Kas yang sudah pernah ditarik (dilacak lewat `cash_transaction_id` pada baris `closing_entries`) tidak akan ditarik dobel — hanya transaksi baru yang belum pernah ditarik yang ditambahkan. Catatan: kalau sebuah baris hasil sync **dihapus manual** dari Closing, baris itu dianggap "belum ada" lagi dan **bisa tertarik ulang** pada sync berikutnya — kalau memang tidak mau dihitung, gunakan Langkah 3 (penyesuaian/potongan) daripada menghapus baris sync-nya.
+Sinkronisasi bersifat **idempoten dan inkremental**: tombol Sync bisa ditekan berkali-kali, transaksi Data Kas yang sudah pernah ditarik (dilacak lewat `cash_transaction_id` pada baris `closing_entries`) tidak akan ditarik dobel — hanya transaksi baru yang belum pernah ditarik yang ditambahkan.
 
 Data Kas hanya mencatat berdasarkan site (CDS/KBG), belum ada pemisahan cluster KRW/CLM, sehingga baris hasil sync untuk CDS tidak dipecah per cluster (pembagian hasil CDS memang digabung, jadi ini tidak memengaruhi perhitungan — hanya tampilan rincian per cluster).
+
+### Mengecualikan baris hasil sync (bukan hapus permanen)
+
+Tombol hapus pada baris `cash_sync` di tabel Riwayat Input **tidak benar-benar menghapus** baris itu — ia menandai `excluded_at`/`excluded_by` (soft-exclude). Baris yang dikecualikan langsung hilang dari tabel utama dan tidak ikut dihitung, tapi tetap tersimpan di database dan muncul di seksi collapsible **"Baris dikecualikan"** di bawah tabel utama, lengkap dengan tombol **Pulihkan**. Ini sengaja dibuat begitu supaya `cash_transaction_id`-nya tetap dianggap "sudah pernah ditarik" — kalau baris itu benar-benar di-`DELETE`, transaksi yang sama akan tertarik lagi secara membingungkan pada sync berikutnya. Baris manual (diketik sendiri, bukan hasil sync) tidak punya isu ini, jadi tombol hapusnya tetap `DELETE` permanen seperti sebelumnya.
+
+### Guard sebelum kunci periode (mode Otomatis)
+
+Kalau periode bermode Otomatis masih punya transaksi Data Kas **APPROVED** yang belum ditarik, tombol **Kunci Periode** ditolak (backend melempar error) dan diganti tampilannya menjadi peringatan + tombol terpisah **"Kunci Walau Belum Sync Semua"** (mengirim `force_lock=1`). Ini mencegah closing terkunci padahal masih ada uang yang belum ikut kehitung, tapi tetap memberi jalan keluar eksplisit kalau memang sengaja (misal transaksi itu memang mau dimasukkan ke periode berikutnya). Banner mode Otomatis juga menampilkan jumlah transaksi yang masih **PENDING_APPROVAL** di Data Kas — transaksi itu tidak akan ikut tertarik sampai di-approve dulu di menu Data Kas.
+
+### Tombol "Buat Periode Berikutnya"
+
+Begitu sebuah periode dikunci, muncul tombol yang otomatis mengarah ke `/closing` dengan rentang tanggal bulan berikutnya (1 s/d akhir bulan setelah `period_end`) — jadi alur "Agustus dikunci → September mulai draft baru" tidak perlu ketik tanggal manual lagi.
 
 ## Periode dan sumber data
 
@@ -74,7 +86,7 @@ Setiap PDF memuat pendapatan pelanggan/pemasukan, pengeluaran lengkap beserta ka
 
 ## Deploy melalui GitHub Desktop
 
-Salin file paket ini ke path yang sama di repo lokal, commit, lalu push ke `main`. Workflow deploy akan menjalankan migrasi Closing (`ensureV35Schema` sampai `ensureV37Schema`, plus `ensureV48Schema` untuk kolom mode/sinkron) saat aplikasi start. Jangan menimpa `.env` produksi.
+Salin file paket ini ke path yang sama di repo lokal, commit, lalu push ke `main`. Workflow deploy akan menjalankan migrasi Closing (`ensureV35Schema` sampai `ensureV37Schema`, plus `ensureV48Schema` untuk kolom mode/sinkron dan `ensureV49Schema` untuk kolom exclude/restore) saat aplikasi start. Jangan menimpa `.env` produksi.
 
 ## Validasi
 
