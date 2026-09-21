@@ -164,7 +164,7 @@ function drawTransactionTable(doc,rows,title,subtitle){
   // dipetakan" tidak lagi terpotong jadi "...", dan tinggi baris di bawah kini
   // dihitung dinamis dari isi Lokasi & Keterangan yang sebenarnya (bukan fixed
   // 24px) supaya teks panjang membungkus alih-alih dipotong.
-  const cols=[{label:'Tanggal',w:.12},{label:'Lokasi',w:.15},{label:'Jenis',w:.12},{label:'Keterangan',w:.38},{label:'Nominal',w:.23,align:'right'}];
+  const cols=[{label:'Tanggal',w:.13},{label:'Lokasi',w:.13},{label:'Jenis',w:.15},{label:'Keterangan',w:.36},{label:'Nominal',w:.23,align:'right'}];
   const widths=cols.map(c=>c.w*total);
   function drawHead(){
     const hy=doc.y;doc.save();
@@ -180,20 +180,22 @@ function drawTransactionTable(doc,rows,title,subtitle){
     doc.restore();doc.y+=46;return;
   }
   rows.forEach((row,ri)=>{
+    const tanggalText=safe(row.tanggal);
     const lokasiText=safe(row.lokasi);
     const keteranganText=safe(row.keterangan);
+    const tanggalH=doc.font('Helvetica').fontSize(7.3).heightOfString(tanggalText,{width:widths[0]-16,lineGap:1});
     const lokasiH=doc.font('Helvetica-Bold').fontSize(7.3).heightOfString(lokasiText,{width:widths[1]-16,lineGap:1});
     const keteranganH=doc.font('Helvetica').fontSize(7.3).heightOfString(keteranganText,{width:widths[3]-16,lineGap:1});
-    const rh=Math.min(96,Math.max(24,lokasiH+14,keteranganH+14));
+    const rh=Math.min(96,Math.max(24,tanggalH+14,lokasiH+14,keteranganH+14));
     if(doc.y+rh>bottomLimit){doc.addPage();drawBrandHeader(doc,title,subtitle,true);drawHead();}
     const y=doc.y;doc.save();
     if(ri%2===1)doc.rect(x,y,total,rh).fill('#FBFCFE');
     doc.strokeColor(COLORS.line).lineWidth(.6).moveTo(x,y+rh).lineTo(x+total,y+rh).stroke();
     let xx=x;
-    doc.fillColor(COLORS.muted).font('Helvetica').fontSize(7.3).text(safe(row.tanggal),xx+10,y+7,{width:widths[0]-16,height:rh-10,lineBreak:false,ellipsis:true});xx+=widths[0];
+    doc.fillColor(COLORS.muted).font('Helvetica').fontSize(7.3).text(tanggalText,xx+10,y+7,{width:widths[0]-16,height:rh-10,lineGap:1});xx+=widths[0];
     doc.fillColor(COLORS.black).font('Helvetica-Bold').fontSize(7.3).text(lokasiText,xx+10,y+7,{width:widths[1]-16,height:rh-10,lineGap:1});xx+=widths[1];
     const income=row.jenis==='Pendapatan';
-    doc.fillColor(income?COLORS.green:'#B54708').font('Helvetica-Bold').fontSize(6.8).text(safe(row.jenis).toUpperCase(),xx+10,y+8,{width:widths[2]-16,height:rh-12,lineBreak:false,ellipsis:true});xx+=widths[2];
+    doc.fillColor(income?COLORS.green:'#B54708').font('Helvetica-Bold').fontSize(6.8).text(safe(row.jenis).toUpperCase(),xx+10,y+8,{width:widths[2]-16,height:rh-12,lineGap:1});xx+=widths[2];
     doc.fillColor(COLORS.black).font('Helvetica').fontSize(7.3).text(keteranganText,xx+10,y+7,{width:widths[3]-16,height:rh-10,lineGap:1});xx+=widths[3];
     doc.fillColor(COLORS.black).font('Helvetica-Bold').fontSize(7.4).text(rupiah(row.nominal),xx+10,y+7,{width:widths[4]-16,align:'right',height:rh-10,lineBreak:false,ellipsis:true});
     doc.restore();doc.y=y+rh;
@@ -232,7 +234,7 @@ function drawCustomerActivityTable(doc,rows,title,subtitle){
   });
   doc.y+=18;
 }
-function createClosingReportPdf(res,{title,subtitle,filename,recipientName='',summaryItems=[],blocks=[],adjustmentRows=[],transactionRows=[],disposition='attachment',watermark=''}){
+function createClosingReportPdf(res,{title,subtitle,filename,recipientName='',summaryItems=[],blocks=[],adjustmentRows=[],transactionRows=[],customerActivityRows=[],disposition='attachment',watermark=''}){
   const doc=new PDFDocument({size:'A4',layout:'portrait',margins:{top:36,bottom:42,left:36,right:36},bufferPages:true,info:{Title:safe(title),Author:COMPANY,Subject:safe(subtitle||'')}});
   res.setHeader('Content-Type','application/pdf');
   res.setHeader('Content-Disposition',`${disposition==='inline'?'inline':'attachment'}; filename="${String(filename).replace(/[\r\n"]/g,'-')}"`);
@@ -240,6 +242,7 @@ function createClosingReportPdf(res,{title,subtitle,filename,recipientName='',su
   drawBrandHeader(doc,title,subtitle,false);
   drawSummary(doc,summaryItems);
   drawLocationShareCards(doc,recipientName,blocks);
+  drawCustomerActivityTable(doc,customerActivityRows,title,subtitle);
   drawAdjustmentTable(doc,adjustmentRows,title,subtitle);
   drawTransactionTable(doc,transactionRows,title,subtitle);
   drawReportSignoff(doc);
