@@ -27,13 +27,15 @@ const { generateMonthlyInvoices } = require('./services/invoiceService');
 const { runAutoIsolation } = require('./services/networkService');
 const { captureAllNmsTelemetry, backupAllRouters } = require('./services/nmsTelemetryService');
 const { evaluateNetworkIncidents } = require('./services/networkAlertService');
+const { pingAllOlts } = require('./services/oltService');
 const { syncDevices: syncAcsDevices } = require('./services/acsService');
 const { scanLowStock } = require('./services/inventoryService');
 const { deliverMobilePushes } = require('./services/mobilePushService');
 const { purgeOldLogs } = require('./services/logRetentionService');
-const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema } = require('./services/schemaService');
+const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema } = require('./services/schemaService');
 const { requireN8nToken } = require('./middleware/n8n');
-const { startGateway, hasSavedSession, processQueue, runAutoReminderSweep } = require('./services/whatsappGatewayService');
+const { initGatewayOnBoot, reconcileGatewayStatus, processQueue, runAutoReminderSweep } = require('./services/whatsappGatewayService');
+const { requireWahaWebhookToken } = require('./middleware/waha');
 
 const app = express();
 const assetVersion = ['public/css/app.css','public/css/mobile-app.css','public/css/monitoring.css','public/js/app.js','public/js/mobile-app.js','public/js/nms.js','public/js/performance.js','public/js/monitoring.js']
@@ -210,6 +212,10 @@ app.use(require('./routes/mobile'));
 // It is intentionally mounted after the JSON parser and before browser routes.
 app.use('/api/n8n', requireN8nToken, require('./routes/n8n'));
 
+// Token-protected inbound webhook FROM WAHA (WhatsApp HTTP API) — pushes session status /
+// message events into the WA Gateway module. See services/whatsappGatewayService.js.
+app.use('/api/waha', requireWahaWebhookToken, require('./routes/waha'));
+
 // Lightweight health endpoint used by Docker/operations monitoring.
 app.get('/healthz', async (req, res) => {
   try {
@@ -303,6 +309,7 @@ async function bootstrap() {
   await ensureV47Schema();
   await ensureV48Schema();
   await ensureV49Schema();
+  await ensureV50Schema();
   const [rows] = await db.query('SELECT COUNT(*) total FROM users');
   if (Number(rows[0].total) === 0) {
     const username = process.env.DEFAULT_ADMIN_USERNAME || 'admin';
@@ -330,6 +337,9 @@ async function bootstrap() {
   // auto-reminder sweep (runAutoReminderSweep itself no-ops unless enabled, past the configured hour,
   // and not already run today, so this can safely fire every 5 minutes without double-sending).
   cron.schedule('*/5 * * * *', async () => {
+    // Safety-net resync with WAHA in case a webhook push was ever missed (WAHA restart, network
+    // blip, etc.) — the webhook (routes/waha.js) is the fast path, this just keeps things honest.
+    try { await reconcileGatewayStatus(); } catch (err) { console.error('WA Gateway status reconcile gagal:', err.message); }
     try { await processQueue(); } catch (err) { console.error('WA Gateway queue watchdog gagal:', err.message); }
     try {
       const result = await runAutoReminderSweep();
@@ -364,6 +374,14 @@ async function bootstrap() {
     try { await scanLowStock(); } catch (err) { console.error('Stock alert gagal:', err.message); }
   }, { timezone: 'Asia/Jakarta' });
 
+  // OLT reachability — pings management_ip of every registered OLT (reuses the same ICMP
+  // mechanism as ONT ping in acsService.js). Status feeds the OLT KPI card on /noc and the
+  // registry page at /olt. Runs alongside the telemetry cron above so both are fresh together.
+  cron.schedule('*/5 * * * *', async () => {
+    try { const result = await pingAllOlts(); if (result.checked) console.log('OLT ping:', result.online, 'online,', result.offline, 'offline dari', result.checked); }
+    catch (err) { console.error('OLT ping gagal:', err.message); }
+  }, { timezone: 'Asia/Jakarta' });
+
   // Network Incident & Alert Engine — dijalankan setelah telemetry di atas supaya status
   // router/ONT/OLT yang dievaluasi sudah yang paling baru. Aman berjalan tiap 5 menit karena
   // evaluateNetworkIncidents() sendiri idempotent (dedup via tabel network_incidents) dan
@@ -375,12 +393,10 @@ async function bootstrap() {
     } catch (err) { console.error('Network Alert Engine gagal:', err.message); }
   }, { timezone: 'Asia/Jakarta' });
 
-  // If a WA Gateway session was already linked before this restart, reconnect silently (no QR needed —
-  // Baileys reuses the saved credentials). If nothing was ever linked, stay disconnected until an admin
-  // explicitly clicks Connect from the /wa-gateway page.
-  if (hasSavedSession()) {
-    startGateway().catch(err => console.error('WA Gateway: gagal reconnect otomatis saat startup:', err.message));
-  }
+  // WAHA (the WhatsApp HTTP API service) keeps the actual WhatsApp session alive in its own
+  // process independent of this app, so on boot we just sync our in-memory status mirror with
+  // whatever WAHA currently reports — no QR re-scan needed unless nothing was ever linked there.
+  initGatewayOnBoot().catch(err => console.error('WA Gateway: gagal sinkronisasi awal saat startup:', err.message));
 
   const port = Number(process.env.PORT || 3000);
   app.listen(port, '0.0.0.0', () => console.log(`INKAMNET Billing berjalan di port ${port}`));

@@ -1,44 +1,50 @@
-// WA Gateway — self-hosted WhatsApp automation using Baileys (multi-device WhatsApp Web protocol).
-// Connects using the OWN WhatsApp number of whoever scans the QR code (Master Admin only, from the
-// /wa-gateway page). No third-party API key is required, but this is an unofficial protocol: sending
-// too fast / too many messages risks the number being rate-limited or banned by WhatsApp, which is why
-// every send goes through a single queue with a randomized delay between messages (see processQueue()).
+// WA Gateway — WhatsApp automation via WAHA (WhatsApp HTTP API, https://waha.devlike.pro), a
+// separate self-hosted service already running on this same server (localhost:3000). WAHA owns
+// the actual WhatsApp connection (session auth, QR pairing, reconnects) in its own process, so
+// this app no longer holds a live socket in-process — it only talks HTTP to WAHA and receives a
+// push webhook back from it. See services/wahaClient.js for the WAHA HTTP client and
+// middleware/waha.js + routes/waha.js for the inbound webhook.
 //
-// State (connection/QR) lives in memory (module-level) since only one Node process manages the socket.
-// Every message attempt — manual, bulk blast, or scheduled auto-reminder — is persisted to wa_messages
-// so the WA Gateway page and the dashboard widget always reflect real, durable data instead of
-// in-memory-only counters that reset on restart.
-const fs = require('fs');
-const path = require('path');
-const QRCode = require('qrcode');
-const pino = require('pino');
-const baileys = require('@whiskeysockets/baileys');
-const { makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason, Browsers } = baileys;
+// This file keeps the exact same state shape and DB-backed queue as before (wa_messages table,
+// randomized delay between sends, auto-reminder sweep) — only how connectionState/qrDataUrl get
+// populated changed: instead of Baileys connection.update events firing in-process, they now
+// arrive via WAHA's webhook (handleWahaWebhookEvent, fast path) with a periodic HTTP reconcile
+// as a safety net (reconcileGatewayStatus, called from the status.json poll and the 5-min cron
+// watchdog in app.js) in case a webhook delivery is ever missed.
 const db = require('../config/db');
 const { validateWhatsapp } = require('./whatsappService');
+const waha = require('./wahaClient');
 
-const SESSION_DIR = path.join(__dirname, '..', 'storage', 'wa-session');
-fs.mkdirSync(SESSION_DIR, { recursive: true });
-
-let sock = null;
+// In-memory mirror of WAHA's session state, shaped exactly like before so routes/views don't
+// need to change. Only one Node process serves this app, so module-level state is fine — same
+// assumption the old Baileys-based version made.
 let connectionState = 'disconnected'; // disconnected | connecting | qr_pending | connected
 let qrDataUrl = null;
 let connectedNumber = null;
 let lastConnectedAt = null;
 let lastDisconnectReason = null;
-let manualLogoutRequested = false;
 let startingPromise = null;
 let processingLock = false;
-let reconnectTimer = null;
-
-const logger = pino({ level: 'silent' });
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function randomDelay(minMs, maxMs) { return minMs + Math.floor(Math.random() * (maxMs - minMs)); }
 
-function hasSavedSession() {
-  try { return fs.existsSync(path.join(SESSION_DIR, 'creds.json')); }
-  catch { return false; }
+// Maps WAHA's session.status values onto this app's existing state vocabulary. Verify these
+// against your WAHA version's Swagger UI (GET /api/sessions/{session} -> "status") — the set
+// below (STOPPED / STARTING / SCAN_QR_CODE / WORKING / FAILED) matches the commonly documented
+// WAHA API; add/adjust entries here if your version reports different values.
+const STATUS_MAP = {
+  STOPPED: 'disconnected',
+  STARTING: 'connecting',
+  SCAN_QR_CODE: 'qr_pending',
+  WORKING: 'connected',
+  FAILED: 'disconnected',
+};
+
+function extractNumber(waId) {
+  // WAHA typically reports the connected account as something like "6281234567890@c.us".
+  if (!waId) return null;
+  return String(waId).split('@')[0].split(':')[0] || null;
 }
 
 function getGatewayStatus() {
@@ -48,8 +54,84 @@ function getGatewayStatus() {
     connectedNumber,
     lastConnectedAt,
     lastDisconnectReason,
-    hasSavedSession: hasSavedSession(),
   };
+}
+
+function applySessionSnapshot(session) {
+  if (!session) {
+    // Session name has never been created on WAHA — nothing to reconnect to yet, admin has to
+    // press Connect (which creates it for the first time).
+    connectionState = 'disconnected';
+    qrDataUrl = null;
+    connectedNumber = null;
+    return;
+  }
+  const status = String(session.status || '').toUpperCase();
+  connectionState = STATUS_MAP[status] || 'disconnected';
+  if (connectionState === 'connected') {
+    qrDataUrl = null;
+    connectedNumber = extractNumber(session?.me?.id) || connectedNumber;
+    if (!lastConnectedAt) lastConnectedAt = new Date();
+    lastDisconnectReason = null;
+  } else {
+    connectedNumber = null;
+    if (connectionState !== 'qr_pending') qrDataUrl = null;
+    if (status === 'FAILED') lastDisconnectReason = 'WAHA melaporkan status FAILED — cek log WAHA untuk detail.';
+  }
+}
+
+// Pulls the current session state straight from WAHA over HTTP. This is the safety-net path —
+// the webhook (handleWahaWebhookEvent) is what normally keeps the mirror fresh in real time, but
+// this covers the case where a webhook call never arrived (WAHA restarted mid-flight, a network
+// hiccup, etc). Called on every /wa-gateway status.json poll and every 5 minutes from app.js.
+async function reconcileGatewayStatus() {
+  try {
+    const session = await waha.getSession();
+    applySessionSnapshot(session);
+    if (connectionState === 'qr_pending') {
+      try { qrDataUrl = await waha.getQrDataUrl(); }
+      catch (e) { console.error('WA Gateway: gagal ambil QR dari WAHA:', e.message); }
+    }
+  } catch (e) {
+    // Transient WAHA/network hiccup — keep showing the last known state rather than flashing to
+    // "disconnected" on every blip.
+    console.error('WA Gateway: gagal sinkronisasi status dari WAHA:', e.message);
+  }
+  return getGatewayStatus();
+}
+
+// Called by routes/waha.js whenever WAHA pushes a webhook event. This is the fast path — updates
+// the mirror immediately instead of waiting for the next poll/cron reconcile.
+async function handleWahaWebhookEvent(event) {
+  const type = event?.event;
+  if (type === 'session.status') {
+    // Malformed/empty payload (shouldn't happen, but webhook bodies are external input) — skip
+    // rather than risk flipping the mirror to 'disconnected' on a payload we can't actually read.
+    if (!event?.payload) return;
+    applySessionSnapshot({ status: event.payload.status, me: event.payload.me });
+    if (connectionState === 'qr_pending') {
+      try { qrDataUrl = await waha.getQrDataUrl(); }
+      catch (e) { console.error('WA Gateway: gagal ambil QR dari WAHA (webhook):', e.message); }
+    }
+    if (connectionState === 'connected') processQueue();
+  }
+  // event === 'message' (incoming messages) is intentionally a no-op for now — this module only
+  // handles outbound reminders/blast today. The webhook is already wired up, so a future two-way
+  // feature (auto-reply, "reply STOP to opt out", etc.) just needs a handler added here.
+}
+
+function webhookCallbackUrl() {
+  // WAHA_WEBHOOK_CALLBACK_URL lets you override this explicitly (e.g. when WAHA can't reach this
+  // app at the same address APP_URL describes — see .env.example). Otherwise it's derived from
+  // APP_URL (already used as this app's own base URL) + the webhook route mounted in app.js.
+  const explicit = String(process.env.WAHA_WEBHOOK_CALLBACK_URL || '').trim();
+  const appUrl = String(process.env.APP_URL || '').trim().replace(/\/+$/, '');
+  const base = explicit || (appUrl ? `${appUrl}/api/waha/webhook` : '');
+  if (!base) return null; // nothing to build a callback from — reconcile-by-polling only, see .env.example
+  const token = String(process.env.WAHA_WEBHOOK_TOKEN || '').trim();
+  if (!token) return null;
+  const sep = base.includes('?') ? '&' : '?';
+  return `${base}${sep}token=${encodeURIComponent(token)}`;
 }
 
 async function startGateway() {
@@ -61,55 +143,12 @@ async function startGateway() {
     connectionState = 'connecting';
     qrDataUrl = null;
     try {
-      const { state, saveCreds } = await useMultiFileAuthState(SESSION_DIR);
-      const { version } = await fetchLatestBaileysVersion();
-      sock = makeWASocket({
-        version,
-        logger,
-        auth: state,
-        browser: Browsers.ubuntu('INKAMNET Gateway'),
-        printQRInTerminal: false,
-      });
-      sock.ev.on('creds.update', saveCreds);
-      sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect, qr } = update;
-        if (qr) {
-          try { qrDataUrl = await QRCode.toDataURL(qr, { margin: 1, scale: 6 }); }
-          catch (e) { console.error('WA Gateway: gagal membuat QR image:', e.message); }
-          connectionState = 'qr_pending';
-        }
-        if (connection === 'open') {
-          connectionState = 'connected';
-          qrDataUrl = null;
-          connectedNumber = String(sock?.user?.id || '').split(':')[0].split('@')[0] || null;
-          lastConnectedAt = new Date();
-          lastDisconnectReason = null;
-          console.log(`WA Gateway terhubung: ${connectedNumber || '(nomor tidak diketahui)'}`);
-          processQueue();
-        }
-        if (connection === 'close') {
-          const statusCode = lastDisconnect?.error?.output?.statusCode;
-          const loggedOut = statusCode === DisconnectReason.loggedOut;
-          connectionState = 'disconnected';
-          qrDataUrl = null;
-          connectedNumber = null;
-          lastDisconnectReason = loggedOut ? 'logged_out' : (lastDisconnect?.error?.message || 'connection_closed');
-          sock = null;
-          if (!loggedOut && !manualLogoutRequested) {
-            clearTimeout(reconnectTimer);
-            reconnectTimer = setTimeout(() => { startingPromise = null; startGateway().catch(()=>{}); }, 8000);
-          } else if (loggedOut) {
-            // WhatsApp itself invalidated the session (e.g. unlinked from phone) — clear stale creds so
-            // the next Connect attempt always shows a fresh QR instead of silently failing forever.
-            fs.promises.rm(SESSION_DIR, { recursive: true, force: true }).catch(() => {});
-          }
-          manualLogoutRequested = false;
-        }
-      });
+      await waha.startSession(webhookCallbackUrl());
+      await reconcileGatewayStatus();
     } catch (e) {
       connectionState = 'disconnected';
       lastDisconnectReason = e.message;
-      console.error('WA Gateway: gagal memulai koneksi:', e.message);
+      console.error('WA Gateway: gagal memulai sesi WAHA:', e.message);
     } finally {
       startingPromise = null;
     }
@@ -118,16 +157,28 @@ async function startGateway() {
   return startingPromise;
 }
 
+// Used once at app boot (see app.js) to resume a session that was already linked before this
+// restart, without requiring the admin to click Connect again. Unlike the old Baileys version,
+// WAHA keeps the WhatsApp session alive in its own process independent of this app's lifecycle,
+// so this mostly just needs to sync the in-memory mirror — but we still call startSession() in
+// case WAHA itself was restarted and the session needs to be resumed there too.
+async function initGatewayOnBoot() {
+  try {
+    const existing = await waha.getSession();
+    if (!existing) return getGatewayStatus(); // never connected — wait for admin to press Connect
+    await startGateway();
+  } catch (e) {
+    console.error('WA Gateway: gagal sinkronisasi awal dengan WAHA saat startup:', e.message);
+  }
+  return getGatewayStatus();
+}
+
 async function logoutGateway() {
-  manualLogoutRequested = true;
-  clearTimeout(reconnectTimer);
-  try { if (sock) await sock.logout(); } catch (e) { /* ignore — we clear local session below regardless */ }
-  sock = null;
+  try { await waha.stopAndLogoutSession(); } catch (e) { console.error('WA Gateway: gagal logout dari WAHA:', e.message); }
   connectionState = 'disconnected';
   qrDataUrl = null;
   connectedNumber = null;
   lastConnectedAt = null;
-  await fs.promises.rm(SESSION_DIR, { recursive: true, force: true }).catch(() => {});
 }
 
 // Enqueue a message for the send queue. Validates the phone number up front (via the existing
@@ -158,12 +209,11 @@ async function processQueue() {
   processingLock = true;
   try {
     while (true) {
-      if (connectionState !== 'connected' || !sock) break;
+      if (connectionState !== 'connected') break;
       const [[row]] = await db.execute(`SELECT * FROM wa_messages WHERE status='queued' ORDER BY id ASC LIMIT 1`);
       if (!row) break;
       try {
-        const jid = `${row.phone}@s.whatsapp.net`;
-        await sock.sendMessage(jid, { text: row.message });
+        await waha.sendText(row.phone, row.message);
         await db.execute(`UPDATE wa_messages SET status='sent',sent_at=NOW() WHERE id=?`, [row.id]);
       } catch (e) {
         await db.execute(`UPDATE wa_messages SET status='failed',error_message=? WHERE id=?`, [String(e?.message || e).slice(0, 500), row.id]);
@@ -269,8 +319,11 @@ async function runAutoReminderSweep(now = new Date()) {
 
 module.exports = {
   startGateway,
+  initGatewayOnBoot,
   logoutGateway,
   getGatewayStatus,
+  reconcileGatewayStatus,
+  handleWahaWebhookEvent,
   enqueueWaMessage,
   processQueue,
   getQueueStats,
@@ -278,5 +331,4 @@ module.exports = {
   runAutoReminderSweep,
   renderReminderTemplate,
   DEFAULT_REMINDER_TEMPLATE,
-  hasSavedSession,
 };

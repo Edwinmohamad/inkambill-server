@@ -36,6 +36,13 @@ services:
         condition: service_healthy
     ports:
       - "3301:${PORT:-3200}"
+    # Lets the app container resolve host.docker.internal -> this host's own IP, needed so the
+    # WA Gateway module can reach WAHA when WAHA runs directly on the host (not in this compose
+    # project). No effect if WAHA_BASE_URL in .env points somewhere else instead. Docker Desktop
+    # (Mac/Windows) already provides this mapping natively; this line is what makes it work on
+    # Linux too.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./storage:/app/storage
     healthcheck:

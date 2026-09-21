@@ -21,4 +21,16 @@ Tidak ada perubahan kode yang diperlukan untuk menambah OLT atau router Mikrotik
 
 ## Catatan validasi
 
-`npm run validate:v119`, `test-acs-monitoring.js`, dan `test-powerful-network-suite.js` (khusus bagian yang menyentuh NOC/sidebar/monitoring) semua lolos. Dua kegagalan yang ditemukan (`test-powerful-network-suite.js` bagian allowlist aksi ACS, dan `test-debt-monitor.js`) sudah ada **sebelum** perubahan ini — tidak terkait file yang disentuh di update ini, jadi sengaja tidak diutak-atik di sini.
+`npm run validate:v119`, `npm run validate:final`, dan seluruh `scripts/test-*.js` (termasuk `test-powerful-network-suite.js` dan `test-debt-monitor.js`) sekarang lolos semua.
+
+Dua kegagalan yang sempat ditemukan saat kerja NOC ini sudah ada **sebelum** update ini dan tidak terkait file yang disentuh — keduanya guard test yang assertion-nya ketinggalan zaman (kodenya sendiri sudah benar), sudah diperbaiki menyusul:
+- `test-powerful-network-suite.js` — assertion allowlist aksi ACS masih memeriksa 2 aksi lama (`refreshObject`, `reboot`), padahal kode sudah lama menambah aksi ketiga (`setParameterValues`). Assertion disesuaikan ke kode aktual.
+- `test-debt-monitor.js` — tiga assertion (jadwal cicilan otomatis, layout profesional, filter otomatis & reset) memeriksa nama class/teks lama dari sebelum redesign modul Hutang & Piutang (mis. `debt-page-v2` → sekarang `debt-page`). Assertion disesuaikan ke markup aktual, dan satu class (`debt-filter-reset`) yang memang seharusnya ada tapi hilang di tombol reset filter ditambahkan kembali ke `views/debts/index.ejs`.
+
+## Live auto-refresh & status kritis lebih mencolok (v2)
+
+`/noc` sekarang benar-benar "hidup" seperti layar NOC, bukan cuma render sekali saat halaman dibuka:
+
+- **Auto-refresh tiap 20 detik** — KPI, tabel Kesehatan Per Site, dan Alarm Prioritas ter-update sendiri lewat polling ke `GET /noc/api/dashboard` (endpoint baru, query-nya sama persis dengan yang dipakai render awal, di-cache 8 detik di server supaya beberapa layar NOC yang terbuka bersamaan tidak membebani database). Ada indikator kecil di health-strip ("live" / "diperbarui Xd lalu" / "gagal memuat ulang") biar jelas datanya masih hidup.
+- **Status kritis lebih mencolok** — dot hijau di health-strip sekarang benar-benar berdenyut (sebelumnya statis), kartu KPI yang berstatus danger dan baris Alarm Prioritas yang danger punya animasi pulse merah supaya langsung kelihatan dari jauh, dan angka besar di kartu KPI diperbesar sedikit untuk keterbacaan wallboard. Animasi otomatis nonaktif kalau OS pengguna diset `prefers-reduced-motion`.
+- File baru: `public/js/noc.js` (polling + render ulang KPI/tabel/alarm client-side, pola sama seperti `public/js/monitoring.js`).

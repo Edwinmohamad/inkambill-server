@@ -8,7 +8,7 @@ assert(noc.includes('Alarm Prioritas')&&noc.includes('Kesehatan Per Site'),'Dash
 assert(schema.includes('network_map_nodes')&&schema.includes('network_map_links')&&schema.includes('ensureV43Schema'),'Skema geographic map belum lengkap');
 assert(map.includes('leaflet@1.9.4')&&map.includes('openstreetmap.org')&&map.includes('fiber-line'),'OSM dan jalur menyala belum aktif');
 assert(acs.includes("'/map/nodes'")&&acs.includes("'/map/links'"),'CRUD titik/jalur belum tersedia');
-assert(acsService.includes("new Set(['refreshObject','reboot'])"),'Allowlist aksi ACS tidak ditemukan');
+assert(acsService.includes("new Set(['refreshObject','reboot','setParameterValues'])"),'Allowlist aksi ACS tidak ditemukan');
 assert(acs.includes("String(req.body.confirm||'')!==String(device.serial_number||device.device_id)"),'Reboot ONT belum dilindungi konfirmasi serial');
 assert(acs.includes('acs_action_logs')&&acs.includes('reboot_ont'),'Audit aksi ONT belum lengkap');
 console.log('Powerful network suite regression test OK: instant search, NOC, OSM map, and protected ACS actions.');

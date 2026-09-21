@@ -3,7 +3,7 @@ const db = require('../config/db');
 const { requireMasterAdmin, requirePermission } = require('../middleware/auth');
 const { audit } = require('../services/auditService');
 const {
-  startGateway, logoutGateway, getGatewayStatus, enqueueWaMessage,
+  startGateway, logoutGateway, getGatewayStatus, reconcileGatewayStatus, enqueueWaMessage,
   getQueueStats, getRecentMessages, DEFAULT_REMINDER_TEMPLATE, renderReminderTemplate,
 } = require('../services/whatsappGatewayService');
 const router = express.Router();
@@ -23,13 +23,16 @@ function requireWaSendPermission(req, res, next) {
 // the 'settings' permission — same tier as the Payment Gateways settings tab — since it links a real
 // personal WhatsApp number to the app.
 router.get('/', requirePermission('settings'), async (req, res) => {
-  const [[settingsRow]] = await db.query(
-    `SELECT wa_auto_reminder_enabled,wa_auto_reminder_hour,wa_auto_reminder_offsets,wa_auto_reminder_template FROM settings WHERE id=1 LIMIT 1`
-  );
-  const [stats, messages] = await Promise.all([getQueueStats(), getRecentMessages(50)]);
+  const [settingsResult, gateway, stats, messages] = await Promise.all([
+    db.query(`SELECT wa_auto_reminder_enabled,wa_auto_reminder_hour,wa_auto_reminder_offsets,wa_auto_reminder_template FROM settings WHERE id=1 LIMIT 1`),
+    reconcileGatewayStatus(),
+    getQueueStats(),
+    getRecentMessages(50),
+  ]);
+  const [[settingsRow]] = settingsResult;
   res.render('whatsapp-gateway/index', {
     title: 'WA Gateway',
-    gateway: getGatewayStatus(),
+    gateway,
     stats,
     messages,
     reminderSettings: {
@@ -45,8 +48,8 @@ router.get('/', requirePermission('settings'), async (req, res) => {
 // Polled every few seconds by the WA Gateway page while a QR is pending / connection is settling, so
 // the admin sees state changes without a full page reload.
 router.get('/status.json', requirePermission('settings'), async (req, res) => {
-  const stats = await getQueueStats();
-  res.json({ gateway: getGatewayStatus(), stats });
+  const [gateway, stats] = await Promise.all([reconcileGatewayStatus(), getQueueStats()]);
+  res.json({ gateway, stats });
 });
 
 // Connecting/disconnecting the gateway links a real personal WhatsApp number to this app, so it is

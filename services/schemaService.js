@@ -976,4 +976,25 @@ async function ensureV49Schema() {
   }
 }
 
-module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema };
+async function ensureV50Schema() {
+  // NOC v3 — OLT registry belum pernah dicek reachability-nya secara langsung; status OLT di
+  // dashboard selama ini cuma "tebakan tidak langsung" dari data ONU-nya (kalau semua ONU di
+  // bawahnya offline, dianggap OLT-nya bermasalah). Kolom ini dipakai job ping berkala
+  // (lihat services/oltService.js pingAllOlts(), dijadwalkan di app.js) supaya management_ip
+  // OLT yang sudah didaftarkan bisa dicek langsung, mirip pola last_status/last_error/last_seen_at
+  // yang sudah ada di tabel routers.
+  const [lastStatusCols] = await db.query(`SHOW COLUMNS FROM olt_devices LIKE 'last_status'`);
+  if (!lastStatusCols.length) {
+    await db.query(`ALTER TABLE olt_devices ADD COLUMN last_status ENUM('online','offline') NULL AFTER pon_port_capacity`);
+  }
+  const [lastErrorCols] = await db.query(`SHOW COLUMNS FROM olt_devices LIKE 'last_error'`);
+  if (!lastErrorCols.length) {
+    await db.query(`ALTER TABLE olt_devices ADD COLUMN last_error VARCHAR(500) NULL AFTER last_status`);
+  }
+  const [lastSeenCols] = await db.query(`SHOW COLUMNS FROM olt_devices LIKE 'last_seen_at'`);
+  if (!lastSeenCols.length) {
+    await db.query(`ALTER TABLE olt_devices ADD COLUMN last_seen_at DATETIME NULL AFTER last_error`);
+  }
+}
+
+module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema };

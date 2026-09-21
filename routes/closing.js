@@ -4,7 +4,7 @@ const ExcelJS = require('exceljs');
 const db = require('../config/db');
 const { createClosingReportPdf, rupiah, date } = require('../services/reportPdf');
 const { money, personKey, siteBlock, locationText, normalizeSiteCluster, buildClosingCalculation } = require('../services/closingCalculator');
-const { syncCashDataIntoClosing, countPendingCashData } = require('../services/closingSyncService');
+const { syncCashDataIntoClosing, countPendingCashData, selectUnsyncedCashRows } = require('../services/closingSyncService');
 const { requireMasterAdmin } = require('../middleware/auth');
 const { financialAudit } = require('../services/financialControlService');
 
@@ -42,6 +42,17 @@ function localDateKey(value) {
   const date = value instanceof Date ? value : new Date(value);
   const pad = (number) => String(number).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+// v2.2 — shared helper: month that is `monthOffset` months away from the month
+// containing dateStr (e.g. monthRange(end, 1) = bulan berikutnya, monthRange(start, -1)
+// = bulan kemarin). Used both for the header quick-nav links and for "Kunci & Lanjut
+// ke Bulan Berikutnya".
+function monthRange(dateStr, monthOffset) {
+  const base = new Date(`${dateStr}T00:00:00`);
+  const rangeStart = new Date(base.getFullYear(), base.getMonth() + monthOffset, 1);
+  const rangeEnd = new Date(base.getFullYear(), base.getMonth() + monthOffset + 1, 0);
+  return { start: localDateKey(rangeStart), end: localDateKey(rangeEnd) };
 }
 
 function selectedPeriod(req) {
@@ -199,21 +210,65 @@ router.get('/', async (req, res, next) => {
     // masih menunggu approval, dan berapa yang sudah APPROVED tapi belum ditarik,
     // supaya kelihatan di banner sebelum Master Admin sempat lupa sync.
     let pending = null;
+    // v2.4 — estimasi pendapatan per orang di mode Otomatis, dihitung dari data
+    // yang sudah tersimpan di closing_entries DITAMBAH transaksi Data Kas APPROVED
+    // yang belum ditarik (persis apa yang akan masuk kalau tombol Sync ditekan
+    // sekarang) — tanpa perlu klik Sync dulu buat lihat kira-kira siapa dapat
+    // berapa. Estimasi murni buat pratinjau; tidak menulis apa pun ke database.
+    let estimate = null;
     if (data.closing.mode === 'AUTO' && data.closing.status !== 'LOCKED') {
       pending = await countPendingCashData({ db, closingId: data.period ? data.period.id : null, start, end });
+      const unsyncedRows = await selectUnsyncedCashRows({ db, closingId: data.period ? data.period.id : null, start, end });
+      const extraPayments = [];
+      const extraExpenses = [];
+      unsyncedRows.forEach((row) => {
+        const site = normalizeSiteCluster(row.site_code, null);
+        const amount = money(row.amount);
+        if (!site || amount <= 0) return;
+        const entry = { site_code: site.site, cluster_name: site.cluster, amount, category: row.category_name || 'Lain-lain', description: [row.name, row.notes].filter(Boolean).join(' · ') || null };
+        if (row.category_type === 'income') extraPayments.push(entry); else extraExpenses.push(entry);
+      });
+      const estimateCalc = buildClosingCalculation({
+        payments: [...data.payments, ...extraPayments],
+        expenses: [...data.expenses, ...extraExpenses],
+        heldCash: [],
+        adjustments: data.adjustments,
+        closing: data.closing,
+        mode: 'auto',
+        lineItems: [...data.lineItems, ...extraPayments, ...extraExpenses]
+      });
+      const perPerson = new Map();
+      [estimateCalc.blocks.krwclm, estimateCalc.blocks.kbg].forEach((block) => {
+        (block.shares || []).forEach((share) => { perPerson.set(share.name, (perPerson.get(share.name) || 0) + money(share.amount)); });
+      });
+      estimate = {
+        people: ['Edwin', 'Jon', 'Bopung', 'Mang Ali'].map((name) => ({ name, amount: perPerson.get(name) || 0 })),
+        pendingCount: unsyncedRows.length
+      };
     }
     // v2.2 — navigasi cepat bulan sebelumnya/berikutnya selalu tersedia (tidak
     // cuma waktu periode terkunci) supaya Master Admin tidak perlu ketik tanggal
     // manual buat pindah periode. Dihitung dari rentang periode yang sedang dilihat.
-    const periodStartDate = new Date(`${start}T00:00:00`);
-    const periodEndDate = new Date(`${end}T00:00:00`);
-    const prevMonthStart = new Date(periodStartDate.getFullYear(), periodStartDate.getMonth() - 1, 1);
-    const prevMonthEnd = new Date(periodStartDate.getFullYear(), periodStartDate.getMonth(), 0);
-    const prevPeriod = { start: localDateKey(prevMonthStart), end: localDateKey(prevMonthEnd) };
-    const nextMonthStart = new Date(periodEndDate.getFullYear(), periodEndDate.getMonth() + 1, 1);
-    const nextMonthEnd = new Date(periodEndDate.getFullYear(), periodEndDate.getMonth() + 2, 0);
-    const nextPeriod = { start: localDateKey(nextMonthStart), end: localDateKey(nextMonthEnd) };
-    res.render('closing/index', { title: 'Closing', pageTitle: 'Closing', pageSubtitle: `${start} s/d ${end}`, start, end, hideEdwin, money, locationText, pending, prevPeriod, nextPeriod, ...data, ...unpaid });
+    const prevPeriod = monthRange(start, -1);
+    const nextPeriod = monthRange(end, 1);
+    // v2.3 — tren laba bersih dibanding bulan sebelumnya. Cuma dihitung kalau
+    // periode sebelumnya memang pernah diisi (punya baris `closing_periods`),
+    // supaya tidak menampilkan persentase yang menyesatkan waktu belum ada
+    // data pembanding (mis. bulan pertama pakai aplikasi ini).
+    const prevData = await loadClosing(prevPeriod.start, prevPeriod.end);
+    let trend = null;
+    if (prevData.period) {
+      const pctChange = (current, previous) => {
+        if (previous === 0) return current === 0 ? 0 : null;
+        return ((current - previous) / Math.abs(previous)) * 100;
+      };
+      trend = {
+        krwclm: pctChange(money(data.blocks.krwclm.profit), money(prevData.blocks.krwclm.profit)),
+        kbg: pctChange(money(data.blocks.kbg.profit), money(prevData.blocks.kbg.profit)),
+        prevLabel: `${prevPeriod.start} s/d ${prevPeriod.end}`
+      };
+    }
+    res.render('closing/index', { title: 'Closing', pageTitle: 'Closing', pageSubtitle: `${start} s/d ${end}`, start, end, hideEdwin, money, locationText, pending, estimate, prevPeriod, nextPeriod, trend, ...data, ...unpaid });
   } catch (err) { next(err); }
 });
 
@@ -311,7 +366,11 @@ router.post('/period-lock', async (req, res, next) => {
     await conn.execute(`UPDATE closing_periods SET status='LOCKED',snapshot_json=?,locked_by=?,locked_at=NOW() WHERE id=?`,[JSON.stringify(data),req.session.user.id,period.id]);
     await financialAudit({conn,userId:req.session.user.id,action:'lock_period',entityType:'closing_period',entityId:period.id,before,after:{status:'LOCKED',period_start:start,period_end:end},reason:String(req.body.reason||'Closing periode selesai'),ip:req.ip});
     await conn.commit();req.session.flash={type:'success',message:`Periode ${start} s/d ${end} dikunci. Transaksi pada tanggal tersebut sekarang ditolak.`};
-    res.redirect(`/closing?from=${start}&to=${end}`);
+    // v2.2 — tombol "Kunci & Lanjut ke Bulan Berikutnya" kirim go_next=1 supaya
+    // langsung diarahkan ke draft bulan berikutnya alih-alih tetap di periode yang
+    // baru saja dikunci.
+    const target = String(req.body.go_next||'')==='1' ? monthRange(end, 1) : { start, end };
+    res.redirect(`/closing?from=${target.start}&to=${target.end}`);
   } catch(err){if(conn)await conn.rollback();next(err);} finally{if(conn)conn.release();}
 });
 

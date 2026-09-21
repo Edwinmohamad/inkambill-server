@@ -17,7 +17,7 @@
       <% olts.forEach(o=>{ const bad=o.onu_offline+o.onu_critical; %><tr>
         <td><span class="cell-main"><%= o.name %></span><% if(!o.is_registered){ %><span class="cell-sub text-warning">Belum terdaftar</span><% } %></td>
         <td><%= o.vendor||'-' %></td>
-        <td><code class="text-purple"><%= o.management_ip||'-' %></code></td>
+        <td><code class="text-purple"><%= o.management_ip||'-' %></code><% if(o.management_ip){ %><br><span class="status-badge <%= o.last_status==='online'?'green':o.last_status==='offline'?'red':'' %>"><%= o.last_status==='online'?'Reachable':o.last_status==='offline'?'Unreachable':'Belum dicek' %></span><% } %></td>
         <td><%= o.pon_ports_used %> port aktif <small>(kapasitas <%= o.pon_port_capacity %> ONU/port)</small></td>
         <td><%= o.onu_online %>/<%= o.onu_total %> online<% if(o.onu_no_port){ %><span class="cell-sub">· <%= o.onu_no_port %> tanpa data port</span><% } %></td>
         <td><span class="status-badge <%= bad?(o.onu_critical?'red':'orange'):'green' %>"><%= bad?(o.onu_critical?'KRITIS':'PERHATIAN'):'NORMAL' %></span></td>

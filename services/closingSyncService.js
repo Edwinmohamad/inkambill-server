@@ -94,4 +94,4 @@ async function countPendingCashData({ db, closingId, start, end }) {
   return { pendingApproval: Number(pendingRow?.n || 0), unsyncedApproved };
 }
 
-module.exports = { syncCashDataIntoClosing, countPendingCashData };
+module.exports = { syncCashDataIntoClosing, countPendingCashData, selectUnsyncedCashRows };
