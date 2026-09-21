@@ -1,11 +1,15 @@
 <div class="closing-page closing-manual-only">
-  <header class="closing-head page-header">
+  <header class="closing-head page-header" id="closing-step-periode">
     <div>
       <div class="closing-eyebrow"><%= closing.mode === 'AUTO' ? 'INKAMNET CONTROL CENTER \u00b7 KALKULATOR OTOMATIS' : 'INKAMNET CONTROL CENTER \u00b7 KALKULATOR MANUAL' %></div>
       <h1><i class="bi bi-calculator-fill me-2"></i>Closing</h1>
       <p class="text-muted mb-0">Isi angka untuk periode <strong><%= start %> s/d <%= end %></strong>. Status: <strong><%= closing.status==='LOCKED'?'TERKUNCI':'DRAFT' %></strong>.</p>
     </div>
     <form class="closing-period-form" method="get" action="/closing">
+      <div class="closing-period-quick-nav">
+        <a class="btn btn-outline-secondary btn-sm" href="/closing?from=<%= prevPeriod.start %>&to=<%= prevPeriod.end %><%= hideEdwin ? '&hide_edwin=1' : '' %>" title="Pindah ke periode <%= prevPeriod.start %> s/d <%= prevPeriod.end %>"><i class="bi bi-chevron-left"></i> Bulan Kemarin</a>
+        <a class="btn btn-outline-secondary btn-sm" href="/closing?from=<%= nextPeriod.start %>&to=<%= nextPeriod.end %><%= hideEdwin ? '&hide_edwin=1' : '' %>" title="Pindah ke periode <%= nextPeriod.start %> s/d <%= nextPeriod.end %>">Bulan Berikutnya <i class="bi bi-chevron-right"></i></a>
+      </div>
       <label class="closing-field"><span>Mulai</span><input class="form-control form-control-sm" type="date" name="from" value="<%= start %>" required></label>
       <label class="closing-field"><span>Sampai</span><input class="form-control form-control-sm" type="date" name="to" value="<%= end %>" required></label>
       <button class="btn btn-primary btn-sm closing-period-submit" type="submit"><i class="bi bi-arrow-repeat me-1"></i>Hitung</button>
@@ -13,72 +17,95 @@
     </form>
   </header>
 
-  <div class="closing-mode-switch" role="group" aria-label="Mode closing">
-    <% if (closing.status==='LOCKED') { %>
-      <span class="closing-mode-pill is-locked"><i class="bi <%= closing.mode==='AUTO' ? 'bi-arrow-repeat' : 'bi-pencil-square' %>"></i>Mode <%= closing.mode==='AUTO' ? 'Otomatis' : 'Manual' %> (terkunci bersama periode)</span>
-    <% } else { %>
-      <form method="post" action="/closing/mode" data-loading-message="Mengganti mode...">
-        <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="mode" value="MANUAL">
-        <button class="closing-mode-pill <%= closing.mode!=='AUTO' ? 'is-active' : '' %>" type="submit" <%= closing.mode!=='AUTO' ? 'disabled' : '' %>><i class="bi bi-pencil-square"></i>Manual</button>
-      </form>
-      <form method="post" action="/closing/mode" data-loading-message="Mengganti mode...">
-        <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="mode" value="AUTO">
-        <button class="closing-mode-pill <%= closing.mode==='AUTO' ? 'is-active' : '' %>" type="submit" <%= closing.mode==='AUTO' ? 'disabled' : '' %>><i class="bi bi-arrow-repeat"></i>Otomatis · Sinkron Data Kas</button>
-      </form>
-    <% } %>
-  </div>
+  <section class="card closing-card closing-control-panel" aria-label="Kontrol periode & mode">
+    <div class="card-body closing-control-body">
 
-  <div class="closing-toolbar">
-    <div class="closing-pdf-actions">
-      <a class="btn btn-outline-primary btn-sm" href="/closing/history"><i class="bi bi-clock-history me-1"></i>Rekap Bulanan</a>
-      <a class="btn btn-outline-primary btn-sm" href="/closing/export.xlsx?from=<%= start %>&to=<%= end %>"><i class="bi bi-file-earmark-spreadsheet me-1"></i>Export Excel</a>
-      <% [['edwin','Edwin'],['jon','Jon'],['bopung','Bopung'],['mang-ali','Mang Ali']].forEach(([key,label]) => { %>
-        <a class="btn btn-outline-secondary btn-sm" href="/closing/pdf?from=<%= start %>&to=<%= end %>&report=<%= key %><%= hideEdwin ? '&hide_edwin=1' : '' %>" target="_blank" rel="noopener"><i class="bi bi-file-earmark-pdf me-1"></i><%= label %></a>
-      <% }) %>
-    </div>
-    <% if(closing.status==='LOCKED'){ %>
-    <div class="closing-toolbar-locked-actions">
-      <form method="post" action="/closing/period-reopen" data-loading-message="Membuka kembali periode..."><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input class="form-control form-control-sm" name="reason" minlength="5" placeholder="Alasan buka kembali" required><button class="btn btn-outline-warning btn-sm"><i class="bi bi-unlock"></i> Buka Kembali</button></form>
-      <% if (typeof nextPeriod !== 'undefined' && nextPeriod) { %>
-        <a class="btn btn-outline-success btn-sm" href="/closing?from=<%= nextPeriod.start %>&to=<%= nextPeriod.end %>"><i class="bi bi-arrow-right-circle me-1"></i>Buat Periode Berikutnya (<%= nextPeriod.start %> s/d <%= nextPeriod.end %>)</a>
-      <% } %>
-    </div>
-    <% }else{ %>
-      <% if (closing.mode==='AUTO' && typeof pending !== 'undefined' && pending && pending.unsyncedApproved > 0) { %>
-      <div class="closing-lock-warning">
-        <i class="bi bi-exclamation-triangle-fill"></i>
-        <span><%= pending.unsyncedApproved %> transaksi Data Kas APPROVED belum disinkron ke periode ini.</span>
-        <form method="post" action="/closing/period-lock" data-loading-message="Memvalidasi dan mengunci periode..." onsubmit="return confirm('Masih ada transaksi Data Kas yang belum disinkron ke periode ini. Yakin tetap kunci periode ini?')">
-          <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="reason" value="Closing periode selesai"><input type="hidden" name="force_lock" value="1">
-          <button class="btn btn-outline-danger btn-sm"><i class="bi bi-lock"></i> Kunci Walau Belum Sync Semua</button>
-        </form>
+      <div class="closing-control-row">
+        <div class="closing-control-row-label"><i class="bi bi-sliders2"></i><span>Mode input</span></div>
+        <div class="closing-control-row-body">
+          <div class="closing-mode-switch" role="group" aria-label="Mode closing">
+            <% if (closing.status==='LOCKED') { %>
+              <span class="closing-mode-pill is-locked"><i class="bi <%= closing.mode==='AUTO' ? 'bi-arrow-repeat' : 'bi-pencil-square' %>"></i>Mode <%= closing.mode==='AUTO' ? 'Otomatis' : 'Manual' %> (terkunci bersama periode)</span>
+              <small class="closing-mode-locked-hint"><i class="bi bi-info-circle"></i>Periode ini terkunci, jadi mode tidak bisa diganti. Klik <strong>Buka Kembali</strong> di bagian "Status periode" di bawah kalau memang perlu ganti mode.</small>
+            <% } else { %>
+              <form method="post" action="/closing/mode" data-loading-message="Mengganti mode...">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="mode" value="MANUAL">
+                <button class="closing-mode-pill <%= closing.mode!=='AUTO' ? 'is-active' : '' %>" type="submit" <%= closing.mode!=='AUTO' ? 'disabled' : '' %>><i class="bi bi-pencil-square"></i>Manual</button>
+              </form>
+              <form method="post" action="/closing/mode" data-loading-message="Mengganti mode...">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="mode" value="AUTO">
+                <button class="closing-mode-pill <%= closing.mode==='AUTO' ? 'is-active' : '' %>" type="submit" <%= closing.mode==='AUTO' ? 'disabled' : '' %>><i class="bi bi-arrow-repeat"></i>Otomatis · Sinkron Data Kas</button>
+              </form>
+            <% } %>
+          </div>
+
+          <% if (closing.mode === 'AUTO') { %>
+          <div class="closing-mode-banner is-auto">
+            <i class="bi bi-arrow-repeat"></i>
+            <div>
+              <strong>Sinkron Data Kas · <%= closing.status==='LOCKED'?'periode terkunci':'masih dapat diedit' %></strong>
+              <span>Transaksi Data Kas yang sudah <b>APPROVED</b> Master Admin pada rentang tanggal ini bisa ditarik ke bawah dengan tombol Sync. Baris hasil sync tetap boleh diedit/dihapus/ditambah manual seperti baris biasa.<%= typeof lastSyncedText !== 'undefined' && lastSyncedText ? ` Terakhir sync: ${lastSyncedText}.` : ' Belum pernah disinkron.' %><% if (typeof pending !== 'undefined' && pending) { %><% if (pending.unsyncedApproved > 0) { %> <b><%= pending.unsyncedApproved %> transaksi APPROVED</b> siap ditarik sekarang.<% } %><% if (pending.pendingApproval > 0) { %> <%= pending.pendingApproval %> transaksi lain masih menunggu approval di Data Kas (belum bisa ditarik sampai di-approve).<% } %><% } %></span>
+            </div>
+            <% if (closing.status!=='LOCKED') { %>
+            <form method="post" action="/closing/sync" data-loading-message="Menarik transaksi Data Kas..." class="closing-sync-form">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>">
+              <button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-cloud-download me-1"></i>Sync dari Data Kas</button>
+            </form>
+            <% } %>
+          </div>
+          <% } else { %>
+          <div class="closing-mode-banner is-manual">
+            <i class="bi bi-pencil-square"></i>
+            <div><strong>Input manual · <%= closing.status==='LOCKED'?'periode terkunci':'masih dapat diedit' %></strong><span>Semua angka diketik sendiri di bawah. Pindah ke mode Otomatis kalau mau menarik pemasukan/pengeluaran dari Data Kas sebagai titik awal (tetap bisa ditambah/diedit manual).</span></div>
+          </div>
+          <% } %>
+        </div>
       </div>
-      <% } else { %>
-      <form method="post" action="/closing/period-lock" data-loading-message="Memvalidasi dan mengunci periode..." onsubmit="return confirm('Kunci periode ini? Transaksi bertanggal dalam periode ini akan ditolak.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="reason" value="Closing periode selesai"><button class="btn btn-danger btn-sm"><i class="bi bi-lock"></i> Kunci Periode</button></form>
-      <% } %>
-    <% } %>
-  </div>
 
-  <% if (closing.mode === 'AUTO') { %>
-  <div class="closing-mode-banner is-auto">
-    <i class="bi bi-arrow-repeat"></i>
-    <div>
-      <strong>Mode otomatis · sinkron Data Kas · <%= closing.status==='LOCKED'?'periode terkunci':'masih dapat diedit' %></strong>
-      <span>Transaksi Data Kas yang sudah <b>APPROVED</b> Master Admin pada rentang tanggal ini bisa ditarik ke bawah dengan tombol Sync. Baris hasil sync tetap boleh diedit/dihapus/ditambah manual seperti baris biasa.<%= typeof lastSyncedText !== 'undefined' && lastSyncedText ? ` Terakhir sync: ${lastSyncedText}.` : ' Belum pernah disinkron.' %><% if (typeof pending !== 'undefined' && pending) { %><% if (pending.unsyncedApproved > 0) { %> <b><%= pending.unsyncedApproved %> transaksi APPROVED</b> siap ditarik sekarang.<% } %><% if (pending.pendingApproval > 0) { %> <%= pending.pendingApproval %> transaksi lain masih menunggu approval di Data Kas (belum bisa ditarik sampai di-approve).<% } %><% } %></span>
+      <div class="closing-control-divider" role="separator"></div>
+
+      <div class="closing-control-row">
+        <div class="closing-control-row-label"><i class="bi bi-file-earmark-bar-graph"></i><span>Laporan</span></div>
+        <div class="closing-control-row-body">
+          <div class="closing-pdf-actions">
+            <a class="btn btn-outline-primary btn-sm" href="/closing/history"><i class="bi bi-clock-history me-1"></i>Rekap Bulanan</a>
+            <a class="btn btn-outline-primary btn-sm" href="/closing/export.xlsx?from=<%= start %>&to=<%= end %>"><i class="bi bi-file-earmark-spreadsheet me-1"></i>Export Excel</a>
+            <% [['edwin','Edwin'],['jon','Jon'],['bopung','Bopung'],['mang-ali','Mang Ali']].forEach(([key,label]) => { %>
+              <a class="btn btn-outline-secondary btn-sm" href="/closing/pdf?from=<%= start %>&to=<%= end %>&report=<%= key %><%= hideEdwin ? '&hide_edwin=1' : '' %>" target="_blank" rel="noopener"><i class="bi bi-file-earmark-pdf me-1"></i><%= label %></a>
+            <% }) %>
+          </div>
+        </div>
+      </div>
+
+      <div class="closing-control-divider" role="separator"></div>
+
+      <div class="closing-control-row">
+        <div class="closing-control-row-label"><i class="bi bi-shield-lock"></i><span>Status periode</span></div>
+        <div class="closing-control-row-body">
+          <% if(closing.status==='LOCKED'){ %>
+          <div class="closing-toolbar-locked-actions">
+            <form method="post" action="/closing/period-reopen" data-loading-message="Membuka kembali periode..."><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input class="form-control form-control-sm" name="reason" minlength="5" placeholder="Alasan buka kembali" required><button class="btn btn-outline-warning btn-sm"><i class="bi bi-unlock"></i> Buka Kembali</button></form>
+            <a class="btn btn-outline-success btn-sm" href="/closing?from=<%= nextPeriod.start %>&to=<%= nextPeriod.end %>"><i class="bi bi-arrow-right-circle me-1"></i>Buat Periode Berikutnya (<%= nextPeriod.start %> s/d <%= nextPeriod.end %>)</a>
+          </div>
+          <% }else{ %>
+            <% if (closing.mode==='AUTO' && typeof pending !== 'undefined' && pending && pending.unsyncedApproved > 0) { %>
+            <div class="closing-lock-warning">
+              <i class="bi bi-exclamation-triangle-fill"></i>
+              <span><%= pending.unsyncedApproved %> transaksi Data Kas APPROVED belum disinkron ke periode ini.</span>
+              <form method="post" action="/closing/period-lock" data-loading-message="Memvalidasi dan mengunci periode..." onsubmit="return confirm('Masih ada transaksi Data Kas yang belum disinkron ke periode ini. Yakin tetap kunci periode ini?')">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="reason" value="Closing periode selesai"><input type="hidden" name="force_lock" value="1">
+                <button class="btn btn-outline-danger btn-sm"><i class="bi bi-lock"></i> Kunci Walau Belum Sync Semua</button>
+              </form>
+            </div>
+            <% } else { %>
+            <form method="post" action="/closing/period-lock" data-loading-message="Memvalidasi dan mengunci periode..." onsubmit="return confirm('Kunci periode ini? Transaksi bertanggal dalam periode ini akan ditolak.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>"><input type="hidden" name="reason" value="Closing periode selesai"><button class="btn btn-danger btn-sm"><i class="bi bi-lock"></i> Kunci Periode</button></form>
+            <% } %>
+          <% } %>
+        </div>
+      </div>
+
     </div>
-    <% if (closing.status!=='LOCKED') { %>
-    <form method="post" action="/closing/sync" data-loading-message="Menarik transaksi Data Kas..." class="closing-sync-form">
-      <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>">
-      <button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-cloud-download me-1"></i>Sync dari Data Kas</button>
-    </form>
-    <% } %>
-  </div>
-  <% } else { %>
-  <div class="closing-mode-banner is-manual">
-    <i class="bi bi-pencil-square"></i>
-    <div><strong>Mode manual · <%= closing.status==='LOCKED'?'periode terkunci':'masih dapat diedit' %></strong><span>Semua angka diketik sendiri di bawah. Pindah ke mode Otomatis kalau mau menarik pemasukan/pengeluaran dari Data Kas sebagai titik awal (tetap bisa ditambah/diedit manual).</span></div>
-  </div>
-  <% } %>
+  </section>
 
   <% if (typeof unpaidSummary !== 'undefined' && unpaidSummary && unpaidSummary.count > 0) { %>
   <div class="closing-unmapped-alert closing-unpaid-note">
@@ -91,7 +118,7 @@
   <% } %>
 
   <nav class="closing-steps" aria-label="Tahapan closing">
-    <span><b>1</b><small>Periode</small></span><span><b>2</b><small>Pendapatan & pengeluaran</small></span><span><b>3</b><small>Potongan tim</small></span><span><b>4</b><small>Hasil & PDF</small></span>
+    <a href="#closing-step-periode"><b>1</b><small>Periode</small></a><a href="#closing-step-input"><b>2</b><small>Pendapatan &amp; pengeluaran</small></a><a href="#closing-step-adjustments"><b>3</b><small>Potongan tim</small></a><a href="#closing-step-hasil"><b>4</b><small>Hasil &amp; PDF</small></a>
   </nav>
 
   <section class="closing-result-grid" aria-label="Ringkasan hasil closing">
@@ -114,7 +141,7 @@
     <div class="closing-unmapped-alert"><i class="bi bi-exclamation-triangle-fill"></i><div><strong>Lokasi belum dipetakan</strong><span>Gunakan lokasi CDS atau KBG. Data ini tidak masuk pembagian.</span><small>Pendapatan Rp <%= money(blocks.other.revenue).toLocaleString('id-ID') %> · Pengeluaran Rp <%= money(blocks.other.expense).toLocaleString('id-ID') %></small></div></div>
   <% } %>
 
-  <section class="card closing-card closing-input-card">
+  <section class="card closing-card closing-input-card" id="closing-step-input">
     <div class="card-body">
       <div class="closing-section-head"><div><span class="closing-card-kicker">LANGKAH 2 · INPUT UTAMA</span><h2>Pendapatan dan pengeluaran</h2><small class="text-muted">Isi nominal per lokasi. Pengeluaran CDS boleh diberi cluster hanya sebagai keterangan.</small></div><span class="closing-count"><%= lineItems.length %> baris</span></div>
         <div class="closing-entry-grid">
@@ -200,7 +227,7 @@
     </div>
   </section>
 
-  <section class="card closing-card">
+  <section class="card closing-card" id="closing-step-adjustments">
     <div class="card-body">
       <div class="closing-section-head"><div><span class="closing-card-kicker">LANGKAH 3 · PENYESUAIAN</span><h2>Potongan dan tambahan per orang</h2><small class="text-muted">Cash belum setor otomatis mengurangi hak penerima.</small></div><span class="closing-count"><%= adjustments.length %> baris</span></div>
         <form class="closing-adjustment-grid mt-3" method="post" action="/closing/adjustments">
@@ -237,7 +264,7 @@
     <div class="modal-footer"><button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-save2 me-1"></i>Simpan perubahan</button></div>
   </form></div></div>
 
-  <section class="card closing-card">
+  <section class="card closing-card" id="closing-step-hasil">
     <div class="card-body">
       <div class="closing-section-head"><div><span class="closing-card-kicker">LANGKAH 4 · HASIL PEMBAGIAN</span><h2>Pembagian hasil per lokasi</h2><small class="text-muted">Persentase berikut digunakan untuk menghitung laba bersih setelah pengeluaran lokasi.</small></div><span class="closing-count">Kalkulator</span></div>
       <div class="closing-share-rules mt-3">

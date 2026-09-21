@@ -1,7 +1,7 @@
 <link rel="stylesheet" href="/css/monitoring.css?v=<%= assetVersion %>">
 <section class="mon-page" id="monApp" data-admin="<%= isAdmin?'1':'0' %>">
   <div class="module-head">
-    <div><div class="module-kicker">LIVE MONITORING · DASHBOARD MONITORING</div><h1>Monitoring ONT, MikroTik & OLT</h1><p>Kesehatan dan traffic jaringan real-time, langsung dari GenieACS, RouterOS REST, dan metadata OLT.</p></div>
+    <div><div class="module-kicker">KELOLA PERANGKAT</div><h1>ONT, MikroTik & OLT</h1><p>Detail dan aksi per perangkat &mdash; ping, reboot, ganti SSID/password ONT, test koneksi router. Untuk ringkasan menyeluruh, buka <a href="/noc">NOC Terpadu</a>.</p></div>
     <div class="module-actions mon-actions">
       <div class="seg" id="monSeg">
         <button class="active" data-board="ont" type="button" title="Alt/Ctrl+1">ONT</button>
@@ -13,11 +13,6 @@
           <option value="">Semua Site</option>
           <% sites.forEach(s=>{ %><option value="<%= s.code %>"><%= s.code %> · <%= s.name %></option><% }) %>
         </select>
-        <div class="seg seg-sm" id="monRangeSeg">
-          <button class="active" data-hours="24" type="button">24 Jam</button>
-          <button data-hours="168" type="button">7 Hari</button>
-          <button data-hours="720" type="button">30 Hari</button>
-        </div>
         <button type="button" class="icon-button" id="monRefreshBtn" title="Refresh sekarang"><i class="bi bi-arrow-clockwise"></i></button>
         <small class="mon-refresh-indicator" id="monRefreshIndicator">memuat...</small>
       </div>

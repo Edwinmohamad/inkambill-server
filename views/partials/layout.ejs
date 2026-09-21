@@ -87,7 +87,7 @@
       <% if(can('finance')||can('reports')){ %><section><h3>Keuangan</h3><div class="go-menu-grid">
         <% if(can('finance')){ %><a href="/cash"><i class="bi bi-cash-stack"></i><span>Arus Kas</span></a><a href="/analytics"><i class="bi bi-pie-chart-fill"></i><span>Analitik</span></a><a href="/debts"><i class="bi bi-journal-check"></i><span>Hutang Piutang</span></a><% } %><% if(can('reports')){ %><a href="/reports"><i class="bi bi-bar-chart-line-fill"></i><span>Laporan</span></a><% } %><% if(canClosing){ %><a href="/closing"><i class="bi bi-calculator-fill"></i><span>Closing</span></a><% } %>
       </div></section><% } %>
-      <% if(can('network')){ %><section><h3>Jaringan</h3><div class="go-menu-grid"><a href="/monitoring"><i class="bi bi-grid-1x2-fill"></i><span>Dashboard Monitoring</span></a><a href="/noc"><i class="bi bi-activity"></i><span>NOC Terpadu</span></a><a href="/acs"><i class="bi bi-bezier2"></i><span>Map & ONT</span></a><a href="/network/monitor"><i class="bi bi-broadcast-pin"></i><span>Network Monitor</span></a><a href="/routers"><i class="bi bi-router-fill"></i><span>Router</span></a><a href="/olt"><i class="bi bi-hdd-network-fill"></i><span>Registry OLT</span></a><a href="/sites"><i class="bi bi-hdd-rack-fill"></i><span>Site / POP</span></a><a href="/clusters"><i class="bi bi-diagram-3-fill"></i><span>Cluster & ODP</span></a></div></section><% } %>
+      <% if(can('network')){ %><section><h3>Jaringan</h3><div class="go-menu-grid"><a href="/noc"><i class="bi bi-activity"></i><span>NOC Terpadu</span></a><a href="/acs"><i class="bi bi-bezier2"></i><span>Map & ONT</span></a><a href="/monitoring"><i class="bi bi-grid-1x2-fill"></i><span>Kelola Perangkat</span></a><a href="/routers"><i class="bi bi-router-fill"></i><span>Router</span></a><a href="/olt"><i class="bi bi-hdd-network-fill"></i><span>Registry OLT</span></a><a href="/sites"><i class="bi bi-hdd-rack-fill"></i><span>Site / POP</span></a><a href="/clusters"><i class="bi bi-diagram-3-fill"></i><span>Cluster & ODP</span></a></div></section><% } %>
       <% if(can('support')||can('warehouse')){ %><section><h3>Operasional</h3><div class="go-menu-grid"><% if(can('support')){ %><a href="/tickets"><i class="bi bi-life-preserver"></i><span>Ticketing</span></a><a href="/schedules"><i class="bi bi-calendar2-check-fill"></i><span>Jadwal Teknisi</span></a><a href="/team-kpi"><i class="bi bi-bar-chart-steps"></i><span>KPI Tim</span></a><% } %><% if(can('warehouse')){ %><a href="/inventory"><i class="bi bi-box-seam-fill"></i><span>Gudang</span></a><% } %></div></section><% } %>
       <section><h3>Akun & Sistem</h3><div class="go-menu-grid"><a href="/profile"><i class="bi bi-person-circle"></i><span>Profil Saya</span></a><% if(can('settings')){ %><a href="/settings"><i class="bi bi-sliders2"></i><span>Pengaturan</span></a><% } %><button type="button" data-theme-toggle><i class="bi bi-moon-stars-fill"></i><span>Mode Tampilan</span></button></div></section>
     </div>
@@ -161,26 +161,20 @@
         <% } %>
 
         <% if(can('network')){ %>
-        <% const netRegistryOpen = currentPath.startsWith('/sites') || currentPath.startsWith('/routers') || currentPath.startsWith('/olt') || currentPath.startsWith('/clusters'); %>
-        <% const netMonitoringOpen = currentPath.startsWith('/monitoring') || currentPath.startsWith('/noc') || currentPath.startsWith('/network/monitor') || currentPath.startsWith('/acs'); %>
+        <% const netDetailOpen = currentPath.startsWith('/sites') || currentPath.startsWith('/routers') || currentPath.startsWith('/olt') || currentPath.startsWith('/clusters') || currentPath.startsWith('/monitoring') || currentPath.startsWith('/network/monitor'); %>
         <div class="sidebar-section-label"><%= language==='en'?'NETWORK':'JARINGAN' %></div>
         <nav class="sidebar-nav">
-          <details class="sidebar-nav-group infra-sidebar-group" <%= netRegistryOpen ? 'open' : '' %>>
-            <summary class="sidebar-link <%= netRegistryOpen ? 'active' : '' %>"><i class="bi bi-hdd-rack-fill"></i><span>Registry & Konfigurasi</span><em><i class="bi bi-chevron-down"></i></em></summary>
+          <a class="sidebar-link <%= currentPath.startsWith('/noc') ? 'active' : '' %>" href="/noc"><i class="bi bi-speedometer2"></i><span>NOC Terpadu</span><em class="badge-live">LIVE</em></a>
+          <a class="sidebar-link <%= currentPath.startsWith('/acs') ? 'active' : '' %>" href="/acs"><i class="bi bi-bezier2"></i><span>Network Map & ONT</span></a>
+          <details class="sidebar-nav-group infra-sidebar-group" <%= netDetailOpen ? 'open' : '' %>>
+            <summary class="sidebar-link <%= netDetailOpen ? 'active' : '' %>"><i class="bi bi-hdd-rack-fill"></i><span>Detail & Pengaturan</span><em><i class="bi bi-chevron-down"></i></em></summary>
             <div class="sidebar-subnav infra-sidebar-subnav">
-              <a class="<%= currentPath.startsWith('/sites') ? 'active' : '' %>" href="/sites"><i class="bi bi-hdd-rack-fill"></i><%= t('sites') %></a>
+              <a class="<%= currentPath.startsWith('/monitoring') ? 'active' : '' %>" href="/monitoring"><i class="bi bi-grid-1x2-fill"></i>Kelola Perangkat</a>
+              <a class="<%= currentPath.startsWith('/network/monitor') ? 'active' : '' %>" href="/network/monitor"><i class="bi bi-broadcast-pin"></i><%= t('monitor') %></a>
               <a class="<%= currentPath.startsWith('/routers') ? 'active' : '' %>" href="/routers"><i class="bi bi-router-fill"></i><%= t('routers') %></a>
               <a class="<%= currentPath.startsWith('/olt') ? 'active' : '' %>" href="/olt"><i class="bi bi-hdd-network-fill"></i>Registry OLT</a>
+              <a class="<%= currentPath.startsWith('/sites') ? 'active' : '' %>" href="/sites"><i class="bi bi-hdd-rack-fill"></i><%= t('sites') %></a>
               <a class="<%= currentPath.startsWith('/clusters') ? 'active' : '' %>" href="/clusters"><i class="bi bi-diagram-3-fill"></i><%= t('clusters') %></a>
-            </div>
-          </details>
-          <details class="sidebar-nav-group infra-sidebar-group" <%= netMonitoringOpen ? 'open' : '' %>>
-            <summary class="sidebar-link <%= netMonitoringOpen ? 'active' : '' %>"><i class="bi bi-grid-1x2-fill"></i><span>Live Monitoring</span><em><i class="bi bi-chevron-down"></i></em></summary>
-            <div class="sidebar-subnav infra-sidebar-subnav">
-              <a class="<%= currentPath.startsWith('/monitoring') ? 'active' : '' %>" href="/monitoring"><i class="bi bi-grid-1x2-fill"></i>Dashboard Monitoring<em class="badge-new">NEW</em></a>
-              <a class="<%= currentPath.startsWith('/noc') ? 'active' : '' %>" href="/noc"><i class="bi bi-speedometer2"></i>NOC Terpadu<em class="badge-live">LIVE</em></a>
-              <a class="<%= currentPath.startsWith('/network/monitor') ? 'active' : '' %>" href="/network/monitor"><i class="bi bi-broadcast-pin"></i><%= t('monitor') %></a>
-              <a class="<%= currentPath.startsWith('/acs') ? 'active' : '' %>" href="/acs"><i class="bi bi-bezier2"></i>Network Map & ONT<em class="badge-live">LIVE</em></a>
             </div>
           </details>
           <details class="sidebar-nav-group infra-sidebar-group" <%= currentPath.startsWith('/network/tools') ? 'open' : '' %>>

@@ -17,12 +17,10 @@
 
   // ---------------- Filter state ----------------
   let currentSite = '';
-  let currentHours = 24;
   const lastLoadAt = { ont: null, mikrotik: null, olt: null };
   const getActiveBoard = () => document.querySelector('#monSeg button.active')?.dataset.board || 'ont';
   const siteQuery = () => (currentSite ? `&site=${encodeURIComponent(currentSite)}` : '');
-  const queryString = () => `hours=${currentHours}${siteQuery()}`;
-  const hoursLabel = (h) => h >= 720 ? '30 hari' : h >= 168 ? '7 hari' : '24 jam';
+  const queryString = () => (currentSite ? `site=${encodeURIComponent(currentSite)}` : '');
 
   async function jsonFetch(url, opts = {}) {
     const response = await fetch(url, {
@@ -35,27 +33,10 @@
     return data;
   }
 
-  function sparkBars(values, empty = 'Belum ada data historis.') {
-    const nums = (values || []).map(Number).filter((n) => Number.isFinite(n));
-    if (!nums.length) return `<div class="spark empty">${esc(empty)}</div>`;
-    const max = Math.max(...nums, 1);
-    return `<div class="spark">${nums.map((v) => `<i style="height:${Math.max(4, Math.round((v / max) * 52))}px" title="${esc(Math.round(v * 100) / 100)}"></i>`).join('')}</div>`;
-  }
-
   function ringHtml(pct, size = '') {
     if (pct === null || pct === undefined) return `<div class="m-ring ${size}" style="--p:0"><span>N/A</span></div>`;
     const cls = pct >= 90 ? '' : pct >= 70 ? 'warn' : 'bad';
     return `<div class="m-ring ${size} ${cls}" style="--p:${pct}"><span>${pct}%</span></div>`;
-  }
-
-  function deltaBadge(values, { higherIsBetter = true, suffix = '' } = {}) {
-    const nums = (values || []).map(Number).filter((n) => Number.isFinite(n));
-    if (nums.length < 2) return '<small class="mon-delta flat">belum cukup data historis</small>';
-    const delta = Math.round((nums[nums.length - 1] - nums[0]) * 10) / 10;
-    if (delta === 0) return `<small class="mon-delta flat">± 0${esc(suffix)} vs ${esc(hoursLabel(currentHours))} lalu</small>`;
-    const good = higherIsBetter ? delta > 0 : delta < 0;
-    const arrow = delta > 0 ? '▲' : '▼';
-    return `<small class="mon-delta ${good ? 'good' : 'bad'}">${arrow} ${Math.abs(delta)}${esc(suffix)} vs ${esc(hoursLabel(currentHours))} lalu</small>`;
   }
 
   function barRow(label, value, total, tone = '', drill = null) {
@@ -116,7 +97,7 @@
       : '<div class="mini-empty">Semua ONT dalam kondisi normal.</div>';
     const container = document.getElementById('bento-ont');
     container.innerHTML = `
-      <div class="b-hero"><h4>Kesehatan ONT</h4><div><strong>${s.online}/${s.total}</strong><br><small>ONT online sekarang</small>${deltaBadge(d.trend.map((t) => t.pct), { higherIsBetter: true, suffix: '%' })}</div>${ringHtml(s.score, 'lg')}</div>
+      <div class="b-hero"><h4>Kesehatan ONT</h4><div><strong>${s.online}/${s.total}</strong><br><small>ONT online sekarang</small></div>${ringHtml(s.score, 'lg')}</div>
       <div class="b-wide"><h4>Distribusi Sinyal</h4>
         ${barRow('Normal', normal, s.total, '', { title: 'ONT Sinyal Normal', kicker: 'DISTRIBUSI SINYAL', url: `/monitoring/api/ont/list?signal=normal_group${siteQuery()}` })}
         ${barRow('Waspada', s.warning, s.total, 'warn', { title: 'ONT Sinyal Waspada', kicker: 'DISTRIBUSI SINYAL', url: `/monitoring/api/ont/list?signal=warning${siteQuery()}` })}
@@ -125,7 +106,6 @@
       <div class="mon-drill" data-drill='${esc(JSON.stringify({ title: 'ONT Offline', kicker: 'STATUS ONT', url: `/monitoring/api/ont/list?status=offline${siteQuery()}` }))}'><h4>ONT Offline</h4><strong>${s.offline}</strong><small>dari ${s.total} total ONT</small></div>
       <div><h4>Belum Ter-link</h4><strong>${s.unlinked}</strong><small>ONT tanpa data pelanggan</small></div>
       <div class="b-tall"><h4>Perlu Tindakan</h4><div class="mini-list">${attentionHtml}</div></div>
-      <div class="b-wide b-tall"><h4>Tren Online (${esc(hoursLabel(currentHours))})</h4>${sparkBars(d.trend.map((t) => t.pct))}<small>persentase ONT online, agregat per ${currentHours <= 48 ? 'jam' : 'hari'}</small></div>
       <div><h4>Aksi Cepat</h4><div class="action-grid">
         <button type="button" id="ontActionOpen">Kelola ONT</button>
         <button type="button" id="ontSyncNow" ${d.acsConfigured ? '' : 'disabled title="GENIEACS_NBI_URL belum dikonfigurasi"'}>Sync ACS</button>
@@ -162,21 +142,18 @@
     const attentionHtml = d.attention.length
       ? d.attention.map((r) => `<a href="#" data-test-router="${r.id}"><span>${esc(r.name)}</span><span>${r.last_status === 'offline' ? 'Offline' : (r.cpu_load !== null ? 'CPU ' + r.cpu_load + '%' : '-')}</span></a>`).join('')
       : '<div class="mini-empty">Semua router normal.</div>';
-    const latestTraffic = d.trafficTrend.length ? d.trafficTrend[d.trafficTrend.length - 1] : null;
-    const mbps = (bps) => bps ? Math.round((bps * 8) / 1000000 * 10) / 10 : 0;
     const container = document.getElementById('bento-mikrotik');
     container.innerHTML = `
-      <div class="b-hero"><h4>Kesehatan Router</h4><div><strong>${s.online}/${s.total}</strong><br><small>router online</small>${deltaBadge(d.cpuTrend.map((t) => t.cpu), { higherIsBetter: false, suffix: '% CPU' })}</div>${ringHtml(s.score, 'lg')}</div>
+      <div class="b-hero"><h4>Kesehatan Router</h4><div><strong>${s.online}/${s.total}</strong><br><small>router online</small></div>${ringHtml(s.score, 'lg')}</div>
       <div class="b-wide"><h4>Beban CPU &ndash; Perlu Perhatian</h4>${cpuBars}</div>
       <div><h4>Sesi PPPoE Aktif</h4><strong>${s.activeSessions}</strong><small>koneksi berjalan</small></div>
       <div><h4>Pelanggan Isolir</h4><strong>${s.customersIsolated}</strong><small>dari ${s.customersTotal} pelanggan aktif</small></div>
       <div class="b-tall"><h4>Perlu Perhatian</h4><div class="mini-list">${attentionHtml}</div></div>
-      <div class="b-wide b-tall"><h4>Traffic Gabungan (${esc(hoursLabel(currentHours))})</h4>${sparkBars(d.trafficTrend.map((t) => t.rxBps + t.txBps))}<small>${latestTraffic ? `saat ini ↓${mbps(latestTraffic.rxBps)} Mbps / ↑${mbps(latestTraffic.txBps)} Mbps` : 'menunggu sample traffic'}, ${s.total} router</small></div>
       <div><h4>Aksi Cepat</h4><div class="action-grid">
         <button type="button" id="mtCaptureNow">Capture Now</button>
         <a class="btn-tech" href="/network/monitor" style="text-decoration:none;text-align:center;display:flex;align-items:center;justify-content:center">NMS Monitor</a>
       </div></div>
-      <div><h4>Beban CPU Rata-rata</h4><strong>${d.cpuTrend.length ? (d.cpuTrend[d.cpuTrend.length - 1].cpu ?? '-') + '%' : '-'}</strong><small>sample terakhir, seluruh router</small></div>`;
+      <div><h4>Belum Pernah Lapor</h4><strong>${s.never}</strong><small>router belum ada telemetry masuk</small></div>`;
 
     document.getElementById('mtCaptureNow')?.addEventListener('click', async (e) => {
       const btn = e.currentTarget; btn.disabled = true;
@@ -210,12 +187,11 @@
       : '<div class="mini-empty">Semua OLT dalam kondisi normal.</div>';
     const container = document.getElementById('bento-olt');
     container.innerHTML = `
-      <div class="b-hero"><h4>Utilisasi ONU</h4><div><strong>${s.online}/${s.totalOnu}</strong><br><small>ONU online, seluruh OLT</small>${deltaBadge(d.trend.map((t) => t.critical), { higherIsBetter: false, suffix: ' kritis' })}</div>${ringHtml(s.score, 'lg')}</div>
+      <div class="b-hero"><h4>Utilisasi ONU</h4><div><strong>${s.online}/${s.totalOnu}</strong><br><small>ONU online, seluruh OLT</small></div>${ringHtml(s.score, 'lg')}</div>
       <div class="b-wide"><h4>Utilisasi PON per OLT</h4>${utilBars}</div>
       <div><h4>Total OLT</h4><strong>${s.total}</strong><small>chassis terdeteksi/terdaftar</small></div>
       <div><h4>Redaman Kritis</h4><strong>${s.critical}</strong><small>ONU RX di bawah ambang aman</small></div>
       <div class="b-tall"><h4>Perlu Perhatian</h4><div class="mini-list">${attentionHtml}</div></div>
-      <div class="b-wide b-tall"><h4>Tren Redaman Kritis (${esc(hoursLabel(currentHours))})</h4>${sparkBars(d.trend.map((t) => t.critical))}<small>jumlah ONU redaman kritis, agregat per ${currentHours <= 48 ? 'jam' : 'hari'}</small></div>
       <div><h4>Aksi Cepat</h4><div class="action-grid">
         <a class="btn-tech" href="/olt" style="text-decoration:none;text-align:center;display:flex;align-items:center;justify-content:center">Registry OLT</a>
         <a class="btn-tech" href="/acs?signal=critical" style="text-decoration:none;text-align:center;display:flex;align-items:center;justify-content:center">ONT Kritis</a>
@@ -270,13 +246,6 @@
     boards[getActiveBoard()]();
     loadSiteTable();
   });
-  document.querySelectorAll('#monRangeSeg button').forEach((btn) => btn.addEventListener('click', () => {
-    document.querySelectorAll('#monRangeSeg button').forEach((b) => b.classList.remove('active'));
-    btn.classList.add('active');
-    currentHours = Number(btn.dataset.hours) || 24;
-    loaded.clear();
-    boards[getActiveBoard()]();
-  }));
   document.getElementById('monRefreshBtn')?.addEventListener('click', () => { boards[getActiveBoard()](); loadSiteTable(); });
 
   function tickIndicator() {

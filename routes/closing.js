@@ -202,16 +202,18 @@ router.get('/', async (req, res, next) => {
     if (data.closing.mode === 'AUTO' && data.closing.status !== 'LOCKED') {
       pending = await countPendingCashData({ db, closingId: data.period ? data.period.id : null, start, end });
     }
-    // v2.1 — sekali periode terkunci, siapkan tanggal bulan berikutnya supaya
-    // tombol "Buat periode berikutnya" tinggal diklik tanpa isi tanggal manual.
-    let nextPeriod = null;
-    if (data.closing.status === 'LOCKED') {
-      const periodEndDate = new Date(`${end}T00:00:00`);
-      const nextMonthStart = new Date(periodEndDate.getFullYear(), periodEndDate.getMonth() + 1, 1);
-      const nextMonthEnd = new Date(periodEndDate.getFullYear(), periodEndDate.getMonth() + 2, 0);
-      nextPeriod = { start: localDateKey(nextMonthStart), end: localDateKey(nextMonthEnd) };
-    }
-    res.render('closing/index', { title: 'Closing', pageTitle: 'Closing', pageSubtitle: `${start} s/d ${end}`, start, end, hideEdwin, money, locationText, pending, nextPeriod, ...data, ...unpaid });
+    // v2.2 — navigasi cepat bulan sebelumnya/berikutnya selalu tersedia (tidak
+    // cuma waktu periode terkunci) supaya Master Admin tidak perlu ketik tanggal
+    // manual buat pindah periode. Dihitung dari rentang periode yang sedang dilihat.
+    const periodStartDate = new Date(`${start}T00:00:00`);
+    const periodEndDate = new Date(`${end}T00:00:00`);
+    const prevMonthStart = new Date(periodStartDate.getFullYear(), periodStartDate.getMonth() - 1, 1);
+    const prevMonthEnd = new Date(periodStartDate.getFullYear(), periodStartDate.getMonth(), 0);
+    const prevPeriod = { start: localDateKey(prevMonthStart), end: localDateKey(prevMonthEnd) };
+    const nextMonthStart = new Date(periodEndDate.getFullYear(), periodEndDate.getMonth() + 1, 1);
+    const nextMonthEnd = new Date(periodEndDate.getFullYear(), periodEndDate.getMonth() + 2, 0);
+    const nextPeriod = { start: localDateKey(nextMonthStart), end: localDateKey(nextMonthEnd) };
+    res.render('closing/index', { title: 'Closing', pageTitle: 'Closing', pageSubtitle: `${start} s/d ${end}`, start, end, hideEdwin, money, locationText, pending, prevPeriod, nextPeriod, ...data, ...unpaid });
   } catch (err) { next(err); }
 });
 
