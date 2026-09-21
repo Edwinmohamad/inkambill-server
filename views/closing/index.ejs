@@ -167,6 +167,20 @@
     <% }) %>
   </section>
 
+  <% if (typeof customerActivity !== 'undefined' && customerActivity) { %>
+  <section class="card closing-card" aria-label="Ringkasan pelanggan bulan ini">
+    <div class="card-body">
+      <div class="closing-section-head"><div><span class="closing-card-kicker">DATA PELANGGAN & TAGIHAN</span><h2>Ringkasan Pelanggan Periode Ini</h2><small class="text-muted">PSB, pelanggan off, dan status bayar tagihan — diambil langsung dari data pelanggan/tagihan, bukan input manual. Informasi saja, tidak memengaruhi Pendapatan/Bersih di atas.</small></div></div>
+    <div class="metric-grid mt-3">
+      <article class="metric-card green"><div class="metric-top"><span class="metric-label">PSB (Pasang Baru)</span><span class="metric-icon"><i class="bi bi-person-plus-fill"></i></span></div><strong><%= customerActivity.psb.total %></strong><small>CDS <%= customerActivity.psb.krwclm %> · KBG <%= customerActivity.psb.kbg %></small></article>
+      <article class="metric-card red"><div class="metric-top"><span class="metric-label">Pelanggan Off</span><span class="metric-icon"><i class="bi bi-person-dash-fill"></i></span></div><strong><%= customerActivity.off.total %></strong><small>CDS <%= customerActivity.off.krwclm %> · KBG <%= customerActivity.off.kbg %></small></article>
+      <article class="metric-card green"><div class="metric-top"><span class="metric-label">Sudah Bayar</span><span class="metric-icon"><i class="bi bi-check-circle-fill"></i></span></div><strong><%= customerActivity.billing.paid %></strong><small>Dari <%= customerActivity.billing.total %> tagihan periode ini</small></article>
+      <article class="metric-card orange"><div class="metric-top"><span class="metric-label">Belum Bayar</span><span class="metric-icon"><i class="bi bi-exclamation-circle-fill"></i></span></div><strong><%= customerActivity.billing.unpaid %></strong><small>CDS <%= customerActivity.billing.krwclm.unpaid %> · KBG <%= customerActivity.billing.kbg.unpaid %></small></article>
+    </div>
+    </div>
+  </section>
+  <% } %>
+
   <% if (blocks.other && (money(blocks.other.revenue) !== 0 || money(blocks.other.expense) !== 0)) { %>
     <div class="closing-unmapped-alert"><i class="bi bi-exclamation-triangle-fill"></i><div><strong>Lokasi belum dipetakan</strong><span>Gunakan lokasi CDS atau KBG. Data ini tidak masuk pembagian.</span><small>Pendapatan Rp <%= money(blocks.other.revenue).toLocaleString('id-ID') %> · Pengeluaran Rp <%= money(blocks.other.expense).toLocaleString('id-ID') %></small></div></div>
   <% } %>
