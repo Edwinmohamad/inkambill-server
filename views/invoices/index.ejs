@@ -30,6 +30,70 @@
     <article class="billing-stat"><span class="billing-stat-icon red"><i class="bi bi-hourglass-split"></i></span><div><small>Sisa Tagihan</small><strong><%= formatRupiah(summary.outstanding) %></strong></div></article>
   </div>
 
+  <!-- v1.26 — tab "Prioritas Collection": versi actionable dari kartu Aging Piutang di Analitik
+       Bisnis, ditempel langsung di menu Tagihan supaya tim collection tidak perlu pindah halaman
+       untuk menandai pelanggan yang sudah/belum di-follow up. Cakupannya SEMUA tagihan yang masih
+       outstanding lintas periode (bukan cuma periode aktif di atas), sama seperti Analitik — kalau
+       tidak, "H+3 s/d 30" dsb. jadi tidak konsisten antara dua halaman. -->
+  <div class="data-card billing-collection-card action-safe-card">
+    <div class="data-card-head">
+      <div><h3>Prioritas Collection</h3><small><%= collectionAging.length %> pelanggan menunggak · seluruh periode berjalan<% if(filters.site||filters.cluster){ %> · mengikuti filter Site/Cluster<% } %></small></div>
+      <a class="ink-text-link" href="/analytics"><i class="bi bi-bar-chart-line"></i> Lihat di Analitik</a>
+    </div>
+    <div class="data-card-body">
+      <div class="aging-summary">
+        <span><b><%= collectionBuckets.h3.length %></b>H-3</span>
+        <span><b><%= collectionBuckets.hplus3.length %></b>H+3 s/d 30</span>
+        <span class="danger"><b><%= collectionBuckets.over30.length %></b>&gt;30 Hari</span>
+        <span class="danger"><b><%= collectionSiapIsolirCount %></b>Siap Isolir</span>
+      </div>
+      <div class="aging-filters" id="billingCollectionFilterBar">
+        <button type="button" class="active" data-collection-filter="all">Semua (<%= collectionAging.length %>)</button>
+        <button type="button" data-collection-filter="h3">H-3 (<%= collectionBuckets.h3.length %>)</button>
+        <button type="button" data-collection-filter="hplus3">H+3 s/d 30 (<%= collectionBuckets.hplus3.length %>)</button>
+        <button type="button" data-collection-filter="over30">&gt;30 Hari (<%= collectionBuckets.over30.length %>)</button>
+        <button type="button" class="danger-chip" data-collection-filter="isolir">Siap Isolir (<%= collectionSiapIsolirCount %>)</button>
+      </div>
+      <div class="table-responsive">
+        <table class="app-table">
+          <thead><tr><th>Pelanggan</th><th>Site</th><th>Jatuh Tempo Tertua</th><th>Umur</th><th>Outstanding</th><th>Status Collection</th><th class="invoice-action-head">Aksi</th></tr></thead>
+          <tbody id="billingCollectionTableBody">
+            <% collectionAging.forEach(row => {
+              const cwa=String(row.phone||'').replace(/\D/g,'').replace(/^0/,'62').replace(/^8/,'628');
+              const cwaValid=/^628[1-9]\d{7,11}$/.test(cwa);
+              const cwaText=encodeURIComponent(`Halo ${row.customer_name}, kami mengingatkan tagihan INKAMNET Anda sebesar ${formatRupiah(row.outstanding)} yang sudah menunggak ${row.days_overdue} hari sejak jatuh tempo ${formatDate(row.oldest_due)}. Mohon segera dilakukan pembayaran ya. Terima kasih.`);
+            %>
+            <tr class="aging-row" data-bucket="<%= row.bucket||'none' %>" data-isolir="<%= row.siapIsolir?'1':'0' %>">
+              <td><span class="cell-main"><%= row.customer_name %></span><span class="cell-sub"><%= row.customer_code %></span></td>
+              <td><span class="cell-main"><%= row.site_code %></span><span class="cell-sub">Cluster <%= row.cluster_name||'-' %></span></td>
+              <td><%= formatDate(row.oldest_due) %></td>
+              <td><span class="cell-main"><%= row.days_overdue>0?`${row.days_overdue} hari overdue`:`H-${Math.abs(row.days_overdue)}` %></span></td>
+              <td class="money"><%= formatRupiah(row.outstanding) %></td>
+              <td>
+                <span class="status-badge <%= row.stageTone %>"><%= row.stageLabel %></span>
+                <% if(row.stage!=='none' && row.collection_stage_at){ %><span class="cell-sub"><%= formatDateTime(row.collection_stage_at) %><%= row.collection_stage_by_name?` · ${row.collection_stage_by_name}`:'' %></span><% } %>
+              </td>
+              <td class="invoice-action-cell">
+                <div class="invoice-inline-actions"><button class="action-menu" type="button" data-action-popover-target="collectionAction<%= row.id %>" aria-label="Buka tindakan collection <%= row.customer_name %>"><i class="bi bi-three-dots-vertical"></i></button></div>
+                <div class="ink-action-popover" id="collectionAction<%= row.id %>" hidden>
+                  <div class="ink-action-popover-head"><div><small>PRIORITAS COLLECTION</small><strong><%= row.customer_name %></strong><span><%= row.customer_code %></span></div></div>
+                  <div class="ink-action-popover-body">
+                    <% if(cwaValid){ %><a class="ink-action-item compact success" target="_blank" rel="noopener" href="https://wa.me/<%= cwa %>?text=<%= cwaText %>" data-collection-wa data-collection-customer-id="<%= row.id %>"><i class="bi bi-whatsapp"></i><span><b>Kirim WA Reminder</b><small>Otomatis tercatat "Sudah Follow-up"</small></span></a><% } %>
+                    <button type="button" class="ink-action-item compact" data-action-close data-bs-toggle="modal" data-bs-target="#collectionStageModal" data-collection-id="<%= row.id %>" data-collection-name="<%= row.customer_name %>" data-collection-code="<%= row.customer_code %>" data-collection-stage="<%= row.stage %>"><i class="bi bi-arrow-repeat"></i><span><b>Update Status Collection</b><small>Follow-up, Siap Isolir, atau Sudah Diisolir</small></span></button>
+                    <a class="ink-action-item compact" href="/invoices?customer=<%= row.id %>&status=open"><i class="bi bi-receipt"></i><span><b>Lihat Tagihan Pelanggan</b><small>Filter Daftar Tagihan di bawah</small></span></a>
+                  </div>
+                </div>
+              </td>
+            </tr>
+            <% }) %>
+            <% if(!collectionAging.length){ %><tr><td colspan="7"><div class="empty-state"><i class="bi bi-emoji-smile"></i><strong>Tidak ada tagihan menunggak</strong><small>Semua pelanggan pada filter ini sudah lunas.</small></div></td></tr><% } %>
+          </tbody>
+        </table>
+      </div>
+      <div id="billingCollectionEmptyFiltered" class="empty-state d-none"><i class="bi bi-funnel"></i><strong>Tidak ada pelanggan pada kategori filter ini</strong></div>
+    </div>
+  </div>
+
   <% const scopedInvoiceRow=filters.customer?invoices.find(i=>String(i.customer_id)===String(filters.customer)):null;
      const scopedCustomer=filters.customer?(customers.find(c=>String(c.id)===String(filters.customer))||(scopedInvoiceRow?{name:scopedInvoiceRow.customer_name,customer_code:scopedInvoiceRow.customer_code}:null)):null; %>
   <form class="billing-filter-panel" method="get" action="/invoices" data-server-search-fallback>
@@ -218,6 +282,31 @@
         </div>
       </div>
       <div class="modal-footer"><button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button><button class="btn-tech primary"><i class="bi bi-percent"></i>Simpan Diskon</button></div>
+    </form>
+  </div>
+</div>
+
+<div class="modal fade" id="collectionStageModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" id="collectionStageForm" method="post">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <input type="hidden" name="return_to" value="/invoices?<%= periodQueryString %>">
+      <div class="modal-header"><div><div class="module-kicker">PRIORITAS COLLECTION</div><h5 class="modal-title">Update Status Collection</h5><small class="text-secondary" id="collectionStageIdentity">-</small></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="invoice-edit-safety"><i class="bi bi-shield-lock-fill"></i><div><strong>Label internal, bukan aksi jaringan</strong><small>Mengubah status di sini tidak memutus/mengisolir internet pelanggan. Isolir jaringan yang sesungguhnya tetap dilakukan manual lewat menu Pelanggan.</small></div></div>
+        <div class="row g-3 mt-1">
+          <div class="col-12"><label class="form-label">Status Collection</label><select class="form-select" name="stage" id="collectionStageSelect">
+            <% collectionStages.forEach(stageKey => { %><option value="<%= stageKey %>"><%= collectionStageLabels[stageKey] %></option><% }) %>
+          </select></div>
+          <div class="col-md-6"><label class="form-label">Channel Follow-up</label><select class="form-select" name="channel" id="collectionChannelSelect">
+            <option value="">Tidak dicatat</option>
+            <% Object.keys(collectionChannelLabels).forEach(ch => { %><option value="<%= ch %>"><%= collectionChannelLabels[ch] %></option><% }) %>
+          </select></div>
+          <div class="col-md-6 d-flex align-items-end"><small class="text-secondary">Isi channel + catatan supaya riwayat follow-up tercatat jelas untuk tim lain.</small></div>
+          <div class="col-12"><label class="form-label">Catatan (opsional)</label><textarea class="form-control" name="note" id="collectionNoteInput" rows="3" maxlength="500" placeholder="Contoh: sudah dihubungi via WA, pelanggan janji bayar tgl 25."></textarea></div>
+        </div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button><button class="btn-tech primary"><i class="bi bi-check2-circle"></i>Simpan Status</button></div>
     </form>
   </div>
 </div>
