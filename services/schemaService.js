@@ -997,4 +997,47 @@ async function ensureV50Schema() {
   }
 }
 
-module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema };
+async function ensureV51Schema() {
+  // v1.26 — Tab "Prioritas Collection" di menu Tagihan: status follow-up penagihan yang bisa
+  // diubah manual per pelanggan (Belum Ditindaklanjuti -> Sudah Follow-up -> Siap Isolir ->
+  // Sudah Diisolir). "isolated" di sini murni label internal untuk kebutuhan tracking tim
+  // collection — TIDAK memicu isolir PPPoE ke MikroTik. Eksekusi isolir jaringan yang sungguhan
+  // tetap lewat menu Pelanggan (customer_status -> suspended/terminated, lihat
+  // isolateAfterStatusChange() di routes/customers.js). Kartu Aging Piutang di Analitik Bisnis
+  // ikut membaca kolom yang sama (lihat services/collectionService.js) supaya kedua halaman
+  // selalu konsisten satu sama lain.
+  const [stageCol] = await db.query(`SHOW COLUMNS FROM customers LIKE 'collection_stage'`);
+  if (!stageCol.length) {
+    await db.query(`ALTER TABLE customers ADD COLUMN collection_stage ENUM('none','followed_up','ready_isolir','isolated') NOT NULL DEFAULT 'none' AFTER status_changed_at`);
+  }
+  const [stageAtCol] = await db.query(`SHOW COLUMNS FROM customers LIKE 'collection_stage_at'`);
+  if (!stageAtCol.length) {
+    await db.query(`ALTER TABLE customers ADD COLUMN collection_stage_at DATETIME NULL AFTER collection_stage`);
+  }
+  const [stageByCol] = await db.query(`SHOW COLUMNS FROM customers LIKE 'collection_stage_by'`);
+  if (!stageByCol.length) {
+    await db.query(`ALTER TABLE customers ADD COLUMN collection_stage_by BIGINT UNSIGNED NULL AFTER collection_stage_at`);
+  }
+  const [stageNoteCol] = await db.query(`SHOW COLUMNS FROM customers LIKE 'collection_stage_note'`);
+  if (!stageNoteCol.length) {
+    await db.query(`ALTER TABLE customers ADD COLUMN collection_stage_note VARCHAR(500) NULL AFTER collection_stage_by`);
+  }
+  const [stageIndex] = await db.query(`SHOW INDEX FROM customers WHERE Key_name='idx_customers_collection_stage'`);
+  if (!stageIndex.length) {
+    await db.query(`ALTER TABLE customers ADD INDEX idx_customers_collection_stage (collection_stage)`);
+  }
+
+  await db.query(`CREATE TABLE IF NOT EXISTS customer_collection_logs (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    customer_id BIGINT UNSIGNED NOT NULL,
+    stage ENUM('none','followed_up','ready_isolir','isolated') NOT NULL,
+    channel ENUM('whatsapp','telepon','kunjungan','lainnya') NULL,
+    note VARCHAR(500) NULL,
+    created_by BIGINT UNSIGNED NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_collection_log_customer (customer_id, created_at),
+    CONSTRAINT fk_collection_log_customer FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+  )`);
+}
+
+module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema };

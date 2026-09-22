@@ -8,6 +8,7 @@ const { generateMonthlyInvoices, applyInvoiceDiscount, refreshInvoiceStatus, nex
 const { requireAdmin, requireMasterAdmin, isMasterAdminRole }=require('../middleware/auth');
 const { createCorporateInvoicePdf }=require('../services/reportPdf');
 const { audit }=require('../services/auditService');
+const { getCollectionAging, bucketizeAging, setCollectionStage, STAGES: COLLECTION_STAGES, STAGE_LABELS: COLLECTION_STAGE_LABELS, STAGE_TONES: COLLECTION_STAGE_TONES, CHANNEL_LABELS: COLLECTION_CHANNEL_LABELS }=require('../services/collectionService');
 const router=express.Router();
 const invoiceLogoDir=path.join(__dirname,'..','storage','invoice-branding');
 
@@ -233,7 +234,49 @@ router.get('/',async(req,res)=>{
     ORDER BY s.code,cl.name,c.name,i.due_date`);
   const [staff]=await db.query(`SELECT id,name,role FROM users WHERE is_active=1 ORDER BY name`);
   const [banks]=await db.query(`SELECT id,bank_name,account_name,account_number,type FROM banks WHERE is_active=1 AND type IN ('bank_transfer','virtual_account','other') ORDER BY bank_name,account_number`);
-  res.render('invoices/index',{title:'Tagihan',invoices,summary,customers,sites,clusters,openInvoices,staff,banks,filters,monthNames:MONTH_NAMES,periodQueryString:periodQuery(filters)});
+
+  // v1.26 — tab "Prioritas Collection": piutang berjalan per pelanggan (lintas periode, sama
+  // seperti kartu Aging Piutang di Analitik) + status follow-up manual yang bisa diubah dari sini.
+  // Sengaja TIDAK ikut filter bulan/tahun/status di atas — cakupannya semua tagihan yang masih
+  // outstanding, bukan tagihan satu periode saja. Filter Site/Cluster tetap dihormati.
+  const collectionAging=await getCollectionAging({siteCode:site||null,clusterId:cluster||null});
+  const collectionBuckets=bucketizeAging(collectionAging);
+  const collectionSiapIsolirCount=collectionAging.filter(x=>x.siapIsolir).length;
+
+  res.render('invoices/index',{title:'Tagihan',invoices,summary,customers,sites,clusters,openInvoices,staff,banks,filters,monthNames:MONTH_NAMES,periodQueryString:periodQuery(filters),
+    collectionAging,collectionBuckets,collectionSiapIsolirCount,
+    collectionStages:COLLECTION_STAGES,collectionStageLabels:COLLECTION_STAGE_LABELS,collectionStageTones:COLLECTION_STAGE_TONES,collectionChannelLabels:COLLECTION_CHANNEL_LABELS});
+});
+
+// v1.26 — update status "Prioritas Collection" (Belum Ditindaklanjuti / Sudah Follow-up / Siap
+// Isolir / Sudah Diisolir) untuk satu pelanggan. Ini LABEL INTERNAL SAJA untuk tracking tim
+// collection — tidak menyentuh customer_status dan tidak memicu isolir PPPoE ke MikroTik. Semua
+// user yang punya akses menu Tagihan (permission billing) boleh mengubahnya, sesuai kesepakatan:
+// tim follow-up di lapangan perlu bisa update tanpa menunggu admin.
+router.post('/collection/:customerId/stage',async(req,res)=>{
+  const customerId=Number(req.params.customerId);
+  const returnTo=localReturn(req.body.return_to);
+  const [[customer]]=await db.query(`SELECT id,name,customer_code FROM customers WHERE id=? LIMIT 1`,[customerId]);
+  if(!customer){req.session.flash={type:'warning',message:'Pelanggan tidak ditemukan.'};return res.redirect(returnTo);}
+  const stage=String(req.body.stage||'').trim();
+  if(!COLLECTION_STAGES.includes(stage)){req.session.flash={type:'warning',message:'Status collection tidak valid.'};return res.redirect(returnTo);}
+  const result=await setCollectionStage({customerId,stage,channel:req.body.channel,note:req.body.note,userId:req.session.user.id});
+  await audit({userId:req.session.user.id,action:'update',entityType:'customer_collection',entityId:customerId,description:`Status collection ${customer.customer_code} - ${customer.name} diubah ke "${COLLECTION_STAGE_LABELS[result.stage]}"${result.channel?` via ${COLLECTION_CHANNEL_LABELS[result.channel]}`:''}${result.note?`: ${result.note}`:''}`,ip:req.ip});
+  req.session.flash={type:'success',message:`Status collection ${customer.name} diperbarui ke "${COLLECTION_STAGE_LABELS[result.stage]}".`};
+  res.redirect(returnTo);
+});
+
+// v1.26 — dipanggil lewat fetch (fire-and-forget) dari tombol WA Reminder di tab Prioritas
+// Collection: begitu tombol diklik, status otomatis tercatat "Sudah Follow-up" tanpa langkah
+// tambahan. Balasannya JSON karena dipanggil lewat JS, bukan submit form biasa.
+router.post('/collection/:customerId/mark-reminded',async(req,res)=>{
+  const customerId=Number(req.params.customerId);
+  const [[customer]]=await db.query(`SELECT id,name,customer_code,collection_stage FROM customers WHERE id=? LIMIT 1`,[customerId]);
+  if(!customer)return res.status(404).json({ok:false,message:'Pelanggan tidak ditemukan.'});
+  // Tidak menimpa tahap yang sudah lebih maju (mis. sudah Siap Isolir) hanya karena tombol WA diklik lagi.
+  if(['ready_isolir','isolated'].includes(customer.collection_stage))return res.json({ok:true,skipped:true});
+  const result=await setCollectionStage({customerId,stage:'followed_up',channel:'whatsapp',note:'Klik WA Reminder dari tab Prioritas Collection.',userId:req.session.user.id});
+  res.json({ok:true,stage:result.stage,stageLabel:COLLECTION_STAGE_LABELS[result.stage]});
 });
 
 // v1.25.4 — export Daftar Tagihan (sesuai filter yang sedang aktif) ke Excel, supaya admin bisa
