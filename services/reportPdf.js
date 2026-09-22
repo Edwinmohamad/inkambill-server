@@ -231,6 +231,12 @@ function drawLocationShareCards(doc,recipientName,blocks,title,subtitle){
   doc.y=y+cardH;
   }
 }
+// v3.2 — baris "Penyesuaian Anda" sekarang diberi nomor urut (kolom NO) supaya
+// gampang dirujuk waktu diskusi/cek silang. Batas tinggi baris Keterangan yang
+// dulu dipatok keras 96pt (memotong teks panjang di tengah kalimat tanpa tanda
+// apa pun) sekarang jadi 220pt + ellipsis sebagai jaring pengaman terakhir —
+// keterangan biasa selalu tampil utuh, dan hanya teks yang benar-benar ekstrem
+// panjang yang dipotong, itu pun dengan "..." yang jelas menandakannya.
 function drawAdjustmentTable(doc,rows,title,subtitle){
   drawSectionLabel(doc,'Penyesuaian Anda',`${rows.length} baris`);
   const x=doc.page.margins.left,total=doc.page.width-doc.page.margins.left-doc.page.margins.right;
@@ -240,7 +246,7 @@ function drawAdjustmentTable(doc,rows,title,subtitle){
     doc.fillColor(COLORS.muted).font('Helvetica').fontSize(7.6).text('Tidak ada potongan atau tambahan untuk periode ini — Bersih sama dengan Kotor.',x+12,doc.y+13,{width:total-24,align:'center',height:12,lineBreak:false,ellipsis:true});
     doc.restore();doc.y+=46;return;
   }
-  const cols=[{label:'Jenis',w:.22},{label:'Lokasi',w:.13},{label:'Keterangan',w:.42},{label:'Nominal',w:.23,align:'right'}];
+  const cols=[{label:'No',w:.05,align:'center'},{label:'Jenis',w:.21},{label:'Lokasi',w:.12},{label:'Keterangan',w:.40},{label:'Nominal',w:.22,align:'right'}];
   const widths=cols.map(c=>c.w*total);
   const headY=doc.y;doc.save();
   doc.rect(x,headY,total,24).fill(COLORS.soft);doc.strokeColor(COLORS.line).lineWidth(.8).moveTo(x,headY+24).lineTo(x+total,headY+24).stroke();
@@ -248,18 +254,19 @@ function drawAdjustmentTable(doc,rows,title,subtitle){
   doc.restore();doc.y=headY+26;
   rows.forEach((row,ri)=>{
     const keteranganText=safe(row.keterangan);
-    const keteranganH=doc.font('Helvetica').fontSize(7.4).heightOfString(keteranganText,{width:widths[2]-16,lineGap:1});
-    const rh=Math.min(96,Math.max(24,keteranganH+14));
+    const keteranganH=doc.font('Helvetica').fontSize(7.4).heightOfString(keteranganText,{width:widths[3]-16,lineGap:1});
+    const rh=Math.max(24,Math.min(220,keteranganH)+14);
     if(doc.y+rh>bottomLimit){doc.addPage();drawBrandHeader(doc,title,subtitle,true);}
     const y=doc.y;doc.save();
     if(ri%2===1)doc.rect(x,y,total,rh).fill(COLORS.soft);
     doc.strokeColor(COLORS.line).lineWidth(.6).moveTo(x,y+rh).lineTo(x+total,y+rh).stroke();
     let xx2=x;
-    doc.fillColor(COLORS.ink).font('Helvetica').fontSize(7.4).text(safe(row.jenis),xx2+10,y+7,{width:widths[0]-16,height:rh-10,lineBreak:false,ellipsis:true});xx2+=widths[0];
-    doc.fillColor(COLORS.muted).font('Helvetica').fontSize(7.4).text(safe(row.lokasi),xx2+10,y+7,{width:widths[1]-16,height:rh-10,lineBreak:false,ellipsis:true});xx2+=widths[1];
-    doc.fillColor(COLORS.ink).font('Helvetica').fontSize(7.4).text(keteranganText,xx2+10,y+7,{width:widths[2]-16,height:rh-10,lineGap:1});xx2+=widths[2];
+    doc.fillColor(COLORS.muted2).font('Helvetica-Bold').fontSize(7.2).text(String(ri+1),xx2+10,y+7,{width:widths[0]-16,align:'center',height:rh-10,lineBreak:false,ellipsis:true});xx2+=widths[0];
+    doc.fillColor(COLORS.ink).font('Helvetica').fontSize(7.4).text(safe(row.jenis),xx2+10,y+7,{width:widths[1]-16,height:rh-10,lineBreak:false,ellipsis:true});xx2+=widths[1];
+    doc.fillColor(COLORS.muted).font('Helvetica').fontSize(7.4).text(safe(row.lokasi),xx2+10,y+7,{width:widths[2]-16,height:rh-10,lineBreak:false,ellipsis:true});xx2+=widths[2];
+    doc.fillColor(COLORS.ink).font('Helvetica').fontSize(7.4).text(keteranganText,xx2+10,y+7,{width:widths[3]-16,height:rh-10,lineGap:1,ellipsis:true});xx2+=widths[3];
     const deduct=row.nominal<0;
-    doc.fillColor(deduct?COLORS.red:COLORS.green).font('Helvetica-Bold').fontSize(7.6).text(`${deduct?'- ':'+ '}${rupiah(Math.abs(row.nominal))}`,xx2+10,y+7,{width:widths[3]-16,align:'right',height:rh-10,lineBreak:false,ellipsis:true});
+    doc.fillColor(deduct?COLORS.red:COLORS.green).font('Helvetica-Bold').fontSize(7.6).text(`${deduct?'- ':'+ '}${rupiah(Math.abs(row.nominal))}`,xx2+10,y+7,{width:widths[4]-16,align:'right',height:rh-10,lineBreak:false,ellipsis:true});
     doc.restore();doc.y=y+rh;
   });
   const netTotal=rows.reduce((a,r)=>a+r.nominal,0);
@@ -269,12 +276,18 @@ function drawAdjustmentTable(doc,rows,title,subtitle){
   doc.fillColor(netTotal<0?COLORS.red:COLORS.green).font('Helvetica-Bold').fontSize(8).text(`${netTotal<0?'- ':'+ '}${rupiah(Math.abs(netTotal))}`,x+total*.55,y+8,{width:total*.43,align:'right',height:11,lineBreak:false,ellipsis:true});
   doc.restore();doc.y=y+26+18;
 }
+// v3.2 — tabel "Rincian Pendapatan & Pengeluaran" sekarang diberi nomor urut
+// (kolom NO, jalan terus lintas kategori & lintas halaman lewat `entryNo`,
+// tidak dihitung ulang di baris grup/subtotal). Batas tinggi baris yang dulu
+// dipatok keras 96pt (memotong Tanggal/Lokasi/Keterangan panjang di tengah
+// tanpa tanda apa pun) sekarang jadi 220pt + ellipsis sebagai jaring pengaman —
+// konsisten dengan drawAdjustmentTable() di atas.
 function drawTransactionTable(doc,rows,title,subtitle){
   const entries=rows.filter(row=>row.kind==='entry');
   drawSectionLabel(doc,'Rincian Pendapatan & Pengeluaran',`${entries.length} transaksi`);
   const x=doc.page.margins.left,total=doc.page.width-doc.page.margins.left-doc.page.margins.right;
   const bottomLimit=doc.page.height-doc.page.margins.bottom-30;
-  const cols=[{label:'Tanggal',w:.13},{label:'Lokasi',w:.13},{label:'Jenis',w:.15},{label:'Keterangan',w:.36},{label:'Nominal',w:.23,align:'right'}];
+  const cols=[{label:'No',w:.05,align:'center'},{label:'Tanggal',w:.12},{label:'Lokasi',w:.12},{label:'Jenis',w:.14},{label:'Keterangan',w:.34},{label:'Nominal',w:.23,align:'right'}];
   const widths=cols.map(c=>c.w*total);
   function drawHead(){
     const hy=doc.y;doc.save();
@@ -288,7 +301,7 @@ function drawTransactionTable(doc,rows,title,subtitle){
     doc.fillColor(COLORS.muted).font('Helvetica').fontSize(7.6).text('Tidak ada data untuk filter yang dipilih.',x+12,doc.y+13,{width:total-24,align:'center',height:12,lineBreak:false,ellipsis:true});
     doc.restore();doc.y+=46;return;
   }
-  let totalIncome=0,totalExpense=0;
+  let totalIncome=0,totalExpense=0,entryNo=0;
   rows.forEach((row,ri)=>{
     if(row.kind==='group'){
       if(doc.y+58>bottomLimit){doc.addPage();drawBrandHeader(doc,title,subtitle,true);drawHead();}
@@ -303,21 +316,23 @@ function drawTransactionTable(doc,rows,title,subtitle){
     const tanggalText=safe(row.tanggal);
     const lokasiText=safe(row.lokasi);
     const keteranganText=safe(row.keterangan);
-    const tanggalH=doc.font('Helvetica').fontSize(7.3).heightOfString(tanggalText,{width:widths[0]-16,lineGap:1});
-    const lokasiH=doc.font('Helvetica-Bold').fontSize(7.3).heightOfString(lokasiText,{width:widths[1]-16,lineGap:1});
-    const keteranganH=doc.font('Helvetica').fontSize(7.3).heightOfString(keteranganText,{width:widths[3]-16,lineGap:1});
-    const rh=Math.min(96,Math.max(24,tanggalH+14,lokasiH+14,keteranganH+14));
+    const tanggalH=doc.font('Helvetica').fontSize(7.3).heightOfString(tanggalText,{width:widths[1]-16,lineGap:1});
+    const lokasiH=doc.font('Helvetica-Bold').fontSize(7.3).heightOfString(lokasiText,{width:widths[2]-16,lineGap:1});
+    const keteranganH=doc.font('Helvetica').fontSize(7.3).heightOfString(keteranganText,{width:widths[4]-16,lineGap:1});
+    const rh=Math.max(24,Math.min(220,Math.max(tanggalH,lokasiH,keteranganH))+14);
     if(doc.y+rh>bottomLimit){doc.addPage();drawBrandHeader(doc,title,subtitle,true);drawHead();}
+    entryNo+=1;
     const y=doc.y;doc.save();
     if(ri%2===1)doc.rect(x,y,total,rh).fill(COLORS.soft);
     doc.strokeColor(COLORS.line).lineWidth(.6).moveTo(x,y+rh).lineTo(x+total,y+rh).stroke();
     let xx=x;
-    doc.fillColor(COLORS.muted).font('Helvetica').fontSize(7.3).text(tanggalText,xx+10,y+7,{width:widths[0]-16,height:rh-10,lineGap:1});xx+=widths[0];
-    doc.fillColor(COLORS.ink).font('Helvetica-Bold').fontSize(7.3).text(lokasiText,xx+10,y+7,{width:widths[1]-16,height:rh-10,lineGap:1});xx+=widths[1];
+    doc.fillColor(COLORS.muted2).font('Helvetica-Bold').fontSize(7.1).text(String(entryNo),xx+10,y+7,{width:widths[0]-16,align:'center',height:rh-10,lineBreak:false,ellipsis:true});xx+=widths[0];
+    doc.fillColor(COLORS.muted).font('Helvetica').fontSize(7.3).text(tanggalText,xx+10,y+7,{width:widths[1]-16,height:rh-10,lineGap:1,ellipsis:true});xx+=widths[1];
+    doc.fillColor(COLORS.ink).font('Helvetica-Bold').fontSize(7.3).text(lokasiText,xx+10,y+7,{width:widths[2]-16,height:rh-10,lineGap:1,ellipsis:true});xx+=widths[2];
     const income=row.jenis==='Pendapatan';
-    doc.fillColor(income?COLORS.green:'#B54708').font('Helvetica-Bold').fontSize(6.8).text(safe(row.jenis).toUpperCase(),xx+10,y+8,{width:widths[2]-16,height:rh-12,lineGap:1});xx+=widths[2];
-    doc.fillColor(COLORS.ink).font('Helvetica').fontSize(7.3).text(keteranganText,xx+10,y+7,{width:widths[3]-16,height:rh-10,lineGap:1});xx+=widths[3];
-    doc.fillColor(COLORS.ink).font('Helvetica-Bold').fontSize(7.4).text(rupiah(row.nominal),xx+10,y+7,{width:widths[4]-16,align:'right',height:rh-10,lineBreak:false,ellipsis:true});
+    doc.fillColor(income?COLORS.green:'#B54708').font('Helvetica-Bold').fontSize(6.8).text(safe(row.jenis).toUpperCase(),xx+10,y+8,{width:widths[3]-16,height:rh-12,lineGap:1});xx+=widths[3];
+    doc.fillColor(COLORS.ink).font('Helvetica').fontSize(7.3).text(keteranganText,xx+10,y+7,{width:widths[4]-16,height:rh-10,lineGap:1,ellipsis:true});xx+=widths[4];
+    doc.fillColor(COLORS.ink).font('Helvetica-Bold').fontSize(7.4).text(rupiah(row.nominal),xx+10,y+7,{width:widths[5]-16,align:'right',height:rh-10,lineBreak:false,ellipsis:true});
     doc.restore();doc.y=y+rh;
   });
   // v2.6 — baris total Pendapatan/Pengeluaran di bawah tabel, supaya tidak
