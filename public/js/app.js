@@ -637,7 +637,7 @@
   let headerMessages=new Map(),headerUsers=[];
   const escapeHtml=value=>String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
   const relativeTime=value=>{const date=new Date(value),seconds=Math.max(0,Math.round((Date.now()-date.getTime())/1000));if(seconds<60)return 'baru saja';if(seconds<3600)return `${Math.floor(seconds/60)} menit lalu`;if(seconds<86400)return `${Math.floor(seconds/3600)} jam lalu`;return date.toLocaleDateString('id-ID',{day:'2-digit',month:'short'})};
-  const setHeaderBadge=(element,value)=>{if(!element)return;element.textContent=value>99?'99+':String(value);element.hidden=!value};
+  const setHeaderBadge=(element,value)=>{if(!element)return;const prev=Number(element.dataset.badgeValue||0);element.textContent=value>99?'99+':String(value);element.hidden=!value;element.dataset.badgeValue=String(value);if(value>prev&&!window.matchMedia('(prefers-reduced-motion: reduce)').matches){element.classList.remove('badge-pop');void element.offsetWidth;element.classList.add('badge-pop');}};
   const renderHeaderCenter=data=>{
     setHeaderBadge(notificationBadge,Number(data.notificationCount||0));setHeaderBadge(messageBadge,Number(data.unreadMessages||0));
     if(notificationList)notificationList.innerHTML=data.notifications?.length?data.notifications.map(item=>`<a class="header-center-item ${escapeHtml(item.tone||'')} ${item.persistent?(item.read_at?'read':'unread'):''}" href="${escapeHtml(item.href||'#')}" ${item.persistent?`data-header-notification="${item.id}"`:''}><i class="bi ${escapeHtml(item.icon||'bi-bell')}"></i><span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.detail||'')}</small></span><em class="bi bi-chevron-right"></em></a>`).join(''):'<div class="header-center-empty"><i class="bi bi-check2-circle"></i><strong>Semua terkendali</strong><small>Belum ada notifikasi yang perlu ditindaklanjuti.</small></div>';
@@ -662,7 +662,7 @@
     const observer=new IntersectionObserver(entries=>entries.forEach(entry=>{
       if(entry.isIntersecting){entry.target.classList.add('ink-viewport-visible');observer.unobserve(entry.target)}
     }),{threshold:.08,rootMargin:'0px 0px -24px 0px'});
-    document.querySelectorAll('.command-panel,.command-kpi,.command-pulse,.plan-card,.data-card,.filter-card').forEach(el=>observer.observe(el));
+    document.querySelectorAll('.command-panel,.command-kpi,.command-pulse,.plan-card,.data-card,.filter-card,.metric-card,.ink-kpi').forEach(el=>observer.observe(el));
   }
 
   // Apple-style redesign: replace native confirm() popups with a shared iOS-style alert sheet.
@@ -819,4 +819,30 @@
   root.addEventListener('click',e=>{const b=e.target.closest('[data-secret-edit]');if(!b)return;const secret=allSecrets().find(x=>String(x['.id'])===b.dataset.secretEdit&&String(x.routerId)===b.dataset.router);if(secret)openForm(secret,b.dataset.router)});
   form?.addEventListener('submit',async e=>{e.preventDefault();const button=form.querySelector('[type="submit"]'),data=Object.fromEntries(new FormData(form));data.router_id=form.elements.router_id.value;data.disabled=form.elements.disabled.checked?'true':'false';const id=data.secret_id;delete data.secret_id;button.disabled=true;try{const r=await fetch(id?`/network/secrets/${encodeURIComponent(id)}`:'/network/secrets',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf,Accept:'application/json'},body:JSON.stringify(data)}),out=await r.json();if(!r.ok||!out.ok)throw new Error(out.error||'Gagal menyimpan');modal?.hide();toast(out.message);await refresh(true)}catch(err){toast(err.message,'danger')}finally{button.disabled=false}});
   refresh(true);timer=setInterval(()=>refresh(true),15000);window.addEventListener('beforeunload',()=>clearInterval(timer));
+})();
+
+// Dashboard: angka KPI/pulse/priority jalan naik dari 0 saat halaman dibuka (Apple-style count-up)
+(() => {
+  const dash = document.querySelector('.command-dashboard');
+  if (!dash) return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const targets = dash.querySelectorAll('.command-kpi strong, .command-pulse strong, .priority-row b');
+  targets.forEach(el => {
+    const raw = el.textContent.trim();
+    const m = raw.match(/^(\D*)([\d.,]+)(\D*)$/);
+    if (!m) return;
+    const [, prefix, numStr, suffix] = m;
+    const target = parseInt(numStr.replace(/[.,]/g, ''), 10);
+    if (!Number.isFinite(target) || target <= 0) return;
+    const duration = 650;
+    const start = performance.now();
+    const step = now => {
+      const p = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = prefix + Math.round(target * eased).toLocaleString('id-ID') + suffix;
+      if (p < 1) requestAnimationFrame(step);
+      else el.textContent = raw;
+    };
+    requestAnimationFrame(step);
+  });
 })();

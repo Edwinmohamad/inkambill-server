@@ -1,6 +1,5 @@
 <% const monthNames=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember']; const siteQuery=selectedSiteCode?`&site=${encodeURIComponent(selectedSiteCode)}`:''; const customerSiteQuery=selectedSiteCode?`site=${encodeURIComponent(selectedSiteCode)}`:''; const kpiSiteQuery=kpiSiteCode?`&site=${encodeURIComponent(kpiSiteCode)}`:''; const networkTarget=can('network')?'/network/monitor':`/customers?${customerSiteQuery}${customerSiteQuery?'&':''}status=active&network=problem`; const ticketTarget=can('support')?`/tickets?status=active${siteQuery}`:'/'; const cashTarget=isAdmin?'/payments/reconciliation':(can('billing')?'/payments':'/'); %>
 <section class="command-dashboard dashboard-v19 dashboard-v112 dashboard-v114 dashboard-v115 dashboard-v116 dashboard-v117 dashboard-v119">
-  <div class="command-tech-mesh" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
   <div class="command-hero">
     <div class="command-hero-copy">
       <div class="command-eyebrow"><span class="command-live-dot"></span> INKAMNET NETWORK & BILLING COMMAND CENTER</div>
@@ -9,7 +8,7 @@
           <span class="dashboard-user-photo"><% if(user?.profile_photo){ %><img src="/profile/photo/<%= encodeURIComponent(user.profile_photo) %>" alt="Foto <%= user.name %>"><% }else{ %><b><%= (user?.name||'A').charAt(0).toUpperCase() %></b><i class="bi bi-person-fill"></i><% } %></span>
           <span class="dashboard-user-copy"><small><i></i> SEDANG ONLINE</small><strong><%= statusLabel(actualRole||user?.role||'admin') %></strong><em><i class="bi bi-person-circle"></i> Buka profil</em></span>
         </a>
-        <div class="command-welcome-copy"><h1><%= greeting %>, <%= user?.name||'Administrator' %> <span>👋</span></h1><p>Selamat datang kembali di pusat kendali INKAMNET. Semoga operasional hari ini berjalan lancar—berikut Operational Pulse terbaru untuk Anda.</p></div>
+        <div class="command-welcome-copy"><h1><%= greeting %>, <%= user?.name||'Administrator' %></h1><p>Ringkasan operasional terbaru.</p></div>
       </div>
     </div>
     <div class="command-hero-actions">
@@ -20,7 +19,6 @@
       </form>
       <a href="/customers/new" class="command-add"><i class="bi bi-person-plus-fill"></i>Tambah Pelanggan</a>
     </div>
-    <div class="command-orbit" aria-hidden="true"><span></span><span></span><i class="bi bi-broadcast-pin"></i></div>
   </div>
 
   <div class="dashboard-user-ticker" aria-label="Aktivitas user terbaru">
