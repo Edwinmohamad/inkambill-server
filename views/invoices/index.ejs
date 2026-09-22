@@ -70,7 +70,7 @@
               <td><span class="cell-main"><%= row.days_overdue>0?`${row.days_overdue} hari overdue`:`H-${Math.abs(row.days_overdue)}` %></span></td>
               <td class="money"><%= formatRupiah(row.outstanding) %></td>
               <td>
-                <span class="status-badge <%= row.stageTone %>"><%= row.stageLabel %></span>
+                <span class="status-badge <%= row.stageTone %>"<% if(row.collection_stage_note){ %> title="<%= row.collection_stage_note.replace(/"/g,"&quot;") %>"<% } %>><%= row.stageLabel %></span>
                 <% if(row.stage!=='none' && row.collection_stage_at){ %><span class="cell-sub"><%= formatDateTime(row.collection_stage_at) %><%= row.collection_stage_by_name?` · ${row.collection_stage_by_name}`:'' %></span><% } %>
               </td>
               <td class="invoice-action-cell">
@@ -354,5 +354,59 @@
   const discountModal=document.getElementById('invoiceDiscountModal');
   discountModal?.addEventListener('show.bs.modal',event=>{const b=event.relatedTarget;if(!b)return;document.getElementById('invoiceDiscountForm').action=`/invoices/${b.dataset.discountInvoiceId}/discount`;document.getElementById('invoiceDiscountIdentity').textContent=`${b.dataset.discountInvoiceNumber} · ${b.dataset.discountCustomer}`;document.getElementById('invoiceDiscountSubtotal').textContent=new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(Number(b.dataset.discountSubtotal||0));document.getElementById('invoiceDiscountMode').value='flat';document.getElementById('invoiceDiscountValue').value=Number(b.dataset.discountCurrent||0)||'';});
   refreshSelection();
+})();
+</script>
+
+<script>
+(()=>{
+  // v1.26 — Tab "Prioritas Collection": filter cepat client-side, pola yang sama dengan kartu
+  // Aging Piutang di Analitik Bisnis (lihat views/analytics/index.ejs), plus modal untuk update
+  // status follow-up manual dan auto-log saat tombol WA Reminder diklik.
+  const collectionCsrfToken=document.querySelector('meta[name="csrf-token"]')?.content||'';
+  const collectionRows=[...document.querySelectorAll('#billingCollectionTableBody .aging-row')];
+  const collectionFilterButtons=document.querySelectorAll('[data-collection-filter]');
+  const collectionEmptyFiltered=document.getElementById('billingCollectionEmptyFiltered');
+  collectionFilterButtons.forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      collectionFilterButtons.forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      const key=btn.dataset.collectionFilter;
+      let visible=0;
+      collectionRows.forEach(row=>{
+        const match=key==='all'?true:key==='isolir'?row.dataset.isolir==='1':row.dataset.bucket===key;
+        row.style.display=match?'':'none';
+        if(match)visible++;
+      });
+      if(collectionEmptyFiltered)collectionEmptyFiltered.classList.toggle('d-none',visible!==0||collectionRows.length===0);
+    });
+  });
+
+  // Modal Update Status Collection — action form & isian awal mengikuti baris yang diklik, pola
+  // sama dengan invoiceEditModal/invoiceDiscountModal di atas.
+  const stageModal=document.getElementById('collectionStageModal');
+  stageModal?.addEventListener('show.bs.modal',event=>{
+    const b=event.relatedTarget;if(!b)return;
+    document.getElementById('collectionStageForm').action=`/invoices/collection/${b.dataset.collectionId}/stage`;
+    document.getElementById('collectionStageIdentity').textContent=`${b.dataset.collectionName} · ${b.dataset.collectionCode}`;
+    document.getElementById('collectionStageSelect').value=b.dataset.collectionStage||'none';
+    document.getElementById('collectionChannelSelect').value='';
+    document.getElementById('collectionNoteInput').value='';
+  });
+
+  // WA Reminder dari tab Prioritas Collection otomatis mencatat "Sudah Follow-up" di background —
+  // tautan wa.me tetap terbuka seperti biasa (target=_blank, tidak di-preventDefault), fetch ini
+  // fire-and-forget saja dan tidak pernah memblokir/menggagalkan klik WA-nya.
+  document.addEventListener('click',event=>{
+    const trigger=event.target.closest('[data-collection-wa]');
+    if(!trigger)return;
+    const customerId=trigger.dataset.collectionCustomerId;
+    if(!customerId)return;
+    fetch(`/invoices/collection/${customerId}/mark-reminded`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':collectionCsrfToken},
+      keepalive:true,
+      body:'{}'
+    }).catch(()=>{});
+  });
 })();
 </script>

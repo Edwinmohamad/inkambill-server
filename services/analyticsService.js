@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const { normalizeWhatsapp } = require('./whatsappService');
+const { getCollectionAging, bucketizeAging } = require('./collectionService');
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -286,13 +287,10 @@ async function fetchAnalytics({ siteCode = '', month, year }) {
   const churnReasons = churnReasonRows.map(row => ({ reason: row.reason, total: num(row.total) }));
 
   // --- Aging piutang (with WhatsApp reminder number + "siap isolir" flag) ----
-  const [agingRaw] = await db.execute(`SELECT c.id,c.customer_code,c.name customer_name,c.phone,s.code site_code,MIN(i.due_date) oldest_due,COALESCE(SUM(i.outstanding),0) outstanding,MAX(DATEDIFF(CURDATE(),i.due_date)) days_overdue FROM invoices i JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id WHERE i.status IN ('unpaid','partial','overdue') AND i.outstanding>0${customerScope} GROUP BY c.id,c.customer_code,c.name,c.phone,s.code ORDER BY days_overdue DESC,outstanding DESC LIMIT 150`, customerParams);
-  const aging = agingRaw.map(row => ({ ...row, whatsappNumber: normalizeWhatsapp(row.phone) || null, siapIsolir: num(row.days_overdue) > 7 }));
-  const agingBuckets = {
-    h3: aging.filter(x => num(x.days_overdue) <= 0 && num(x.days_overdue) >= -3),
-    hplus3: aging.filter(x => num(x.days_overdue) > 0 && num(x.days_overdue) <= 30),
-    over30: aging.filter(x => num(x.days_overdue) > 30)
-  };
+  // v1.26 — query & status follow-up manual ("Prioritas Collection", menu Tagihan) dipindah ke
+  // services/collectionService.js supaya kartu ini dan tab Tagihan selalu baca data yang sama.
+  const aging = (await getCollectionAging({ siteCode: siteCode || null, limit: 150 })).map(row => ({ ...row, whatsappNumber: normalizeWhatsapp(row.phone) || null }));
+  const agingBuckets = bucketizeAging(aging);
   const siapIsolirCount = aging.filter(x => x.siapIsolir).length;
 
   // --- PSB funnel + technician SLA (in hours) --------------------------------
@@ -346,9 +344,9 @@ function buildDummyAnalytics({ siteCode = '', month, year } = {}) {
   const selectedName = siteCode ? `${siteCode} (contoh)` : 'Semua Site (contoh)';
 
   const aging = [
-    { id: 'demo-1', customer_code: 'DEMO-0001', customer_name: 'Contoh Pelanggan A', phone: null, whatsappNumber: null, site_code: 'HQ', oldest_due: new Date(now.getTime() - 2 * 86400000), outstanding: 350000, days_overdue: 2, siapIsolir: false },
-    { id: 'demo-2', customer_code: 'DEMO-0002', customer_name: 'Contoh Pelanggan B', phone: null, whatsappNumber: null, site_code: 'HQ', oldest_due: new Date(now.getTime() - 10 * 86400000), outstanding: 275000, days_overdue: 10, siapIsolir: true },
-    { id: 'demo-3', customer_code: 'DEMO-0003', customer_name: 'Contoh Pelanggan C', phone: null, whatsappNumber: null, site_code: 'HQ', oldest_due: new Date(now.getTime() - 40 * 86400000), outstanding: 520000, days_overdue: 40, siapIsolir: true }
+    { id: 'demo-1', customer_code: 'DEMO-0001', customer_name: 'Contoh Pelanggan A', phone: null, whatsappNumber: null, site_code: 'HQ', oldest_due: new Date(now.getTime() - 2 * 86400000), outstanding: 350000, days_overdue: 2, siapIsolir: false, stage: 'none', stageLabel: 'Belum Ditindaklanjuti', stageTone: 'gray' },
+    { id: 'demo-2', customer_code: 'DEMO-0002', customer_name: 'Contoh Pelanggan B', phone: null, whatsappNumber: null, site_code: 'HQ', oldest_due: new Date(now.getTime() - 10 * 86400000), outstanding: 275000, days_overdue: 10, siapIsolir: true, stage: 'followed_up', stageLabel: 'Sudah Follow-up', stageTone: 'orange' },
+    { id: 'demo-3', customer_code: 'DEMO-0003', customer_name: 'Contoh Pelanggan C', phone: null, whatsappNumber: null, site_code: 'HQ', oldest_due: new Date(now.getTime() - 40 * 86400000), outstanding: 520000, days_overdue: 40, siapIsolir: true, stage: 'ready_isolir', stageLabel: 'Siap Isolir', stageTone: 'red' }
   ];
   const agingBuckets = { h3: aging.filter(x => x.days_overdue <= 2), hplus3: aging.filter(x => x.days_overdue > 2 && x.days_overdue <= 30), over30: aging.filter(x => x.days_overdue > 30) };
   const siapIsolirCount = aging.filter(x => x.siapIsolir).length;

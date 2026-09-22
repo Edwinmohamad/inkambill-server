@@ -66,7 +66,7 @@ const mapAdd = (map, key, value) => map.set(key, (map.get(key) || 0) + money(val
 function buildClosingCalculation({ payments = [], expenses = [], heldCash = [], routerAssets = [], adjustments = [], closing = {}, mode = 'auto', lineItems = [] }) {
   const selectedMode = mode === 'manual' ? 'manual' : 'auto';
   const blocks = {
-    krwclm: { label: 'CDS', revenue: 0, expense: 0, psbRevenue: 0, psbCount: 0, clusterRevenue: {}, expenseByCategory: {}, shares: [] },
+    krwclm: { label: 'CDS', revenue: 0, expense: 0, psbRevenue: 0, psbCount: 0, clusterRevenue: {}, clusterPsbRevenue: {}, clusterExpense: {}, clusterExpenseByCategory: {}, expenseByCategory: {}, shares: [] },
     kbg: { label: 'KBG', revenue: 0, expense: 0, psbRevenue: 0, psbCount: 0, clusterRevenue: {}, expenseByCategory: {}, shares: [] },
     other: { label: 'Lokasi belum dipetakan', revenue: 0, expense: 0, psbRevenue: 0, psbCount: 0, clusterRevenue: {}, expenseByCategory: {}, shares: [] }
   };
@@ -79,13 +79,17 @@ function buildClosingCalculation({ payments = [], expenses = [], heldCash = [], 
     // baru) supaya bisa ditampilkan terpisah dari pendapatan langganan biasa.
     // Tidak mengubah blocks[blockKey].revenue (total tetap sama seperti
     // sebelumnya) — psbRevenue murni breakdown tambahan dari total itu.
-    if (isPsbRevenue(row.category)) {
+    const rowIsPsb = isPsbRevenue(row.category);
+    if (rowIsPsb) {
       blocks[blockKey].psbRevenue += amount;
       blocks[blockKey].psbCount += 1;
     }
     if (blockKey === 'krwclm') {
       const key = clusterKey(row.cluster_name || row.site_code);
       blocks[blockKey].clusterRevenue[key] = (blocks[blockKey].clusterRevenue[key] || 0) + amount;
+      // v3.1 — breakdown PSB per cluster (dipakai kartu KRW/CLM terpisah di PDF),
+      // sejajar dengan clusterRevenue di atas. Tidak mengubah clusterRevenue.
+      if (rowIsPsb) blocks[blockKey].clusterPsbRevenue[key] = (blocks[blockKey].clusterPsbRevenue[key] || 0) + amount;
     }
   });
 
@@ -95,6 +99,19 @@ function buildClosingCalculation({ payments = [], expenses = [], heldCash = [], 
     blocks[blockKey].expense += amount;
     const category = String(row.category || row.name || 'Lain-lain').trim() || 'Lain-lain';
     blocks[blockKey].expenseByCategory[category] = (blocks[blockKey].expenseByCategory[category] || 0) + amount;
+    // v3.1 — pengeluaran CDS dulu tidak pernah dipecah per cluster (KRW/CLM),
+    // cuma per kategori gabungan — jadi kategori seperti "Fee Sales" tidak
+    // pernah kelihatan ada di cluster mana. Sekarang dicatat juga per cluster,
+    // sejajar dengan clusterRevenue, supaya kartu KRW/CLM terpisah di PDF bisa
+    // menampilkan rincian pengeluarannya sendiri-sendiri (lihat routes/closing.js
+    // dan services/reportPdf.js). Tidak mengubah expenseByCategory gabungan di
+    // atas — murni breakdown tambahan.
+    if (blockKey === 'krwclm') {
+      const key = clusterKey(row.cluster_name || row.site_code);
+      blocks[blockKey].clusterExpense[key] = (blocks[blockKey].clusterExpense[key] || 0) + amount;
+      const byCat = blocks[blockKey].clusterExpenseByCategory[key] || (blocks[blockKey].clusterExpenseByCategory[key] = {});
+      byCat[category] = (byCat[category] || 0) + amount;
+    }
   });
 
   // Keep old manual totals readable for legacy periods that have no detailed

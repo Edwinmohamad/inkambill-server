@@ -138,15 +138,29 @@ function drawLocationShareCards(doc,recipientName,blocks,title,subtitle){
     return[{label:'Total Pengeluaran',value:rupiah(block.expense),bold:true}];
   }
   function rowsH(rows){return rows.reduce((a,r)=>a+itemRowH(r.label,r.bold)+(r.divider?5:0),0);}
-  const cardHeights=blocks.map((block)=>{
+  const cardHeight=(block)=>{
     let h=43+rowsH(revenueRows(block))+8+rowsH(expenseRows(block))+10+16;
     h+=block.share?(8+SHARE_PANEL_H+16):37;
     return h;
-  });
-  const cardH=Math.max(...cardHeights,150);
-  if(doc.y+cardH>doc.page.height-doc.page.margins.bottom){doc.addPage();if(title)drawBrandHeader(doc,title,subtitle,true);drawSectionLabel(doc,'Ringkasan per Lokasi',`${blocks.length} lokasi`);}
+  };
+  // v3.1 — dulu fungsi ini SELALU mengasumsikan tepat 2 kartu dalam 1 baris
+  // (mis. CDS + KBG). Sekarang lokasi CDS bisa pecah jadi beberapa kartu (KRW,
+  // CLM, ringkasan gabungan, dst — lihat routes/closing.js), jadi kartu-kartu
+  // ditata dalam grid 2 kolom yang melipat ke baris berikutnya, dan setiap
+  // baris punya tinggi dan pengecekan pindah-halaman sendiri (bukan satu
+  // tinggi seragam untuk semua kartu sekaligus, yang akan boros halaman kalau
+  // satu kartu jauh lebih tinggi dari yang lain).
+  const cols=2;
+  for(let rowStart=0;rowStart<blocks.length;rowStart+=cols){
+    const rowBlocks=blocks.slice(rowStart,rowStart+cols);
+    const rowH=Math.max(...rowBlocks.map(cardHeight),150);
+    if(doc.y+rowH>doc.page.height-doc.page.margins.bottom){doc.addPage();if(title)drawBrandHeader(doc,title,subtitle,true);drawSectionLabel(doc,'Ringkasan per Lokasi',`${blocks.length} lokasi`);}
+    drawCardRow(rowBlocks,rowH);
+    doc.y+=18;
+  }
+  function drawCardRow(rowBlocks,cardH){
   const y=doc.y;
-  blocks.forEach((block,i)=>{
+  rowBlocks.forEach((block,i)=>{
     const xx=x+i*(cw+gap);
     doc.save();doc.roundedRect(xx,y,cw,cardH,10).lineWidth(1).fillAndStroke(COLORS.white,COLORS.line);doc.restore();
     doc.save();
@@ -173,7 +187,11 @@ function drawLocationShareCards(doc,recipientName,blocks,title,subtitle){
     drawRows(expenseRows(block));
     ly+=10;
     doc.fillColor(COLORS.muted).font('Helvetica').fontSize(7.7).text('Laba Bersih',xx+16,ly,{width:cw*.5,height:12,lineBreak:false});
-    doc.fillColor(COLORS.green).font('Helvetica-Bold').fontSize(9.2).text(rupiah(block.profit),xx+16+labelW,ly-1,{width:valueW,align:'right',height:13,lineBreak:false,ellipsis:true});
+    // v3.1 — dulu warnanya selalu hijau, tidak masalah selama tidak ada kartu
+    // yang bisa rugi. Sekarang kartu breakdown per cluster (mis. "CDS -
+    // Lainnya" yang cuma berisi pengeluaran tanpa pendapatan) bisa betulan
+    // minus, jadi warnanya ikut tanda seperti "Bersih diterima" di bawah.
+    doc.fillColor(block.profit<0?COLORS.red:COLORS.green).font('Helvetica-Bold').fontSize(9.2).text(rupiah(block.profit),xx+16+labelW,ly-1,{width:valueW,align:'right',height:13,lineBreak:false,ellipsis:true});
     ly+=16;
     if(block.share){
       const shownPercent=block.share.displayPercent!=null?block.share.displayPercent:block.share.percent;
@@ -202,11 +220,16 @@ function drawLocationShareCards(doc,recipientName,blocks,title,subtitle){
     } else {
       ly+=13;
       doc.strokeColor(COLORS.line).lineWidth(.6).moveTo(xx+16,ly-4).lineTo(xx+cw-16,ly-4).stroke();
-      doc.fillColor(COLORS.muted).font('Helvetica-Oblique').fontSize(7).text('Tidak ada alokasi untuk penerima ini di lokasi ini.',xx+16,ly,{width:cw-32,height:20,lineBreak:true});
+      // v3.1 — `shareNote` dipakai kartu breakdown-only (mis. KRW/CLM) supaya
+      // pesannya jelas ("dihitung gabungan, lihat kartu Total CDS") — bukan
+      // pesan generik "tidak ada alokasi" yang salah arti di sini (uangnya
+      // ADA, cuma ditampilkan di kartu lain).
+      doc.fillColor(COLORS.muted).font('Helvetica-Oblique').fontSize(7).text(safe(block.shareNote||'Tidak ada alokasi untuk penerima ini di lokasi ini.'),xx+16,ly,{width:cw-32,height:20,lineBreak:true});
     }
     doc.restore();
   });
-  doc.y=y+cardH+18;
+  doc.y=y+cardH;
+  }
 }
 function drawAdjustmentTable(doc,rows,title,subtitle){
   drawSectionLabel(doc,'Penyesuaian Anda',`${rows.length} baris`);

@@ -783,12 +783,59 @@ router.get('/pdf', async (req, res, next) => {
     let netTotal = 0;
     const allowedBlocks = recipient.key === 'mang ali' ? new Set(['kbg']) : new Set(['krwclm', 'kbg']);
     const blocks = [];
-    [['krwclm', data.blocks.krwclm], ['kbg', data.blocks.kbg]].forEach(([blockKey, block]) => {
-      if (!allowedBlocks.has(blockKey) || !block) return;
+    // v3.1 — dulu "CDS" (gabungan KRW+CLM) tampil sebagai SATU kartu, jadi
+    // kategori pengeluaran yang tercatat di salah satu cluster (mis. "Fee
+    // Sales") kebaur jadi satu daftar besar tanpa kelihatan cluster mana yang
+    // sebenarnya punya. Sekarang KRW dan CLM masing-masing dapat kartu sendiri
+    // (rincian pendapatan/pengeluaran/kategori miliknya sendiri, termasuk yang
+    // dulu tidak kelihatan), TAPI pembagian Edwin/Jon/Bopung TETAP dihitung
+    // gabungan seperti sebelumnya (nominal tidak berubah) — makanya panel
+    // "Bagian" cuma muncul sekali, di kartu ringkasan "Total CDS (KRW+CLM)".
+    if (allowedBlocks.has('krwclm') && data.blocks.krwclm) {
+      const block = data.blocks.krwclm;
+      const share = recipientShare(block, recipient.key);
+      if (share) { grossTotal += money(share.gross); netTotal += money(share.amount); }
+      const shareNote = `Bagian ${recipient.name} dihitung gabungan KRW + CLM — lihat kartu "Total CDS (KRW + CLM)".`;
+      [
+        { key: 'KRW', label: 'KRW' },
+        { key: 'CLM', label: 'CLM' },
+        { key: 'LAINNYA', label: 'CDS - Lainnya (cluster belum ditandai)' }
+      ].forEach(({ key, label }) => {
+        const revenue = money((block.clusterRevenue || {})[key]);
+        const expense = money((block.clusterExpense || {})[key]);
+        const psbRevenue = money((block.clusterPsbRevenue || {})[key]);
+        const expenseByCategory = (block.clusterExpenseByCategory || {})[key] || {};
+        // Kartu "Lainnya" cuma tampil kalau memang ada transaksi yang cluster-nya
+        // belum ditandai KRW/CLM — supaya tidak ada apa pun yang kebaur diam-diam
+        // ke sana tanpa ketahuan, tapi juga tidak menambah kartu kosong tiap bulan.
+        if (key === 'LAINNYA' && !revenue && !expense && !Object.keys(expenseByCategory).length) return;
+        blocks.push({ label, revenue, expense, profit: revenue - expense, psbRevenue, subscriptionRevenue: revenue - psbRevenue, expenseByCategory, share: null, shareNote });
+      });
+      blocks.push({ label: 'Total CDS (KRW + CLM)', revenue: block.revenue, expense: block.expense, profit: block.profit, share, psbRevenue: block.psbRevenue, subscriptionRevenue: block.subscriptionRevenue, expenseByCategory: block.expenseByCategory });
+    }
+    if (allowedBlocks.has('kbg') && data.blocks.kbg) {
+      const block = data.blocks.kbg;
       const share = recipientShare(block, recipient.key);
       if (share) { grossTotal += money(share.gross); netTotal += money(share.amount); }
       blocks.push({ label: block.label, revenue: block.revenue, expense: block.expense, profit: block.profit, share, psbRevenue: block.psbRevenue, subscriptionRevenue: block.subscriptionRevenue, clusterRevenue: block.clusterRevenue, expenseByCategory: block.expenseByCategory });
-    });
+    }
+    // v3.1 — transaksi Data Kas yang lokasinya BUKAN persis CDS/KBG dulu
+    // ditandai "Lokasi belum dipetakan" dan hanya muncul sebagai notifikasi
+    // kecil di halaman web Closing — tidak pernah ikut PDF manapun, jadi bisa
+    // menghilang tanpa siapa pun sadar (kemungkinan besar ini yang terjadi ke
+    // "Fee Sales" kalau bukan soal cluster KRW/CLM di atas). Sekarang selalu
+    // ditampilkan di PDF manapun kalau nilainya bukan nol, supaya kelihatan
+    // dan tidak diam-diam hilang dari uang siapa pun.
+    const unmapped = data.blocks.other;
+    if (unmapped && (money(unmapped.revenue) || money(unmapped.expense))) {
+      blocks.push({
+        label: 'Lokasi belum dipetakan',
+        revenue: unmapped.revenue, expense: unmapped.expense, profit: unmapped.profit,
+        psbRevenue: unmapped.psbRevenue, subscriptionRevenue: unmapped.subscriptionRevenue,
+        expenseByCategory: unmapped.expenseByCategory, share: null,
+        shareNote: 'Transaksi Data Kas dengan lokasi selain CDS/KBG. Tidak masuk pembagian siapa pun — perbaiki lokasinya di Data Kas.'
+      });
+    }
     const adjustmentRows = buildAdjustmentRows(data, recipient, allowedBlocks);
     const transactionRows = buildTransactionRows(data, allowedBlocks);
     const customerActivityRows = buildCustomerActivityRows(customerActivity, allowedBlocks);

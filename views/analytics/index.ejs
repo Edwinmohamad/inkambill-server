@@ -156,6 +156,10 @@ const psbActivated = (funnel.find(f => f.key === 'active') || {}).value || 0;
                 <% } else if (days > 30) { %><span class="status-badge red">Review Isolir</span>
                 <% } else if (days > 0) { %><span class="status-badge orange">Follow-up</span>
                 <% } else { %><span class="status-badge green">Reminder H-3</span><% } %>
+                <!-- v1.26 — status follow-up manual dari tab "Prioritas Collection" (menu Tagihan),
+                     read-only di sini. Cuma ditampilkan kalau sudah ada tindakan manual, supaya
+                     tidak menambah noise untuk baris yang belum disentuh. -->
+                <% if (row.stage && row.stage!=='none') { %><span class="cell-sub" style="display:block;margin-top:4px"><span class="status-badge <%= row.stageTone %>"<% if(row.collection_stage_note){ %> title="<%= row.collection_stage_note.replace(/"/g,"&quot;") %>"<% } %>><%= row.stageLabel %></span></span><% } %>
               </td>
               <td>
                 <% if (row.whatsappNumber) { %>
@@ -209,7 +213,7 @@ const psbActivated = (funnel.find(f => f.key === 'active') || {}).value || 0;
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
       </div>
       <div class="modal-body">
-        <div id="analyticsReportLoading" class="analytics-report-loading"><span class="spinner-border spinner-border-sm"></span> Mengambil data analitik terbaru…</div>
+        <div id="analyticsReportLoading"><div class="analytics-mini-stats mb-3"><div class="skeleton-stat"><span class="skeleton-line"></span><span class="skeleton-line"></span></div><div class="skeleton-stat"><span class="skeleton-line"></span><span class="skeleton-line"></span></div><div class="skeleton-stat"><span class="skeleton-line"></span><span class="skeleton-line"></span></div><div class="skeleton-stat"><span class="skeleton-line"></span><span class="skeleton-line"></span></div><div class="skeleton-stat"><span class="skeleton-line"></span><span class="skeleton-line"></span></div><div class="skeleton-stat"><span class="skeleton-line"></span><span class="skeleton-line"></span></div></div><div class="analytics-mini-stats"><div class="skeleton-stat"><span class="skeleton-line"></span><span class="skeleton-line"></span></div><div class="skeleton-stat"><span class="skeleton-line"></span><span class="skeleton-line"></span></div><div class="skeleton-stat"><span class="skeleton-line"></span><span class="skeleton-line"></span></div><div class="skeleton-stat"><span class="skeleton-line"></span><span class="skeleton-line"></span></div></div></div>
         <div id="analyticsReportContent" class="d-none">
           <div class="module-kicker">1. Ringkasan Eksekutif Keuangan &amp; Realisasi Kas</div>
           <div class="analytics-mini-stats mb-3">
