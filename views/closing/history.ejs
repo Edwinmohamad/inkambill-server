@@ -15,7 +15,7 @@
           <% }) %>
         </select>
       </label>
-      <button class="btn btn-primary btn-sm closing-period-submit" type="submit"><i class="bi bi-arrow-repeat me-1"></i>Filter</button>
+      <button class="btn-tech compact primary closing-period-submit" type="submit"><i class="bi bi-arrow-repeat me-1"></i>Filter</button>
     </form>
   </header>
 
@@ -29,15 +29,15 @@
           <% rows.forEach(row => { %>
           <tr>
             <td><strong><%= row.start %></strong> s/d <%= row.end %></td>
-            <td><span class="badge text-bg-<%= row.mode==='AUTO' ? 'primary' : 'secondary' %>"><%= row.mode==='AUTO' ? 'OTOMATIS' : 'MANUAL' %></span></td>
-            <td><span class="badge text-bg-<%= row.status==='LOCKED' ? 'success' : 'warning' %>"><%= row.status==='LOCKED' ? 'TERKUNCI' : 'DRAFT' %></span></td>
+            <td><span class="status-badge <%= row.mode==='AUTO' ? 'purple' : 'gray' %>"><%= row.mode==='AUTO' ? 'OTOMATIS' : 'MANUAL' %></span></td>
+            <td><span class="status-badge <%= row.status==='LOCKED' ? 'green' : 'orange' %>"><%= row.status==='LOCKED' ? 'TERKUNCI' : 'DRAFT' %></span></td>
             <td><%= row.entryCount %></td>
             <td class="text-end">Rp <%= money(row.totalRevenue).toLocaleString('id-ID') %></td>
             <td class="text-end">Rp <%= money(row.totalExpense).toLocaleString('id-ID') %></td>
             <td class="text-end"><strong>Rp <%= money(row.totalProfit).toLocaleString('id-ID') %></strong></td>
             <td>
-              <a class="btn btn-outline-primary btn-sm" href="/closing?from=<%= row.start %>&to=<%= row.end %>"><i class="bi bi-box-arrow-up-right me-1"></i>Buka</a>
-              <a class="btn btn-outline-secondary btn-sm" href="/closing/export.xlsx?from=<%= row.start %>&to=<%= row.end %>"><i class="bi bi-file-earmark-spreadsheet"></i></a>
+              <a class="btn-tech compact" href="/closing?from=<%= row.start %>&to=<%= row.end %>"><i class="bi bi-box-arrow-up-right me-1"></i>Buka</a>
+              <a class="btn-tech compact" href="/closing/export.xlsx?from=<%= row.start %>&to=<%= row.end %>"><i class="bi bi-file-earmark-spreadsheet"></i></a>
             </td>
           </tr>
           <% }) %>

@@ -170,7 +170,8 @@ function drawAdjustmentTable(doc,rows,title,subtitle){
   doc.restore();doc.y=y+26+18;
 }
 function drawTransactionTable(doc,rows,title,subtitle){
-  drawSectionLabel(doc,'Rincian Pendapatan & Pengeluaran',`${rows.length} baris`);
+  const entries=rows.filter(row=>row.kind==='entry');
+  drawSectionLabel(doc,'Rincian Pendapatan & Pengeluaran',`${entries.length} transaksi`);
   const x=doc.page.margins.left,total=doc.page.width-doc.page.margins.left-doc.page.margins.right;
   const bottomLimit=doc.page.height-doc.page.margins.bottom-30;
   const cols=[{label:'Tanggal',w:.13},{label:'Lokasi',w:.13},{label:'Jenis',w:.15},{label:'Keterangan',w:.36},{label:'Nominal',w:.23,align:'right'}];
@@ -182,12 +183,23 @@ function drawTransactionTable(doc,rows,title,subtitle){
     doc.restore();doc.y=hy+26;
   }
   drawHead();
-  if(!rows.length){
+  if(!entries.length){
     doc.save();doc.roundedRect(x,doc.y,total,36,7).fillAndStroke(COLORS.soft,COLORS.line);
     doc.fillColor(COLORS.muted).font('Helvetica').fontSize(7.6).text('Tidak ada data untuk filter yang dipilih.',x+12,doc.y+13,{width:total-24,align:'center',height:12,lineBreak:false,ellipsis:true});
     doc.restore();doc.y+=46;return;
   }
+  let totalIncome=0,totalExpense=0;
   rows.forEach((row,ri)=>{
+    if(row.kind==='group'){
+      if(doc.y+58>bottomLimit){doc.addPage();drawBrandHeader(doc,title,subtitle,true);drawHead();}
+      const y=doc.y;doc.save();doc.roundedRect(x,y,total,22,5).fill(row.jenis==='Pendapatan'?COLORS.greenSoft:COLORS.redSoft);
+      doc.fillColor(row.jenis==='Pendapatan'?COLORS.green:'#B54708').font('Helvetica-Bold').fontSize(7.3).text(`${row.jenis.toUpperCase()} · ${safe(row.category)}`,x+10,y+8,{width:total*.72,height:10,ellipsis:true,lineBreak:false});
+      doc.fillColor(COLORS.muted).font('Helvetica').fontSize(6.7).text(`${row.count} transaksi`,x+total*.74,y+8,{width:total*.24,align:'right',height:10});doc.restore();doc.y=y+28;return;
+    }
+    if(row.kind==='subtotal'){
+      if(doc.y+28>bottomLimit){doc.addPage();drawBrandHeader(doc,title,subtitle,true);drawHead();}
+      const y=doc.y;doc.save();doc.rect(x,y,total,26).fill(COLORS.purpleSoft);doc.fillColor(COLORS.purple).font('Helvetica-Bold').fontSize(7.1).text(`SUBTOTAL ${safe(row.category).toUpperCase()}`,x+10,y+9,{width:total*.68,height:10,ellipsis:true});doc.fillColor(row.jenis==='Pendapatan'?COLORS.green:'#B54708').font('Helvetica-Bold').fontSize(8).text(rupiah(row.nominal),x+total*.72,y+8,{width:total*.26,align:'right',height:11});doc.restore();doc.y=y+32;if(row.jenis==='Pendapatan')totalIncome+=Number(row.nominal||0);else totalExpense+=Number(row.nominal||0);return;
+    }
     const tanggalText=safe(row.tanggal);
     const lokasiText=safe(row.lokasi);
     const keteranganText=safe(row.keterangan);
@@ -210,8 +222,6 @@ function drawTransactionTable(doc,rows,title,subtitle){
   });
   // v2.6 — baris total Pendapatan/Pengeluaran di bawah tabel, supaya tidak
   // perlu jumlah manual buat cek total dari daftar per-kategori di atasnya.
-  const totalIncome=rows.filter(r=>r.jenis==='Pendapatan').reduce((a,r)=>a+Number(r.nominal||0),0);
-  const totalExpense=rows.filter(r=>r.jenis!=='Pendapatan').reduce((a,r)=>a+Number(r.nominal||0),0);
   if(doc.y+30>bottomLimit+30){doc.addPage();drawBrandHeader(doc,title,subtitle,true);}
   const fy=doc.y;doc.save();doc.rect(x,fy,total,30).fill(COLORS.purpleSoft);doc.strokeColor(COLORS.line).lineWidth(.8).moveTo(x,fy).lineTo(x+total,fy).stroke();
   doc.fillColor(COLORS.green).font('Helvetica-Bold').fontSize(7.4).text(`TOTAL PENDAPATAN · ${rupiah(totalIncome)}`,x+10,fy+10,{width:total*.5-10,height:11,lineBreak:false,ellipsis:true});

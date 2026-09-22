@@ -438,6 +438,15 @@ router.post('/period-lock', async (req, res, next) => {
       }
     }
     const data=await loadClosing(start,end);
+    // Guard audit: when detailed rows exist, summary must reconcile exactly to
+    // the rows that will be frozen in the Closing snapshot.
+    if (data.lineItems.length) {
+      const income = data.lineItems.filter(r => r.entry_type === 'INCOME').reduce((n,r) => n + money(r.amount), 0);
+      const expense = data.lineItems.filter(r => r.entry_type === 'EXPENSE').reduce((n,r) => n + money(r.amount), 0);
+      const summaryIncome = money(data.blocks.krwclm.revenue) + money(data.blocks.kbg.revenue) + money(data.blocks.other.revenue);
+      const summaryExpense = money(data.blocks.krwclm.expense) + money(data.blocks.kbg.expense) + money(data.blocks.other.expense);
+      if (income !== summaryIncome || expense !== summaryExpense) throw new Error(`Selisih Closing tidak nol: detail pemasukan ${rupiah(income)} vs ringkasan ${rupiah(summaryIncome)}; detail pengeluaran ${rupiah(expense)} vs ringkasan ${rupiah(summaryExpense)}. Periksa data sebelum mengunci.`);
+    }
     const before={status:period.status};
     await conn.execute(`UPDATE closing_periods SET status='LOCKED',snapshot_json=?,locked_by=?,locked_at=NOW() WHERE id=?`,[JSON.stringify(data),req.session.user.id,period.id]);
     await financialAudit({conn,userId:req.session.user.id,action:'lock_period',entityType:'closing_period',entityId:period.id,before,after:{status:'LOCKED',period_start:start,period_end:end},reason:String(req.body.reason||'Closing periode selesai'),ip:req.ip});
@@ -668,7 +677,37 @@ function buildAdjustmentRows(data, recipient, allowedBlocks) {
   });
   return rows;
 }
-function buildTransactionRows(data, allowedBlocks, periodStart, periodEnd) {
+function buildTransactionRows(data, allowedBlocks) {
+  // Detail is never merged: the PDF may group a category, but every source row
+  // remains visible so totals can be audited against Data Kas / input manual.
+  const groups = new Map();
+  const add = (row, type, fallbackSource) => {
+    if (!allowedBlocks.has(siteBlock(row.site_code, row.cluster_name, row.site_name))) return;
+    const category = String(row.category || 'Lain-lain').trim() || 'Lain-lain';
+    const source = row.source_type === 'cash_sync' || row.entry_source === 'cash_sync'
+      ? 'Data Kas (sinkron otomatis)' : fallbackSource;
+    const key = `${type}\u0001${category}`;
+    if (!groups.has(key)) groups.set(key, { type, category, rows: [] });
+    groups.get(key).rows.push({
+      tanggal: date(row.entry_date || row.paid_date || row.transaction_date), lokasi: locationText(row),
+      jenis: type === 'INCOME' ? 'Pendapatan' : 'Pengeluaran',
+      keterangan: [row.customer_name || row.name || row.description || category, row.notes, source].filter(Boolean).join(' · '),
+      nominal: money(row.amount)
+    });
+  };
+  const detailed = Array.isArray(data.lineItems) && data.lineItems.length ? data.lineItems : [
+    ...(data.payments || []).map(row => ({ ...row, entry_type: 'INCOME' })),
+    ...(data.expenses || []).map(row => ({ ...row, entry_type: 'EXPENSE' }))
+  ];
+  detailed.forEach(row => add(row, String(row.entry_type || '').toUpperCase() === 'INCOME' ? 'INCOME' : 'EXPENSE', data.mode === 'auto' ? 'Data Closing' : 'Input manual'));
+  const output = [];
+  [...groups.values()].sort((a,b) => a.type === b.type ? a.category.localeCompare(b.category, 'id') : a.type === 'INCOME' ? -1 : 1).forEach(group => {
+    output.push({ kind: 'group', jenis: group.type === 'INCOME' ? 'Pendapatan' : 'Pengeluaran', category: group.category, count: group.rows.length });
+    group.rows.sort((a,b) => String(a.tanggal).localeCompare(String(b.tanggal))).forEach(row => output.push({ kind: 'entry', ...row }));
+    output.push({ kind: 'subtotal', jenis: group.type === 'INCOME' ? 'Pendapatan' : 'Pengeluaran', category: group.category, nominal: group.rows.reduce((sum,row) => sum + row.nominal, 0) });
+  });
+  return output;
+/*
   const rows = [];
   const periodLabel = `${date(periodStart)} - ${date(periodEnd)}`;
   // v1.30 — pendapatan pelanggan tidak lagi dirinci per transaksi di PDF (bisa
@@ -728,7 +767,7 @@ function buildTransactionRows(data, allowedBlocks, periodStart, periodEnd) {
     const entry = expenseTotals.get(key);
     return { tanggal: periodLabel, lokasi: entry.label, jenis: 'Pengeluaran', keterangan: `${entry.categoryLabel} · ${entry.count} transaksi`, nominal: entry.total };
   }).sort((a, b) => b.nominal - a.nominal);
-  return [...rows, ...expenseRows];
+  return [...rows, ...expenseRows];*/
 }
 
 router.get('/pdf', async (req, res, next) => {
@@ -751,13 +790,13 @@ router.get('/pdf', async (req, res, next) => {
       blocks.push({ label: block.label, revenue: block.revenue, expense: block.expense, profit: block.profit, share, psbRevenue: block.psbRevenue, subscriptionRevenue: block.subscriptionRevenue, clusterRevenue: block.clusterRevenue, expenseByCategory: block.expenseByCategory });
     });
     const adjustmentRows = buildAdjustmentRows(data, recipient, allowedBlocks);
-    const transactionRows = buildTransactionRows(data, allowedBlocks, start, end);
+    const transactionRows = buildTransactionRows(data, allowedBlocks);
     const customerActivityRows = buildCustomerActivityRows(customerActivity, allowedBlocks);
     const adjustmentTotal = netTotal - grossTotal;
     const hiddenNote = hideEdwin && recipient.key !== 'edwin' ? ' · bagian Edwin disembunyikan sesuai opsi' : '';
     createClosingReportPdf(res, {
       title: `Closing ${recipient.name}`,
-      subtitle: `Periode transaksi ${start} s/d ${end} · input manual · rincian penerima${hiddenNote}`,
+      subtitle: `Periode transaksi ${start} s/d ${end} · ${effectiveMode === 'auto' ? 'mode otomatis · sumber Data Kas & rekonsiliasi Closing' : 'input manual'} · rincian penerima${hiddenNote}`,
       filename: `closing-${recipient.reportKey}-${start}-${end}-${effectiveMode}.pdf`,
       watermark: recipient.watermark,
       recipientName: recipient.name,
@@ -818,6 +857,24 @@ router.get('/export.xlsx', async (req, res, next) => {
       [rows] = await db.execute(sql, params);
     }
     const wb = new ExcelJS.Workbook();
+    const columns = [
+      { header: 'Tanggal', key: 'entry_date', width: 14 }, { header: 'Jenis', key: 'entry_type', width: 14 },
+      { header: 'Lokasi', key: 'site_code', width: 10 }, { header: 'Cluster', key: 'cluster_name', width: 10 },
+      { header: 'Kategori', key: 'category', width: 28 }, { header: 'Keterangan', key: 'description', width: 40 },
+      { header: 'Nominal', key: 'amount', width: 18 }
+    ];
+    const addSheet = (name, source) => { const ws = wb.addWorksheet(name); ws.columns = columns; ws.getRow(1).font = { bold: true }; source.forEach(r => ws.addRow({ ...r, entry_type: r.entry_type === 'INCOME' ? 'Pendapatan' : 'Pengeluaran', entry_date: String(r.entry_date).slice(0, 10), cluster_name: r.cluster_name || '' })); ws.getColumn('amount').numFmt = '#,##0'; return ws; };
+    const summary = wb.addWorksheet('Ringkasan');
+    summary.columns = [{ header: 'Kategori', key: 'category', width: 32 }, { header: 'Jenis', key: 'type', width: 16 }, { header: 'Jumlah transaksi', key: 'count', width: 18 }, { header: 'Total', key: 'total', width: 20 }]; summary.getRow(1).font = { bold: true };
+    [...new Map(rows.map(r => { const key = `${r.entry_type}|${r.category}`; const old = rows.filter(x => `${x.entry_type}|${x.category}` === key); return [key, { category: r.category, type: r.entry_type === 'INCOME' ? 'Pendapatan' : 'Pengeluaran', count: old.length, total: old.reduce((n,x) => n + money(x.amount), 0) }]; })).values()].forEach(row => summary.addRow(row)); summary.getColumn('total').numFmt = '#,##0';
+    addSheet('Pendapatan detail', rows.filter(r => r.entry_type === 'INCOME'));
+    addSheet('Pengeluaran detail', rows.filter(r => r.entry_type === 'EXPENSE'));
+    const reconciliation = await db.execute(`SELECT p.paid_at entry_date,u.name holder_name,c.name customer_name,s.code site_code,cl.name cluster_name,p.amount FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id LEFT JOIN users u ON u.id=p.received_by LEFT JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id WHERE p.method='cash' AND p.status='confirmed' AND p.settlement_status='held_by_staff' AND DATE(p.paid_at) BETWEEN ? AND ? ORDER BY p.paid_at`, [start,end]);
+    const cashRows = reconciliation[0].map(r => ({ entry_date: r.entry_date, entry_type: 'REKONSILIASI', site_code: r.site_code, cluster_name: r.cluster_name, category: 'Cash masih di tim', description: `${r.customer_name || 'Pelanggan'} · pemegang ${r.holder_name || '-'}`, amount: r.amount }));
+    addSheet('Rekonsiliasi cash tim', cashRows);
+    const excluded = period ? (await db.execute(`SELECT entry_date,entry_type,site_code,cluster_name,category,description,amount FROM closing_entries WHERE closing_id=? AND excluded_at IS NOT NULL ORDER BY entry_date,id`, [period.id]))[0] : [];
+    addSheet('Data dikecualikan', excluded);
+/*
     const ws = wb.addWorksheet('Closing');
     ws.columns = [
       { header: 'Tanggal', key: 'entry_date', width: 14 },
@@ -830,7 +887,7 @@ router.get('/export.xlsx', async (req, res, next) => {
     ];
     ws.getRow(1).font = { bold: true };
     rows.forEach((r) => ws.addRow({ ...r, entry_type: r.entry_type === 'INCOME' ? 'Pendapatan' : 'Pengeluaran', entry_date: String(r.entry_date).slice(0, 10), cluster_name: r.cluster_name || '' }));
-    ws.getColumn('amount').numFmt = '#,##0';
+    ws.getColumn('amount').numFmt = '#,##0';*/
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="closing-${start}-${end}.xlsx"`);
     await wb.xlsx.write(res);

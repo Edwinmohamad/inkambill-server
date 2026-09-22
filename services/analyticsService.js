@@ -29,6 +29,13 @@ function cutoffWindow(month, year) {
 function nextMonthOf(month, year) {
   return month >= 12 ? { month: 1, year: year + 1 } : { month: month + 1, year };
 }
+function prevMonthOf(month, year) {
+  return month <= 1 ? { month: 12, year: year - 1 } : { month: month - 1, year };
+}
+function pctDelta(cur, prev) {
+  if (prev > 0) return Math.round(((cur - prev) / prev) * 1000) / 10;
+  return cur > 0 ? 100 : 0;
+}
 function buildProjection(financeSeries = {}) {
   const inflow = (financeSeries.inflow || []).map(num);
   const outflow = (financeSeries.outflow || []).map(num);
@@ -143,6 +150,60 @@ function buildReportSummary(data) {
 }
 
 // ---------------------------------------------------------------------------
+// Site Comparison & MoM KPI — perbandingan seluruh site aktif untuk periode
+// yang dipilih, dengan delta bulan-ke-bulan (MoM) pada kas yang terealisasi
+// di jendela cut-off. Query terpisah dan dibungkus try/catch di pemanggilnya
+// supaya kegagalan di sini tidak pernah menjatuhkan seluruh dashboard.
+// ---------------------------------------------------------------------------
+async function buildSiteComparison(month, year) {
+  const cutoff = cutoffWindow(month, year);
+  const prev = prevMonthOf(month, year);
+  const prevCutoff = cutoffWindow(prev.month, prev.year);
+
+  const [sites] = await db.query(`SELECT id,code,name FROM sites WHERE is_active=1 ORDER BY code`);
+  if (!sites.length) return [];
+
+  const [stateRows] = await db.query(`SELECT s.id site_id,
+      COUNT(CASE WHEN c.customer_status='active' THEN 1 END) active_customers,
+      COALESCE(SUM(CASE WHEN c.customer_status='active' THEN pkg.price END),0) mrr
+    FROM sites s LEFT JOIN customers c ON c.site_id=s.id LEFT JOIN packages pkg ON pkg.id=c.package_id
+    WHERE s.is_active=1 GROUP BY s.id`);
+  const [churnRows] = await db.query(`SELECT c.site_id,
+      SUM(c.customer_status IN ('inactive','terminated','suspended') AND c.status_changed_at IS NOT NULL AND MONTH(c.status_changed_at)=? AND YEAR(c.status_changed_at)=?) churned
+    FROM customers c GROUP BY c.site_id`, [month, year]);
+  const [outstandingRows] = await db.query(`SELECT c.site_id,COALESCE(SUM(i.outstanding),0) outstanding
+    FROM invoices i JOIN customers c ON c.id=i.customer_id
+    WHERE i.status IN ('unpaid','partial','overdue') AND i.outstanding>0 GROUP BY c.site_id`);
+  const [cashCurRows] = await db.execute(`SELECT c.site_id,COALESCE(SUM(p.amount),0) collected
+    FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id
+    WHERE p.status='confirmed' AND p.paid_at BETWEEN ? AND ? GROUP BY c.site_id`, [cutoff.start, cutoff.end]);
+  const [cashPrevRows] = await db.execute(`SELECT c.site_id,COALESCE(SUM(p.amount),0) collected
+    FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id
+    WHERE p.status='confirmed' AND p.paid_at BETWEEN ? AND ? GROUP BY c.site_id`, [prevCutoff.start, prevCutoff.end]);
+
+  const stateMap = new Map(stateRows.map(r => [r.site_id, r]));
+  const churnMap = new Map(churnRows.map(r => [r.site_id, r]));
+  const outstandingMap = new Map(outstandingRows.map(r => [r.site_id, r]));
+  const cashCurMap = new Map(cashCurRows.map(r => [r.site_id, r]));
+  const cashPrevMap = new Map(cashPrevRows.map(r => [r.site_id, r]));
+
+  return sites.map(s => {
+    const state = stateMap.get(s.id) || {};
+    const activeCustomers = num(state.active_customers);
+    const mrr = num(state.mrr);
+    const churned = num(churnMap.get(s.id)?.churned);
+    const churnRate = (activeCustomers + churned) > 0 ? Math.round((churned / (activeCustomers + churned)) * 1000) / 10 : 0;
+    const outstanding = num(outstandingMap.get(s.id)?.outstanding);
+    const cashCurrent = num(cashCurMap.get(s.id)?.collected);
+    const cashPrevious = num(cashPrevMap.get(s.id)?.collected);
+    return {
+      siteCode: s.code, siteName: s.name, activeCustomers, mrr, churnRate, outstanding,
+      cashCurrent, cashPrevious, cashDeltaPct: pctDelta(cashCurrent, cashPrevious)
+    };
+  }).sort((a, b) => b.mrr - a.mrr);
+}
+
+// ---------------------------------------------------------------------------
 // Real data path
 // ---------------------------------------------------------------------------
 async function fetchAnalytics({ siteCode = '', month, year }) {
@@ -252,13 +313,16 @@ async function fetchAnalytics({ siteCode = '', month, year }) {
   };
   const advisories = buildAdvisories({ odp, dueDateMatrix, siapIsolirCount, pppoeUnlinked: num(sync.pppoe_unlinked), pendingCash: num(cashPending.pending_cash) });
 
+  let siteComparison = [];
+  try { siteComparison = await buildSiteComparison(month, year); } catch (error) { console.error('Site comparison query gagal, melewati bagian ini:', error.message); }
+
   const result = {
     sites, selectedSiteCode: selected?.code || '', selectedSiteName: selected?.name || 'Semua Site',
     month, year, cutoff, kpis, dualMatrix, dueDateMatrix, advisories, financeSeries, projection: buildProjection(financeSeries), churnReasons,
     aging, agingBuckets, siapIsolirCount,
     funnel: buildFunnel(funnelRow),
     sla: { avgHours: num(slaRow.avg_hours), samples: num(slaRow.samples) },
-    odp, ownerWhatsapp, isDummy: false
+    odp, ownerWhatsapp, siteComparison, isDummy: false
   };
   result.report = buildReportSummary(result);
   return result;
@@ -304,12 +368,16 @@ function buildDummyAnalytics({ siteCode = '', month, year } = {}) {
   };
   const kpis = { mrr: 52000000, cashRealizationCutoff: dualMatrix.cashBasis.collected, activeCustomers: 842, churnRate: 1.8 };
   const advisories = buildAdvisories({ odp, dueDateMatrix, siapIsolirCount, pppoeUnlinked: 3, pendingCash: 2 });
+  const siteComparison = [
+    { siteCode: 'HQ', siteName: 'Kantor Pusat (contoh)', activeCustomers: 520, mrr: 31000000, churnRate: 1.6, outstanding: 5200000, cashCurrent: 28500000, cashPrevious: 26000000, cashDeltaPct: 9.6 },
+    { siteCode: 'BR1', siteName: 'Cabang 1 (contoh)', activeCustomers: 322, mrr: 21000000, churnRate: 2.1, outstanding: 3800000, cashCurrent: 18500000, cashPrevious: 19200000, cashDeltaPct: -3.6 }
+  ];
 
   const result = {
     sites: dummySites, selectedSiteCode: siteCode || '', selectedSiteName: selectedName,
     month, year, cutoff, kpis, dualMatrix, dueDateMatrix, advisories, financeSeries, projection: buildProjection(financeSeries), churnReasons,
     aging, agingBuckets, siapIsolirCount, funnel,
-    sla: { avgHours: 26.4, samples: 22 }, odp, ownerWhatsapp: null, isDummy: true
+    sla: { avgHours: 26.4, samples: 22 }, odp, ownerWhatsapp: null, siteComparison, isDummy: true
   };
   result.report = buildReportSummary(result);
   return result;

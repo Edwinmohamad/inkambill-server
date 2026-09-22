@@ -34,7 +34,7 @@ const psbActivated = (funnel.find(f => f.key === 'active') || {}).value || 0;
   </div>
 
   <% if (isDummy) { %>
-  <div class="alert alert-warning d-flex align-items-start gap-2 mb-3" role="alert">
+  <div class="alert alert-warning alert-modern d-flex align-items-start gap-2 mb-3" role="alert">
     <i class="bi bi-exclamation-triangle-fill mt-1"></i>
     <div><strong>Sumber data belum siap.</strong> Tabel/kolom database yang dibutuhkan analitik ini belum lengkap, sehingga halaman menampilkan <strong>data contoh (mockup)</strong> yang realistis agar tetap dapat digunakan tanpa error.</div>
   </div>
@@ -74,6 +74,30 @@ const psbActivated = (funnel.find(f => f.key === 'active') || {}).value || 0;
       <article class="analytics-chart-card"><div class="analytics-section-title"><div><span>FORECAST</span><h2>Proyeksi Bulan Berikutnya</h2></div></div><div class="analytics-mini-stats"><div class="safe"><span>Proyeksi inflow</span><strong><%= formatRupiah(projection?.projectedInflow||0) %></strong></div><div class="warn"><span>Proyeksi outflow</span><strong><%= formatRupiah(projection?.projectedOutflow||0) %></strong></div><div><span>Proyeksi net</span><strong class="<%= Number(projection?.projectedNet||0)>=0?'text-success':'text-danger' %>"><%= formatRupiah(projection?.projectedNet||0) %></strong></div></div><small class="text-secondary">Metode: <%= projection?.method||'rata-rata historis' %>.</small></article>
       <article class="analytics-chart-card"><div class="analytics-section-title"><div><span>CHURN REASONS</span><h2>Alasan Pelanggan Berhenti</h2></div></div><div class="analytics-mini-stats"><% (churnReasons||[]).slice(0,6).forEach(row=>{ %><div><span><%= row.reason %></span><strong><%= row.total %></strong></div><% }) %><% if(!(churnReasons||[]).length){ %><div><span>Belum ada data alasan</span><strong>0</strong></div><% } %></div></article>
     </div>
+
+    <% if ((siteComparison||[]).length) { %>
+    <article class="analytics-aging-card">
+      <div class="analytics-section-title"><div><span>PERBANDINGAN SITE</span><h2>Site Comparison &amp; Tren Bulanan (MoM)</h2><small>Realisasi kas cut-off <%= cutoff.label %> dibandingkan periode sebelumnya, per site aktif.</small></div></div>
+      <div class="table-responsive">
+        <table class="app-table">
+          <thead><tr><th>Site</th><th>Pelanggan Aktif</th><th>MRR</th><th>Churn</th><th>Outstanding</th><th>Kas Cut-off Berjalan</th><th>MoM</th></tr></thead>
+          <tbody>
+            <% siteComparison.forEach(row => { %>
+            <tr>
+              <td><span class="cell-main"><%= row.siteCode %></span><span class="cell-sub"><%= row.siteName %></span></td>
+              <td><%= row.activeCustomers %></td>
+              <td class="money"><%= formatRupiah(row.mrr) %></td>
+              <td><%= row.churnRate %>%</td>
+              <td class="money"><%= formatRupiah(row.outstanding) %></td>
+              <td class="money"><%= formatRupiah(row.cashCurrent) %></td>
+              <td><span class="<%= row.cashDeltaPct >= 0 ? 'text-success' : 'text-danger' %>"><i class="bi <%= row.cashDeltaPct >= 0 ? 'bi-arrow-up-right' : 'bi-arrow-down-right' %>"></i> <%= Math.abs(row.cashDeltaPct) %>%</span></td>
+            </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </article>
+    <% } %>
   </div>
 
   <!-- ===================== TAB 2: ANALITIK KEUANGAN ===================== -->

@@ -129,7 +129,7 @@ router.get('/',async(req,res)=>{
   if(month&&year){sql+=` AND MONTH(p.paid_at)=? AND YEAR(p.paid_at)=?`;params.push(month,year);}
   if(approval){sql+=` AND p.status=?`;params.push(approval);}
   if(q){const like=`%${q}%`;sql+=` AND (c.name LIKE ? OR c.customer_code LIKE ? OR i.invoice_number LIKE ? OR p.reference LIKE ? OR s.code LIKE ? OR cl.name LIKE ?)`;params.push(like,like,like,like,like,like);}
-  sql+=` ORDER BY p.id DESC`;
+  sql+=approval==='pending'?` ORDER BY p.id ASC`:` ORDER BY p.id DESC`;
   const pageResult=await paginate(db,sql,params,req,50);const payments=pageResult.rows;res.locals.pagination=pageResult.pagination;
   const openInvoices=await openInvoiceOptions(site,cluster);
   const staff=await staffOptions();
