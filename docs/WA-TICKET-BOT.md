@@ -64,7 +64,7 @@ Lampu LOS merah, sudah restart ONT
 N8N_API_TOKEN=<sudah ada, dipakai n8n>
 WA_TICKET_GROUP_IDS=            # diisi di langkah 5
 WA_TICKET_NOTIFY=true
-WAHA_EXTRA_WEBHOOK_URLS=https://<n8n-anda>/webhook/inkambilling/wa-ticket-bot?token=<WA_BOT_WEBHOOK_TOKEN>
+WAHA_EXTRA_WEBHOOK_URLS=https://<n8n-anda>/webhook/inkambilling/wa-ticket-bot?token=<webhookToken>
 ```
 
 `WAHA_EXTRA_WEBHOOK_URLS` penting: saat app menyalakan sesi WAHA, app **menimpa** daftar webhook sesi. Tanpa baris ini, webhook n8n hilang setiap app restart.
@@ -75,26 +75,37 @@ Deploy. Kolom baru (`tickets.source`, `ticket_updates.source`, `ticket_updates.a
 
 Isi nomor WhatsApp setiap teknisi di **Pengaturan → Karyawan**.
 
-### 3. Environment variable n8n
+### 3. Import workflow ke n8n
 
-| Variabel | Contoh |
+1. n8n → **Workflows → Import from File** → pilih `n8n/06-wa-ticket-bot.json`.
+2. Buka node **Config**, isi:
+
+| Field | Isi |
 |---|---|
-| `INKAMBILLING_URL` | `http://192.168.x.x:3301` (alamat lokal jika n8n satu server/jaringan) |
-| `INKAMBILLING_N8N_TOKEN` | sama dengan `N8N_API_TOKEN` di server |
-| `WAHA_URL` | `http://192.168.x.x:3000` |
-| `WAHA_API_KEY` | API key WAHA |
-| `WAHA_SESSION` | `default` |
-| `WA_BOT_WEBHOOK_TOKEN` | string acak, buat dengan `openssl rand -hex 24` |
+| `inkambillingUrl` | alamat app, mis. `http://192.168.x.x:3301` (pakai alamat lokal kalau n8n satu server/jaringan) |
+| `wahaUrl` | alamat WAHA, mis. `http://192.168.x.x:3000` |
+| `wahaSession` | `default` |
+| `webhookToken` | string acak, buat dengan `openssl rand -hex 24` |
 
-Workflow memakai `$env`. Di n8n versi baru akses `$env` dari node bisa diblokir; set `N8N_BLOCK_ENV_ACCESS_IN_NODE=false` di container n8n, atau ganti nilainya langsung di node.
+3. Buat 2 credential tipe **Header Auth**, lalu pilih di node yang sesuai:
 
-### 4. Import workflow
+| Credential | Name | Value | Dipakai di node |
+|---|---|---|---|
+| INKAMBILLING n8n Token | `X-N8N-TOKEN` | `N8N_API_TOKEN` dari `.env` server | INKAMBILLING Command |
+| WAHA API Key | `X-Api-Key` | API key WAHA | Kirim via WAHA |
 
-Import `n8n/06-wa-ticket-bot.json` → **Activate** → salin **Production URL** webhook-nya, lalu tambahkan `?token=<WA_BOT_WEBHOOK_TOKEN>`. URL inilah yang dipakai di `WAHA_EXTRA_WEBHOOK_URLS`.
+Tidak perlu environment variable n8n, jadi aman juga di n8n 2.x yang memblokir `$env` secara default.
 
-Token di URL wajib: webhook n8n bisa diakses publik, dan tanpa token siapa pun bisa mengirim payload palsu seolah-olah dari nomor teknisi.
+### 4. Aktifkan & daftarkan webhook
 
-Pastikan WAHA mengirim event **`message`** saja ke webhook ini (bukan `message.any`), supaya pesan bot sendiri tidak ikut masuk.
+1. Klik **Publish/Activate**. Salin **Production URL** dari node **WAHA Webhook**, lalu tambahkan `?token=<webhookToken>`:
+   `https://n8n.domainanda.id/webhook/inkambilling/wa-ticket-bot?token=xxxx`
+2. Isi URL itu ke `WAHA_EXTRA_WEBHOOK_URLS` di `.env` server INKAMBILLING, lalu restart app. App akan mendaftarkannya ke sesi WAHA.
+   (Kalau webhook didaftarkan manual di dashboard WAHA, pilih event **`message`** saja, bukan `message.any`.)
+
+Token di URL wajib: webhook n8n bisa diakses publik, dan tanpa token siapa pun bisa mengirim payload palsu seolah-olah dari nomor teknisi. Pesan dengan token salah berhenti di node **Valid?**.
+
+Isi workflow: WAHA Webhook → Config → Valid? (token, event `message`, bukan dari bot sendiri, diawali `#`) → INKAMBILLING Command → Pisah Balasan → Kirim via WAHA. Kalau server INKAMBILLING error atau timeout, jalur **Balasan Gangguan** tetap memberi tahu pengirim. Pengiriman diberi jeda 0,8 detik per pesan dan diulang maksimal 3x kalau WAHA gagal.
 
 ### 5. Grup teknisi
 
@@ -110,7 +121,8 @@ Chat pribadi ke nomor bot: `#help`, lalu `#buat - tinggi tes bot`, cek tiket mun
 
 | Gejala | Cek |
 |---|---|
-| Tidak ada balasan sama sekali | Execution di n8n masuk? Jika tidak: webhook WAHA belum mengarah ke n8n / event bukan `message`. Jika masuk tapi berhenti di IF: token URL salah atau `$env` diblokir. |
+| Tidak ada balasan sama sekali | Execution di n8n masuk? Jika tidak: webhook WAHA belum mengarah ke n8n / event bukan `message` / workflow belum aktif. Jika masuk tapi berhenti di **Valid?**: `?token=` di URL tidak sama dengan `webhookToken` di node Config. |
+| Balasan "Server tiket sedang gangguan" | n8n tidak bisa menghubungi `inkambillingUrl`, atau credential X-N8N-TOKEN salah (HTTP 401). Lihat output node INKAMBILLING Command. |
 | "Nomor … belum terdaftar" | Nomor HP karyawan belum diisi / karyawan nonaktif. |
 | "Nomor pengirim tidak dapat dibaca (ID: …@lid)" | WhatsApp memakai LID dan versi WAHA belum punya endpoint `/api/{session}/lids`. Update WAHA. |
 | Di grup tidak dibalas | Grup belum ada di `WA_TICKET_GROUP_IDS`, atau app belum di-restart setelah `.env` diubah. |

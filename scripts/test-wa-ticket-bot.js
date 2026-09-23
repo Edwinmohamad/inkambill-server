@@ -154,7 +154,10 @@ const text = r => r.replies[0]?.text || '';
     assert.ok(read('app.js').includes('await ensureV52Schema();'));
     assert.ok(read('routes/tickets.js').includes('notifyTicketEventAsync'));
     const wf = JSON.parse(read('n8n/06-wa-ticket-bot.json'));
-    assert.ok(JSON.stringify(wf).includes('WA_BOT_WEBHOOK_TOKEN'), 'workflow memvalidasi token webhook');
+    const names = wf.nodes.map(n => n.name);
+    ['WAHA Webhook', 'Config', 'Valid?', 'INKAMBILLING Command', 'Pisah Balasan', 'Balasan Gangguan', 'Kirim via WAHA'].forEach(n => assert.ok(names.includes(n), 'node ' + n));
+    assert.ok(JSON.stringify(wf).includes('webhookToken'), 'workflow memvalidasi token webhook');
+    assert.ok(!JSON.stringify(wf).includes('$env'), 'workflow tidak bergantung pada $env');
   });
 
   console.log(`\n${passed} test lolos${process.exitCode ? ', ADA YANG GAGAL' : ''}.`);
