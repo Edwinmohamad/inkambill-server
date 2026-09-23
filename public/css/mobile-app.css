@@ -68,6 +68,14 @@ body.inkamnet-go-app .dashboard-alert-popover{position:fixed!important;left:10px
 
 .go-bottom-nav,.go-menu,.go-sheet{display:none}
 body.inkamnet-go-app .go-bottom-nav{position:fixed;z-index:1080;left:0;right:0;bottom:0;height:calc(68px + env(safe-area-inset-bottom));padding:7px 7px env(safe-area-inset-bottom);display:grid;grid-template-columns:repeat(5,1fr);align-items:start;background:rgba(255,255,255,.97);border-top:1px solid var(--go-line);box-shadow:0 -10px 30px rgba(35,25,70,.09);backdrop-filter:blur(20px)}
+body.inkamnet-go-app.modal-open .go-bottom-nav{opacity:0;visibility:hidden;pointer-events:none}
+body.inkamnet-go-app .payment-entry-modal{z-index:1100}
+body.inkamnet-go-app.modal-open .modal-backdrop{z-index:1090}
+body.inkamnet-go-app .payment-entry-dialog{height:calc(100vh - 16px);height:calc(100dvh - 16px);max-height:calc(100vh - 16px);max-height:calc(100dvh - 16px);margin:8px auto}
+body.inkamnet-go-app .payment-entry-content{height:100%;max-height:100%;overflow:hidden}
+body.inkamnet-go-app .payment-entry-body{min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;scrollbar-gutter:stable}
+body.inkamnet-go-app .payment-entry-footer{position:relative;z-index:2;flex:0 0 auto;background:var(--panel);padding-bottom:max(.75rem,env(safe-area-inset-bottom));box-shadow:0 -8px 20px rgba(35,25,70,.08)}
+@media(max-width:767.98px){body.inkamnet-go-app .payment-entry-modal{padding:0!important}body.inkamnet-go-app .payment-entry-dialog{width:calc(100% - 16px);min-height:0}body.inkamnet-go-app .payment-entry-content{border-radius:18px}body.inkamnet-go-app .payment-entry-header{flex:0 0 auto}body.inkamnet-go-app .payment-entry-footer{display:grid;grid-template-columns:1fr 1fr;gap:8px}body.inkamnet-go-app .payment-entry-footer .payment-modal-total{grid-column:1/-1;width:auto;margin:0}body.inkamnet-go-app .payment-entry-footer .btn-tech{width:100%;min-height:42px;justify-content:center}}
 body.inkamnet-go-app .go-bottom-nav>a,body.inkamnet-go-app .go-bottom-nav>button{height:54px;border:0;background:none;color:#9893a8;text-decoration:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:.61rem;font-weight:650}
 body.inkamnet-go-app .go-bottom-nav i{font-size:1.2rem;line-height:1}
 body.inkamnet-go-app .go-bottom-nav .active{color:var(--go-purple)}

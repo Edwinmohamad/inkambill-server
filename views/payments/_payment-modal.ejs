@@ -1,12 +1,12 @@
 <% const paymentReturnTo = typeof returnTo!=='undefined' ? returnTo : '/payments'; const paymentAutoOpen = typeof autoOpenPaymentModal!=='undefined' ? autoOpenPaymentModal : false; const paymentBanks=typeof banks!=='undefined'?banks:[]; %>
-<div class="modal fade" id="paymentModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
-    <form method="post" action="/payments" enctype="multipart/form-data" class="modal-content" id="paymentForm">
+<div class="modal fade payment-entry-modal" id="paymentModal" tabindex="-1" aria-hidden="true" aria-labelledby="paymentModalTitle">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable payment-entry-dialog">
+    <form method="post" action="/payments" enctype="multipart/form-data" class="modal-content payment-entry-content" id="paymentForm">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>">
       <input type="hidden" name="return_to" value="<%= paymentReturnTo %>">
       <input type="hidden" name="idempotency_key" value="payment-<%= Date.now() %>-<%= Math.random().toString(36).slice(2) %>">
-      <div class="modal-header"><div><div class="module-kicker">PEMBAYARAN PELANGGAN</div><h5 class="modal-title">Catat Pembayaran</h5><small class="text-secondary">Pilih satu atau banyak faktur sekaligus.</small></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-      <div class="modal-body">
+      <div class="modal-header payment-entry-header"><div><div class="module-kicker">PEMBAYARAN PELANGGAN</div><h5 class="modal-title" id="paymentModalTitle">Catat Pembayaran</h5><small class="text-secondary">Pilih satu atau banyak faktur sekaligus.</small></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button></div>
+      <div class="modal-body payment-entry-body">
         <div class="payment-mode-picker mb-3">
           <label><input type="radio" name="method" value="transfer" checked><span><i class="bi bi-bank2"></i><strong>Transfer</strong><small>Bukti wajib sebelum approval</small></span></label>
           <label><input type="radio" name="method" value="cash"><span><i class="bi bi-cash-stack"></i><strong>Cash ke Tim</strong><small>Bukti penerimaan dapat dilampirkan</small></span></label>
@@ -47,7 +47,7 @@
           <div class="col-12"><label class="form-label">Catatan</label><textarea class="form-control" name="notes" rows="3" placeholder="Catatan pembayaran..."></textarea></div>
         </div>
       </div>
-      <div class="modal-footer"><div class="payment-modal-total"><small>TOTAL PEMBAYARAN</small><strong id="paymentModalTotal">Rp 0</strong></div><button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button><button class="btn-tech primary"><i class="bi bi-shield-check"></i>Simpan Pembayaran</button></div>
+      <div class="modal-footer payment-entry-footer"><div class="payment-modal-total"><small>TOTAL PEMBAYARAN</small><strong id="paymentModalTotal">Rp 0</strong></div><button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button><button type="submit" class="btn-tech primary payment-save-button"><i class="bi bi-shield-check"></i>Simpan Pembayaran</button></div>
     </form>
   </div>
 </div>
