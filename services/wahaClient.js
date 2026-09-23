@@ -63,10 +63,22 @@ async function getSession() {
 // callback URL is expected to already carry the shared verification token as a query string
 // (see whatsappGatewayService.js) since not every WAHA version/config supports custom headers
 // on outgoing webhooks, but query strings always work.
+// WAHA_EXTRA_WEBHOOK_URLS (comma-separated) — e.g. the n8n webhook of the WA ticket bot
+// (n8n/06-wa-ticket-bot.json). Session config here REPLACES the session's webhook list on WAHA, so
+// any other consumer of incoming messages must be listed here or it silently stops receiving them
+// every time this app restarts the session.
+function extraWebhooks() {
+  return String(process.env.WAHA_EXTRA_WEBHOOK_URLS || '')
+    .split(',').map(s => s.trim()).filter(Boolean)
+    .map(url => ({ url, events: ['message'] }));
+}
+
 async function startSession(webhookCallbackUrl) {
-  const config = webhookCallbackUrl ? {
-    webhooks: [{ url: webhookCallbackUrl, events: ['session.status', 'message'] }],
-  } : undefined;
+  const webhooks = [
+    ...(webhookCallbackUrl ? [{ url: webhookCallbackUrl, events: ['session.status', 'message'] }] : []),
+    ...extraWebhooks(),
+  ];
+  const config = webhooks.length ? { webhooks } : undefined;
   const existing = await getSession();
   if (existing) {
     return request('POST', `/api/sessions/${SESSION}/start`, config ? { config } : undefined);
@@ -107,4 +119,44 @@ async function sendText(phone, text) {
   return request('POST', '/api/sendText', { session: SESSION, chatId: `${phone}@c.us`, text });
 }
 
-module.exports = { SESSION, getSession, startSession, stopAndLogoutSession, getQrDataUrl, sendText };
+// Sends to any chat id as-is: personal "628xx@c.us" or group "1203xxxx@g.us". Optional replyTo quotes
+// the original message (WAHA "reply_to" = message id from the incoming webhook payload).
+async function sendToChat(chatId, text, replyTo = null) {
+  const body = { session: SESSION, chatId, text };
+  if (replyTo) body.reply_to = replyTo;
+  return request('POST', '/api/sendText', body);
+}
+
+// WhatsApp increasingly reports senders (esp. group participants) as "<id>@lid" instead of a phone
+// number. WAHA exposes GET /api/{session}/lids/{lid} -> { lid, pn: "628xx@c.us" } to map it back.
+// Returns digits only, or null if WAHA can't resolve it (older WAHA versions lack this endpoint).
+async function resolveLidToPhone(lid) {
+  try {
+    const data = await request('GET', `/api/${SESSION}/lids/${encodeURIComponent(lid)}`);
+    const pn = data?.pn || data?.phoneNumber || null;
+    return pn ? String(pn).split('@')[0].replace(/\D/g, '') || null : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Downloads media from an incoming message (payload.media.url). WAHA builds that URL from its own
+// public base URL, which may not be reachable from this app (e.g. tunnel hostname) — so only the
+// path is kept and re-pointed at WAHA_BASE_URL (local address), with the API key attached.
+const MAX_MEDIA_BYTES = 6 * 1024 * 1024;
+async function downloadMedia(mediaUrl) {
+  let target;
+  try {
+    const u = new URL(mediaUrl, BASE_URL);
+    target = `${BASE_URL}${u.pathname}${u.search}`;
+  } catch (e) {
+    throw new Error('URL media WAHA tidak valid.');
+  }
+  const res = await fetch(target, { headers: API_KEY ? { 'X-Api-Key': API_KEY } : {} });
+  if (!res.ok) throw new Error(`Download media WAHA -> HTTP ${res.status}`);
+  const buffer = Buffer.from(await res.arrayBuffer());
+  if (buffer.length > MAX_MEDIA_BYTES) throw new Error('Foto lebih dari 6 MB.');
+  return { buffer, mimetype: String(res.headers.get('content-type') || '').split(';')[0].trim() };
+}
+
+module.exports = { SESSION, getSession, startSession, stopAndLogoutSession, getQrDataUrl, sendText, sendToChat, resolveLidToPhone, downloadMedia };

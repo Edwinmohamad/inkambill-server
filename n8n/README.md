@@ -14,5 +14,6 @@ Workflow yang tersedia:
 3. `03-ticket-lifecycle.json` — webhook create/update ticket dan notifikasi dapat diteruskan ke node WhatsApp/Telegram.
 4. `04-auto-billing-reminder.json` — cron pengingat tagihan melalui queue WA Gateway.
 5. `05-auto-isolate.json` — cron isolir billing harian; node sengaja mengirim `apply=true`.
+6. `06-wa-ticket-bot.json` — bot tiket WhatsApp untuk teknisi (WAHA → n8n → `/api/n8n/wa/command` → balasan via WAHA). Butuh env tambahan `WAHA_URL`, `WAHA_API_KEY`, `WAHA_SESSION`, `WA_BOT_WEBHOOK_TOKEN`. Panduan lengkap: `docs/WA-TICKET-BOT.md`.
 
 Untuk workflow foto, pasang volume persistent pada n8n agar file di `/data/piket` tidak hilang saat container dibuat ulang.

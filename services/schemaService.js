@@ -1040,4 +1040,13 @@ async function ensureV51Schema() {
   )`);
 }
 
-module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema };
+async function ensureV52Schema() {
+  // v1.27 — WA ticket bot (services/waTicketCommandService.js). Marks where a ticket / progress
+  // update came from, and which employee did it when that employee has no login user (updated_by
+  // references users, but many technicians only exist in employees).
+  await db.query(`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS source ENUM('web','whatsapp','n8n') NOT NULL DEFAULT 'web' AFTER status`);
+  await db.query(`ALTER TABLE ticket_updates ADD COLUMN IF NOT EXISTS source ENUM('web','whatsapp','n8n') NOT NULL DEFAULT 'web' AFTER updated_by`);
+  await db.query(`ALTER TABLE ticket_updates ADD COLUMN IF NOT EXISTS actor_employee_id BIGINT UNSIGNED NULL AFTER source`);
+}
+
+module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema };

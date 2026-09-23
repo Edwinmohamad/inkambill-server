@@ -3,11 +3,12 @@ const db = require('../config/db');
 const { runAutoIsolation } = require('../services/networkService');
 const { enqueueWaMessage, runAutoReminderSweep } = require('../services/whatsappGatewayService');
 const { syncStockAlert } = require('../services/inventoryService');
+const { handleWaTicketMessage } = require('../services/waTicketCommandService');
 const router = express.Router();
 
-async function beginEvent(eventType, req) {
+async function beginEvent(eventType, req, keyOverride = null) {
   const body = req.body && typeof req.body === 'object' ? req.body : {};
-  const key = String(req.get('x-idempotency-key') || body.event_key || `${eventType}:${Date.now()}:${Math.random()}`).slice(0, 190);
+  const key = String(keyOverride || req.get('x-idempotency-key') || body.event_key || `${eventType}:${Date.now()}:${Math.random()}`).slice(0, 190);
   const [result] = await db.execute(`INSERT IGNORE INTO n8n_webhook_events(event_key,event_type,payload_json,status,processed_at) VALUES(?,?,?,?,NOW())`, [key, eventType, JSON.stringify(body).slice(0, 200000), 'processed']);
   return { key, duplicate: result.affectedRows === 0 };
 }
@@ -58,7 +59,7 @@ router.post('/tickets', async (req, res) => {
   if (!subject) return res.status(422).json({ ok: false, error: 'subject wajib diisi.' });
   const code = `N8N-${Date.now().toString(36).toUpperCase()}`;
   const [[actor]] = await db.query(`SELECT id FROM users WHERE is_active=1 ORDER BY FIELD(role,'master_admin','admin'),id LIMIT 1`);
-  const [result] = await db.execute(`INSERT INTO tickets(ticket_code,customer_id,subject,type,priority,status,description,opened_by,opened_at) VALUES(?,?,?,?,?,'open',?,?,NOW())`, [code, Number(b.customer_id) || null, subject, b.type || 'Gangguan Internet', ['low', 'medium', 'high', 'critical'].includes(b.priority) ? b.priority : 'medium', b.description || null, Number(b.opened_by_id) || actor?.id || null]);
+  const [result] = await db.execute(`INSERT INTO tickets(ticket_code,customer_id,subject,type,priority,status,description,opened_by,opened_at,source) VALUES(?,?,?,?,?,'open',?,?,NOW(),'n8n')`, [code, Number(b.customer_id) || null, subject, b.type || 'Gangguan Internet', ['low', 'medium', 'high', 'critical'].includes(b.priority) ? b.priority : 'medium', b.description || null, Number(b.opened_by_id) || actor?.id || null]);
   res.status(201).json({ ok: true, eventKey: event.key, id: result.insertId, ticket_code: code });
 });
 
@@ -72,6 +73,29 @@ router.patch('/tickets/:id', async (req, res) => {
   await db.execute(`UPDATE tickets SET status=?,closed_at=IF(?='closed',COALESCE(closed_at,NOW()),NULL) WHERE id=?`, [status, status, ticket.id]);
   if (ticket.phone && req.body.notify_customer && req.body.message) await enqueueWaMessage({ phone: ticket.phone, message: String(req.body.message), type: 'manual' });
   res.json({ ok: true, eventKey: event.key, ticketId: ticket.id, status });
+});
+
+// WA ticket bot (n8n/06-wa-ticket-bot.json). Body = the raw WAHA webhook body ({ event, payload })
+// or just the payload. Non-command chatter is answered with handled:false BEFORE being logged, so
+// ordinary conversations never land in n8n_webhook_events. Idempotent on the WhatsApp message id:
+// WAHA/n8n retries of the same message do not create a second ticket/update.
+router.post('/wa/command', async (req, res) => {
+  const payload = req.body?.payload && typeof req.body.payload === 'object' ? req.body.payload : (req.body || {});
+  const text = String(payload.body || payload.caption || '').trim();
+  const prefix = String(process.env.WA_TICKET_PREFIX || '#').trim() || '#';
+  if (payload.fromMe || !text.startsWith(prefix)) return res.json({ ok: true, handled: false, reason: payload.fromMe ? 'from_me' : 'not_command', replies: [] });
+  const messageKey = payload.id ? `wa.command:${payload.id}` : null;
+  const event = await beginEvent('wa.ticket-command', req, messageKey);
+  if (event.duplicate) return res.json({ ok: true, duplicate: true, eventKey: event.key, replies: [] });
+  try {
+    const result = await handleWaTicketMessage(payload);
+    return res.json({ ok: true, eventKey: event.key, ...result });
+  } catch (error) {
+    console.error('WA ticket bot error:', error);
+    await db.execute(`UPDATE n8n_webhook_events SET status='failed',error_message=? WHERE event_key=?`, [String(error.message).slice(0, 1000), event.key]);
+    const chatId = String(payload.from || '');
+    return res.json({ ok: false, eventKey: event.key, error: error.message, replies: chatId ? [{ chatId, text: '⚠️ Maaf, perintah gagal diproses server. Coba lagi atau input lewat web.', reply_to: payload.id || null }] : [] });
+  }
 });
 
 router.post('/billing/reminder', async (req, res) => {

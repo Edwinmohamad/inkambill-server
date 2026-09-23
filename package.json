@@ -17,7 +17,8 @@
     "test:performance": "node scripts/test-performance-suite.js",
     "test:mobile-ui": "node scripts/test-mobile-ui.js",
     "test:list-search": "node scripts/test-list-search.js",
-    "test:system-cash-categories": "node scripts/test-system-cash-categories.js"
+    "test:system-cash-categories": "node scripts/test-system-cash-categories.js",
+    "test:wa-ticket-bot": "node scripts/test-wa-ticket-bot.js"
   },
   "dependencies": {
     "bcryptjs": "3.0.2",

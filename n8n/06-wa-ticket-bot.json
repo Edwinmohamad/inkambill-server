@@ -1,0 +1,183 @@
+{
+  "name": "INKAMBILLING - WA Ticket Bot (WAHA)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "id": "wa-bot-webhook",
+      "name": "WAHA Message",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "inkambilling-wa-ticket-bot",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "inkambilling/wa-ticket-bot",
+        "responseMode": "onReceived",
+        "options": {}
+      }
+    },
+    {
+      "id": "wa-bot-filter",
+      "name": "Token valid & perintah #?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "wa-bot-cond-1",
+              "leftValue": "={{ String($json.query?.token || '') !== '' && $json.query.token === $env.WA_BOT_WEBHOOK_TOKEN && $json.body?.event === 'message' && $json.body?.payload?.fromMe !== true && String($json.body?.payload?.body || '').trim().startsWith('#') }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "wa-bot-command",
+      "name": "INKAMBILLING /wa/command",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        740,
+        280
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.INKAMBILLING_URL}}/api/n8n/wa/command",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-N8N-TOKEN",
+              "value": "={{$env.INKAMBILLING_N8N_TOKEN}}"
+            },
+            {
+              "name": "X-Idempotency-Key",
+              "value": "=wa.command:{{$json.body.payload.id}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "wa-bot-split",
+      "name": "Pisah balasan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        980,
+        280
+      ],
+      "parameters": {
+        "jsCode": "// Backend returns { replies: [{ chatId, text, reply_to }] }; one item per message to send.\nconst out = [];\nfor (const item of $input.all()) {\n  for (const r of (item.json.replies || [])) {\n    if (r && r.chatId && r.text) out.push({ json: r });\n  }\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "wa-bot-send",
+      "name": "Kirim balasan via WAHA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1220,
+        280
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.WAHA_URL}}/api/sendText",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Api-Key",
+              "value": "={{$env.WAHA_API_KEY}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ session: $env.WAHA_SESSION || 'default', chatId: $json.chatId, text: $json.text, reply_to: $json.reply_to || undefined }) }}",
+        "options": {
+          "timeout": 20000
+        }
+      }
+    }
+  ],
+  "connections": {
+    "WAHA Message": {
+      "main": [
+        [
+          {
+            "node": "Token valid & perintah #?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token valid & perintah #?": {
+      "main": [
+        [
+          {
+            "node": "INKAMBILLING /wa/command",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "INKAMBILLING /wa/command": {
+      "main": [
+        [
+          {
+            "node": "Pisah balasan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pisah balasan": {
+      "main": [
+        [
+          {
+            "node": "Kirim balasan via WAHA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
