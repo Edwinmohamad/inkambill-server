@@ -1099,73 +1099,21 @@ async function ensureV53Schema() {
 }
 
 async function ensureV54Schema() {
-  // v1.29 — Scan bukti transfer otomatis (AI vision + cek duplikat) & pengirim dikenal per pelanggan.
-  await db.query(`CREATE TABLE IF NOT EXISTS payment_proof_scans (
-    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    payment_id BIGINT UNSIGNED NOT NULL,
-    proof_path VARCHAR(255) NULL,
-    file_sha256 CHAR(64) NULL,
-    phash CHAR(64) NULL,
-    status ENUM('queued','processing','done') NOT NULL DEFAULT 'queued',
-    attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
-    next_attempt_at DATETIME NULL,
-    started_at DATETIME NULL,
-    ai_status ENUM('pending','done','disabled','error','skipped') NOT NULL DEFAULT 'pending',
-    ai_model VARCHAR(80) NULL,
-    ai_error VARCHAR(500) NULL,
-    is_transfer_proof TINYINT(1) NULL,
-    transaction_status VARCHAR(20) NULL,
-    amount_detected DECIMAL(14,2) NULL,
-    amount_confidence DECIMAL(4,3) NULL,
-    total_charged DECIMAL(14,2) NULL,
-    transfer_at DATETIME NULL,
-    transfer_has_time TINYINT(1) NOT NULL DEFAULT 0,
-    sender_name VARCHAR(150) NULL,
-    sender_name_norm VARCHAR(150) NULL,
-    sender_bank VARCHAR(80) NULL,
-    sender_account VARCHAR(60) NULL,
-    recipient_name VARCHAR(150) NULL,
-    recipient_bank VARCHAR(80) NULL,
-    recipient_account VARCHAR(60) NULL,
-    ref_no VARCHAR(100) NULL,
-    ref_no_norm VARCHAR(100) NULL,
-    channel VARCHAR(80) NULL,
-    ai_notes VARCHAR(500) NULL,
-    raw_json MEDIUMTEXT NULL,
-    overall_status ENUM('processing','ok','warning','mismatch','unreadable') NOT NULL DEFAULT 'processing',
-    checks_json TEXT NULL,
-    summary VARCHAR(1000) NULL,
-    expected_amount DECIMAL(14,2) NULL,
-    duplicate_payment_ids VARCHAR(255) NULL,
-    override_reason VARCHAR(500) NULL,
-    override_by BIGINT UNSIGNED NULL,
-    override_at DATETIME NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY uq_proof_scan_payment (payment_id),
-    INDEX idx_proof_scan_sha (file_sha256),
-    INDEX idx_proof_scan_ref (ref_no_norm),
-    INDEX idx_proof_scan_queue (status,next_attempt_at),
-    INDEX idx_proof_scan_overall (overall_status),
-    INDEX idx_proof_scan_combo (amount_detected,transfer_at)
-  )`);
-  await db.query(`CREATE TABLE IF NOT EXISTS customer_payer_aliases (
-    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    customer_id BIGINT UNSIGNED NOT NULL,
-    payer_name VARCHAR(150) NOT NULL,
-    payer_name_norm VARCHAR(150) NOT NULL,
-    created_by BIGINT UNSIGNED NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uq_customer_payer_alias (customer_id,payer_name_norm),
-    INDEX idx_customer_payer_alias_customer (customer_id)
-  )`);
-  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS proof_scan_enabled TINYINT(1) NOT NULL DEFAULT 1`);
-  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS proof_scan_model VARCHAR(80) NULL`);
-  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS proof_scan_api_key_enc TEXT NULL`);
-  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS proof_scan_amount_tolerance INT UNSIGNED NOT NULL DEFAULT 0`);
-  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS proof_scan_recipient_names VARCHAR(500) NULL`);
-  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS proof_scan_max_date_diff_days TINYINT UNSIGNED NOT NULL DEFAULT 3`);
-  await db.query(`ALTER TABLE payments ADD INDEX IF NOT EXISTS idx_payments_method_status (method,status)`);
+  // WAHA may run in another CasaOS/Proxmox CT. Store the runtime connection in
+  // Settings so Master Admin can configure/test it without editing .env.
+  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS wa_waha_base_url VARCHAR(500) NULL`);
+  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS wa_waha_api_key_enc TEXT NULL`);
+  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS wa_waha_session_name VARCHAR(120) NULL`);
+  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS wa_waha_webhook_token_enc TEXT NULL`);
+  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS wa_waha_callback_url VARCHAR(500) NULL`);
+  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS wa_waha_extra_webhook_urls TEXT NULL`);
+  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS wa_waha_last_test_at DATETIME NULL`);
+  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS wa_waha_last_test_status ENUM('success','failed') NULL`);
+  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS wa_waha_last_test_error VARCHAR(1000) NULL`);
+  await db.query(`ALTER TABLE wa_messages ADD COLUMN IF NOT EXISTS attempts SMALLINT UNSIGNED NOT NULL DEFAULT 0`);
+  await db.query(`ALTER TABLE wa_messages ADD COLUMN IF NOT EXISTS next_attempt_at DATETIME NULL`);
+  await db.query(`ALTER TABLE wa_messages ADD COLUMN IF NOT EXISTS provider_message_id VARCHAR(255) NULL`);
+  await db.query(`ALTER TABLE wa_messages ADD INDEX IF NOT EXISTS idx_wa_messages_retry(status,next_attempt_at)`);
 }
 
 module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema };

@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { getWahaConfig } = require('../services/wahaConfigService');
 
 // Verifies inbound webhook calls FROM WAHA (session status changes, incoming messages). WAHA is
 // a server-to-server caller with no browser session, so — same pattern as requireN8nToken in
@@ -6,8 +7,9 @@ const crypto = require('crypto');
 // either as a query string (?token=...) or a header, since not every WAHA version/config lets you
 // attach custom headers to outgoing webhooks, but the callback URL query string always works
 // because we build it ourselves when calling wahaClient.startSession().
-function requireWahaWebhookToken(req, res, next) {
-  const expected = String(process.env.WAHA_WEBHOOK_TOKEN || '').trim();
+async function requireWahaWebhookToken(req, res, next) {
+  const config = await getWahaConfig();
+  const expected = String(config.webhookToken || '').trim();
   if (!expected) return res.status(503).json({ ok: false, error: 'WAHA_WEBHOOK_TOKEN belum dikonfigurasi.' });
   const supplied = String(req.query.token || req.get('x-waha-webhook-token') || '').trim();
   const a = Buffer.from(supplied);

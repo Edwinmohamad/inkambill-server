@@ -12,6 +12,26 @@
     <article class="metric-card red"><div class="metric-top"><span class="metric-label">Gagal Hari Ini</span><span class="metric-icon"><i class="bi bi-x-octagon"></i></span></div><strong id="waFailedTodayCount"><%= stats.failedToday %></strong><small>Cek log di bawah untuk detail error</small></article>
   </div>
 
+  <% if(isMasterAdmin){ %>
+  <div class="data-card">
+    <div class="data-card-head"><div><h3>Koneksi Server WAHA</h3><small>Hubungkan WEB INKAMBILL di Proxmox ke WAHA yang berjalan pada CT CasaOS.</small></div><span class="status-badge <%= connectionSettings.lastTestStatus==='success'?'green':connectionSettings.lastTestStatus==='failed'?'red':'orange' %>"><%= connectionSettings.lastTestStatus==='success'?'Tes Berhasil':connectionSettings.lastTestStatus==='failed'?'Tes Gagal':'Belum Dites' %></span></div>
+    <form method="post" action="/wa-gateway/connection-settings" class="wa-reminder-settings-form">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <div class="wa-connection-grid">
+        <label>URL WAHA di CT CasaOS<input class="form-control" type="url" name="base_url" value="<%= connectionSettings.baseUrl %>" placeholder="http://192.168.1.20:3000" required><small>Gunakan IP LAN CT CasaOS dan port container WAHA yang diekspos.</small></label>
+        <label>Nama sesi<input class="form-control" name="session_name" value="<%= connectionSettings.sessionName %>" placeholder="default" required></label>
+        <label>API Key WAHA<input class="form-control" type="password" name="api_key" value="" autocomplete="new-password" placeholder="<%= connectionSettings.hasApiKey?'Tersimpan terenkripsi · kosongkan jika tidak diubah':'Isi API key WAHA bila diaktifkan' %>"><small>API key disimpan terenkripsi, tidak pernah ditampilkan kembali.</small></label>
+        <label>Token keamanan webhook<input class="form-control" type="password" name="webhook_token" value="" autocomplete="new-password" placeholder="<%= connectionSettings.hasWebhookToken?'Tersimpan terenkripsi · kosongkan jika tidak diubah':'Kosongkan agar dibuat otomatis' %>"></label>
+        <label class="wa-span-2">URL callback WEB yang dapat diakses dari CT WAHA<input class="form-control" type="url" name="callback_url" value="<%= connectionSettings.callbackUrl %>" placeholder="http://IP-CT-PROXMOX:3000/api/waha/webhook"><small>WAHA CasaOS harus dapat mengakses URL ini. Jika kosong, sistem memakai APP_URL + /api/waha/webhook.</small></label>
+        <label class="wa-span-2">Webhook tambahan (opsional, satu URL per baris)<textarea class="form-control" name="extra_webhook_urls" rows="2" placeholder="Webhook n8n bila dipakai"><%= connectionSettings.extraWebhookUrls.join('\n') %></textarea></label>
+      </div>
+      <% if(connectionSettings.lastTestError){ %><div class="alert alert-danger mb-0"><i class="bi bi-x-octagon-fill"></i> <%= connectionSettings.lastTestError %></div><% } %>
+      <div class="wa-network-guide"><i class="bi bi-diagram-3-fill"></i><div><strong>Jalur yang harus terbuka</strong><small>Proxmox WEB → <%= connectionSettings.baseUrl %> untuk kirim/status · CasaOS WAHA → <%= connectionSettings.resolvedCallbackUrl||'URL callback belum lengkap' %> untuk update status.</small></div></div>
+      <div class="d-flex flex-wrap gap-2"><button class="btn-tech primary" type="submit"><i class="bi bi-shield-check"></i>Simpan &amp; Tes Koneksi</button><button class="btn-tech" type="submit" formaction="/wa-gateway/test-connection"><i class="bi bi-activity"></i>Tes Konfigurasi Tersimpan</button></div>
+    </form>
+  </div>
+  <% } %>
+
   <div class="data-card">
     <div class="data-card-head"><div><h3>Koneksi WhatsApp</h3><small>Hubungkan nomor WhatsApp yang akan dipakai untuk mengirim pesan otomatis.</small></div></div>
     <div class="wa-gateway-connect-body">
@@ -32,8 +52,21 @@
     </div>
   </div>
 
+  <div class="data-card" id="send-message">
+    <div class="data-card-head"><div><h3>Kirim Pesan WhatsApp</h3><small>Pilih pelanggan atau isi nomor tujuan, lalu kirim melalui antrean WAHA.</small></div></div>
+    <form method="post" action="/wa-gateway/send-test" class="wa-reminder-settings-form" id="waDirectMessageForm">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <div class="wa-reminder-grid">
+        <label>Pilih pelanggan (opsional)<select class="form-select" name="customer_id" id="waCustomerSelect"><option value="">Nomor manual</option><% customers.forEach(c=>{ %><option value="<%= c.id %>" data-phone="<%= c.phone||'' %>"><%= c.name %><%= c.whatsapp_status==='valid'?'':' · nomor belum valid' %></option><% }) %></select></label>
+        <label>Nomor WhatsApp<input class="form-control" name="phone" id="waDirectPhone" placeholder="628xxxxxxxxxx" required></label>
+      </div>
+      <label>Pesan<textarea class="form-control" name="message" rows="4" maxlength="4000" required placeholder="Tulis pesan untuk pelanggan..."></textarea></label>
+      <div><button class="btn-tech success" type="submit" <%= gateway.state!=='connected'?'disabled':'' %>><i class="bi bi-send-fill"></i><%= gateway.state==='connected'?'Kirim via WAHA':'Hubungkan WAHA dahulu' %></button></div>
+    </form>
+  </div>
+
   <% if(isMasterAdmin){ %>
-  <div class="data-card">
+  <div class="data-card" id="message-log">
     <div class="data-card-head"><div><h3>Auto-Reminder Terjadwal</h3><small>Kirim pengingat tagihan otomatis setiap hari tanpa perlu diklik manual.</small></div></div>
     <form method="post" action="/wa-gateway/settings" class="wa-reminder-settings-form">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>">
@@ -67,7 +100,7 @@
     <div class="data-card-head"><div><h3>Log Pengiriman Terbaru</h3><small>50 pesan terakhir (manual, blast, dan auto-reminder)</small></div></div>
     <div class="table-responsive">
       <table class="app-table">
-        <thead><tr><th class="app-seq-col">No.</th><th>Waktu</th><th>Pelanggan</th><th>No. Faktur</th><th>Tipe</th><th>Nomor</th><th>Status</th><th>Pesan / Error</th></tr></thead>
+        <thead><tr><th class="app-seq-col">No.</th><th>Waktu</th><th>Pelanggan</th><th>No. Faktur</th><th>Tipe</th><th>Nomor</th><th>Status</th><th>Pesan / Error</th><th>Aksi</th></tr></thead>
         <tbody id="waMessageLogBody">
           <% messages.forEach((m,index)=>{ %>
           <tr>
@@ -79,9 +112,10 @@
             <td><%= m.phone %></td>
             <td><span class="status-badge <%= m.status==='sent'?'green':m.status==='failed'?'red':'orange' %>"><%= m.status==='sent'?'Terkirim':m.status==='failed'?'Gagal':'Antrean' %></span></td>
             <td><span class="cash-note"><%= m.status==='failed'?(m.error_message||'-'):m.message %></span></td>
+            <td><% if(m.status==='failed'){ %><form method="post" action="/wa-gateway/messages/<%= m.id %>/retry"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="approval-button approve"><i class="bi bi-arrow-repeat"></i>Coba Lagi</button></form><% }else{ %><span class="cell-sub"><%= m.attempts||0 %> percobaan</span><% } %></td>
           </tr>
           <% }) %>
-          <% if(!messages.length){ %><tr><td colspan="8"><div class="empty-state"><i class="bi bi-whatsapp"></i><strong>Belum ada pesan terkirim</strong><small>Hubungkan WA Gateway lalu kirim pengingat dari menu Tagihan/Pelanggan.</small></div></td></tr><% } %>
+          <% if(!messages.length){ %><tr><td colspan="9"><div class="empty-state"><i class="bi bi-whatsapp"></i><strong>Belum ada pesan terkirim</strong><small>Hubungkan WA Gateway lalu kirim pengingat dari menu Tagihan/Pelanggan.</small></div></td></tr><% } %>
         </tbody>
       </table>
     </div>
@@ -90,6 +124,23 @@
 <script>
 (()=>{
   const stateLabels={connected:'Terhubung',qr_pending:'Menunggu Scan QR',connecting:'Menghubungkan...',disconnected:'Terputus'};
+  const csrf=<%- safeJson(csrfToken) %>;
+  const customerSelect=document.getElementById('waCustomerSelect');
+  const directPhone=document.getElementById('waDirectPhone');
+  customerSelect?.addEventListener('change',()=>{const option=customerSelect.selectedOptions[0];if(option?.dataset.phone&&directPhone)directPhone.value=option.dataset.phone;});
+  const addCell=(row,value,className='')=>{const cell=document.createElement('td');if(className)cell.className=className;cell.textContent=value??'-';row.appendChild(cell);return cell;};
+  function renderMessages(messages){
+    const body=document.getElementById('waMessageLogBody');if(!body)return;body.replaceChildren();
+    if(!messages.length){const row=document.createElement('tr'),cell=document.createElement('td');cell.colSpan=9;cell.innerHTML='<div class="empty-state"><i class="bi bi-whatsapp"></i><strong>Belum ada pesan terkirim</strong></div>';row.appendChild(cell);body.appendChild(row);return;}
+    messages.forEach((m,index)=>{
+      const row=document.createElement('tr');addCell(row,index+1);addCell(row,new Date(m.created_at).toLocaleString('id-ID',{timeZone:'Asia/Jakarta'}));
+      const customer=addCell(row,m.customer_name||'-');if(m.customer_code){const sub=document.createElement('span');sub.className='cell-sub';sub.textContent=m.customer_code;customer.appendChild(sub);}
+      addCell(row,m.invoice_number||'-');addCell(row,m.message_type==='auto_reminder'?'Auto-Reminder':m.message_type==='payment_receipt'?'Tanda Terima':m.message_type==='network_alert'?'Alert Jaringan':m.message_type==='blast'?'Blast':'Manual');addCell(row,m.phone);
+      const statusCell=document.createElement('td'),badge=document.createElement('span');badge.className=`status-badge ${m.status==='sent'?'green':m.status==='failed'?'red':'orange'}`;badge.textContent=m.status==='sent'?'Terkirim':m.status==='failed'?'Gagal':'Antrean';statusCell.appendChild(badge);row.appendChild(statusCell);
+      addCell(row,m.status==='failed'?(m.error_message||'-'):m.message,'cash-note');
+      const action=document.createElement('td');if(m.status==='failed'){const form=document.createElement('form');form.method='post';form.action=`/wa-gateway/messages/${m.id}/retry`;const token=document.createElement('input');token.type='hidden';token.name='_csrf';token.value=csrf;const button=document.createElement('button');button.className='approval-button approve';button.innerHTML='<i class="bi bi-arrow-repeat"></i>Coba Lagi';form.append(token,button);action.appendChild(form);}else{action.textContent=`${m.attempts||0} percobaan`;}row.appendChild(action);body.appendChild(row);
+    });
+  }
   let pollDelay=<%= (gateway.state==='qr_pending'||gateway.state==='connecting')?3000:15000 %>;
   let pollTimer=null;
   async function poll(){
@@ -106,6 +157,7 @@
       const queuedEl=document.getElementById('waQueuedCount');if(queuedEl)queuedEl.textContent=data.stats.queued;
       const sentEl=document.getElementById('waSentTodayCount');if(sentEl)sentEl.textContent=data.stats.sentToday;
       const failedEl=document.getElementById('waFailedTodayCount');if(failedEl)failedEl.textContent=data.stats.failedToday;
+      const logRes=await fetch('/wa-gateway/messages.json',{headers:{Accept:'application/json'}});if(logRes.ok){const logData=await logRes.json();renderMessages(logData.messages||[]);}
       // Reload once when connection state settles from qr_pending/connecting into connected or
       // disconnected, so the QR box / connect-disconnect buttons refresh into their final layout.
       const wasTransitional=pollDelay===3000;

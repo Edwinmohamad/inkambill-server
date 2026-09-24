@@ -3,10 +3,12 @@ const db = require('../config/db');
 const { requireMasterAdmin, requirePermission } = require('../middleware/auth');
 const { audit } = require('../services/auditService');
 const {
-  startGateway, logoutGateway, getGatewayStatus, reconcileGatewayStatus, enqueueWaMessage,
-  getQueueStats, getRecentMessages, DEFAULT_REMINDER_TEMPLATE, renderReminderTemplate,
+  startGateway, logoutGateway, getGatewayStatus, resetGatewayState, reconcileGatewayStatus, enqueueWaMessage,
+  getQueueStats, getRecentMessages, processQueue, DEFAULT_REMINDER_TEMPLATE, renderReminderTemplate,
 } = require('../services/whatsappGatewayService');
 const { DEFAULT_RECEIPT_TEMPLATE } = require('../services/cashSettlementService');
+const waha = require('../services/wahaClient');
+const { getWahaConfig, saveWahaConfig, recordConnectionTest, publicConfig } = require('../services/wahaConfigService');
 const router = express.Router();
 
 // v1.25 audit: /send and /blast used to be reachable by ANY authenticated user (even one whose only
@@ -24,19 +26,24 @@ function requireWaSendPermission(req, res, next) {
 // the 'settings' permission — same tier as the Payment Gateways settings tab — since it links a real
 // personal WhatsApp number to the app.
 router.get('/', requirePermission('settings'), async (req, res) => {
-  const [settingsResult, gateway, stats, messages] = await Promise.all([
+  const [settingsResult, gateway, stats, messages, rawConnection, customersResult] = await Promise.all([
     db.query(`SELECT wa_auto_reminder_enabled,wa_auto_reminder_hour,wa_auto_reminder_offsets,wa_auto_reminder_template,
       wa_payment_receipt_enabled,wa_payment_receipt_methods,wa_payment_receipt_template FROM settings WHERE id=1 LIMIT 1`),
     reconcileGatewayStatus(),
     getQueueStats(),
     getRecentMessages(50),
+    getWahaConfig(),
+    db.query(`SELECT id,name,phone,whatsapp_status FROM customers WHERE archived_at IS NULL AND customer_status='active' ORDER BY name LIMIT 1000`),
   ]);
   const [[settingsRow]] = settingsResult;
+  const [customers] = customersResult;
   res.render('whatsapp-gateway/index', {
     title: 'WA Gateway',
     gateway,
     stats,
     messages,
+    customers,
+    connectionSettings: publicConfig(rawConnection),
     reminderSettings: {
       enabled: !!settingsRow?.wa_auto_reminder_enabled,
       hour: Number(settingsRow?.wa_auto_reminder_hour ?? 9),
@@ -50,6 +57,64 @@ router.get('/', requirePermission('settings'), async (req, res) => {
       template: settingsRow?.wa_payment_receipt_template || DEFAULT_RECEIPT_TEMPLATE,
     },
   });
+});
+
+router.post('/connection-settings', requireMasterAdmin, async (req, res) => {
+  let saved = false;
+  try {
+    const config = await saveWahaConfig(req.body);
+    saved = true;
+    resetGatewayState();
+    const result = await waha.testConnection();
+    await recordConnectionTest('success');
+    await reconcileGatewayStatus();
+    await audit({ userId: req.session.user.id, action: 'configure', entityType: 'wa_gateway', entityId: null, description: `WAHA ${config.baseUrl} · session ${config.sessionName} · test sukses`, ip: req.ip });
+    req.session.flash = { type: 'success', message: `Koneksi ke WAHA berhasil (${result.baseUrl}). Konfigurasi terenkripsi dan tersimpan.` };
+  } catch (error) {
+    try { await recordConnectionTest('failed', error.message); } catch (_) { /* schema/database error already surfaced below */ }
+    req.session.flash = { type: 'danger', message: saved ? `Konfigurasi tersimpan, tetapi tes WAHA gagal: ${error.message}` : `Konfigurasi WAHA gagal disimpan: ${error.message}` };
+  }
+  res.redirect('/wa-gateway');
+});
+
+router.post('/test-connection', requireMasterAdmin, async (req, res) => {
+  try {
+    const result = await waha.testConnection();
+    await recordConnectionTest('success');
+    req.session.flash = { type: 'success', message: `WAHA dapat dijangkau di ${result.baseUrl}. API key diterima dan endpoint aktif.` };
+  } catch (error) {
+    await recordConnectionTest('failed', error.message);
+    resetGatewayState(error.message);
+    req.session.flash = { type: 'danger', message: `Tes koneksi WAHA gagal: ${error.message}` };
+  }
+  res.redirect('/wa-gateway');
+});
+
+router.post('/send-test', requireWaSendPermission, async (req, res) => {
+  try {
+    const phone = String(req.body.phone || '').trim();
+    const message = String(req.body.message || '').trim().slice(0, 4000);
+    if (!phone || !message) throw new Error('Nomor tujuan dan pesan wajib diisi.');
+    const state = await reconcileGatewayStatus();
+    if (state.state !== 'connected') throw new Error('Sesi WhatsApp belum berstatus Terhubung.');
+    const result = await enqueueWaMessage({ phone, message, customerId: req.body.customer_id ? Number(req.body.customer_id) : null, type: 'manual', userId: req.session.user.id });
+    if (result.status === 'failed') throw new Error(result.reason || 'Nomor WhatsApp tidak valid.');
+    await audit({ userId: req.session.user.id, action: 'send_test', entityType: 'wa_gateway', entityId: result.id, description: `Pesan uji WA ke ${phone}`, ip: req.ip });
+    req.session.flash = { type: 'success', message: 'Pesan dimasukkan ke antrean. Status sukses/gagal akan muncul otomatis di log pengiriman.' };
+  } catch (error) { req.session.flash = { type: 'danger', message: `Pesan tidak dapat dikirim: ${error.message}` }; }
+  res.redirect('/wa-gateway#send-message');
+});
+
+router.post('/messages/:id/retry', requireWaSendPermission, async (req, res) => {
+  const id = Number(req.params.id);
+  const [result] = await db.execute(`UPDATE wa_messages SET status='queued',error_message=NULL,next_attempt_at=NULL WHERE id=? AND status='failed'`, [id]);
+  if (result.affectedRows) processQueue().catch(error => console.error('Retry antrean WA gagal:', error.message));
+  req.session.flash = { type: result.affectedRows ? 'success' : 'warning', message: result.affectedRows ? 'Pesan gagal dimasukkan kembali ke antrean.' : 'Pesan tidak ditemukan atau tidak berstatus gagal.' };
+  res.redirect('/wa-gateway#message-log');
+});
+
+router.get('/messages.json', requirePermission('settings'), async (req, res) => {
+  res.set('Cache-Control', 'no-store').json({ ok: true, messages: await getRecentMessages(50), stats: await getQueueStats() });
 });
 
 // v1.28 — Tanda terima WhatsApp otomatis saat pembayaran disetujui Master Admin.
@@ -73,9 +138,11 @@ router.get('/status.json', requirePermission('settings'), async (req, res) => {
 // Connecting/disconnecting the gateway links a real personal WhatsApp number to this app, so it is
 // deliberately restricted to Master Admin — the same sensitivity tier as Force Delete.
 router.post('/connect', requireMasterAdmin, async (req, res) => {
-  await startGateway();
-  await audit({ userId: req.session.user.id, action: 'connect', entityType: 'wa_gateway', entityId: null, description: 'Memulai koneksi WA Gateway.', ip: req.ip });
-  req.session.flash = { type: 'success', message: 'Menghubungkan WA Gateway... Scan QR code di bawah menggunakan WhatsApp di HP Anda.' };
+  const state = await startGateway();
+  await audit({ userId: req.session.user.id, action: 'connect', entityType: 'wa_gateway', entityId: null, description: `Memulai koneksi WA Gateway: ${state.state}`, ip: req.ip });
+  req.session.flash = state.state === 'disconnected'
+    ? { type: 'danger', message: `WA Gateway belum dapat dihubungkan: ${state.lastDisconnectReason || 'periksa URL, API key, firewall, dan status WAHA.'}` }
+    : { type: 'success', message: state.state === 'connected' ? 'WA Gateway sudah terhubung dan siap mengirim pesan.' : 'Sesi WAHA dimulai. Scan QR code menggunakan WhatsApp di HP Anda.' };
   res.redirect('/wa-gateway');
 });
 

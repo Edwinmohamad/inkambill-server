@@ -163,7 +163,7 @@ const psbActivated = (funnel.find(f => f.key === 'active') || {}).value || 0;
               </td>
               <td>
                 <% if (row.whatsappNumber) { %>
-                <a href="https://wa.me/<%= row.whatsappNumber %>?text=<%= waText %>" target="_blank" rel="noopener" class="approval-button approve"><i class="bi bi-whatsapp"></i>WA Reminder</a>
+                <a href="https://wa.me/<%= row.whatsappNumber %>?text=<%= waText %>" target="_blank" rel="noopener" class="approval-button approve" data-wa-send data-wa-phone="<%= row.whatsappNumber %>" data-wa-message="<%= waText %>" data-wa-customer-id="<%= row.id %>"><i class="bi bi-whatsapp"></i>WA Reminder</a>
                 <% } else { %><span class="text-secondary" style="font-size:.55rem">Nomor belum ada</span><% } %>
               </td>
             </tr>

@@ -14,6 +14,7 @@
 const db = require('../config/db');
 const { validateWhatsapp } = require('./whatsappService');
 const waha = require('./wahaClient');
+const { getWahaConfig, callbackUrl } = require('./wahaConfigService');
 
 // In-memory mirror of WAHA's session state, shaped exactly like before so routes/views don't
 // need to change. Only one Node process serves this app, so module-level state is fine — same
@@ -55,6 +56,16 @@ function getGatewayStatus() {
     lastConnectedAt,
     lastDisconnectReason,
   };
+}
+
+function resetGatewayState(reason = 'Konfigurasi WAHA diperbarui; hubungkan ulang sesi.') {
+  connectionState = 'disconnected';
+  qrDataUrl = null;
+  connectedNumber = null;
+  lastConnectedAt = null;
+  lastDisconnectReason = reason;
+  startingPromise = null;
+  return getGatewayStatus();
 }
 
 function applySessionSnapshot(session) {
@@ -120,20 +131,6 @@ async function handleWahaWebhookEvent(event) {
   // feature (auto-reply, "reply STOP to opt out", etc.) just needs a handler added here.
 }
 
-function webhookCallbackUrl() {
-  // WAHA_WEBHOOK_CALLBACK_URL lets you override this explicitly (e.g. when WAHA can't reach this
-  // app at the same address APP_URL describes — see .env.example). Otherwise it's derived from
-  // APP_URL (already used as this app's own base URL) + the webhook route mounted in app.js.
-  const explicit = String(process.env.WAHA_WEBHOOK_CALLBACK_URL || '').trim();
-  const appUrl = String(process.env.APP_URL || '').trim().replace(/\/+$/, '');
-  const base = explicit || (appUrl ? `${appUrl}/api/waha/webhook` : '');
-  if (!base) return null; // nothing to build a callback from — reconcile-by-polling only, see .env.example
-  const token = String(process.env.WAHA_WEBHOOK_TOKEN || '').trim();
-  if (!token) return null;
-  const sep = base.includes('?') ? '&' : '?';
-  return `${base}${sep}token=${encodeURIComponent(token)}`;
-}
-
 async function startGateway() {
   if (connectionState === 'connecting' || connectionState === 'qr_pending' || connectionState === 'connected') {
     return getGatewayStatus();
@@ -143,7 +140,8 @@ async function startGateway() {
     connectionState = 'connecting';
     qrDataUrl = null;
     try {
-      await waha.startSession(webhookCallbackUrl());
+      const config = await getWahaConfig({ fresh: true });
+      await waha.startSession(callbackUrl(config));
       await reconcileGatewayStatus();
     } catch (e) {
       connectionState = 'disconnected';
@@ -210,13 +208,14 @@ async function processQueue() {
   try {
     while (true) {
       if (connectionState !== 'connected') break;
-      const [[row]] = await db.execute(`SELECT * FROM wa_messages WHERE status='queued' ORDER BY id ASC LIMIT 1`);
+      const [[row]] = await db.execute(`SELECT * FROM wa_messages WHERE status='queued' AND (next_attempt_at IS NULL OR next_attempt_at<=NOW()) ORDER BY id ASC LIMIT 1`);
       if (!row) break;
       try {
-        await waha.sendText(row.phone, row.message);
-        await db.execute(`UPDATE wa_messages SET status='sent',sent_at=NOW() WHERE id=?`, [row.id]);
+        const response = await waha.sendText(row.phone, row.message);
+        const providerId = response?.id || response?.key?.id || response?._data?.id?.id || response?._data?.id || null;
+        await db.execute(`UPDATE wa_messages SET status='sent',sent_at=NOW(),attempts=attempts+1,next_attempt_at=NULL,error_message=NULL,provider_message_id=? WHERE id=?`, [providerId ? String(providerId).slice(0, 255) : null, row.id]);
       } catch (e) {
-        await db.execute(`UPDATE wa_messages SET status='failed',error_message=? WHERE id=?`, [String(e?.message || e).slice(0, 500), row.id]);
+        await db.execute(`UPDATE wa_messages SET status='failed',attempts=attempts+1,next_attempt_at=NULL,error_message=? WHERE id=?`, [String(e?.message || e).slice(0, 500), row.id]);
       }
       await sleep(randomDelay(4000, 9000));
     }
@@ -322,6 +321,7 @@ module.exports = {
   initGatewayOnBoot,
   logoutGateway,
   getGatewayStatus,
+  resetGatewayState,
   reconcileGatewayStatus,
   handleWahaWebhookEvent,
   enqueueWaMessage,
