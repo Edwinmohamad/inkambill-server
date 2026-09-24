@@ -406,15 +406,71 @@ async function loadReconciliationData(req,{withLookups=false}={}){
   return result;
 }
 
+// Tab "Histori & Status": daftar cash pelanggan per periode tanggal bayar, dengan filter status
+// setoran — Semua / Belum Disetor (masih dipegang staff) / Sudah Disetor (sudah masuk kas perusahaan).
+// Memakai filter q/site/cluster yang sama dengan tab Belum Disetor. Default periode: awal bulan
+// berjalan s.d. hari ini (WIB).
+const RECON_HISTORY_LIMIT=1000;
+const RECON_STATUSES=['all','held','settled'];
+function jakartaToday(){return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jakarta'}).format(new Date());}
+function validDateParam(value){const v=String(value||'').trim();return /^\d{4}-\d{2}-\d{2}$/.test(v)&&!Number.isNaN(new Date(`${v}T00:00:00Z`).getTime())?v:'';}
+async function loadReconciliationHistory(req){
+  const q=String(req.query.q||'').trim();const site=String(req.query.site||'').trim();const cluster=String(req.query.cluster||'').trim();
+  const status=RECON_STATUSES.includes(req.query.status)?req.query.status:'all';
+  const today=jakartaToday();
+  let dateFrom=validDateParam(req.query.date_from)||`${today.slice(0,8)}01`;
+  let dateTo=validDateParam(req.query.date_to)||today;
+  if(dateFrom>dateTo)[dateFrom,dateTo]=[dateTo,dateFrom];
+  const heldCond=`(p.status='confirmed' AND p.settlement_status='held_by_staff')`;
+  const settledCond=`p.settlement_status='settled'`;
+  let where=`WHERE p.method='cash' AND DATE(p.paid_at) BETWEEN ? AND ?`;
+  const params=[dateFrom,dateTo];
+  where+=status==='held'?` AND ${heldCond}`:status==='settled'?` AND ${settledCond}`:` AND (${heldCond} OR ${settledCond})`;
+  if(site){where+=` AND s.code=?`;params.push(site);}
+  if(cluster){where+=` AND c.cluster_id=?`;params.push(Number(cluster));}
+  if(q){const like=`%${q}%`;where+=` AND (c.name LIKE ? OR c.customer_code LIKE ? OR i.invoice_number LIKE ? OR u.name LIKE ? OR su.name LIKE ? OR s.code LIKE ? OR cl.name LIKE ? OR p.reference LIKE ?)`;params.push(like,like,like,like,like,like,like,like);}
+  const from=`FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id
+    LEFT JOIN clusters cl ON cl.id=c.cluster_id LEFT JOIN users u ON u.id=COALESCE(p.collector_user_id,p.received_by) LEFT JOIN users su ON su.id=p.settled_by`;
+  const [history]=await db.execute(`SELECT p.id,p.amount,p.reference,p.paid_at,p.settled_at,p.settlement_status,c.customer_code,c.name customer_name,s.code site_code,cl.name cluster_name,
+    i.invoice_number,COALESCE(u.name,'Tidak diketahui') collector_name,COALESCE(su.name,'-') settled_by_name
+    ${from} ${where} ORDER BY p.paid_at DESC,p.id DESC LIMIT ${RECON_HISTORY_LIMIT}`,params);
+  const [[historySummary]]=await db.execute(`SELECT COUNT(*) transactions,COALESCE(SUM(p.amount),0) amount,COUNT(DISTINCT c.id) customers,
+    COALESCE(SUM(CASE WHEN ${settledCond} THEN 1 ELSE 0 END),0) settled_count,COALESCE(SUM(CASE WHEN ${settledCond} THEN p.amount ELSE 0 END),0) settled_amount,
+    COALESCE(SUM(CASE WHEN ${heldCond} THEN 1 ELSE 0 END),0) held_count,COALESCE(SUM(CASE WHEN ${heldCond} THEN p.amount ELSE 0 END),0) held_amount
+    ${from} ${where}`,params);
+  return {history,historySummary:historySummary||{},historyLimit:RECON_HISTORY_LIMIT,dateFrom,dateTo,status,q,site,cluster};
+}
+const reconStatusLabel=p=>p.settlement_status==='settled'?'Sudah Disetor':'Belum Disetor';
+const reconStatusTitle={all:'Semua status',held:'Belum Disetor',settled:'Sudah Disetor'};
+
 router.get('/reconciliation',requireAdmin,async(req,res)=>{
+  const tab=req.query.tab==='history'?'history':'held';
   const data=await loadReconciliationData(req,{withLookups:true});
-  res.render('payments/reconciliation',{title:'Rekonsiliasi Pembayaran',...data});
+  const historyData=tab==='history'?await loadReconciliationHistory(req):{history:[],historySummary:{},historyLimit:RECON_HISTORY_LIMIT,dateFrom:'',dateTo:'',status:'all'};
+  res.render('payments/reconciliation',{title:'Rekonsiliasi Pembayaran',...data,...historyData,tab});
 });
 
 // v1.26 — "Export Excel" untuk menu Rekonsiliasi: 3 sheet (rincian cash belum disetor, rekap per
 // collector, dan ringkasan angka) supaya file bisa langsung dipakai untuk audit/lampiran tanpa buka
 // aplikasi. Menghormati filter q/site/cluster yang sedang aktif di halaman.
 router.get('/reconciliation/export.xlsx',requireAdmin,async(req,res)=>{
+  if(req.query.tab==='history'){
+    const {history,historySummary,dateFrom,dateTo,status,site:hSite}=await loadReconciliationHistory(req);
+    const wb=new ExcelJS.Workbook();wb.creator='INKAMNET Control Center';wb.created=new Date();
+    const ws=wb.addWorksheet('Histori Cash');
+    ws.columns=[['status','Status Setoran',16],['customer_name','Pelanggan',28],['customer_code','Customer ID',16],['invoice_number','Faktur',18],['site_code','Site',10],['cluster_name','Cluster',20],['collector_name','Collector',22],['amount','Nominal (Rp)',18],['paid_at','Dibayar Pelanggan',20],['settled_at','Diterima Kas',20],['settled_by_name','Dikonfirmasi Oleh',22]].map(([key,header,width])=>({header,key,width}));
+    history.forEach(p=>ws.addRow({status:reconStatusLabel(p),customer_name:p.customer_name,customer_code:p.customer_code,invoice_number:p.invoice_number,site_code:p.site_code,cluster_name:p.cluster_name||'',collector_name:p.collector_name,amount:Number(p.amount),paid_at:p.paid_at?new Date(p.paid_at):'',settled_at:p.settled_at?new Date(p.settled_at):'',settled_by_name:p.settled_by_name==='-'?'':p.settled_by_name}));
+    styleWorkbook(ws);ws.getColumn('amount').numFmt='#,##0';ws.getColumn('paid_at').numFmt='dd/mm/yyyy hh:mm';ws.getColumn('settled_at').numFmt='dd/mm/yyyy hh:mm';
+    if(history.length){const totalRow=ws.addRow({status:'TOTAL',amount:history.reduce((a,p)=>a+Number(p.amount||0),0)});totalRow.font={bold:true};totalRow.getCell('amount').numFmt='#,##0';}
+    const ws2=wb.addWorksheet('Ringkasan');
+    ws2.columns=[['metric','Metrik',32],['value','Nilai',22]].map(([key,header,width])=>({header,key,width}));
+    ws2.addRows([{metric:'Periode tanggal bayar',value:`${dateFrom} s.d. ${dateTo}`},{metric:'Filter status',value:reconStatusTitle[status]},{metric:'Jumlah transaksi',value:Number(historySummary.transactions||0)},{metric:'Jumlah pelanggan',value:Number(historySummary.customers||0)},{metric:'Sudah disetor (transaksi)',value:Number(historySummary.settled_count||0)},{metric:'Sudah disetor (Rp)',value:Number(historySummary.settled_amount||0)},{metric:'Belum disetor (transaksi)',value:Number(historySummary.held_count||0)},{metric:'Belum disetor (Rp)',value:Number(historySummary.held_amount||0)}]);
+    styleWorkbook(ws2);
+    const filename=`histori-cash-${status}${hSite?'-'+hSite:''}-${dateFrom}-sd-${dateTo}.xlsx`;
+    res.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition',`attachment; filename="${filename}"`);
+    await wb.xlsx.write(res);return res.end();
+  }
   const {held,staffBalances,summary,site}=await loadReconciliationData(req);
   const wb=new ExcelJS.Workbook();wb.creator='INKAMNET Control Center';wb.created=new Date();
 
@@ -449,6 +505,38 @@ router.get('/reconciliation/export.xlsx',requireAdmin,async(req,res)=>{
 // perusahaan, kartu ringkasan, tabel, watermark, footer bernomor halaman) dengan modul lain seperti
 // Analitik/Laporan, supaya konsisten saat dicetak atau dilampirkan.
 router.get('/reconciliation/export.pdf',requireAdmin,async(req,res)=>{
+  if(req.query.tab==='history'){
+    const {history,historySummary,dateFrom,dateTo,status,q:hq,site:hSite,cluster:hCluster}=await loadReconciliationHistory(req);
+    const fmt=v=>v?new Date(v).toLocaleString('id-ID',{timeZone:'Asia/Jakarta'}):'-';
+    const rows=history.map(p=>({status:reconStatusLabel(p),customer:`${p.customer_name} (${p.customer_code})`,invoice:p.invoice_number,siteCluster:`${p.site_code}${p.cluster_name?' · '+p.cluster_name:''}`,collector:p.collector_name,amount:rupiah(p.amount),_rawAmount:Number(p.amount||0),paidAt:fmt(p.paid_at),settledAt:p.settled_at?fmt(p.settled_at):'-',settledBy:p.settled_by_name}));
+    const filterLabel=[`Periode bayar ${dateFrom} s.d. ${dateTo}`,reconStatusTitle[status],hq?`Cari: "${hq}"`:'',hSite?`Site: ${hSite}`:'',hCluster?`Cluster ID: ${hCluster}`:''].filter(Boolean).join(' · ');
+    return createReportPdf(res,{
+      title:'Histori Cash Pelanggan',
+      subtitle:`Status setoran cash pelanggan ke kas perusahaan · ${filterLabel}`,
+      filename:`histori-cash-${status}${hSite?'-'+hSite:''}-${dateFrom}-sd-${dateTo}.pdf`.toLowerCase(),
+      watermark:'INKAMNET · REKONSILIASI',
+      disposition:req.query.download==='0'?'inline':'attachment',
+      summaryItems:[
+        {label:'SUDAH DISETOR',value:rupiah(historySummary.settled_amount||0),color:COLORS.green},
+        {label:'BELUM DISETOR',value:rupiah(historySummary.held_amount||0),color:COLORS.red},
+        {label:'TRANSAKSI',value:String(Number(historySummary.transactions||0)),color:COLORS.blue},
+        {label:'PELANGGAN',value:String(Number(historySummary.customers||0)),color:COLORS.purple},
+      ],
+      columns:[
+        {label:'Status',key:'status',width:0.9,bold:true},
+        {label:'Pelanggan',key:'customer',width:1.8},
+        {label:'Faktur',key:'invoice',width:1.0},
+        {label:'Site / Cluster',key:'siteCluster',width:1.1},
+        {label:'Collector',key:'collector',width:1.0},
+        {label:'Nominal',key:'amount',width:1.0,align:'right',total:true,totalBy:r=>r._rawAmount},
+        {label:'Dibayar',key:'paidAt',width:1.1},
+        {label:'Diterima Kas',key:'settledAt',width:1.1},
+        {label:'Dikonfirmasi',key:'settledBy',width:0.9}
+      ],
+      rows,
+      layout:'landscape'
+    });
+  }
   const {held,staffBalances,summary,q,site,cluster}=await loadReconciliationData(req);
   const rows=held.map(p=>({collector:p.collector_name||'Tidak diketahui',customer:`${p.customer_name} (${p.customer_code})`,invoice:p.invoice_number,siteCluster:`${p.site_code}${p.cluster_name?' · '+p.cluster_name:''}`,amount:rupiah(p.amount),_rawAmount:Number(p.amount||0),receivedAt:new Date(p.paid_at).toLocaleString('id-ID',{timeZone:'Asia/Jakarta'}),status:'Belum Disetor'}));
   const filterLabel=[q?`Cari: "${q}"`:'',site?`Site: ${site}`:'',cluster?`Cluster ID: ${cluster}`:''].filter(Boolean).join(' · ')||'Semua data';

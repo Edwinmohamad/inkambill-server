@@ -2107,3 +2107,8 @@ html[data-theme="light"] .sidebar{background:var(--topbar);border-right-color:va
    punya arti hierarki tersendiri.
    ============================================================ */
 :root{--fs-1:0.3rem;--fs-2:0.33rem;--fs-3:0.36rem;--fs-4:0.39rem;--fs-5:0.42rem;--fs-6:0.45rem;--fs-7:0.48rem;--fs-8:0.51rem;--fs-9:0.54rem;--fs-10:0.57rem;--fs-11:0.6rem;--fs-12:0.63rem;--fs-13:0.66rem;--fs-14:0.69rem;--fs-15:0.72rem;--fs-16:0.75rem;--fs-17:0.78rem;--fs-18:0.81rem;--fs-19:0.84rem;--fs-20:0.87rem;--fs-21:0.9rem;--fs-22:0.93rem;--fs-23:0.96rem}
+
+/* Rekonsiliasi — tab Belum Disetor / Histori & Status Setoran */
+.recon-tabs a{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.recon-tabs .status-badge{padding:1px 7px}
+.metric-card-link.active{outline:2px solid rgba(var(--brand-rgb),.55);outline-offset:-2px}
