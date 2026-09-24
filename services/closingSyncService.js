@@ -118,7 +118,10 @@ async function planSyncedReconciliation({ db, closingId, start, end }) {
 // Idempoten: menekan Sync berkali-kali tanpa perubahan di Data Kas tidak mengubah
 // apa pun. Baris cash_sync yang diedit manual di Closing akan dikembalikan sesuai
 // Data Kas saat Sync — koreksi permanen harus dilakukan di Data Kas.
-async function syncCashDataIntoClosing({ conn, closingId, start, end, userId }) {
+// insertNew=false dipakai untuk periode mode Manual: baris hasil sync lama (dari
+// saat periode masih Otomatis) tetap diselaraskan dengan Data Kas, tapi transaksi
+// baru tidak ditarik otomatis.
+async function syncCashDataIntoClosing({ conn, closingId, start, end, userId, insertNew = true }) {
   const plan = await planSyncedReconciliation({ db: conn, closingId, start, end });
   let updated = 0;
   let removed = 0;
@@ -139,7 +142,7 @@ async function syncCashDataIntoClosing({ conn, closingId, start, end, userId }) 
     }
   }
 
-  const rows = await selectUnsyncedCashRows({ db: conn, closingId, start, end });
+  const rows = insertNew ? await selectUnsyncedCashRows({ db: conn, closingId, start, end }) : [];
   let inserted = 0;
   let skippedUnmapped = 0;
   let skippedZero = 0;

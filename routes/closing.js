@@ -189,7 +189,7 @@ async function loadUnpaidCustomers(end) {
       JOIN customers c ON c.id=i.customer_id
       JOIN sites s ON s.id=c.site_id
       LEFT JOIN clusters cl ON cl.id=c.cluster_id
-      WHERE i.status IN ('unpaid','partial','overdue') AND i.outstanding>0 AND i.due_date<=? AND s.code IN ('CDS','KBG')
+      WHERE i.status IN ('unpaid','partial','overdue') AND i.outstanding>0 AND i.due_date<=? AND s.code IN ('CDS','KRW','CLM','KBG','KUBANG')
       GROUP BY c.id,c.customer_code,c.name,s.code,cl.name
       ORDER BY outstanding DESC LIMIT 100`, [end]);
     const outstanding = rows.reduce((a, r) => a + Number(r.outstanding || 0), 0);
@@ -279,6 +279,8 @@ router.get('/', async (req, res, next) => {
   try {
     const { start, end, hideEdwin } = selectedPeriod(req);
     if (start > end) return res.status(400).send('Periode tidak valid.');
+    const autoSyncResult = await autoSyncBeforeReport({ start, end, userId: req.session.user.id, ip: req.ip });
+    const autoSyncInfo = autoSyncMessage(autoSyncResult);
     const data = await loadClosing(start, end);
     const unpaid = await loadUnpaidCustomers(end);
     const customerActivity = await loadCustomerActivitySummary(start, end);
@@ -362,7 +364,7 @@ router.get('/', async (req, res, next) => {
         prevLabel: `${prevPeriod.start} s/d ${prevPeriod.end}`
       };
     }
-    res.render('closing/index', { title: 'Closing', pageTitle: 'Closing', pageSubtitle: `${start} s/d ${end}`, start, end, hideEdwin, money, locationText, pending, estimate, prevPeriod, nextPeriod, trend, customerActivity, ...data, ...unpaid });
+    res.render('closing/index', { title: 'Closing', pageTitle: 'Closing', pageSubtitle: `${start} s/d ${end}`, start, end, hideEdwin, money, locationText, pending, estimate, prevPeriod, nextPeriod, trend, customerActivity, autoSyncInfo, dateKey: (value) => (value ? localDateKey(value) : ''), ...data, ...unpaid });
   } catch (err) { next(err); }
 });
 
@@ -446,6 +448,9 @@ router.post('/sync', async (req, res, next) => {
 router.post('/period-lock', async (req, res, next) => {
   const { start, end } = selectedPeriod(req); let conn;
   try {
+    // v3.2 — selaraskan dulu dengan Data Kas supaya snapshot yang dikunci
+    // tidak memakai data lama.
+    await autoSyncBeforeReport({ start, end, userId: req.session.user.id, ip: req.ip });
     conn=await db.getConnection();await conn.beginTransaction();
     const period=await ensureDraftPeriod(conn,start,end,req.session.user.id);
     // v2.1 — kalau mode AUTO, jangan biarkan periode dikunci padahal masih ada
@@ -529,12 +534,15 @@ router.post('/entries/:id/update', async (req, res, next) => {
     const { start, end } = selectedPeriod(req);
     if (!Number.isInteger(id) || id < 1) return res.status(400).send('Transaksi tidak valid.');
     await assertClosingChildDraft('closing_entries',id);
-    const [[entry]] = await db.execute('SELECT id,entry_type,source_type FROM closing_entries WHERE id=? LIMIT 1', [id]);
+    const [[entry]] = await db.execute('SELECT ce.id,ce.entry_type,ce.source_type,cp.period_start,cp.period_end FROM closing_entries ce JOIN closing_periods cp ON cp.id=ce.closing_id WHERE ce.id=? LIMIT 1', [id]);
     if (!entry) return res.status(404).send('Transaksi tidak ditemukan.');
     const site = normalizeSiteCluster(req.body.site_code, req.body.cluster_name);
     if (!site) return res.status(400).send('Lokasi hanya boleh CDS atau KBG.');
     const entryDate = validDate(req.body.entry_date) ? req.body.entry_date : '';
     if (!entryDate) return res.status(400).send('Tanggal tidak valid.');
+    // v3.2 — dulu tanggal boleh diubah ke luar periode (tambah baris sudah dicek,
+    // edit belum), sehingga baris bertanggal bulan lain tetap dihitung di periode ini.
+    if (entryDate < localDateKey(entry.period_start) || entryDate > localDateKey(entry.period_end)) return res.status(400).send('Tanggal transaksi harus berada di dalam periode closing.');
     const amount = money(req.body.amount);
     if (amount <= 0) return res.status(400).send('Nominal harus lebih besar dari nol.');
     const category = String(req.body.category || (entry.entry_type === 'INCOME' ? 'Pendapatan pelanggan' : '')).trim().slice(0, 120);
@@ -796,23 +804,47 @@ function buildTransactionRows(data, allowedBlocks) {
   return [...rows, ...expenseRows];*/
 }
 
+// v3.2 — Closing SELALU sama dengan Data Kas. Dipanggil sebelum halaman Closing,
+// Rekap, PDF, Excel dan Kunci periode membaca data. Hanya untuk periode DRAFT
+// (periode LOCKED dibekukan; Data Kas juga menolak transaksi di tanggal itu).
+//   - Mode Otomatis: tarik transaksi APPROVED baru + selaraskan baris lama.
+//   - Mode Manual  : hanya selaraskan baris cash_sync lama (update/hapus), tidak
+//                    menarik transaksi baru.
+// Idempoten dan hanya menulis kalau memang ada perbedaan; setiap perubahan dicatat
+// di audit keuangan.
 async function autoSyncBeforeReport({ start, end, userId, ip }) {
   const [[period]] = await db.execute('SELECT id,status,mode FROM closing_periods WHERE period_start=? AND period_end=? LIMIT 1', [start, end]);
-  if (!period || period.status === 'LOCKED' || String(period.mode || 'MANUAL').toUpperCase() !== 'AUTO') return null;
-  const pending = await countPendingCashData({ db, closingId: period.id, start, end });
-  if (!pending.needsSync) return null;
+  if (!period || period.status === 'LOCKED') return null;
+  const isAuto = String(period.mode || 'MANUAL').toUpperCase() === 'AUTO';
+  if (isAuto) {
+    const pending = await countPendingCashData({ db, closingId: period.id, start, end });
+    if (!pending.needsSync) return null;
+  } else {
+    const plan = await planSyncedReconciliation({ db, closingId: period.id, start, end });
+    if (!plan.some((item) => item.action !== 'keep')) return null;
+  }
   let conn;
   try {
     conn = await db.getConnection();
     await conn.beginTransaction();
     const [[locked]] = await conn.execute('SELECT id,status,mode FROM closing_periods WHERE id=? FOR UPDATE', [period.id]);
-    if (!locked || locked.status === 'LOCKED' || String(locked.mode || 'MANUAL').toUpperCase() !== 'AUTO') { await conn.rollback(); return null; }
-    const result = await syncCashDataIntoClosing({ conn, closingId: period.id, start, end, userId });
-    await conn.execute('UPDATE closing_periods SET last_synced_at=NOW() WHERE id=?', [period.id]);
-    await financialAudit({ conn, userId, action: 'sync_closing_cash', entityType: 'closing_period', entityId: period.id, before: {}, after: result, reason: `Sinkron otomatis Data Kas sebelum cetak PDF periode ${start} s/d ${end}`, ip });
+    if (!locked || locked.status === 'LOCKED') { await conn.rollback(); return null; }
+    const lockedAuto = String(locked.mode || 'MANUAL').toUpperCase() === 'AUTO';
+    const result = await syncCashDataIntoClosing({ conn, closingId: period.id, start, end, userId, insertNew: lockedAuto });
+    if (lockedAuto) await conn.execute('UPDATE closing_periods SET last_synced_at=NOW() WHERE id=?', [period.id]);
+    await financialAudit({ conn, userId, action: 'sync_closing_cash', entityType: 'closing_period', entityId: period.id, before: {}, after: result, reason: `Sinkron otomatis Data Kas periode ${start} s/d ${end}`, ip });
     await conn.commit();
     return result;
   } catch (err) { if (conn) await conn.rollback(); throw err; } finally { if (conn) conn.release(); }
+}
+
+function autoSyncMessage(result) {
+  if (!result) return null;
+  const parts = [];
+  if (result.inserted) parts.push(`${result.inserted} transaksi baru ditarik`);
+  if (result.updated) parts.push(`${result.updated} baris diperbarui`);
+  if (result.removed) parts.push(`${result.removed} baris dikeluarkan`);
+  return parts.length ? `Disinkron otomatis dengan Data Kas: ${parts.join(', ')}.` : null;
 }
 
 router.get('/pdf', async (req, res, next) => {
@@ -926,6 +958,7 @@ router.get('/history', async (req, res, next) => {
     for (const p of filtered) {
       const start = localDateKey(p.period_start);
       const end = localDateKey(p.period_end);
+      await autoSyncBeforeReport({ start, end, userId: req.session.user.id, ip: req.ip });
       const data = await loadClosing(start, end);
       const totalRevenue = money(data.blocks.krwclm.revenue) + money(data.blocks.kbg.revenue);
       const totalExpense = money(data.blocks.krwclm.expense) + money(data.blocks.kbg.expense);
