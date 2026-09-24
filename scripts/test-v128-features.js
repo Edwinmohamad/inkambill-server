@@ -23,7 +23,7 @@ assert(telemetry.includes('captureInterfaceTraffic') && telemetry.includes('capt
 const dashboard = read('views/dashboard/index.ejs');
 assert(!dashboard.includes('class="command-telemetry-rail"'), 'Rail telemetry teknis masih tampil di dashboard utama.');
 const css = read('public/css/app.css');
-assert(css.includes('--bg:#e3e6eb') && css.includes('Soft neutral light mode'), 'Palet light mode lembut belum diterapkan.');
+assert(css.includes('html[data-theme="light"]') && css.includes('--bg:#f5f5f7'), 'Palet light mode lembut belum diterapkan.');
 const workflowFiles = fs.readdirSync(path.join(root, 'n8n')).filter(file => file.endsWith('.json'));
 assert(workflowFiles.length >= 5, 'Lima workflow n8n belum tersedia.');
 for (const file of workflowFiles) JSON.parse(read(`n8n/${file}`));
