@@ -24,6 +24,6 @@ public final class GoFirebaseMessagingService extends FirebaseMessagingService {
             if (detail == null) detail = message.getNotification().getBody();
         }
         NotificationHelper.createChannel(this);
-        NotificationHelper.show(this, title, detail, href);
+        NotificationHelper.show(this, title, detail, href, data.get("notificationId"));
     }
 }

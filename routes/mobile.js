@@ -27,8 +27,8 @@ router.get('/api/mobile/version', (req, res) => {
     ok: true,
     app: 'INKAMNET GO',
     packageName: 'id.my.edwinpxmx.inkamnetgo',
-    versionCode: positiveInt(releaseMeta.versionCode, positiveInt(process.env.MOBILE_ANDROID_VERSION_CODE, 5)),
-    versionName: clean(releaseMeta.versionName || process.env.MOBILE_ANDROID_VERSION_NAME || '1.3.0', 40),
+    versionCode: positiveInt(releaseMeta.versionCode, positiveInt(process.env.MOBILE_ANDROID_VERSION_CODE, 6)),
+    versionName: clean(releaseMeta.versionName || process.env.MOBILE_ANDROID_VERSION_NAME || '1.3.1', 40),
     apkUrl: safeHttpsUrl(process.env.MOBILE_ANDROID_APK_URL) || productionDownload,
     forceUpdate: String(process.env.MOBILE_ANDROID_FORCE_UPDATE || '').toLowerCase() === 'true'
   });
@@ -104,6 +104,8 @@ router.post('/api/mobile/push-token', async (req, res) => {
     app_version=VALUES(app_version),is_active=1,last_seen_at=NOW()`, [
       Number(req.session.user.id), token, clean(req.body?.deviceModel,160), clean(req.body?.appVersion,40)
     ]);
+  // Remember which device token belongs to this login so logout can stop pushes to it.
+  req.session.mobilePushToken = token;
   res.json({ok:true});
 });
 

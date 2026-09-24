@@ -64,11 +64,7 @@ final class UpdateChecker {
         AlertDialog.Builder builder = new AlertDialog.Builder(activity)
                 .setTitle("Update INKAMNET GO")
                 .setMessage("Versi " + name + " sudah tersedia. Perbarui untuk mendapatkan perbaikan terbaru.")
-                .setPositiveButton("Update sekarang", (dialog, which) -> {
-                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                    intent.addCategory(Intent.CATEGORY_BROWSABLE);
-                    activity.startActivity(intent);
-                });
+                .setPositiveButton("Update sekarang", null);
         if (!forced) builder.setNegativeButton("Nanti", (dialog, which) ->
                 activity.getSharedPreferences("inkamnet_go", Activity.MODE_PRIVATE)
                         .edit().putInt("dismissed_update", code).apply());
@@ -76,6 +72,30 @@ final class UpdateChecker {
         dialog.setCancelable(!forced);
         dialog.setCanceledOnTouchOutside(!forced);
         dialog.show();
+        // Custom click handler so a forced update dialog is not dismissed after tapping Update
+        // (the old version could simply be used again afterwards).
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            openUpdate(activity, url);
+            if (!forced) dialog.dismiss();
+        });
+    }
+
+    private static void openUpdate(Activity activity, String url) {
+        Uri uri = Uri.parse(url);
+        try {
+            Intent intent;
+            if ("inkambill.edwinpxmx.my.id".equalsIgnoreCase(uri.getHost())) {
+                // Download inside the app: the WebView download listener sends the session-aware
+                // request to DownloadManager, independent of App Links verification.
+                intent = new Intent(activity, MainActivity.class).setData(uri)
+                        .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            } else {
+                intent = new Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE);
+            }
+            activity.startActivity(intent);
+        } catch (Exception e) {
+            android.widget.Toast.makeText(activity, "Tidak dapat membuka unduhan update.", android.widget.Toast.LENGTH_LONG).show();
+        }
     }
 
     private static boolean isHttps(String value) {

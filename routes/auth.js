@@ -31,7 +31,15 @@ router.post('/login', async (req, res) => {
   });
 });
 
-router.post('/logout', (req, res) => {
+router.post('/logout', async (req, res) => {
+  // Stop FCM pushes to this device after logout; otherwise the previous user's operational
+  // notifications keep arriving on a logged-out (or shared) phone.
+  const pushToken = req.session?.mobilePushToken;
+  if (pushToken && req.session?.user) {
+    try {
+      await db.execute(`UPDATE mobile_push_tokens SET is_active=0 WHERE token=? AND user_id=?`, [pushToken, Number(req.session.user.id)]);
+    } catch (err) { console.error('Gagal menonaktifkan push token saat logout:', err.message); }
+  }
   req.session.destroy(() => res.redirect('/login'));
 });
 

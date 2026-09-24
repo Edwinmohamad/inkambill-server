@@ -44,7 +44,10 @@
     document.querySelectorAll('[data-theme-toggle] i').forEach(i => i.className = theme === 'dark' ? 'bi bi-sun-fill' : 'bi bi-moon-stars-fill');
     window.dispatchEvent(new CustomEvent('inkamnet:theme', { detail:{ theme } }));
   };
-  applyTheme(localStorage.getItem('inkamnet-theme') || html.dataset.theme || 'dark');
+  // INKAMNET GO uses a light-only shell (mobile-app.css); dark variables there made page titles,
+  // buttons and inputs unreadable, so the APK always renders in light mode.
+  if (body.classList.contains('inkamnet-go-app')) applyTheme('light');
+  else applyTheme(localStorage.getItem('inkamnet-theme') || html.dataset.theme || 'dark');
   document.querySelectorAll('[data-theme-toggle]').forEach(btn => btn.addEventListener('click', () => applyTheme(html.dataset.theme === 'dark' ? 'light' : 'dark')));
 
   document.querySelectorAll('.metric-card,.data-card,.filter-card,.ink-kpi,.ink-panel').forEach((el,index)=>{

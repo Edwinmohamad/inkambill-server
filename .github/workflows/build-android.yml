@@ -59,21 +59,21 @@ jobs:
             printf '%s' "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > android/ci-release.jks
             export ANDROID_KEYSTORE_PATH="${GITHUB_WORKSPACE}/android/ci-release.jks"
             (cd android && gradle --no-daemon assembleRelease)
-            cp android/app/build/outputs/apk/release/app-release.apk android/app/build/outputs/final/INKAMNET-GO-v1.3.0.apk
+            cp android/app/build/outputs/apk/release/app-release.apk android/app/build/outputs/final/INKAMNET-GO-v1.3.1.apk
             APK_PACKAGE="id.my.edwinpxmx.inkamnetgo"
             echo "APK_PACKAGE=id.my.edwinpxmx.inkamnetgo" >> "${GITHUB_ENV}"
             echo "APK_VARIANT=release" >> "${GITHUB_ENV}"
           else
             (cd android && gradle --no-daemon assembleDebug)
-            cp android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/final/INKAMNET-GO-v1.3.0.apk
+            cp android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/final/INKAMNET-GO-v1.3.1.apk
             APK_PACKAGE="id.my.edwinpxmx.inkamnetgo.debug"
             echo "APK_PACKAGE=id.my.edwinpxmx.inkamnetgo.debug" >> "${GITHUB_ENV}"
             echo "APK_VARIANT=debug" >> "${GITHUB_ENV}"
           fi
           rm -f android/ci-release.jks
           printf '%s' "${APK_PACKAGE}" > android/app/build/outputs/final/package-name.txt
-          printf '%s\n' '{"versionCode":5,"versionName":"1.3.0"}' > android/app/build/outputs/final/version.json
-          echo "APK_PATH=${GITHUB_WORKSPACE}/android/app/build/outputs/final/INKAMNET-GO-v1.3.0.apk" >> "${GITHUB_ENV}"
+          printf '%s\n' '{"versionCode":6,"versionName":"1.3.1"}' > android/app/build/outputs/final/version.json
+          echo "APK_PATH=${GITHUB_WORKSPACE}/android/app/build/outputs/final/INKAMNET-GO-v1.3.1.apk" >> "${GITHUB_ENV}"
 
       - name: Verify APK
         run: |
@@ -87,7 +87,7 @@ jobs:
           "${AAPT_BIN}" dump badging "${APK_PATH}" | tee android/app/build/outputs/final/apk-info.txt
           grep -q "package: name='${APK_PACKAGE}'" android/app/build/outputs/final/apk-info.txt
           grep -q "application-label:'INKAMNET GO'" android/app/build/outputs/final/apk-info.txt
-          grep -q "versionCode='5'" android/app/build/outputs/final/apk-info.txt
+          grep -q "versionCode='6'" android/app/build/outputs/final/apk-info.txt
           cp android/app/build/reports/lint-results-debug.html android/app/build/outputs/final/lint-results-debug.html
 
       - name: Upload installable APK
@@ -154,9 +154,9 @@ jobs:
 
       - name: Publish atomically
         run: |
-          test -s mobile-release/INKAMNET-GO-v1.3.0.apk
+          test -s mobile-release/INKAMNET-GO-v1.3.1.apk
           install -d -m 0755 /opt/inkambilling/storage/mobile-releases
-          install -m 0644 mobile-release/INKAMNET-GO-v1.3.0.apk /opt/inkambilling/storage/mobile-releases/INKAMNET-GO.apk.new
+          install -m 0644 mobile-release/INKAMNET-GO-v1.3.1.apk /opt/inkambilling/storage/mobile-releases/INKAMNET-GO.apk.new
           install -m 0644 mobile-release/version.json /opt/inkambilling/storage/mobile-releases/version.json.new
           mv /opt/inkambilling/storage/mobile-releases/INKAMNET-GO.apk.new /opt/inkambilling/storage/mobile-releases/INKAMNET-GO.apk
           mv /opt/inkambilling/storage/mobile-releases/version.json.new /opt/inkambilling/storage/mobile-releases/version.json

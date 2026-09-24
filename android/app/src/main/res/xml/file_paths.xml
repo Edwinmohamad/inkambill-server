@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Camera captures for web uploads live only in the private app cache. -->
+    <cache-path name="camera" path="camera/" />
+</paths>

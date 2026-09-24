@@ -4,7 +4,6 @@ import android.Manifest;
 import android.app.DownloadManager;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
-import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -17,10 +16,14 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.SystemClock;
+import android.print.PrintAttributes;
+import android.print.PrintDocumentAdapter;
+import android.print.PrintManager;
 import android.provider.MediaStore;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowInsets;
 import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
 import android.webkit.SslErrorHandler;
@@ -43,9 +46,13 @@ import android.widget.Toast;
 
 import android.net.http.SslError;
 
+import java.io.File;
+
+import androidx.annotation.RequiresApi;
 import androidx.biometric.BiometricManager;
 import androidx.biometric.BiometricPrompt;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 import androidx.fragment.app.FragmentActivity;
 
 public final class MainActivity extends FragmentActivity {
@@ -55,6 +62,7 @@ public final class MainActivity extends FragmentActivity {
     private static final int STORAGE_PERMISSION_REQUEST = 4102;
     private static final int NOTIFICATION_PERMISSION_REQUEST = 4103;
     private static final long LOCK_AFTER_MS = 120_000L;
+    private static final String PRINT_SCHEME = "inkamnet-go";
 
     private WebView webView;
     private ProgressBar progressBar;
@@ -64,9 +72,10 @@ public final class MainActivity extends FragmentActivity {
     private ValueCallback<Uri[]> fileCallback;
     private Uri cameraOutputUri;
     private PendingDownload pendingDownload;
+    private File cameraOutputFile;
     private long backgroundAt;
     private boolean unlockPromptVisible;
-    private boolean initialStartHandled;
+    private boolean locked;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -96,13 +105,15 @@ public final class MainActivity extends FragmentActivity {
         root.addView(offlineView, matchParent());
 
         lockView = createLockView();
-        lockView.setVisibility(hasKnownSession() ? View.VISIBLE : View.GONE);
+        locked = hasKnownSession();
+        lockView.setVisibility(locked ? View.VISIBLE : View.GONE);
         root.addView(lockView, matchParent());
 
         splashView = createSplashView();
         root.addView(splashView, matchParent());
 
         setContentView(root);
+        applySystemBarInsets(root);
         configureWebView();
         UpdateChecker.check(this);
 
@@ -161,6 +172,7 @@ public final class MainActivity extends FragmentActivity {
                 progressBar.setVisibility(View.GONE);
                 CookieManager.getInstance().flush();
                 hideSplash();
+                if (isTrustedWebUrl(Uri.parse(url))) installPrintShim(view);
                 if (isAuthenticatedPage(url)) {
                     getSharedPreferences("inkamnet_go", MODE_PRIVATE).edit().putBoolean("known_session", true).apply();
                     requestNotificationPermissionOnce();
@@ -171,6 +183,7 @@ public final class MainActivity extends FragmentActivity {
                             .putBoolean("known_session", false)
                             .remove("registered_push_token")
                             .apply();
+                    locked = false;
                     lockView.setVisibility(View.GONE);
                 }
             }
@@ -216,6 +229,11 @@ public final class MainActivity extends FragmentActivity {
     private boolean handleNavigation(Uri uri) {
         String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase();
         if (isTrustedWebUrl(uri) || "about".equals(scheme)) return false;
+        if (PRINT_SCHEME.equals(scheme)) {
+            if ("print".equals(uri.getHost()) && webView.getUrl() != null
+                    && isTrustedWebUrl(Uri.parse(webView.getUrl()))) printCurrentPage();
+            return true;
+        }
 
         if ("https".equals(scheme) || "http".equals(scheme) || "tel".equals(scheme)
                 || "mailto".equals(scheme) || "sms".equals(scheme) || "geo".equals(scheme)
@@ -397,13 +415,20 @@ public final class MainActivity extends FragmentActivity {
 
     private void showBiometricUnlock() {
         if (unlockPromptVisible || !hasKnownSession()) {
-            if (!hasKnownSession()) lockView.setVisibility(View.GONE);
+            if (!hasKnownSession()) {
+                locked = false;
+                lockView.setVisibility(View.GONE);
+            }
             return;
         }
+        // BIOMETRIC_STRONG|DEVICE_CREDENTIAL is not supported on API 28-29, while
+        // BIOMETRIC_WEAK|DEVICE_CREDENTIAL works on every supported API level. This lets
+        // PIN/pattern-only devices on Android 8-10 stay protected instead of skipping the lock.
         final int authenticators = Build.VERSION.SDK_INT >= 30
                 ? BiometricManager.Authenticators.BIOMETRIC_STRONG | BiometricManager.Authenticators.DEVICE_CREDENTIAL
-                : BiometricManager.Authenticators.BIOMETRIC_WEAK;
+                : BiometricManager.Authenticators.BIOMETRIC_WEAK | BiometricManager.Authenticators.DEVICE_CREDENTIAL;
         if (BiometricManager.from(this).canAuthenticate(authenticators) != BiometricManager.BIOMETRIC_SUCCESS) {
+            locked = false;
             lockView.setVisibility(View.GONE);
             return;
         }
@@ -414,6 +439,7 @@ public final class MainActivity extends FragmentActivity {
                     public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult result) {
                         super.onAuthenticationSucceeded(result);
                         unlockPromptVisible = false;
+                        locked = false;
                         lockView.animate().alpha(0f).setDuration(160).withEndAction(() -> {
                             lockView.setVisibility(View.GONE);
                             lockView.setAlpha(1f);
@@ -424,6 +450,7 @@ public final class MainActivity extends FragmentActivity {
                     public void onAuthenticationError(int errorCode, CharSequence errString) {
                         super.onAuthenticationError(errorCode, errString);
                         unlockPromptVisible = false;
+                        locked = true;
                         lockView.setVisibility(View.VISIBLE);
                     }
                 });
@@ -431,7 +458,6 @@ public final class MainActivity extends FragmentActivity {
                 .setTitle("INKAMNET GO")
                 .setSubtitle("Konfirmasi identitas Anda")
                 .setAllowedAuthenticators(authenticators);
-        if (Build.VERSION.SDK_INT < 30) info.setNegativeButtonText("Batal");
         prompt.authenticate(info.build());
     }
 
@@ -455,7 +481,7 @@ public final class MainActivity extends FragmentActivity {
             contentIntent.setType("*/*");
         }
 
-        Intent cameraIntent = createCameraIntent();
+        Intent cameraIntent = acceptsImages(params) ? createCameraIntent() : null;
         Intent chooser = Intent.createChooser(contentIntent, "Pilih file atau ambil foto");
         if (cameraIntent != null) chooser.putExtra(Intent.EXTRA_INITIAL_INTENTS, new Intent[]{cameraIntent});
 
@@ -467,16 +493,36 @@ public final class MainActivity extends FragmentActivity {
         }
     }
 
+    private boolean acceptsImages(WebChromeClient.FileChooserParams params) {
+        String[] types = params == null ? null : params.getAcceptTypes();
+        if (types == null || types.length == 0) return true;
+        for (String raw : types) {
+            if (raw == null) continue;
+            for (String part : raw.split(",")) {
+                String type = part.trim().toLowerCase();
+                if (type.isEmpty() || type.equals("*/*") || type.startsWith("image/")
+                        || type.equals(".jpg") || type.equals(".jpeg") || type.equals(".png")) return true;
+            }
+        }
+        return false;
+    }
+
     private Intent createCameraIntent() {
         Intent cameraIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
         if (cameraIntent.resolveActivity(getPackageManager()) == null) return null;
-
-        ContentValues values = new ContentValues();
-        values.put(MediaStore.Images.Media.DISPLAY_NAME, "inkamnet-go-" + System.currentTimeMillis() + ".jpg");
-        values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
-        cameraOutputUri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
-        if (cameraOutputUri == null) return null;
-
+        try {
+            // Private app cache + FileProvider: no storage permission on Android 8/9 (the old
+            // MediaStore insert threw SecurityException there) and customer photos no longer
+            // land in the public gallery.
+            File directory = new File(getCacheDir(), "camera");
+            if (!directory.isDirectory() && !directory.mkdirs()) return null;
+            cameraOutputFile = new File(directory, "inkamnet-go-" + System.currentTimeMillis() + ".jpg");
+            cameraOutputUri = FileProvider.getUriForFile(this, getPackageName() + ".files", cameraOutputFile);
+        } catch (Exception e) {
+            cameraOutputFile = null;
+            cameraOutputUri = null;
+            return null;
+        }
         cameraIntent.putExtra(MediaStore.EXTRA_OUTPUT, cameraOutputUri);
         cameraIntent.setClipData(ClipData.newRawUri("INKAMNET GO photo", cameraOutputUri));
         cameraIntent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
@@ -489,8 +535,13 @@ public final class MainActivity extends FragmentActivity {
         if (requestCode != FILE_CHOOSER_REQUEST || fileCallback == null) return;
 
         Uri[] result = null;
+        boolean cameraCaptured = cameraOutputFile != null && cameraOutputFile.length() > 0;
         if (resultCode == RESULT_OK) {
-            if (data != null && data.getData() != null) {
+            if (cameraCaptured && (data == null || data.getData() == null
+                    || data.getData().equals(cameraOutputUri))) {
+                // Some camera apps echo EXTRA_OUTPUT back as data; never delete the new photo.
+                result = new Uri[]{cameraOutputUri};
+            } else if (data != null && data.getData() != null) {
                 result = new Uri[]{data.getData()};
                 deleteUnusedCameraOutput();
             } else if (data != null && data.getClipData() != null) {
@@ -498,8 +549,8 @@ public final class MainActivity extends FragmentActivity {
                 result = new Uri[count];
                 for (int i = 0; i < count; i++) result[i] = data.getClipData().getItemAt(i).getUri();
                 deleteUnusedCameraOutput();
-            } else if (cameraOutputUri != null) {
-                result = new Uri[]{cameraOutputUri};
+            } else {
+                deleteUnusedCameraOutput();
             }
         } else if (cameraOutputUri != null) {
             deleteUnusedCameraOutput();
@@ -508,12 +559,14 @@ public final class MainActivity extends FragmentActivity {
         fileCallback.onReceiveValue(result);
         fileCallback = null;
         cameraOutputUri = null;
+        cameraOutputFile = null;
     }
 
     private void deleteUnusedCameraOutput() {
-        if (cameraOutputUri == null) return;
+        if (cameraOutputFile == null) return;
         try {
-            getContentResolver().delete(cameraOutputUri, null, null);
+            //noinspection ResultOfMethodCallIgnored
+            cameraOutputFile.delete();
         } catch (Exception ignored) {
             // A failed cleanup must not break the selected gallery/document upload.
         }
@@ -584,15 +637,19 @@ public final class MainActivity extends FragmentActivity {
         super.onStart();
         if (lockView == null) return;
         if (!hasKnownSession()) {
+            locked = false;
+            backgroundAt = 0;
             lockView.setVisibility(View.GONE);
-            initialStartHandled = true;
             return;
         }
-        long awayFor = backgroundAt == 0 ? Long.MAX_VALUE : SystemClock.elapsedRealtime() - backgroundAt;
-        boolean shouldLock = !initialStartHandled || awayFor >= LOCK_AFTER_MS;
-        initialStartHandled = true;
+        // Stay locked until an authentication actually succeeds. Returning from the file
+        // chooser/camera no longer forces a re-lock, and cancelling the device-credential
+        // screen can no longer dismiss the lock.
+        if (!locked && backgroundAt != 0 && SystemClock.elapsedRealtime() - backgroundAt >= LOCK_AFTER_MS) {
+            locked = true;
+        }
         backgroundAt = 0;
-        if (shouldLock) {
+        if (locked) {
             lockView.setVisibility(View.VISIBLE);
             lockView.post(this::showBiometricUnlock);
         } else {
@@ -602,9 +659,10 @@ public final class MainActivity extends FragmentActivity {
 
     @Override
     protected void onStop() {
-        if (!isChangingConfigurations() && hasKnownSession() && fileCallback == null) {
-            backgroundAt = SystemClock.elapsedRealtime();
-            if (lockView != null) lockView.setVisibility(View.VISIBLE);
+        if (!isChangingConfigurations() && hasKnownSession()) {
+            if (!locked) backgroundAt = SystemClock.elapsedRealtime();
+            // Cover the content while in background; onStart decides whether it stays.
+            if (lockView != null && fileCallback == null) lockView.setVisibility(View.VISIBLE);
         }
         super.onStop();
     }
@@ -613,6 +671,8 @@ public final class MainActivity extends FragmentActivity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        // Intents without a URL (e.g. launcher) must not throw away the current page/form.
+        if (intent == null || intent.getData() == null) return;
         String url = trustedLaunchUrl(intent);
         if (!url.equals(webView.getUrl())) loadUrl(url);
     }
@@ -646,6 +706,42 @@ public final class MainActivity extends FragmentActivity {
             webView.destroy();
         }
         super.onDestroy();
+    }
+
+    private void applySystemBarInsets(View root) {
+        // targetSdk 35 enforces edge-to-edge on Android 15+: the status bar, gesture bar and
+        // keyboard overlap the WebView unless the insets are applied manually.
+        if (Build.VERSION.SDK_INT >= 35) applyEdgeToEdgeInsets(root);
+    }
+
+    @RequiresApi(30)
+    private void applyEdgeToEdgeInsets(View root) {
+        root.setOnApplyWindowInsetsListener((view, insets) -> {
+            android.graphics.Insets bars = insets.getInsets(
+                    WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+            android.graphics.Insets ime = insets.getInsets(WindowInsets.Type.ime());
+            view.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, ime.bottom));
+            return WindowInsets.CONSUMED;
+        });
+        root.requestApplyInsets();
+    }
+
+    private void installPrintShim(WebView view) {
+        // WebView ignores window.print(); route it to Android's print/save-as-PDF dialog
+        // through a navigation the app intercepts (no JavaScript bridge is exposed).
+        view.evaluateJavascript("(function(){try{window.print=function(){location.href='"
+                + PRINT_SCHEME + "://print';};}catch(e){}})();", null);
+    }
+
+    private void printCurrentPage() {
+        PrintManager manager = (PrintManager) getSystemService(Context.PRINT_SERVICE);
+        if (manager == null) {
+            Toast.makeText(this, "Fitur cetak tidak tersedia di perangkat ini.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String title = webView.getTitle() == null || webView.getTitle().isEmpty() ? "INKAMNET GO" : webView.getTitle();
+        PrintDocumentAdapter adapter = webView.createPrintDocumentAdapter(title);
+        manager.print(title, adapter, new PrintAttributes.Builder().build());
     }
 
     private FrameLayout.LayoutParams matchParent() {

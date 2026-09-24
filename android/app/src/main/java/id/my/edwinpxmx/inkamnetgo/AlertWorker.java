@@ -68,16 +68,26 @@ public final class AlertWorker extends Worker {
             JSONArray notifications = payload.optJSONArray("notifications");
             if (notifications == null || notifications.length() == 0) return Result.success();
 
-            JSONObject first = notifications.optJSONObject(0);
+            // Only unread persistent notifications (same source as FCM). Dynamic counters such as
+            // "12 tagihan lewat tempo" change constantly and already-read items must not re-alert.
+            JSONObject first = null;
+            for (int i = 0; i < notifications.length(); i++) {
+                JSONObject item = notifications.optJSONObject(i);
+                if (item != null && item.optBoolean("persistent", false) && item.isNull("read_at")) {
+                    first = item;
+                    break;
+                }
+            }
             if (first == null) return Result.success();
             String title = first.optString("title", "INKAMNET GO");
             String detail = first.optString("detail", "Ada pembaruan operasional.");
             String href = first.optString("href", "/");
-            String fingerprint = title + "|" + detail + "|" + href;
+            String notificationKey = first.has("id") ? first.optString("id") : null;
+            String fingerprint = notificationKey != null ? "id:" + notificationKey : title + "|" + detail + "|" + href;
             SharedPreferences prefs = getApplicationContext().getSharedPreferences("inkamnet_go", Context.MODE_PRIVATE);
             if (fingerprint.equals(prefs.getString("last_alert_fingerprint", ""))) return Result.success();
             prefs.edit().putString("last_alert_fingerprint", fingerprint).apply();
-            NotificationHelper.show(getApplicationContext(), title, detail, href);
+            NotificationHelper.show(getApplicationContext(), title, detail, href, notificationKey);
             return Result.success();
         } catch (Exception ignored) {
             return getRunAttemptCount() < 3 ? Result.retry() : Result.failure();

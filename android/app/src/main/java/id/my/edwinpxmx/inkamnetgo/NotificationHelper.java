@@ -28,6 +28,10 @@ final class NotificationHelper {
     }
 
     static void show(Context context, String title, String detail, String href) {
+        show(context, title, detail, href, null);
+    }
+
+    static void show(Context context, String title, String detail, String href, String key) {
         if (Build.VERSION.SDK_INT >= 33
                 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return;
 
@@ -35,7 +39,10 @@ final class NotificationHelper {
         Intent intent = new Intent(context, MainActivity.class);
         intent.setData(destination);
         intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        PendingIntent pending = PendingIntent.getActivity(context, 6201, intent,
+        // A distinct id per notification: a fixed id made every new alert replace the previous
+        // one, and FLAG_UPDATE_CURRENT re-pointed older taps to the newest href.
+        int notificationId = notificationId(key, title, detail, destination);
+        PendingIntent pending = PendingIntent.getActivity(context, notificationId, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
@@ -50,7 +57,14 @@ final class NotificationHelper {
                 .setCategory(NotificationCompat.CATEGORY_STATUS)
                 .setPriority(NotificationCompat.PRIORITY_DEFAULT);
         NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-        if (manager != null) manager.notify(6201, builder.build());
+        if (manager != null) manager.notify(notificationId, builder.build());
+    }
+
+    private static int notificationId(String key, String title, String detail, Uri destination) {
+        String basis = key != null && !key.trim().isEmpty()
+                ? "id:" + key.trim()
+                : String.valueOf(title) + "|" + detail + "|" + destination;
+        return 7000 + (basis.hashCode() & 0x0FFFFFFF);
     }
 
     private static Uri trustedDestination(String href) {

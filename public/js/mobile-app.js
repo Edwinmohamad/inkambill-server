@@ -52,10 +52,16 @@
     primaryFilter.classList.add('go-primary-filter');
     heading.insertAdjacentElement('afterend',primaryFilter);
   }
-  document.querySelectorAll('.go-menu a,.go-quick-grid a').forEach(link=>link.addEventListener('click',()=>{
-    link.classList.add('go-tapped');clearLayerState();closeAllOverlays({consumeHistory:false,restoreFocus:false});setTimeout(()=>link.classList.remove('go-tapped'),800);
+  // Menu/quick-sheet links replace the overlay history entry instead of stacking after it.
+  // Previously the leftover entry meant Android Back had to be pressed twice to leave a page.
+  document.querySelectorAll('.go-menu a,.go-quick-grid a').forEach(link=>link.addEventListener('click',event=>{
+    if(event.defaultPrevented||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
+    link.classList.add('go-tapped');setTimeout(()=>link.classList.remove('go-tapped'),800);
+    const onLayer=layerState()?.kind==='overlay';
+    closeAllOverlays({consumeHistory:false,restoreFocus:false});
+    if(onLayer&&link.href){event.preventDefault();location.replace(link.href);}
+    else clearLayerState();
   }));
-  document.querySelector('.go-menu [data-theme-toggle]')?.addEventListener('click',()=>closeOverlay(menu));
 
   document.addEventListener('show.bs.modal',()=>closeAllOverlays({consumeHistory:false,restoreFocus:false}));
   document.addEventListener('shown.bs.modal',event=>{
@@ -67,5 +73,8 @@
   });
   const updateViewport=()=>document.documentElement.style.setProperty('--go-viewport-height',`${Math.round(window.visualViewport?.height||window.innerHeight)}px`);
   updateViewport();window.visualViewport?.addEventListener('resize',updateViewport);window.addEventListener('orientationchange',()=>setTimeout(updateViewport,100));
-  window.addEventListener('pageshow',event=>{if(!event.persisted)return;closeAllOverlays({consumeHistory:false,restoreFocus:false});clearLayerState();document.querySelectorAll('.go-tapped').forEach(node=>node.classList.remove('go-tapped'));document.querySelectorAll('.modal.show').forEach(node=>{node.classList.remove('show');node.style.display='none';node.setAttribute('aria-hidden','true');});body.classList.remove('modal-open');body.style.removeProperty('overflow');body.style.removeProperty('padding-right');document.querySelectorAll('.modal-backdrop').forEach(node=>node.remove());});
+  // Arriving (via Back) on an entry that was pushed for a modal/overlay — e.g. after a form in a
+  // modal was submitted — skip it so one Back press returns to the previous screen.
+  if(layerState())history.back();
+  window.addEventListener('pageshow',event=>{if(!event.persisted)return;closeAllOverlays({consumeHistory:false,restoreFocus:false});if(layerState()){history.back();}document.querySelectorAll('.go-tapped').forEach(node=>node.classList.remove('go-tapped'));document.querySelectorAll('.modal.show').forEach(node=>{node.classList.remove('show');node.style.display='none';node.setAttribute('aria-hidden','true');});body.classList.remove('modal-open');body.style.removeProperty('overflow');body.style.removeProperty('padding-right');document.querySelectorAll('.modal-backdrop').forEach(node=>node.remove());});
 })();
