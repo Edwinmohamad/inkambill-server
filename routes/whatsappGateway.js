@@ -1,10 +1,11 @@
 const express = require('express');
 const db = require('../config/db');
-const { requireMasterAdmin, requirePermission } = require('../middleware/auth');
+const { requireMasterAdmin, requireAdmin, requirePermission } = require('../middleware/auth');
 const { audit } = require('../services/auditService');
 const {
   startGateway, logoutGateway, getGatewayStatus, resetGatewayState, reconcileGatewayStatus, enqueueWaMessage,
   getQueueStats, getRecentMessages, processQueue, DEFAULT_REMINDER_TEMPLATE, renderReminderTemplate,
+  listPendingBatches, approveBatch, rejectBatch, describeBatch, refreshWaFeatureFlags, isBlastEnabled,
 } = require('../services/whatsappGatewayService');
 const { DEFAULT_RECEIPT_TEMPLATE } = require('../services/cashSettlementService');
 const waha = require('../services/wahaClient');
@@ -26,7 +27,7 @@ function requireWaSendPermission(req, res, next) {
 // the 'settings' permission — same tier as the Payment Gateways settings tab — since it links a real
 // personal WhatsApp number to the app.
 router.get('/', requirePermission('settings'), async (req, res) => {
-  const [settingsResult, gateway, stats, messages, rawConnection, customersResult] = await Promise.all([
+  const [settingsResult, gateway, stats, messages, rawConnection, customersResult, pendingBatches] = await Promise.all([
     db.query(`SELECT wa_auto_reminder_enabled,wa_auto_reminder_hour,wa_auto_reminder_offsets,wa_auto_reminder_template,
       wa_payment_receipt_enabled,wa_payment_receipt_methods,wa_payment_receipt_template FROM settings WHERE id=1 LIMIT 1`),
     reconcileGatewayStatus(),
@@ -34,6 +35,7 @@ router.get('/', requirePermission('settings'), async (req, res) => {
     getRecentMessages(50),
     getWahaConfig(),
     db.query(`SELECT id,name,phone,whatsapp_status FROM customers WHERE archived_at IS NULL AND customer_status='active' ORDER BY name LIMIT 1000`),
+    listPendingBatches(),
   ]);
   const [[settingsRow]] = settingsResult;
   const [customers] = customersResult;
@@ -43,6 +45,8 @@ router.get('/', requirePermission('settings'), async (req, res) => {
     stats,
     messages,
     customers,
+    pendingBatches,
+    blastEnabled: isBlastEnabled(),
     connectionSettings: publicConfig(rawConnection),
     reminderSettings: {
       enabled: !!settingsRow?.wa_auto_reminder_enabled,
@@ -113,6 +117,42 @@ router.post('/messages/:id/retry', requireWaSendPermission, async (req, res) => 
   res.redirect('/wa-gateway#message-log');
 });
 
+// ---- Konfirmasi Admin: pesan otomatis ditahan per batch sampai disetujui -------------------------
+function batchFromBody(req) {
+  const batch = String(req.body?.batch || '').trim();
+  return /^[a-z0-9_]+:\d{4}-\d{2}-\d{2}$/.test(batch) ? batch : null;
+}
+router.post('/batches/approve', requirePermission('settings'), requireAdmin, async (req, res) => {
+  const batch = batchFromBody(req);
+  if (!batch) { req.session.flash = { type: 'danger', message: 'Batch tidak valid.' }; return res.redirect('/wa-gateway#pending-approval'); }
+  const result = await approveBatch(batch, req.session.user.id);
+  const info = describeBatch(batch);
+  await audit({ userId: req.session.user.id, action: 'approve', entityType: 'wa_batch', entityId: null, description: `Konfirmasi batch WA "${info.label}" ${info.date}: ${result.approved} pesan dikirim, ${result.skippedPaid} dilewati (tagihan sudah lunas).`, ip: req.ip });
+  const gatewayNote = getGatewayStatus().state === 'connected' ? '' : ' WA Gateway sedang terputus; pesan akan terkirim otomatis setelah terhubung kembali.';
+  req.session.flash = { type: result.approved ? 'success' : 'warning', message: result.approved
+    ? `${result.approved} pesan "${info.label}" dikonfirmasi dan masuk antrean pengiriman.${result.skippedPaid ? ` ${result.skippedPaid} dilewati karena tagihan sudah lunas.` : ''}${gatewayNote}`
+    : `Tidak ada pesan yang dikirim dari batch ini.${result.skippedPaid ? ` ${result.skippedPaid} dilewati karena tagihan sudah lunas.` : ''}` };
+  res.redirect('/wa-gateway#pending-approval');
+});
+router.post('/batches/reject', requirePermission('settings'), requireAdmin, async (req, res) => {
+  const batch = batchFromBody(req);
+  if (!batch) { req.session.flash = { type: 'danger', message: 'Batch tidak valid.' }; return res.redirect('/wa-gateway#pending-approval'); }
+  const result = await rejectBatch(batch, req.session.user.id);
+  const info = describeBatch(batch);
+  await audit({ userId: req.session.user.id, action: 'reject', entityType: 'wa_batch', entityId: null, description: `Batalkan batch WA "${info.label}" ${info.date}: ${result.rejected} pesan tidak dikirim.`, ip: req.ip });
+  req.session.flash = { type: 'success', message: `${result.rejected} pesan "${info.label}" dibatalkan dan tidak akan dikirim.` };
+  res.redirect('/wa-gateway#pending-approval');
+});
+
+router.post('/blast-settings', requireMasterAdmin, async (req, res) => {
+  const enabled = req.body.enabled ? 1 : 0;
+  await db.execute(`UPDATE settings SET wa_blast_enabled=? WHERE id=1`, [enabled]);
+  await refreshWaFeatureFlags();
+  await audit({ userId: req.session.user.id, action: 'update', entityType: 'wa_gateway_settings', entityId: null, description: `Fitur WA Blast massal ${enabled ? 'diaktifkan' : 'dinonaktifkan'}.`, ip: req.ip });
+  req.session.flash = { type: 'success', message: `Fitur WA Blast massal ${enabled ? 'diaktifkan' : 'dinonaktifkan'}.` };
+  res.redirect('/wa-gateway');
+});
+
 router.get('/messages.json', requirePermission('settings'), async (req, res) => {
   res.set('Cache-Control', 'no-store').json({ ok: true, messages: await getRecentMessages(50), stats: await getQueueStats() });
 });
@@ -132,7 +172,7 @@ router.post('/receipt-settings', requireMasterAdmin, async (req, res) => {
 // the admin sees state changes without a full page reload.
 router.get('/status.json', requirePermission('settings'), async (req, res) => {
   const [gateway, stats] = await Promise.all([reconcileGatewayStatus(), getQueueStats()]);
-  res.json({ gateway, stats });
+  res.set('Cache-Control', 'no-store').json({ gateway, stats });
 });
 
 // Connecting/disconnecting the gateway links a real personal WhatsApp number to this app, so it is
@@ -192,6 +232,9 @@ router.post('/send', requireWaSendPermission, async (req, res) => {
 // message per selected customer's most relevant open invoice (skips customers without a valid/open
 // invoice or invalid WhatsApp number, and reports the skip count back to the caller).
 router.post('/blast', requireWaSendPermission, async (req, res) => {
+  if (!isBlastEnabled()) {
+    return res.status(403).json({ ok: false, reason: 'blast_disabled', message: 'Fitur WA Blast massal sedang dinonaktifkan. Aktifkan di halaman WA Gateway (Master Admin).' });
+  }
   const status = getGatewayStatus();
   if (status.state !== 'connected') {
     return res.status(409).json({ ok: false, reason: 'not_connected', message: 'WA Gateway belum terhubung.' });

@@ -535,6 +535,9 @@
   if(customerBulkScope){
     const csrfTokenMeta=document.querySelector('meta[name="csrf-token"]')?.content||'';
     const waGatewayConnected=document.querySelector('meta[name="wa-gateway-connected"]')?.content==='1';
+    // WA Blast otomatis bersifat opsional (Master Admin menyalakannya di halaman WA Gateway). Saat
+    // nonaktif, tombol massal kembali ke modal kirim manual (klik per pelanggan via wa.me).
+    const waBlastEnabled=document.querySelector('meta[name="wa-blast-enabled"]')?.content==='1';
     const customerBulkBarEl=document.getElementById('customerBulkBar');
     const customerBulkReturnStatus=customerBulkBarEl?.dataset.returnStatus||'';
     const submitCustomerBulk=(action,extra={})=>{
@@ -586,7 +589,7 @@
     // opening the manual click-each-link modal below. That modal is kept as the fallback when the
     // gateway isn't connected, so nothing regresses for setups that never link a gateway.
     document.getElementById('customerBulkWa')?.addEventListener('click',async(event)=>{
-      if(waGatewayConnected){
+      if(waGatewayConnected&&waBlastEnabled){
         const ids=customerBulkScope._bulkSelectedIds();
         if(!ids.length)return;
         if(!confirm(`Kirim WA Blast pengingat tagihan ke ${ids.length} pelanggan terpilih via WA Gateway?`))return;
@@ -614,7 +617,7 @@
         }else{
           withWa.forEach(row=>{
             const name=row.dataset.customerName||'',code=row.dataset.customerCode||'',wa=row.dataset.customerWa;
-            const message=`Halo ${name}, ini pengingat dari INKAMNET mengenai layanan internet Anda. Mohon segera hubungi kami bila ada kendala pembayaran atau layanan. Terima kasih.`;
+            const message=`Yth. Bapak/Ibu ${name},\n\nKami dari INKAMNET bermaksud menyampaikan informasi terkait layanan internet Anda. Apabila Bapak/Ibu mengalami kendala dalam pembayaran maupun penggunaan layanan, silakan menghubungi kami melalui nomor ini.\n\nTerima kasih atas perhatian dan kepercayaan Anda.\n\nHormat kami,\nTim Layanan Pelanggan INKAMNET`;
             const a=document.createElement('a');a.href=`https://wa.me/${wa}?text=${encodeURIComponent(message)}`;a.target='_blank';a.rel='noopener noreferrer';
             const avatar=document.createElement('span');avatar.className='psb-avatar';avatar.textContent=(name||'?').charAt(0).toUpperCase();
             const info=document.createElement('div');

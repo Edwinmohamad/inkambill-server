@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../config/db');
 const { runAutoIsolation } = require('../services/networkService');
-const { enqueueWaMessage, runAutoReminderSweep } = require('../services/whatsappGatewayService');
+const { enqueueWaMessage, runAutoReminderSweep, approvalBatchKey } = require('../services/whatsappGatewayService');
 const { syncStockAlert } = require('../services/inventoryService');
 const { handleWaTicketMessage } = require('../services/waTicketCommandService');
 const router = express.Router();
@@ -71,7 +71,7 @@ router.patch('/tickets/:id', async (req, res) => {
   const [[ticket]] = await db.query(`SELECT t.id,t.ticket_code,c.phone,c.name customer_name FROM tickets t LEFT JOIN customers c ON c.id=t.customer_id WHERE t.id=? LIMIT 1`, [req.params.id]);
   if (!ticket) return res.status(404).json({ ok: false, error: 'Tiket tidak ditemukan.' });
   await db.execute(`UPDATE tickets SET status=?,closed_at=IF(?='closed',COALESCE(closed_at,NOW()),NULL) WHERE id=?`, [status, status, ticket.id]);
-  if (ticket.phone && req.body.notify_customer && req.body.message) await enqueueWaMessage({ phone: ticket.phone, message: String(req.body.message), type: 'manual' });
+  if (ticket.phone && req.body.notify_customer && req.body.message) await enqueueWaMessage({ phone: ticket.phone, message: String(req.body.message), customerId: null, type: 'manual', approvalBatch: approvalBatchKey('n8n_ticket') });
   res.json({ ok: true, eventKey: event.key, ticketId: ticket.id, status });
 });
 
@@ -102,8 +102,8 @@ router.post('/billing/reminder', async (req, res) => {
   const event = await beginEvent('billing.reminder', req);
   if (event.duplicate) return res.json({ ok: true, duplicate: true, eventKey: event.key });
   if (req.body?.invoice_id && req.body?.phone && req.body?.message) {
-    await enqueueWaMessage({ phone: req.body.phone, message: String(req.body.message), invoiceId: Number(req.body.invoice_id) || null, customerId: Number(req.body.customer_id) || null, type: 'auto_reminder' });
-    return res.json({ ok: true, eventKey: event.key, queued: 1 });
+    await enqueueWaMessage({ phone: req.body.phone, message: String(req.body.message), invoiceId: Number(req.body.invoice_id) || null, customerId: Number(req.body.customer_id) || null, type: 'auto_reminder', approvalBatch: approvalBatchKey('n8n_reminder') });
+    return res.json({ ok: true, eventKey: event.key, queued: 0, pendingApproval: 1 });
   }
   const result = await runAutoReminderSweep();
   res.json({ ok: true, eventKey: event.key, ...result });

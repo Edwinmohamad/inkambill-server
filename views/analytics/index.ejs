@@ -142,7 +142,7 @@ const psbActivated = (funnel.find(f => f.key === 'active') || {}).value || 0;
             <% aging.forEach((row, rowIndex) => {
               const days = Number(row.days_overdue || 0);
               const bucket = days <= 0 ? 'h3' : days <= 30 ? 'hplus3' : 'over30';
-              const waText = encodeURIComponent(`Halo ${row.customer_name}, ini pengingat tagihan INKAMNET Anda sebesar ${formatRupiah(row.outstanding)} yang ${days > 0 ? `sudah lewat ${days} hari dari jatuh tempo` : 'akan segera jatuh tempo'}. Mohon segera melakukan pembayaran. Terima kasih.`);
+              const waText = encodeURIComponent(`Yth. Bapak/Ibu ${row.customer_name},\n\nKami informasikan bahwa tagihan layanan internet INKAMNET Anda sebesar ${formatRupiah(row.outstanding)} ${days > 0 ? `telah melewati tanggal jatuh tempo selama ${days} hari` : 'akan segera jatuh tempo'}. Mohon kesediaan Bapak/Ibu untuk segera menyelesaikan pembayaran agar layanan tetap dapat digunakan tanpa gangguan. Apabila pembayaran telah dilakukan, mohon abaikan pesan ini.\n\nTerima kasih atas perhatian Anda.\n\nHormat kami,\nTim Layanan Pelanggan INKAMNET`);
             %>
             <tr class="aging-row" data-bucket="<%= bucket %>" data-isolir="<%= row.siapIsolir ? '1' : '0' %>">
               <td><span class="cell-main"><%= rowIndex+1 %></span></td>

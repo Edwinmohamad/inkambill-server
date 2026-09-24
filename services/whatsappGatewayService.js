@@ -26,6 +26,7 @@ let lastConnectedAt = null;
 let lastDisconnectReason = null;
 let startingPromise = null;
 let processingLock = false;
+let blastEnabled = false; // cache settings.wa_blast_enabled (dibaca sinkron oleh middleware/common.js)
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function randomDelay(minMs, maxMs) { return minMs + Math.floor(Math.random() * (maxMs - minMs)); }
@@ -161,6 +162,7 @@ async function startGateway() {
 // so this mostly just needs to sync the in-memory mirror — but we still call startSession() in
 // case WAHA itself was restarted and the session needs to be resumed there too.
 async function initGatewayOnBoot() {
+  await refreshWaFeatureFlags();
   try {
     const existing = await waha.getSession();
     if (!existing) return getGatewayStatus(); // never connected — wait for admin to press Connect
@@ -181,22 +183,96 @@ async function logoutGateway() {
 
 // Enqueue a message for the send queue. Validates the phone number up front (via the existing
 // whatsappService validator) so obviously-bad numbers fail fast instead of sitting in 'queued' forever.
-async function enqueueWaMessage({ phone, message, customerId = null, invoiceId = null, type = 'manual', userId = null }) {
+// approvalBatch: bila diisi (lihat approvalBatchKey), pesan disimpan sebagai draf 'pending_approval'
+// dan BARU masuk antrean setelah Admin mengonfirmasi batch tersebut di halaman WA Gateway. Semua pesan
+// otomatis ke pelanggan wajib lewat jalur ini; pesan manual yang diketik/diklik staf langsung antre.
+async function enqueueWaMessage({ phone, message, customerId = null, invoiceId = null, type = 'manual', userId = null, approvalBatch = null }) {
   const wa = validateWhatsapp(phone);
   if (!wa.valid) {
     const [r] = await db.execute(
-      `INSERT INTO wa_messages(customer_id,invoice_id,phone,message,message_type,status,error_message,created_by) VALUES(?,?,?,?,?,'failed',?,?)`,
-      [customerId, invoiceId, String(phone || ''), message, type, `Nomor WhatsApp tidak valid: ${wa.reason}`, userId]
+      `INSERT INTO wa_messages(customer_id,invoice_id,phone,message,message_type,status,error_message,created_by,approval_batch) VALUES(?,?,?,?,?,'failed',?,?,?)`,
+      [customerId, invoiceId, String(phone || ''), message, type, `Nomor WhatsApp tidak valid: ${wa.reason}`, userId, approvalBatch]
     );
     return { id: r.insertId, status: 'failed', reason: wa.reason };
   }
+  const status = approvalBatch ? 'pending_approval' : 'queued';
   const [r] = await db.execute(
-    `INSERT INTO wa_messages(customer_id,invoice_id,phone,message,message_type,status,created_by) VALUES(?,?,?,?,?,'queued',?)`,
-    [customerId, invoiceId, wa.normalized, message, type, userId]
+    `INSERT INTO wa_messages(customer_id,invoice_id,phone,message,message_type,status,created_by,approval_batch) VALUES(?,?,?,?,?,?,?,?)`,
+    [customerId, invoiceId, wa.normalized, message, type, status, userId, approvalBatch]
   );
-  processQueue();
-  return { id: r.insertId, status: 'queued' };
+  if (status === 'queued') processQueue();
+  return { id: r.insertId, status };
 }
+
+// ---- Konfirmasi Admin untuk pesan otomatis (per batch) -------------------------------------------
+const BATCH_LABELS = {
+  auto_reminder: 'Auto-Reminder Tagihan',
+  payment_receipt: 'Tanda Terima Pembayaran',
+  n8n_reminder: 'Reminder Tagihan (n8n)',
+  n8n_ticket: 'Notifikasi Tiket ke Pelanggan (n8n)',
+};
+function localDateKey(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+// Satu batch = satu sumber pesan otomatis per hari, mis. "auto_reminder:2026-09-24".
+function approvalBatchKey(source, date = new Date()) { return `${source}:${localDateKey(date)}`; }
+function describeBatch(key) {
+  const [source, date] = String(key || '').split(':');
+  return { key, source, date, label: BATCH_LABELS[source] || source };
+}
+
+async function listPendingBatches({ itemLimit = 500 } = {}) {
+  const [batches] = await db.query(
+    `SELECT approval_batch batch,COUNT(*) total,MIN(created_at) first_at,MAX(created_at) last_at
+     FROM wa_messages WHERE status='pending_approval' AND approval_batch IS NOT NULL
+     GROUP BY approval_batch ORDER BY MIN(created_at) ASC`
+  );
+  const result = [];
+  for (const b of batches) {
+    const [items] = await db.query(
+      `SELECT wm.id,wm.phone,wm.message,wm.message_type,wm.created_at,c.name customer_name,c.customer_code,i.invoice_number
+       FROM wa_messages wm LEFT JOIN customers c ON c.id=wm.customer_id LEFT JOIN invoices i ON i.id=wm.invoice_id
+       WHERE wm.approval_batch=? AND wm.status='pending_approval' ORDER BY wm.id ASC LIMIT ${Math.max(1, Number(itemLimit) || 500)}`,
+      [b.batch]
+    );
+    result.push({ ...describeBatch(b.batch), total: Number(b.total), firstAt: b.first_at, lastAt: b.last_at, items });
+  }
+  return result;
+}
+
+async function approveBatch(batch, userId) {
+  // Reminder yang tagihannya sudah lunas sejak draf dibuat tidak ikut dikirim.
+  const [stale] = await db.execute(
+    `UPDATE wa_messages wm JOIN invoices i ON i.id=wm.invoice_id
+     SET wm.status='rejected',wm.approved_by=?,wm.approved_at=NOW(),wm.error_message='Dibatalkan otomatis: tagihan sudah lunas saat dikonfirmasi.'
+     WHERE wm.approval_batch=? AND wm.status='pending_approval' AND wm.message_type='auto_reminder' AND (i.outstanding<=0 OR i.status='paid')`,
+    [userId, batch]
+  );
+  const [ok] = await db.execute(
+    `UPDATE wa_messages SET status='queued',approved_by=?,approved_at=NOW(),next_attempt_at=NULL WHERE approval_batch=? AND status='pending_approval'`,
+    [userId, batch]
+  );
+  if (ok.affectedRows) processQueue();
+  return { approved: Number(ok.affectedRows || 0), skippedPaid: Number(stale.affectedRows || 0) };
+}
+
+async function rejectBatch(batch, userId) {
+  const [r] = await db.execute(
+    `UPDATE wa_messages SET status='rejected',approved_by=?,approved_at=NOW(),error_message='Dibatalkan oleh Admin.' WHERE approval_batch=? AND status='pending_approval'`,
+    [userId, batch]
+  );
+  return { rejected: Number(r.affectedRows || 0) };
+}
+
+// ---- WA Blast opsional ---------------------------------------------------------------------------
+async function refreshWaFeatureFlags() {
+  try {
+    const [[row]] = await db.query(`SELECT wa_blast_enabled FROM settings WHERE id=1 LIMIT 1`);
+    blastEnabled = !!Number(row?.wa_blast_enabled);
+  } catch (e) { console.error('WA Gateway: gagal membaca pengaturan fitur:', e.message); }
+  return { blastEnabled };
+}
+function isBlastEnabled() { return blastEnabled; }
 
 // Single-worker queue processor. Only ever one instance runs at a time (processingLock); each send is
 // followed by a randomized delay to keep the sending rate human-like and reduce ban risk. If the
@@ -227,12 +303,14 @@ async function processQueue() {
 async function getQueueStats() {
   const [[row]] = await db.query(`SELECT
     SUM(status='queued') queued,
+    SUM(status='pending_approval') pending_approval,
     SUM(status='sent' AND DATE(created_at)=CURDATE()) sent_today,
     SUM(status='failed' AND DATE(created_at)=CURDATE()) failed_today,
     SUM(status='sent') sent_total
     FROM wa_messages`);
   return {
     queued: Number(row?.queued || 0),
+    pendingApproval: Number(row?.pending_approval || 0),
     sentToday: Number(row?.sent_today || 0),
     failedToday: Number(row?.failed_today || 0),
     sentTotal: Number(row?.sent_total || 0),
@@ -252,7 +330,7 @@ async function getRecentMessages(limit = 50) {
 }
 
 const MONTH_NAMES_ID = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
-const DEFAULT_REMINDER_TEMPLATE = 'Halo {nama}, kami mengingatkan tagihan INKAMNET periode {periode} sebesar {nominal}. No. faktur {no_faktur}, jatuh tempo {jatuh_tempo}. Mohon segera diselesaikan agar layanan tidak terganggu. Terima kasih.';
+const DEFAULT_REMINDER_TEMPLATE = 'Yth. Bapak/Ibu {nama},\n\nBersama pesan ini kami sampaikan informasi tagihan layanan internet INKAMNET Anda sebagai berikut:\n\nNo. Pelanggan : {kode}\nNo. Faktur : {no_faktur}\nPeriode : {periode}\nJumlah Tagihan : {nominal}\nJatuh Tempo : {jatuh_tempo}\n\nMohon kesediaan Bapak/Ibu untuk menyelesaikan pembayaran tepat waktu agar layanan tetap dapat digunakan tanpa gangguan. Apabila pembayaran telah dilakukan, mohon abaikan pesan ini.\n\nTerima kasih atas kepercayaan Anda.\n\nHormat kami,\nTim Layanan Pelanggan INKAMNET';
 
 function formatRupiahPlain(value) {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(value || 0));
@@ -286,7 +364,9 @@ async function runAutoReminderSweep(now = new Date()) {
   const lastRunKey = settingsRow.wa_auto_reminder_last_run_date ? new Date(settingsRow.wa_auto_reminder_last_run_date).toISOString().slice(0, 10) : null;
   if (lastRunKey === todayKey) return { ran: false, reason: 'already_ran_today' };
   if (now.getHours() < Number(settingsRow.wa_auto_reminder_hour ?? 9)) return { ran: false, reason: 'not_yet_hour' };
-  if (connectionState !== 'connected') return { ran: false, reason: 'gateway_not_connected' };
+  // Tidak perlu menunggu gateway terhubung: sweep hanya membuat draf yang menunggu konfirmasi Admin,
+  // dan antrean baru berjalan setelah dikonfirmasi & gateway terhubung.
+  const batch = approvalBatchKey('auto_reminder', now);
 
   const offsets = String(settingsRow.wa_auto_reminder_offsets || '-3,-1,0').split(',').map(s => Number(s.trim())).filter(n => Number.isFinite(n));
   let enqueued = 0, skippedNoWa = 0, skippedAlreadySent = 0;
@@ -308,12 +388,12 @@ async function runAutoReminderSweep(now = new Date()) {
       );
       if (already) { skippedAlreadySent++; continue; }
       const message = renderReminderTemplate(settingsRow.wa_auto_reminder_template, inv);
-      await enqueueWaMessage({ phone: inv.phone, message, customerId: inv.customer_id, invoiceId: inv.invoice_id, type: 'auto_reminder', userId: null });
+      await enqueueWaMessage({ phone: inv.phone, message, customerId: inv.customer_id, invoiceId: inv.invoice_id, type: 'auto_reminder', userId: null, approvalBatch: batch });
       enqueued++;
     }
   }
   await db.execute(`UPDATE settings SET wa_auto_reminder_last_run_date=CURDATE() WHERE id=1`);
-  return { ran: true, enqueued, skippedNoWa, skippedAlreadySent };
+  return { ran: true, enqueued, skippedNoWa, skippedAlreadySent, approvalBatch: enqueued ? batch : null };
 }
 
 module.exports = {
@@ -329,6 +409,13 @@ module.exports = {
   getQueueStats,
   getRecentMessages,
   runAutoReminderSweep,
+  approvalBatchKey,
+  describeBatch,
+  listPendingBatches,
+  approveBatch,
+  rejectBatch,
+  refreshWaFeatureFlags,
+  isBlastEnabled,
   renderReminderTemplate,
   DEFAULT_REMINDER_TEMPLATE,
 };

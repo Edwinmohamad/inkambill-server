@@ -3,7 +3,7 @@ const db = require('../config/db');
 // v1.28 — Rekonsiliasi cash: pengingat umur cash di tim dan tanda terima WhatsApp pembayaran.
 
 const DEFAULT_AGING_DAYS = 3;
-const DEFAULT_RECEIPT_TEMPLATE = 'Halo {nama}, pembayaran tagihan INKAMNET periode {periode} sebesar {nominal} sudah kami terima ({metode}). No. faktur {no_faktur}, ref {referensi}. Sisa tagihan: {sisa}. Terima kasih.';
+const DEFAULT_RECEIPT_TEMPLATE = 'Yth. Bapak/Ibu {nama},\n\nTerima kasih, pembayaran tagihan layanan internet INKAMNET Anda telah kami terima dengan rincian sebagai berikut:\n\nNo. Faktur : {no_faktur}\nPeriode : {periode}\nJumlah Dibayar : {nominal}\nMetode Pembayaran : {metode}\nNo. Referensi : {referensi}\nSisa Tagihan : {sisa}\n\nMohon simpan pesan ini sebagai bukti pembayaran. Terima kasih atas kepercayaan Anda menggunakan layanan INKAMNET.\n\nHormat kami,\nTim Layanan Pelanggan INKAMNET';
 const MONTH_NAMES_ID = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 const METHOD_LABEL = { cash: 'tunai', transfer: 'transfer', qris: 'QRIS', gateway: 'payment gateway', other: 'lainnya' };
 
@@ -92,7 +92,7 @@ async function queuePaymentReceipts(paymentIds, userId = null) {
   try {
     const [[settings]] = await db.query(`SELECT wa_payment_receipt_enabled,wa_payment_receipt_methods,wa_payment_receipt_template FROM settings WHERE id=1 LIMIT 1`);
     if (!Number(settings?.wa_payment_receipt_enabled)) return { queued: 0, reason: 'disabled' };
-    const { enqueueWaMessage } = require('./whatsappGatewayService');
+    const { enqueueWaMessage, approvalBatchKey } = require('./whatsappGatewayService');
     const [rows] = await db.query(`SELECT p.id,p.amount,p.method,p.reference,p.status,i.id invoice_id,i.invoice_number,i.period_month,i.period_year,i.outstanding,
         c.id customer_id,c.customer_code,c.name customer_name,c.phone,c.whatsapp_status
       FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id
@@ -104,7 +104,7 @@ async function queuePaymentReceipts(paymentIds, userId = null) {
       if (!row.phone || row.whatsapp_status === 'invalid') continue;
       const [[already]] = await db.query(`SELECT id FROM wa_messages WHERE invoice_id=? AND message_type='payment_receipt' AND message LIKE ? LIMIT 1`, [row.invoice_id, `%${row.reference || `#${row.id}`}%`]);
       if (already) continue;
-      await enqueueWaMessage({ phone: row.phone, message: renderReceiptTemplate(settings.wa_payment_receipt_template, row), customerId: row.customer_id, invoiceId: row.invoice_id, type: 'payment_receipt', userId });
+      await enqueueWaMessage({ phone: row.phone, message: renderReceiptTemplate(settings.wa_payment_receipt_template, row), customerId: row.customer_id, invoiceId: row.invoice_id, type: 'payment_receipt', userId, approvalBatch: approvalBatchKey('payment_receipt') });
       queued++;
     }
     return { queued };

@@ -1116,4 +1116,21 @@ async function ensureV54Schema() {
   await db.query(`ALTER TABLE wa_messages ADD INDEX IF NOT EXISTS idx_wa_messages_retry(status,next_attempt_at)`);
 }
 
-module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema };
+async function ensureV55Schema() {
+  // WA Gateway: blast massal kini opsional (default nonaktif), dan setiap pesan otomatis ke pelanggan
+  // (auto-reminder, tanda terima, reminder/notifikasi dari n8n) dibuat sebagai draf per batch yang
+  // wajib dikonfirmasi Admin sebelum masuk antrean kirim.
+  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS wa_blast_enabled TINYINT(1) NOT NULL DEFAULT 0`);
+  const [statusCol] = await db.query(`SHOW COLUMNS FROM wa_messages LIKE 'status'`);
+  if (statusCol.length && !/'pending_approval'/.test(statusCol[0].Type)) {
+    const current = (statusCol[0].Type.match(/'([^']+)'/g) || []).map(v => v.slice(1, -1));
+    const values = [...new Set(['pending_approval', ...current, 'queued', 'sent', 'failed', 'rejected'])];
+    await db.query(`ALTER TABLE wa_messages MODIFY COLUMN status ENUM(${values.map(v => `'${v.replace(/'/g, '')}'`).join(',')}) NOT NULL DEFAULT 'queued'`);
+  }
+  await db.query(`ALTER TABLE wa_messages ADD COLUMN IF NOT EXISTS approval_batch VARCHAR(60) NULL`);
+  await db.query(`ALTER TABLE wa_messages ADD COLUMN IF NOT EXISTS approved_by BIGINT UNSIGNED NULL`);
+  await db.query(`ALTER TABLE wa_messages ADD COLUMN IF NOT EXISTS approved_at DATETIME NULL`);
+  await db.query(`ALTER TABLE wa_messages ADD INDEX IF NOT EXISTS idx_wa_messages_batch(approval_batch,status)`);
+}
+
+module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema };
