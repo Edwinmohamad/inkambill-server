@@ -1,215 +1,461 @@
-<% const stateLabel={connected:'Terhubung',qr_pending:'Menunggu Scan QR',connecting:'Menghubungkan...',disconnected:'Terputus'}[gateway.state]||gateway.state;
-   const stateTone={connected:'green',qr_pending:'orange',connecting:'orange',disconnected:'red'}[gateway.state]||'gray';
-   const waStatus={sent:['green','Terkirim'],failed:['red','Gagal'],queued:['orange','Antrean'],pending_approval:['purple','Menunggu Konfirmasi'],rejected:['gray','Dibatalkan']};
-   const waType={auto_reminder:['purple','Auto-Reminder'],payment_receipt:['green','Tanda Terima'],network_alert:['red','Alert Jaringan'],blast:['orange','Blast'],manual:['gray','Manual']}; %>
-<section class="wa-gateway-page">
+<%
+  const stateLabel={connected:'Terhubung',qr_pending:'Menunggu Scan QR',connecting:'Menghubungkan…',disconnected:'Terputus'}[gateway.state]||gateway.state;
+  const stateTone={connected:'green',qr_pending:'orange',connecting:'orange',disconnected:'red'}[gateway.state]||'gray';
+  const waStatus={sent:['green','Terkirim'],failed:['red','Gagal'],queued:['orange','Antrean'],pending_approval:['purple','Menunggu Konfirmasi'],rejected:['gray','Dibatalkan']};
+  const waType={auto_reminder:['purple','Auto-Reminder'],payment_receipt:['green','Tanda Terima'],network_alert:['red','Alert Jaringan'],blast:['orange','Blast'],manual:['gray','Manual']};
+  const offsetSet=new Set(String(reminderSettings.offsets||'').split(',').map(s=>Number(s.trim())).filter(Number.isFinite));
+  const offsetChips=[...new Set([-7,-3,-1,0,1,3,7,...offsetSet])].sort((a,b)=>a-b);
+  const offsetLabel=v=>v===0?'Hari H':(v<0?`H${v}`:`H+${v}`);
+  const scheduleText=[...offsetSet].sort((a,b)=>a-b).map(offsetLabel).join(', ')||'-';
+  const pendingTotal=pendingBatches.reduce((sum,b)=>sum+b.total,0);
+  const nav=[
+    ['ringkasan','Ringkasan','bi-grid-1x2'],
+    ['persetujuan','Persetujuan','bi-patch-check'],
+    ['manual','Kirim Manual','bi-chat-left-text'],
+    ['otomatis','Pesan Otomatis','bi-clock-history'],
+    ['template','Template Pesan','bi-file-earmark-text'],
+    ['koneksi','Koneksi','bi-plug'],
+    ['log','Log Pengiriman','bi-list-ul']
+  ];
+  const readOnlyNote='Pengaturan ini hanya dapat diubah oleh Master Admin.';
+  const fmtTime=v=>v?new Date(v).toLocaleString('id-ID',{timeZone:'Asia/Jakarta',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'-';
+%>
+<section class="wa-gateway-page wa-v2">
   <div class="module-head">
-    <div><div class="module-kicker">AUTOMATION</div><h1>WA Gateway</h1><p>Kirim pengingat WhatsApp otomatis langsung dari server — kirim manual, blast massal, dan auto-reminder terjadwal. Menggunakan WAHA (WhatsApp HTTP API) yang berjalan di server sendiri, bukan API resmi WhatsApp Business.</p></div>
+    <div><div class="module-kicker">WHATSAPP</div><h1>WA Gateway</h1><p>Kirim tagihan, tanda terima, dan informasi layanan ke pelanggan melalui WhatsApp.</p></div>
+    <a class="wa-conn-pill <%= stateTone %>" href="#koneksi" data-wa-tab-link="koneksi"><span class="wa-conn-dot"></span><span id="waStatePill"><%= stateLabel %></span><% if(gateway.connectedNumber){ %><small>+<%= gateway.connectedNumber %></small><% } %></a>
   </div>
 
-  <div class="metric-grid">
-    <article class="metric-card <%= stateTone %>"><div class="metric-top"><span class="metric-label">Status Koneksi</span><span class="metric-icon"><i class="bi bi-whatsapp"></i></span></div><strong id="waStateLabel"><%= stateLabel %></strong><small id="waStateSub"><%= gateway.connectedNumber?`Nomor +${gateway.connectedNumber}`:(gateway.lastDisconnectReason||'Belum pernah terhubung') %></small></article>
-    <article class="metric-card orange"><div class="metric-top"><span class="metric-label">Antrean</span><span class="metric-icon"><i class="bi bi-hourglass-split"></i></span></div><strong id="waQueuedCount"><%= stats.queued %></strong><small>Pesan menunggu dikirim · <span id="waPendingApprovalCount"><%= stats.pendingApproval %></span> menunggu konfirmasi</small></article>
-    <article class="metric-card green"><div class="metric-top"><span class="metric-label">Terkirim Hari Ini</span><span class="metric-icon"><i class="bi bi-check2-circle"></i></span></div><strong id="waSentTodayCount"><%= stats.sentToday %></strong><small>Total sepanjang waktu: <%= stats.sentTotal %></small></article>
-    <article class="metric-card red"><div class="metric-top"><span class="metric-label">Gagal Hari Ini</span><span class="metric-icon"><i class="bi bi-x-octagon"></i></span></div><strong id="waFailedTodayCount"><%= stats.failedToday %></strong><small>Cek log di bawah untuk detail error</small></article>
-  </div>
+  <div class="settings-layout">
+    <aside class="settings-nav-card wa-nav" aria-label="Menu WA Gateway">
+      <% nav.forEach(n=>{ %>
+      <a class="settings-nav-link" href="#<%= n[0] %>" data-wa-tab-link="<%= n[0] %>"><i class="bi <%= n[2] %>"></i><span><%= n[1] %></span><% if(n[0]==='persetujuan'&&pendingTotal){ %><em class="wa-nav-badge"><%= pendingTotal %></em><% } %></a>
+      <% }) %>
+    </aside>
 
-  <div class="data-card" id="pending-approval">
-    <div class="data-card-head"><div><h3>Menunggu Konfirmasi Admin</h3><small>Semua pesan otomatis ke pelanggan (auto-reminder, tanda terima, dan pesan dari n8n) ditahan per batch dan baru dikirim setelah dikonfirmasi.</small></div><span class="status-badge <%= pendingBatches.length?'purple':'green' %>"><%= pendingBatches.length?`${pendingBatches.length} batch`:'Tidak ada' %></span></div>
-    <% if(!pendingBatches.length){ %>
-      <div class="empty-state"><i class="bi bi-check2-all"></i><strong>Tidak ada pesan yang menunggu konfirmasi</strong><small>Batch baru muncul di sini saat auto-reminder berjalan atau ada pembayaran yang disetujui.</small></div>
-    <% } %>
-    <% pendingBatches.forEach(b=>{ %>
-    <div class="wa-approval-batch" style="border-top:1px solid rgba(255,255,255,.08);padding:14px 0">
-      <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
-        <div><strong><%= b.label %></strong> <span class="status-badge purple"><%= b.total %> pesan</span><span class="cell-sub">Tanggal batch: <%= formatDate(b.date) %> · dibuat <%= formatDate(b.firstAt) %></span></div>
-        <% if(isAdmin){ %>
-        <div class="d-flex flex-wrap gap-2">
-          <form method="post" action="/wa-gateway/batches/approve" onsubmit="return confirm('Kirim <%= b.total %> pesan &quot;<%= b.label %>&quot; ke pelanggan sekarang?')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="batch" value="<%= b.key %>"><button class="btn-tech primary" type="submit"><i class="bi bi-send-check"></i>Konfirmasi &amp; Kirim Semua</button></form>
-          <form method="post" action="/wa-gateway/batches/reject" onsubmit="return confirm('Batalkan <%= b.total %> pesan &quot;<%= b.label %>&quot;? Pesan tidak akan dikirim.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="batch" value="<%= b.key %>"><button class="btn-tech danger" type="submit"><i class="bi bi-x-circle"></i>Batalkan Batch</button></form>
+    <div class="settings-content wa-panels">
+
+      <!-- RINGKASAN -->
+      <section class="wa-panel" data-wa-panel="ringkasan">
+        <div class="metric-grid">
+          <article class="metric-card <%= stateTone %>"><div class="metric-top"><span class="metric-label">Status</span><span class="metric-icon"><i class="bi bi-whatsapp"></i></span></div><strong id="waStateLabel"><%= stateLabel %></strong><small id="waStateSub"><%= gateway.connectedNumber?`Nomor +${gateway.connectedNumber}`:(gateway.lastDisconnectReason||'Belum pernah terhubung') %></small></article>
+          <article class="metric-card purple"><div class="metric-top"><span class="metric-label">Menunggu Konfirmasi</span><span class="metric-icon"><i class="bi bi-patch-check"></i></span></div><strong id="waPendingApprovalCount"><%= stats.pendingApproval %></strong><small>Pesan otomatis belum disetujui</small></article>
+          <article class="metric-card green"><div class="metric-top"><span class="metric-label">Terkirim Hari Ini</span><span class="metric-icon"><i class="bi bi-check2-circle"></i></span></div><strong id="waSentTodayCount"><%= stats.sentToday %></strong><small><span id="waQueuedCount"><%= stats.queued %></span> dalam antrean · total <%= stats.sentTotal %></small></article>
+          <article class="metric-card red"><div class="metric-top"><span class="metric-label">Gagal Hari Ini</span><span class="metric-icon"><i class="bi bi-x-octagon"></i></span></div><strong id="waFailedTodayCount"><%= stats.failedToday %></strong><small>Lihat detail di Log Pengiriman</small></article>
         </div>
-        <% } else { %><span class="cell-sub">Hanya Admin yang dapat mengonfirmasi.</span><% } %>
-      </div>
-      <% if(b.items[0]){ %><div class="cash-note" style="white-space:pre-line;margin-top:10px;opacity:.9"><small class="text-secondary">Contoh pesan (<%= b.items[0].customer_name||b.items[0].phone %>):</small>
-<%= b.items[0].message %></div><% } %>
-      <details style="margin-top:8px"><summary>Lihat daftar penerima (<%= b.total %>)</summary>
-        <div class="table-responsive"><table class="app-table"><thead><tr><th class="app-seq-col">No.</th><th>Pelanggan</th><th>No. Faktur</th><th>Nomor</th><th>Pesan</th></tr></thead><tbody>
-        <% b.items.forEach((m,i)=>{ %><tr><td><%= i+1 %></td><td><%= m.customer_name||'-' %><% if(m.customer_code){ %><span class="cell-sub"><%= m.customer_code %></span><% } %></td><td><%= m.invoice_number||'-' %></td><td><%= m.phone %></td><td><span class="cash-note"><%= m.message.length>140?m.message.slice(0,140)+'…':m.message %></span></td></tr><% }) %>
-        <% if(b.total>b.items.length){ %><tr><td colspan="5" class="cell-sub">… dan <%= b.total-b.items.length %> penerima lainnya.</td></tr><% } %>
-        </tbody></table></div>
-      </details>
-    </div>
-    <% }) %>
-  </div>
 
-  <% if(isMasterAdmin){ %>
-  <div class="data-card">
-    <div class="data-card-head"><div><h3>Koneksi Server WAHA</h3><small>Hubungkan WEB INKAMBILL di Proxmox ke WAHA yang berjalan pada CT CasaOS.</small></div><span class="status-badge <%= connectionSettings.lastTestStatus==='success'?'green':connectionSettings.lastTestStatus==='failed'?'red':'orange' %>"><%= connectionSettings.lastTestStatus==='success'?'Tes Berhasil':connectionSettings.lastTestStatus==='failed'?'Tes Gagal':'Belum Dites' %></span></div>
-    <form method="post" action="/wa-gateway/connection-settings" class="wa-reminder-settings-form">
-      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-      <div class="wa-connection-grid">
-        <label>URL WAHA di CT CasaOS<input class="form-control" type="url" name="base_url" value="<%= connectionSettings.baseUrl %>" placeholder="http://192.168.1.20:3000" required><small>Gunakan IP LAN CT CasaOS dan port container WAHA yang diekspos.</small></label>
-        <label>Nama sesi<input class="form-control" name="session_name" value="<%= connectionSettings.sessionName %>" placeholder="default" required></label>
-        <label>API Key WAHA<input class="form-control" type="password" name="api_key" value="" autocomplete="new-password" placeholder="<%= connectionSettings.hasApiKey?'Tersimpan terenkripsi · kosongkan jika tidak diubah':'Isi API key WAHA bila diaktifkan' %>"><small>API key disimpan terenkripsi, tidak pernah ditampilkan kembali.</small></label>
-        <label>Token keamanan webhook<input class="form-control" type="password" name="webhook_token" value="" autocomplete="new-password" placeholder="<%= connectionSettings.hasWebhookToken?'Tersimpan terenkripsi · kosongkan jika tidak diubah':'Kosongkan agar dibuat otomatis' %>"></label>
-        <label class="wa-span-2">URL callback WEB yang dapat diakses dari CT WAHA<input class="form-control" type="url" name="callback_url" value="<%= connectionSettings.callbackUrl %>" placeholder="http://IP-CT-PROXMOX:3000/api/waha/webhook"><small>WAHA CasaOS harus dapat mengakses URL ini. Jika kosong, sistem memakai APP_URL + /api/waha/webhook.</small></label>
-        <label class="wa-span-2">Webhook tambahan (opsional, satu URL per baris)<textarea class="form-control" name="extra_webhook_urls" rows="2" placeholder="Webhook n8n bila dipakai"><%= connectionSettings.extraWebhookUrls.join('\n') %></textarea></label>
-      </div>
-      <% if(connectionSettings.lastTestError){ %><div class="alert alert-danger mb-0"><i class="bi bi-x-octagon-fill"></i> <%= connectionSettings.lastTestError %></div><% } %>
-      <div class="wa-network-guide"><i class="bi bi-diagram-3-fill"></i><div><strong>Jalur yang harus terbuka</strong><small>Proxmox WEB → <%= connectionSettings.baseUrl %> untuk kirim/status · CasaOS WAHA → <%= connectionSettings.resolvedCallbackUrl||'URL callback belum lengkap' %> untuk update status.</small></div></div>
-      <div class="d-flex flex-wrap gap-2"><button class="btn-tech primary" type="submit"><i class="bi bi-shield-check"></i>Simpan &amp; Tes Koneksi</button><button class="btn-tech" type="submit" formaction="/wa-gateway/test-connection"><i class="bi bi-activity"></i>Tes Konfigurasi Tersimpan</button></div>
-    </form>
-  </div>
-  <% } %>
-
-  <div class="data-card">
-    <div class="data-card-head"><div><h3>Koneksi WhatsApp</h3><small>Hubungkan nomor WhatsApp yang akan dipakai untuk mengirim pesan otomatis.</small></div></div>
-    <div class="wa-gateway-connect-body">
-      <% if(!isMasterAdmin){ %>
-        <p class="text-secondary">Hanya Master Admin yang dapat menghubungkan/memutuskan WA Gateway. Hubungi Master Admin bila status masih Terputus.</p>
-      <% } else { %>
-        <% if(gateway.state==='qr_pending' && gateway.qrDataUrl){ %>
-          <div class="wa-gateway-qr-box"><img src="<%= gateway.qrDataUrl %>" alt="QR Code WA Gateway" id="waQrImage"><p>Buka WhatsApp di HP Anda &rarr; Perangkat Tertaut &rarr; Tautkan Perangkat, lalu scan QR ini. QR akan otomatis diperbarui bila kedaluwarsa.</p></div>
+        <% if(pendingBatches.length){ %>
+        <div class="wa-callout">
+          <i class="bi bi-patch-exclamation"></i>
+          <div><strong><%= pendingTotal %> pesan menunggu konfirmasi</strong><small><%= pendingBatches.map(b=>b.label).join(' · ') %></small></div>
+          <a class="btn-tech primary" href="#persetujuan" data-wa-tab-link="persetujuan">Tinjau</a>
+        </div>
         <% } %>
-        <div class="wa-gateway-actions">
-          <% if(gateway.state==='disconnected'){ %>
-            <form method="post" action="/wa-gateway/connect"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn-tech primary" type="submit"><i class="bi bi-plug-fill"></i>Hubungkan WA Gateway</button></form>
-          <% } else { %>
-            <form method="post" action="/wa-gateway/logout" onsubmit="return confirm('Putuskan WA Gateway? Pesan yang masih dalam antrean akan tertunda sampai terhubung kembali.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn-tech danger" type="submit"><i class="bi bi-plug"></i>Putuskan Koneksi</button></form>
-          <% } %>
+
+        <div class="wa-two-col">
+          <div class="data-card">
+            <div class="data-card-head"><div><h3>Aktivitas Terakhir</h3><small>5 pesan terbaru</small></div><a class="ink-text-link" href="#log" data-wa-tab-link="log">Semua log <i class="bi bi-chevron-right"></i></a></div>
+            <ul class="wa-list" id="waRecentList">
+              <% messages.slice(0,5).forEach(m=>{ const st=waStatus[m.status]||['gray',m.status], ty=waType[m.message_type]||waType.manual; %>
+              <li><div><strong><%= m.customer_name||m.phone %></strong><small><%= ty[1] %> · <%= fmtTime(m.created_at) %></small></div><span class="status-badge <%= st[0] %>"><%= st[1] %></span></li>
+              <% }) %>
+              <% if(!messages.length){ %><li class="wa-muted">Belum ada pesan.</li><% } %>
+            </ul>
+          </div>
+          <div class="data-card">
+            <div class="data-card-head"><div><h3>Otomatisasi</h3><small>Pesan otomatis ke pelanggan</small></div><a class="ink-text-link" href="#otomatis" data-wa-tab-link="otomatis">Atur <i class="bi bi-chevron-right"></i></a></div>
+            <ul class="wa-list">
+              <li><div><strong>Auto-Reminder Tagihan</strong><small><%= reminderSettings.enabled?`Pukul ${String(reminderSettings.hour).padStart(2,'0')}:00 · ${scheduleText}`:'Tidak dijadwalkan' %></small></div><span class="status-badge <%= reminderSettings.enabled?'green':'gray' %>"><%= reminderSettings.enabled?'Aktif':'Nonaktif' %></span></li>
+              <li><div><strong>Tanda Terima Pembayaran</strong><small><%= receiptSettings.methods==='all'?'Semua metode pembayaran':'Pembayaran tunai' %></small></div><span class="status-badge <%= receiptSettings.enabled?'green':'gray' %>"><%= receiptSettings.enabled?'Aktif':'Nonaktif' %></span></li>
+              <li><div><strong>WA Blast Massal</strong><small>Tombol kirim massal di menu Pelanggan</small></div><span class="status-badge <%= blastEnabled?'green':'gray' %>"><%= blastEnabled?'Aktif':'Nonaktif' %></span></li>
+            </ul>
+            <p class="wa-foot-note"><i class="bi bi-shield-check"></i> Pesan otomatis dikirim setelah dikonfirmasi Admin.</p>
+          </div>
         </div>
-      <% } %>
-    </div>
-  </div>
+      </section>
 
-  <div class="data-card" id="send-message">
-    <div class="data-card-head"><div><h3>Kirim Pesan WhatsApp</h3><small>Pilih pelanggan atau isi nomor tujuan, lalu kirim melalui antrean WAHA.</small></div></div>
-    <form method="post" action="/wa-gateway/send-test" class="wa-reminder-settings-form" id="waDirectMessageForm">
-      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-      <div class="wa-reminder-grid">
-        <label>Pilih pelanggan (opsional)<select class="form-select" name="customer_id" id="waCustomerSelect"><option value="">Nomor manual</option><% customers.forEach(c=>{ %><option value="<%= c.id %>" data-phone="<%= c.phone||'' %>"><%= c.name %><%= c.whatsapp_status==='valid'?'':' · nomor belum valid' %></option><% }) %></select></label>
-        <label>Nomor WhatsApp<input class="form-control" name="phone" id="waDirectPhone" placeholder="628xxxxxxxxxx" required></label>
-      </div>
-      <label>Pesan<textarea class="form-control" name="message" rows="4" maxlength="4000" required placeholder="Tulis pesan untuk pelanggan..."></textarea></label>
-      <div><button class="btn-tech success" type="submit" <%= gateway.state!=='connected'?'disabled':'' %>><i class="bi bi-send-fill"></i><%= gateway.state==='connected'?'Kirim via WAHA':'Hubungkan WAHA dahulu' %></button></div>
-    </form>
-  </div>
-
-  <% if(isMasterAdmin){ %>
-  <div class="data-card">
-    <div class="data-card-head"><div><h3>Auto-Reminder Terjadwal</h3><small>Setiap hari sistem menyiapkan draf pengingat tagihan; pesan baru terkirim setelah Admin mengonfirmasi batch di bagian "Menunggu Konfirmasi Admin".</small></div></div>
-    <form method="post" action="/wa-gateway/settings" class="wa-reminder-settings-form">
-      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-      <label class="form-check form-switch"><input class="form-check-input" type="checkbox" name="enabled" value="1" <%= reminderSettings.enabled?'checked':'' %>><span>Aktifkan auto-reminder harian</span></label>
-      <div class="wa-reminder-grid">
-        <label>Jam pengiriman (server time)<select class="form-select" name="hour"><% for(let h=0;h<24;h++){ %><option value="<%= h %>" <%= reminderSettings.hour===h?'selected':'' %>><%= String(h).padStart(2,'0') %>:00</option><% } %></select></label>
-        <label>Offset hari (relatif jatuh tempo, pisahkan koma)<input class="form-control" type="text" name="offsets" value="<%= reminderSettings.offsets %>" placeholder="-3,-1,0"></label>
-      </div>
-      <label>Template pesan<textarea class="form-control" name="template" rows="4"><%= reminderSettings.template %></textarea></label>
-      <small class="text-secondary">Placeholder tersedia: {nama} {kode} {periode} {nominal} {no_faktur} {jatuh_tempo}</small>
-      <div><button class="btn-tech primary" type="submit"><i class="bi bi-save"></i>Simpan Pengaturan</button></div>
-    </form>
-  </div>
-
-  <div class="data-card">
-    <div class="data-card-head"><div><h3>Tanda Terima Pembayaran</h3><small>Siapkan tanda terima WhatsApp setelah pembayaran disetujui Master Admin; dikirim setelah batch harian dikonfirmasi Admin.</small></div></div>
-    <form method="post" action="/wa-gateway/receipt-settings" class="wa-reminder-settings-form">
-      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-      <label class="form-check form-switch"><input class="form-check-input" type="checkbox" name="enabled" value="1" <%= receiptSettings.enabled?'checked':'' %>><span>Aktifkan tanda terima otomatis</span></label>
-      <div class="wa-reminder-grid">
-        <label>Kirim untuk<select class="form-select" name="methods"><option value="cash" <%= receiptSettings.methods==='cash'?'selected':'' %>>Pembayaran cash saja</option><option value="all" <%= receiptSettings.methods==='all'?'selected':'' %>>Semua metode (cash, transfer, QRIS)</option></select></label>
-      </div>
-      <label>Template pesan<textarea class="form-control" name="template" rows="4"><%= receiptSettings.template %></textarea></label>
-      <small class="text-secondary">Placeholder tersedia: {nama} {kode} {periode} {nominal} {metode} {no_faktur} {referensi} {sisa}. Pelanggan dengan nomor WhatsApp berstatus tidak valid dilewati.</small>
-      <div><button class="btn-tech primary" type="submit"><i class="bi bi-save"></i>Simpan Tanda Terima</button></div>
-    </form>
-  </div>
-
-  <div class="data-card">
-    <div class="data-card-head"><div><h3>WA Blast Massal (Opsional)</h3><small>Tombol "Kirim WA Reminder Massal" pada menu Pelanggan. Saat nonaktif, tombol tersebut hanya membuka daftar tautan wa.me untuk dikirim manual satu per satu.</small></div><span class="status-badge <%= blastEnabled?'green':'gray' %>"><%= blastEnabled?'Aktif':'Nonaktif' %></span></div>
-    <form method="post" action="/wa-gateway/blast-settings" class="wa-reminder-settings-form">
-      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-      <label class="form-check form-switch"><input class="form-check-input" type="checkbox" name="enabled" value="1" <%= blastEnabled?'checked':'' %>><span>Aktifkan WA Blast massal otomatis via WA Gateway</span></label>
-      <small class="text-secondary">Blast mengirim pesan dengan template auto-reminder ke maksimal 500 pelanggan terpilih. Gunakan secukupnya untuk mengurangi risiko nomor diblokir WhatsApp.</small>
-      <div><button class="btn-tech primary" type="submit"><i class="bi bi-save"></i>Simpan</button></div>
-    </form>
-  </div>
-  <% } %>
-
-  <div class="data-card" id="message-log">
-    <div class="data-card-head"><div><h3>Log Pengiriman Terbaru</h3><small>50 pesan terakhir (manual, blast, auto-reminder, tanda terima, dan alert)</small></div></div>
-    <div class="table-responsive">
-      <table class="app-table">
-        <thead><tr><th class="app-seq-col">No.</th><th>Waktu</th><th>Pelanggan</th><th>No. Faktur</th><th>Tipe</th><th>Nomor</th><th>Status</th><th>Pesan / Error</th><th>Aksi</th></tr></thead>
-        <tbody id="waMessageLogBody">
-          <% messages.forEach((m,index)=>{ %>
-          <tr>
-            <td><span class="cell-main"><%= index+1 %></span></td>
-            <td><%= formatDate(m.created_at) %></td>
-            <td><%= m.customer_name||'-' %><% if(m.customer_code){ %><span class="cell-sub"><%= m.customer_code %></span><% } %></td>
-            <td><%= m.invoice_number||'-' %></td>
-            <% const ty=waType[m.message_type]||waType.manual, st=waStatus[m.status]||['gray',m.status]; %>
-            <td><span class="status-badge <%= ty[0] %>"><%= ty[1] %></span></td>
-            <td><%= m.phone %></td>
-            <td><span class="status-badge <%= st[0] %>"><%= st[1] %></span></td>
-            <td><span class="cash-note"><%= (m.status==='failed'||m.status==='rejected')?(m.error_message||'-'):m.message %></span></td>
-            <td><% if(m.status==='failed'){ %><form method="post" action="/wa-gateway/messages/<%= m.id %>/retry"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="approval-button approve"><i class="bi bi-arrow-repeat"></i>Coba Lagi</button></form><% }else{ %><span class="cell-sub"><%= m.attempts||0 %> percobaan</span><% } %></td>
-          </tr>
+      <!-- PERSETUJUAN -->
+      <section class="wa-panel" data-wa-panel="persetujuan" hidden>
+        <div class="data-card">
+          <div class="data-card-head"><div><h3>Persetujuan Pesan Otomatis</h3><small>Dikelompokkan per jenis dan tanggal. Periksa contoh pesan dan penerima, lalu kirim atau batalkan.</small></div></div>
+          <% if(!pendingBatches.length){ %>
+            <div class="empty-state"><i class="bi bi-check2-all"></i><strong>Tidak ada yang perlu dikonfirmasi</strong><small>Batch baru muncul saat auto-reminder berjalan atau ada pembayaran yang disetujui.</small></div>
+          <% } %>
+          <div class="wa-batch-list">
+          <% pendingBatches.forEach(b=>{ %>
+            <article class="wa-batch">
+              <header>
+                <div><strong><%= b.label %></strong><small><%= b.total %> penerima · batch <%= formatDate(b.date) %></small></div>
+                <% if(isAdmin){ %>
+                <div class="wa-actions">
+                  <form method="post" action="/wa-gateway/batches/reject" onsubmit="return confirm('Batalkan <%= b.total %> pesan ini? Pesan tidak akan dikirim.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="batch" value="<%= b.key %>"><button class="btn-tech" type="submit">Batalkan</button></form>
+                  <form method="post" action="/wa-gateway/batches/approve" onsubmit="return confirm('Kirim <%= b.total %> pesan ke pelanggan sekarang?')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="batch" value="<%= b.key %>"><button class="btn-tech primary" type="submit"><i class="bi bi-send"></i>Kirim <%= b.total %> Pesan</button></form>
+                </div>
+                <% } else { %><small class="wa-muted">Hanya Admin yang dapat mengonfirmasi.</small><% } %>
+              </header>
+              <% if(b.items[0]){ %>
+              <div class="wa-preview"><small class="wa-muted">Contoh untuk <%= b.items[0].customer_name||b.items[0].phone %></small><div class="wa-bubble"><%= b.items[0].message %></div></div>
+              <% } %>
+              <details class="wa-details"><summary>Daftar penerima (<%= b.total %>)</summary>
+                <div class="table-responsive"><table class="app-table"><thead><tr><th class="app-seq-col">No.</th><th>Pelanggan</th><th>No. Faktur</th><th>Nomor</th></tr></thead><tbody>
+                <% b.items.forEach((m,i)=>{ %><tr><td><%= i+1 %></td><td><%= m.customer_name||'-' %><% if(m.customer_code){ %><span class="cell-sub"><%= m.customer_code %></span><% } %></td><td><%= m.invoice_number||'-' %></td><td><%= m.phone %></td></tr><% }) %>
+                <% if(b.total>b.items.length){ %><tr><td colspan="4" class="cell-sub">dan <%= b.total-b.items.length %> penerima lainnya</td></tr><% } %>
+                </tbody></table></div>
+              </details>
+            </article>
           <% }) %>
-          <% if(!messages.length){ %><tr><td colspan="9"><div class="empty-state"><i class="bi bi-whatsapp"></i><strong>Belum ada pesan terkirim</strong><small>Hubungkan WA Gateway lalu kirim pengingat dari menu Tagihan/Pelanggan.</small></div></td></tr><% } %>
-        </tbody>
-      </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- KIRIM MANUAL -->
+      <section class="wa-panel" data-wa-panel="manual" hidden>
+        <div class="data-card">
+          <div class="data-card-head"><div><h3>Kirim Pesan</h3><small>Pesan manual langsung masuk antrean tanpa konfirmasi.</small></div></div>
+          <form method="post" action="/wa-gateway/send-test" class="wa-form" id="waDirectMessageForm">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <div class="wa-field-grid">
+              <label>Pelanggan<select class="form-select" name="customer_id" id="waCustomerSelect"><option value="">Isi nomor manual</option><% customers.forEach(c=>{ %><option value="<%= c.id %>" data-phone="<%= c.phone||'' %>" data-name="<%= c.name %>"><%= c.name %><%= c.whatsapp_status==='valid'?'':' · nomor belum valid' %></option><% }) %></select></label>
+              <label>Nomor WhatsApp<input class="form-control" name="phone" id="waDirectPhone" placeholder="0812xxxxxxxx" inputmode="tel" required></label>
+            </div>
+            <div class="wa-field">
+              <span class="wa-field-label">Mulai dari template</span>
+              <div class="wa-chip-row" id="waQuickTemplates">
+                <button type="button" class="wa-chip" data-quick="tagihan">Pengingat tagihan</button>
+                <button type="button" class="wa-chip" data-quick="gangguan">Info gangguan</button>
+                <button type="button" class="wa-chip" data-quick="pulih">Layanan pulih</button>
+                <button type="button" class="wa-chip" data-quick="pemeliharaan">Pemeliharaan jaringan</button>
+                <button type="button" class="wa-chip" data-quick="bayar">Terima kasih pembayaran</button>
+              </div>
+            </div>
+            <label>Pesan<textarea class="form-control" name="message" id="waDirectMessage" rows="9" maxlength="4000" required placeholder="Tulis pesan untuk pelanggan"></textarea><small class="wa-muted"><span id="waDirectCount">0</span>/4000 karakter</small></label>
+            <div class="wa-form-actions"><button class="btn-tech primary" type="submit" <%= gateway.state!=='connected'?'disabled':'' %>><i class="bi bi-send"></i><%= gateway.state==='connected'?'Kirim Pesan':'WhatsApp belum terhubung' %></button></div>
+          </form>
+        </div>
+      </section>
+
+      <!-- PESAN OTOMATIS -->
+      <section class="wa-panel" data-wa-panel="otomatis" hidden>
+        <% if(!isMasterAdmin){ %><div class="wa-callout neutral"><i class="bi bi-lock"></i><div><strong><%= readOnlyNote %></strong></div></div><% } %>
+
+        <div class="data-card">
+          <div class="data-card-head"><div><h3>Auto-Reminder Tagihan</h3><small>Setiap hari sistem menyiapkan pengingat untuk tagihan yang mendekati atau melewati jatuh tempo.</small></div></div>
+          <form method="post" action="/wa-gateway/settings" id="waReminderForm" class="wa-form">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <input type="hidden" name="offsets" id="waOffsetsInput" value="<%= reminderSettings.offsets %>">
+            <div class="wa-rows">
+              <div class="wa-row">
+                <div><strong>Aktifkan auto-reminder</strong><small>Draf dibuat otomatis, dikirim setelah dikonfirmasi.</small></div>
+                <label class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" name="enabled" value="1" aria-label="Aktifkan auto-reminder" <%= reminderSettings.enabled?'checked':'' %> <%= isMasterAdmin?'':'disabled' %>></label>
+              </div>
+              <div class="wa-row">
+                <div><strong>Jam penyiapan</strong><small>Waktu server (WIB).</small></div>
+                <select class="form-select wa-inline-select" name="hour" aria-label="Jam penyiapan" <%= isMasterAdmin?'':'disabled' %>><% for(let h=0;h<24;h++){ %><option value="<%= h %>" <%= reminderSettings.hour===h?'selected':'' %>><%= String(h).padStart(2,'0') %>:00</option><% } %></select>
+              </div>
+              <div class="wa-row wa-row-stack">
+                <div><strong>Jadwal pengingat</strong><small>Relatif terhadap tanggal jatuh tempo. Pilih satu atau lebih.</small></div>
+                <div class="wa-chip-row" id="waOffsetChips">
+                  <% offsetChips.forEach(v=>{ %><button type="button" class="wa-chip <%= offsetSet.has(v)?'active':'' %>" data-offset="<%= v %>" aria-pressed="<%= offsetSet.has(v) %>" <%= isMasterAdmin?'':'disabled' %>><%= offsetLabel(v) %></button><% }) %>
+                </div>
+              </div>
+              <div class="wa-row">
+                <div><strong>Isi pesan</strong><small>Diatur di menu Template Pesan.</small></div>
+                <a class="ink-text-link" href="#template" data-wa-tab-link="template">Ubah template <i class="bi bi-chevron-right"></i></a>
+              </div>
+            </div>
+            <% if(isMasterAdmin){ %><div class="wa-form-actions"><button class="btn-tech primary" type="submit" name="return_tab" value="otomatis">Simpan</button></div><% } %>
+          </form>
+        </div>
+
+        <div class="data-card">
+          <div class="data-card-head"><div><h3>Tanda Terima Pembayaran</h3><small>Disiapkan setelah pembayaran disetujui Master Admin.</small></div></div>
+          <form method="post" action="/wa-gateway/receipt-settings" id="waReceiptForm" class="wa-form">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <div class="wa-rows">
+              <div class="wa-row">
+                <div><strong>Aktifkan tanda terima</strong><small>Nomor WhatsApp yang tidak valid dilewati.</small></div>
+                <label class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" name="enabled" value="1" aria-label="Aktifkan tanda terima" <%= receiptSettings.enabled?'checked':'' %> <%= isMasterAdmin?'':'disabled' %>></label>
+              </div>
+              <div class="wa-row">
+                <div><strong>Berlaku untuk</strong><small>Metode pembayaran yang mendapat tanda terima.</small></div>
+                <select class="form-select wa-inline-select" name="methods" aria-label="Berlaku untuk" <%= isMasterAdmin?'':'disabled' %>><option value="cash" <%= receiptSettings.methods==='cash'?'selected':'' %>>Pembayaran tunai</option><option value="all" <%= receiptSettings.methods==='all'?'selected':'' %>>Semua metode</option></select>
+              </div>
+            </div>
+            <% if(isMasterAdmin){ %><div class="wa-form-actions"><button class="btn-tech primary" type="submit" name="return_tab" value="otomatis">Simpan</button></div><% } %>
+          </form>
+        </div>
+
+        <div class="data-card">
+          <div class="data-card-head"><div><h3>WA Blast Massal</h3><small>Tombol "Kirim WA Reminder Massal" di menu Pelanggan. Saat nonaktif, tombol hanya membuka tautan wa.me untuk dikirim satu per satu.</small></div></div>
+          <form method="post" action="/wa-gateway/blast-settings" class="wa-form">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <div class="wa-rows">
+              <div class="wa-row">
+                <div><strong>Aktifkan blast otomatis</strong><small>Maksimal 500 pelanggan per kirim. Gunakan secukupnya agar nomor tidak diblokir WhatsApp.</small></div>
+                <label class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" name="enabled" value="1" aria-label="Aktifkan blast otomatis" <%= blastEnabled?'checked':'' %> <%= isMasterAdmin?'':'disabled' %>></label>
+              </div>
+            </div>
+            <% if(isMasterAdmin){ %><div class="wa-form-actions"><button class="btn-tech primary" type="submit" name="return_tab" value="otomatis">Simpan</button></div><% } %>
+          </form>
+        </div>
+      </section>
+
+      <!-- TEMPLATE PESAN -->
+      <section class="wa-panel" data-wa-panel="template" hidden>
+        <% if(!isMasterAdmin){ %><div class="wa-callout neutral"><i class="bi bi-lock"></i><div><strong><%= readOnlyNote %></strong></div></div><% } %>
+        <% [
+             {key:'reminder',form:'waReminderForm',title:'Pengingat Tagihan',sub:'Dipakai auto-reminder dan WA Blast.',value:reminderSettings.template,vars:['nama','kode','periode','nominal','no_faktur','jatuh_tempo']},
+             {key:'receipt',form:'waReceiptForm',title:'Tanda Terima Pembayaran',sub:'Dikirim setelah pembayaran disetujui.',value:receiptSettings.template,vars:['nama','kode','periode','nominal','metode','no_faktur','referensi','sisa']}
+           ].forEach(t=>{ %>
+        <div class="data-card">
+          <div class="data-card-head"><div><h3><%= t.title %></h3><small><%= t.sub %></small></div></div>
+          <div class="wa-template-grid" data-template="<%= t.key %>">
+            <div class="wa-form">
+              <div class="wa-field">
+                <span class="wa-field-label">Sisipkan data</span>
+                <div class="wa-chip-row">
+                  <% t.vars.forEach(v=>{ %><button type="button" class="wa-chip mono" data-insert="{<%= v %>}" <%= isMasterAdmin?'':'disabled' %>>{<%= v %>}</button><% }) %>
+                </div>
+              </div>
+              <textarea class="form-control wa-template-input" name="template" form="<%= t.form %>" rows="14" maxlength="1500" aria-label="Template <%= t.title %>" <%= isMasterAdmin?'':'readonly' %>><%= t.value %></textarea>
+              <% if(isMasterAdmin){ %>
+              <div class="wa-form-actions">
+                <button type="button" class="btn-tech" data-reset-template="<%= t.key %>">Pakai template standar</button>
+                <button class="btn-tech primary" type="submit" form="<%= t.form %>" name="return_tab" value="template">Simpan Template</button>
+              </div>
+              <% } %>
+            </div>
+            <div class="wa-preview">
+              <small class="wa-muted">Pratinjau dengan data contoh</small>
+              <div class="wa-bubble" data-preview></div>
+            </div>
+          </div>
+        </div>
+        <% }) %>
+      </section>
+
+      <!-- KONEKSI -->
+      <section class="wa-panel" data-wa-panel="koneksi" hidden>
+        <div class="data-card">
+          <div class="data-card-head"><div><h3>Nomor WhatsApp</h3><small>Nomor yang dipakai untuk mengirim pesan.</small></div><span class="status-badge <%= stateTone %>" id="waStateBadge"><%= stateLabel %></span></div>
+          <div class="wa-rows">
+            <div class="wa-row">
+              <div><strong><%= gateway.connectedNumber?`+${gateway.connectedNumber}`:'Belum ada nomor terhubung' %></strong><small><%= gateway.state==='connected'?'Siap mengirim pesan.':(gateway.lastDisconnectReason||'Hubungkan untuk mulai mengirim.') %></small></div>
+              <% if(isMasterAdmin){ %>
+                <% if(gateway.state==='disconnected'){ %>
+                  <form method="post" action="/wa-gateway/connect"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn-tech primary" type="submit"><i class="bi bi-plug"></i>Hubungkan</button></form>
+                <% } else { %>
+                  <form method="post" action="/wa-gateway/logout" onsubmit="return confirm('Putuskan WhatsApp? Pesan dalam antrean akan tertunda sampai terhubung kembali.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn-tech danger" type="submit">Putuskan</button></form>
+                <% } %>
+              <% } %>
+            </div>
+          </div>
+          <% if(gateway.state==='qr_pending' && gateway.qrDataUrl){ %>
+          <div class="wa-gateway-qr-box"><img src="<%= gateway.qrDataUrl %>" alt="QR Code WhatsApp" id="waQrImage"><p>Buka WhatsApp di HP → Perangkat Tertaut → Tautkan Perangkat, lalu scan QR ini. QR diperbarui otomatis.</p></div>
+          <% } %>
+          <% if(!isMasterAdmin){ %><p class="wa-foot-note">Hanya Master Admin yang dapat menghubungkan atau memutuskan nomor.</p><% } %>
+        </div>
+
+        <% if(isMasterAdmin){ %>
+        <div class="data-card">
+          <div class="data-card-head"><div><h3>Server WAHA</h3><small>Alamat dan kredensial server WAHA di CasaOS.</small></div><span class="status-badge <%= connectionSettings.lastTestStatus==='success'?'green':connectionSettings.lastTestStatus==='failed'?'red':'orange' %>"><%= connectionSettings.lastTestStatus==='success'?'Tes Berhasil':connectionSettings.lastTestStatus==='failed'?'Tes Gagal':'Belum Dites' %></span></div>
+          <form method="post" action="/wa-gateway/connection-settings" class="wa-form">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <div class="wa-field-grid">
+              <label>URL WAHA<input class="form-control" type="url" name="base_url" value="<%= connectionSettings.baseUrl %>" placeholder="http://192.168.1.20:3000" required><small class="wa-muted">IP LAN CasaOS dan port WAHA.</small></label>
+              <label>Nama sesi<input class="form-control" name="session_name" value="<%= connectionSettings.sessionName %>" placeholder="default" required><small class="wa-muted">Sama dengan nama sesi di dashboard WAHA.</small></label>
+              <label>API Key<input class="form-control" type="password" name="api_key" value="" autocomplete="new-password" placeholder="<%= connectionSettings.hasApiKey?'Tersimpan · kosongkan jika tidak diubah':'Isi API key WAHA' %>"></label>
+              <label>Token webhook<input class="form-control" type="password" name="webhook_token" value="" autocomplete="new-password" placeholder="<%= connectionSettings.hasWebhookToken?'Tersimpan · kosongkan jika tidak diubah':'Kosongkan agar dibuat otomatis' %>"></label>
+            </div>
+            <details class="wa-details">
+              <summary>Pengaturan lanjutan</summary>
+              <div class="wa-form">
+                <label>URL callback<input class="form-control" type="url" name="callback_url" value="<%= connectionSettings.callbackUrl %>" placeholder="https://domain-inkambill/api/waha/webhook"><small class="wa-muted">Alamat INKAMBILL yang dapat diakses dari WAHA. Jika kosong memakai APP_URL + /api/waha/webhook.</small></label>
+                <label>Webhook tambahan<textarea class="form-control" name="extra_webhook_urls" rows="2" placeholder="Satu URL per baris, mis. webhook n8n"><%= connectionSettings.extraWebhookUrls.join('\n') %></textarea></label>
+                <div class="wa-network-guide"><i class="bi bi-diagram-3"></i><div><strong>Jalur yang harus terbuka</strong><small>INKAMBILL → <%= connectionSettings.baseUrl %> · WAHA → <%= connectionSettings.resolvedCallbackUrl||'URL callback belum lengkap' %></small></div></div>
+              </div>
+            </details>
+            <% if(connectionSettings.lastTestError){ %><div class="alert alert-danger mb-0"><i class="bi bi-x-octagon"></i> <%= connectionSettings.lastTestError %></div><% } %>
+            <div class="wa-form-actions"><button class="btn-tech" type="submit" formaction="/wa-gateway/test-connection">Tes Konfigurasi Tersimpan</button><button class="btn-tech primary" type="submit">Simpan &amp; Tes</button></div>
+          </form>
+        </div>
+        <% } %>
+      </section>
+
+      <!-- LOG PENGIRIMAN -->
+      <section class="wa-panel" data-wa-panel="log" hidden>
+        <div class="data-card">
+          <div class="data-card-head"><div><h3>Log Pengiriman</h3><small>50 pesan terakhir, diperbarui otomatis.</small></div></div>
+          <div class="wa-chip-row wa-log-filter" id="waLogFilter">
+            <button type="button" class="wa-chip active" data-filter="">Semua</button>
+            <button type="button" class="wa-chip" data-filter="sent">Terkirim</button>
+            <button type="button" class="wa-chip" data-filter="queued">Antrean</button>
+            <button type="button" class="wa-chip" data-filter="pending_approval">Menunggu</button>
+            <button type="button" class="wa-chip" data-filter="failed">Gagal</button>
+            <button type="button" class="wa-chip" data-filter="rejected">Dibatalkan</button>
+          </div>
+          <div class="table-responsive">
+            <table class="app-table">
+              <thead><tr><th class="app-seq-col">No.</th><th>Waktu</th><th>Pelanggan</th><th>Jenis</th><th>Nomor</th><th>Status</th><th>Pesan / Keterangan</th><th></th></tr></thead>
+              <tbody id="waMessageLogBody">
+                <% messages.forEach((m,index)=>{ const ty=waType[m.message_type]||waType.manual, st=waStatus[m.status]||['gray',m.status]; %>
+                <tr data-status="<%= m.status %>">
+                  <td><span class="cell-main"><%= index+1 %></span></td>
+                  <td><%= fmtTime(m.created_at) %></td>
+                  <td><%= m.customer_name||'-' %><% if(m.invoice_number){ %><span class="cell-sub"><%= m.invoice_number %></span><% } %></td>
+                  <td><%= ty[1] %></td>
+                  <td><%= m.phone %></td>
+                  <td><span class="status-badge <%= st[0] %>"><%= st[1] %></span></td>
+                  <td><span class="cash-note wa-clamp"><%= (m.status==='failed'||m.status==='rejected')?(m.error_message||'-'):m.message %></span></td>
+                  <td><% if(m.status==='failed'){ %><form method="post" action="/wa-gateway/messages/<%= m.id %>/retry"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn-tech sm">Kirim Ulang</button></form><% } %></td>
+                </tr>
+                <% }) %>
+                <% if(!messages.length){ %><tr><td colspan="8"><div class="empty-state"><i class="bi bi-whatsapp"></i><strong>Belum ada pesan</strong></div></td></tr><% } %>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
     </div>
   </div>
 </section>
 <script>
 (()=>{
-  const stateLabels={connected:'Terhubung',qr_pending:'Menunggu Scan QR',connecting:'Menghubungkan...',disconnected:'Terputus'};
   const csrf=<%- safeJson(csrfToken) %>;
-  const customerSelect=document.getElementById('waCustomerSelect');
-  const directPhone=document.getElementById('waDirectPhone');
-  customerSelect?.addEventListener('change',()=>{const option=customerSelect.selectedOptions[0];if(option?.dataset.phone&&directPhone)directPhone.value=option.dataset.phone;});
+  const DEFAULTS={reminder:<%- safeJson(defaultReminderTemplate||'') %>,receipt:<%- safeJson(typeof defaultReceiptTemplate!=='undefined'?defaultReceiptTemplate:'') %>};
+  const SAMPLE={nama:'Budi Santoso',kode:'CDS-0012',periode:'Oktober 2026',nominal:'Rp 166.500',no_faktur:'INV-202610-0012',jatuh_tempo:'10 Oktober 2026',metode:'transfer',referensi:'TRF-88213',sisa:'Rp 0'};
   const WA_STATUS={sent:['green','Terkirim'],failed:['red','Gagal'],queued:['orange','Antrean'],pending_approval:['purple','Menunggu Konfirmasi'],rejected:['gray','Dibatalkan']};
   const WA_TYPE={auto_reminder:'Auto-Reminder',payment_receipt:'Tanda Terima',network_alert:'Alert Jaringan',blast:'Blast',manual:'Manual'};
-  const addCell=(row,value,className='')=>{const cell=document.createElement('td');if(className)cell.className=className;cell.textContent=value??'-';row.appendChild(cell);return cell;};
-  function renderMessages(messages){
-    const body=document.getElementById('waMessageLogBody');if(!body)return;body.replaceChildren();
-    if(!messages.length){const row=document.createElement('tr'),cell=document.createElement('td');cell.colSpan=9;cell.innerHTML='<div class="empty-state"><i class="bi bi-whatsapp"></i><strong>Belum ada pesan terkirim</strong></div>';row.appendChild(cell);body.appendChild(row);return;}
-    messages.forEach((m,index)=>{
-      const row=document.createElement('tr');addCell(row,index+1);addCell(row,new Date(m.created_at).toLocaleString('id-ID',{timeZone:'Asia/Jakarta'}));
-      const customer=addCell(row,m.customer_name||'-');if(m.customer_code){const sub=document.createElement('span');sub.className='cell-sub';sub.textContent=m.customer_code;customer.appendChild(sub);}
-      addCell(row,m.invoice_number||'-');addCell(row,WA_TYPE[m.message_type]||'Manual');addCell(row,m.phone);
-      const statusCell=document.createElement('td'),badge=document.createElement('span');const st=WA_STATUS[m.status]||['gray',m.status];badge.className=`status-badge ${st[0]}`;badge.textContent=st[1];statusCell.appendChild(badge);row.appendChild(statusCell);
-      addCell(row,(m.status==='failed'||m.status==='rejected')?(m.error_message||'-'):m.message,'cash-note');
-      const action=document.createElement('td');if(m.status==='failed'){const form=document.createElement('form');form.method='post';form.action=`/wa-gateway/messages/${m.id}/retry`;const token=document.createElement('input');token.type='hidden';token.name='_csrf';token.value=csrf;const button=document.createElement('button');button.className='approval-button approve';button.innerHTML='<i class="bi bi-arrow-repeat"></i>Coba Lagi';form.append(token,button);action.appendChild(form);}else{action.textContent=`${m.attempts||0} percobaan`;}row.appendChild(action);body.appendChild(row);
+  const STATE_LABELS={connected:'Terhubung',qr_pending:'Menunggu Scan QR',connecting:'Menghubungkan…',disconnected:'Terputus'};
+  const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+
+  /* Tab navigasi berbasis hash */
+  const TABS=$$('[data-wa-panel]').map(p=>p.dataset.waPanel);
+  const ALIAS={'send-message':'manual','message-log':'log','pending-approval':'persetujuan'};
+  function showTab(name){
+    name=ALIAS[name]||name; if(!TABS.includes(name))name='ringkasan';
+    $$('[data-wa-panel]').forEach(p=>{p.hidden=p.dataset.waPanel!==name;});
+    $$('.wa-nav [data-wa-tab-link]').forEach(a=>{
+      const on=a.dataset.waTabLink===name; a.classList.toggle('active',on);
+      if(!on){a.removeAttribute('aria-current');return;}
+      a.setAttribute('aria-current','page');
+      const bar=a.parentElement; // di layar kecil menu berubah jadi baris yang bisa digeser
+      if(bar.scrollWidth>bar.clientWidth)bar.scrollTo({left:a.offsetLeft-(bar.clientWidth-a.offsetWidth)/2,behavior:'smooth'});
+    });
+    return name;
+  }
+  document.addEventListener('click',e=>{
+    const link=e.target.closest('[data-wa-tab-link]'); if(!link)return;
+    e.preventDefault(); const name=showTab(link.dataset.waTabLink);
+    history.replaceState(null,'',`#${name}`); window.scrollTo({top:0,behavior:'smooth'});
+  });
+  window.addEventListener('hashchange',()=>showTab(location.hash.slice(1)));
+  showTab(location.hash.slice(1));
+
+  /* Jadwal pengingat (chip H-x) */
+  const offsetsInput=$('#waOffsetsInput');
+  $$('#waOffsetChips [data-offset]').forEach(chip=>chip.addEventListener('click',()=>{
+    chip.classList.toggle('active'); chip.setAttribute('aria-pressed',chip.classList.contains('active'));
+    const vals=$$('#waOffsetChips .active').map(c=>Number(c.dataset.offset)).sort((a,b)=>a-b);
+    if(offsetsInput)offsetsInput.value=vals.join(',');
+  }));
+  $('#waReminderForm')?.addEventListener('submit',e=>{
+    if(offsetsInput&&!offsetsInput.value){e.preventDefault();alert('Pilih minimal satu jadwal pengingat.');}
+  });
+
+  /* Template: sisip data + pratinjau */
+  const render=t=>String(t||'').replace(/\{(\w+)\}/g,(m,k)=>SAMPLE[k]??m);
+  $$('[data-template]').forEach(box=>{
+    const input=$('.wa-template-input',box), preview=$('[data-preview]',box);
+    const update=()=>{preview.textContent=render(input.value)||'—';};
+    input.addEventListener('input',update); update();
+    $$('[data-insert]',box).forEach(btn=>btn.addEventListener('click',()=>{
+      const v=btn.dataset.insert, s=input.selectionStart??input.value.length, en=input.selectionEnd??s;
+      input.setRangeText(v,s,en,'end'); input.focus(); update();
+    }));
+    $('[data-reset-template]',box)?.addEventListener('click',()=>{
+      if(input.value.trim()&&!confirm('Ganti isi template dengan template standar?'))return;
+      input.value=DEFAULTS[box.dataset.template]||''; update();
+    });
+  });
+
+  /* Kirim manual */
+  const customerSelect=$('#waCustomerSelect'), directPhone=$('#waDirectPhone'), directMsg=$('#waDirectMessage'), directCount=$('#waDirectCount');
+  const SIGN='\n\nHormat kami,\nTim Layanan Pelanggan INKAMNET';
+  const QUICK={
+    tagihan:n=>`Yth. Bapak/Ibu ${n},\n\nKami informasikan bahwa tagihan layanan internet INKAMNET Anda telah terbit. Mohon kesediaan Bapak/Ibu untuk melakukan pembayaran sebelum tanggal jatuh tempo agar layanan tetap dapat digunakan tanpa gangguan. Apabila pembayaran telah dilakukan, mohon abaikan pesan ini.${SIGN}`,
+    gangguan:n=>`Yth. Bapak/Ibu ${n},\n\nSaat ini sedang terjadi gangguan jaringan di area Anda dan tim teknis kami sedang melakukan penanganan. Kami mohon maaf atas ketidaknyamanan ini dan akan menginformasikan kembali setelah layanan pulih.${SIGN}`,
+    pulih:n=>`Yth. Bapak/Ibu ${n},\n\nGangguan jaringan di area Anda telah selesai ditangani dan layanan sudah dapat digunakan kembali. Apabila koneksi masih bermasalah, silakan mulai ulang modem Anda atau hubungi kami melalui nomor ini.\n\nTerima kasih atas kesabaran Anda.${SIGN}`,
+    pemeliharaan:n=>`Yth. Bapak/Ibu ${n},\n\nKami akan melakukan pemeliharaan jaringan pada [tanggal] pukul [jam mulai]–[jam selesai] WIB. Selama pemeliharaan, layanan internet dapat terputus sementara. Kami mohon maaf atas ketidaknyamanan ini.${SIGN}`,
+    bayar:n=>`Yth. Bapak/Ibu ${n},\n\nTerima kasih, pembayaran tagihan layanan internet INKAMNET Anda telah kami terima. Kami menghargai kepercayaan Bapak/Ibu menggunakan layanan kami.${SIGN}`
+  };
+  const countUpdate=()=>{if(directCount&&directMsg)directCount.textContent=directMsg.value.length;};
+  customerSelect?.addEventListener('change',()=>{const o=customerSelect.selectedOptions[0];if(o?.dataset.phone&&directPhone)directPhone.value=o.dataset.phone;});
+  directMsg?.addEventListener('input',countUpdate);
+  $$('#waQuickTemplates [data-quick]').forEach(btn=>btn.addEventListener('click',()=>{
+    if(directMsg.value.trim()&&!confirm('Ganti isi pesan dengan template ini?'))return;
+    const name=customerSelect?.selectedOptions[0]?.dataset.name||'Pelanggan';
+    directMsg.value=QUICK[btn.dataset.quick](name); countUpdate(); directMsg.focus();
+    const i=directMsg.value.indexOf('[tanggal]'); if(i>=0)directMsg.setSelectionRange(i,i+9);
+  }));
+
+  /* Log: filter + render ulang */
+  let logFilter='';
+  const cell=(row,v,cls='')=>{const td=document.createElement('td');if(cls)td.className=cls;td.textContent=v??'-';row.appendChild(td);return td;};
+  const badge=s=>{const st=WA_STATUS[s]||['gray',s];const b=document.createElement('span');b.className=`status-badge ${st[0]}`;b.textContent=st[1];return b;};
+  const fmt=v=>new Date(v).toLocaleString('id-ID',{timeZone:'Asia/Jakarta',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+  function applyFilter(){$$('#waMessageLogBody tr[data-status]').forEach(tr=>{tr.hidden=!!logFilter&&tr.dataset.status!==logFilter;});}
+  $$('#waLogFilter [data-filter]').forEach(chip=>chip.addEventListener('click',()=>{
+    $$('#waLogFilter .wa-chip').forEach(c=>c.classList.toggle('active',c===chip)); logFilter=chip.dataset.filter; applyFilter();
+  }));
+  function renderLog(messages){
+    const body=$('#waMessageLogBody'); if(!body)return; body.replaceChildren();
+    if(!messages.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=8;td.innerHTML='<div class="empty-state"><i class="bi bi-whatsapp"></i><strong>Belum ada pesan</strong></div>';tr.appendChild(td);body.appendChild(tr);return;}
+    messages.forEach((m,i)=>{
+      const tr=document.createElement('tr');tr.dataset.status=m.status;
+      cell(tr,i+1);cell(tr,fmt(m.created_at));
+      const c=cell(tr,m.customer_name||'-');if(m.invoice_number){const s=document.createElement('span');s.className='cell-sub';s.textContent=m.invoice_number;c.appendChild(s);}
+      cell(tr,WA_TYPE[m.message_type]||'Manual');cell(tr,m.phone);
+      const st=document.createElement('td');st.appendChild(badge(m.status));tr.appendChild(st);
+      const msg=document.createElement('td'),span=document.createElement('span');span.className='cash-note wa-clamp';span.textContent=(m.status==='failed'||m.status==='rejected')?(m.error_message||'-'):m.message;msg.appendChild(span);tr.appendChild(msg);
+      const act=document.createElement('td');
+      if(m.status==='failed'){const f=document.createElement('form');f.method='post';f.action=`/wa-gateway/messages/${m.id}/retry`;const t=document.createElement('input');t.type='hidden';t.name='_csrf';t.value=csrf;const b=document.createElement('button');b.className='btn-tech sm';b.textContent='Kirim Ulang';f.append(t,b);act.appendChild(f);}
+      tr.appendChild(act);body.appendChild(tr);
+    });
+    applyFilter();
+  }
+  function renderRecent(messages){
+    const list=$('#waRecentList'); if(!list)return; list.replaceChildren();
+    if(!messages.length){const li=document.createElement('li');li.className='wa-muted';li.textContent='Belum ada pesan.';list.appendChild(li);return;}
+    messages.slice(0,5).forEach(m=>{
+      const li=document.createElement('li'),d=document.createElement('div'),s=document.createElement('strong'),sm=document.createElement('small');
+      s.textContent=m.customer_name||m.phone; sm.textContent=`${WA_TYPE[m.message_type]||'Manual'} · ${fmt(m.created_at)}`; d.append(s,sm); li.append(d,badge(m.status)); list.appendChild(li);
     });
   }
+
+  /* Polling status & log (tanpa cache) */
   let pollDelay=<%= (gateway.state==='qr_pending'||gateway.state==='connecting')?3000:15000 %>;
-  let pollTimer=null;
+  const setText=(id,v)=>{const el=document.getElementById(id);if(el&&v!==undefined)el.textContent=v;};
   async function poll(){
     try{
-      const res=await fetch('/wa-gateway/status.json',{headers:{'Accept':'application/json'},cache:'no-store'});
-      if(!res.ok)return;
-      const data=await res.json();
-      const stateEl=document.getElementById('waStateLabel');
-      const subEl=document.getElementById('waStateSub');
-      if(stateEl)stateEl.textContent=stateLabels[data.gateway.state]||data.gateway.state;
-      if(subEl)subEl.textContent=data.gateway.connectedNumber?`Nomor +${data.gateway.connectedNumber}`:(data.gateway.lastDisconnectReason||'Belum pernah terhubung');
-      const qrImg=document.getElementById('waQrImage');
-      if(qrImg&&data.gateway.qrDataUrl)qrImg.src=data.gateway.qrDataUrl;
-      const queuedEl=document.getElementById('waQueuedCount');if(queuedEl)queuedEl.textContent=data.stats.queued;
-      const sentEl=document.getElementById('waSentTodayCount');if(sentEl)sentEl.textContent=data.stats.sentToday;
-      const failedEl=document.getElementById('waFailedTodayCount');if(failedEl)failedEl.textContent=data.stats.failedToday;
-      const pendingEl=document.getElementById('waPendingApprovalCount');if(pendingEl)pendingEl.textContent=data.stats.pendingApproval??0;
-      const logRes=await fetch('/wa-gateway/messages.json',{headers:{Accept:'application/json'},cache:'no-store'});if(logRes.ok){const logData=await logRes.json();renderMessages(logData.messages||[]);}
-      // Reload once when connection state settles from qr_pending/connecting into connected or
-      // disconnected, so the QR box / connect-disconnect buttons refresh into their final layout.
-      const wasTransitional=pollDelay===3000;
-      pollDelay=(data.gateway.state==='qr_pending'||data.gateway.state==='connecting')?3000:15000;
-      if(wasTransitional&&pollDelay===15000)location.reload();
-    }catch(e){ /* silent — next poll retries */ }
-    pollTimer=setTimeout(poll,pollDelay);
+      const res=await fetch('/wa-gateway/status.json',{headers:{Accept:'application/json'},cache:'no-store'});
+      if(res.ok){
+        const data=await res.json(), g=data.gateway, s=data.stats;
+        const label=STATE_LABELS[g.state]||g.state;
+        setText('waStateLabel',label);setText('waStatePill',label);setText('waStateBadge',label);
+        setText('waStateSub',g.connectedNumber?`Nomor +${g.connectedNumber}`:(g.lastDisconnectReason||'Belum pernah terhubung'));
+        const qr=document.getElementById('waQrImage');if(qr&&g.qrDataUrl)qr.src=g.qrDataUrl;
+        setText('waQueuedCount',s.queued);setText('waSentTodayCount',s.sentToday);setText('waFailedTodayCount',s.failedToday);setText('waPendingApprovalCount',s.pendingApproval??0);
+        const logRes=await fetch('/wa-gateway/messages.json',{headers:{Accept:'application/json'},cache:'no-store'});
+        if(logRes.ok){const d=await logRes.json();const list=d.messages||[];renderLog(list);renderRecent(list);}
+        const wasTransitional=pollDelay===3000;
+        pollDelay=(g.state==='qr_pending'||g.state==='connecting')?3000:15000;
+        if(wasTransitional&&pollDelay===15000)location.reload();
+      }
+    }catch(e){/* dicoba lagi pada polling berikutnya */}
+    setTimeout(poll,pollDelay);
   }
-  pollTimer=setTimeout(poll,pollDelay);
+  setTimeout(poll,pollDelay);
 })();
 </script>

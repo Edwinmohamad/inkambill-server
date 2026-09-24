@@ -16,6 +16,14 @@ const router = express.Router();
 // permission is 'dashboard'), letting them relay arbitrary messages through the company's connected
 // WhatsApp number. Restricted to staff who actually work with customers/billing — same permissions that
 // already gate the Tagihan/Pelanggan pages these buttons live on.
+// Halaman WA Gateway memakai tab berbasis hash (#otomatis, #template, ...). Form yang sama bisa disimpan
+// dari dua tab (mis. jadwal di "Otomatis", teks di "Template"), jadi kembalikan user ke tab asalnya.
+const WA_TABS = new Set(['ringkasan', 'persetujuan', 'manual', 'otomatis', 'template', 'koneksi', 'log']);
+function returnTab(req, fallback) {
+  const tab = String(req.body?.return_tab || '').trim();
+  return WA_TABS.has(tab) ? tab : fallback;
+}
+
 function requireWaSendPermission(req, res, next) {
   if (!req.session.user) return res.redirect('/login');
   const perms = req.permissions || [];
@@ -55,6 +63,7 @@ router.get('/', requirePermission('settings'), async (req, res) => {
       template: settingsRow?.wa_auto_reminder_template || DEFAULT_REMINDER_TEMPLATE,
     },
     defaultReminderTemplate: DEFAULT_REMINDER_TEMPLATE,
+    defaultReceiptTemplate: DEFAULT_RECEIPT_TEMPLATE,
     receiptSettings: {
       enabled: !!settingsRow?.wa_payment_receipt_enabled,
       methods: settingsRow?.wa_payment_receipt_methods === 'all' ? 'all' : 'cash',
@@ -78,7 +87,7 @@ router.post('/connection-settings', requireMasterAdmin, async (req, res) => {
     try { await recordConnectionTest('failed', error.message); } catch (_) { /* schema/database error already surfaced below */ }
     req.session.flash = { type: 'danger', message: saved ? `Konfigurasi tersimpan, tetapi tes WAHA gagal: ${error.message}` : `Konfigurasi WAHA gagal disimpan: ${error.message}` };
   }
-  res.redirect('/wa-gateway');
+  res.redirect('/wa-gateway#koneksi');
 });
 
 router.post('/test-connection', requireMasterAdmin, async (req, res) => {
@@ -91,7 +100,7 @@ router.post('/test-connection', requireMasterAdmin, async (req, res) => {
     resetGatewayState(error.message);
     req.session.flash = { type: 'danger', message: `Tes koneksi WAHA gagal: ${error.message}` };
   }
-  res.redirect('/wa-gateway');
+  res.redirect('/wa-gateway#koneksi');
 });
 
 router.post('/send-test', requireWaSendPermission, async (req, res) => {
@@ -106,7 +115,7 @@ router.post('/send-test', requireWaSendPermission, async (req, res) => {
     await audit({ userId: req.session.user.id, action: 'send_test', entityType: 'wa_gateway', entityId: result.id, description: `Pesan uji WA ke ${phone}`, ip: req.ip });
     req.session.flash = { type: 'success', message: 'Pesan dimasukkan ke antrean. Status sukses/gagal akan muncul otomatis di log pengiriman.' };
   } catch (error) { req.session.flash = { type: 'danger', message: `Pesan tidak dapat dikirim: ${error.message}` }; }
-  res.redirect('/wa-gateway#send-message');
+  res.redirect('/wa-gateway#manual');
 });
 
 router.post('/messages/:id/retry', requireWaSendPermission, async (req, res) => {
@@ -114,7 +123,7 @@ router.post('/messages/:id/retry', requireWaSendPermission, async (req, res) => 
   const [result] = await db.execute(`UPDATE wa_messages SET status='queued',error_message=NULL,next_attempt_at=NULL WHERE id=? AND status='failed'`, [id]);
   if (result.affectedRows) processQueue().catch(error => console.error('Retry antrean WA gagal:', error.message));
   req.session.flash = { type: result.affectedRows ? 'success' : 'warning', message: result.affectedRows ? 'Pesan gagal dimasukkan kembali ke antrean.' : 'Pesan tidak ditemukan atau tidak berstatus gagal.' };
-  res.redirect('/wa-gateway#message-log');
+  res.redirect('/wa-gateway#log');
 });
 
 // ---- Konfirmasi Admin: pesan otomatis ditahan per batch sampai disetujui -------------------------
@@ -124,7 +133,7 @@ function batchFromBody(req) {
 }
 router.post('/batches/approve', requirePermission('settings'), requireAdmin, async (req, res) => {
   const batch = batchFromBody(req);
-  if (!batch) { req.session.flash = { type: 'danger', message: 'Batch tidak valid.' }; return res.redirect('/wa-gateway#pending-approval'); }
+  if (!batch) { req.session.flash = { type: 'danger', message: 'Batch tidak valid.' }; return res.redirect('/wa-gateway#persetujuan'); }
   const result = await approveBatch(batch, req.session.user.id);
   const info = describeBatch(batch);
   await audit({ userId: req.session.user.id, action: 'approve', entityType: 'wa_batch', entityId: null, description: `Konfirmasi batch WA "${info.label}" ${info.date}: ${result.approved} pesan dikirim, ${result.skippedPaid} dilewati (tagihan sudah lunas).`, ip: req.ip });
@@ -132,16 +141,16 @@ router.post('/batches/approve', requirePermission('settings'), requireAdmin, asy
   req.session.flash = { type: result.approved ? 'success' : 'warning', message: result.approved
     ? `${result.approved} pesan "${info.label}" dikonfirmasi dan masuk antrean pengiriman.${result.skippedPaid ? ` ${result.skippedPaid} dilewati karena tagihan sudah lunas.` : ''}${gatewayNote}`
     : `Tidak ada pesan yang dikirim dari batch ini.${result.skippedPaid ? ` ${result.skippedPaid} dilewati karena tagihan sudah lunas.` : ''}` };
-  res.redirect('/wa-gateway#pending-approval');
+  res.redirect('/wa-gateway#persetujuan');
 });
 router.post('/batches/reject', requirePermission('settings'), requireAdmin, async (req, res) => {
   const batch = batchFromBody(req);
-  if (!batch) { req.session.flash = { type: 'danger', message: 'Batch tidak valid.' }; return res.redirect('/wa-gateway#pending-approval'); }
+  if (!batch) { req.session.flash = { type: 'danger', message: 'Batch tidak valid.' }; return res.redirect('/wa-gateway#persetujuan'); }
   const result = await rejectBatch(batch, req.session.user.id);
   const info = describeBatch(batch);
   await audit({ userId: req.session.user.id, action: 'reject', entityType: 'wa_batch', entityId: null, description: `Batalkan batch WA "${info.label}" ${info.date}: ${result.rejected} pesan tidak dikirim.`, ip: req.ip });
   req.session.flash = { type: 'success', message: `${result.rejected} pesan "${info.label}" dibatalkan dan tidak akan dikirim.` };
-  res.redirect('/wa-gateway#pending-approval');
+  res.redirect('/wa-gateway#persetujuan');
 });
 
 router.post('/blast-settings', requireMasterAdmin, async (req, res) => {
@@ -150,7 +159,7 @@ router.post('/blast-settings', requireMasterAdmin, async (req, res) => {
   await refreshWaFeatureFlags();
   await audit({ userId: req.session.user.id, action: 'update', entityType: 'wa_gateway_settings', entityId: null, description: `Fitur WA Blast massal ${enabled ? 'diaktifkan' : 'dinonaktifkan'}.`, ip: req.ip });
   req.session.flash = { type: 'success', message: `Fitur WA Blast massal ${enabled ? 'diaktifkan' : 'dinonaktifkan'}.` };
-  res.redirect('/wa-gateway');
+  res.redirect(`/wa-gateway#${returnTab(req, 'otomatis')}`);
 });
 
 router.get('/messages.json', requirePermission('settings'), async (req, res) => {
@@ -165,7 +174,7 @@ router.post('/receipt-settings', requireMasterAdmin, async (req, res) => {
   await db.execute(`UPDATE settings SET wa_payment_receipt_enabled=?,wa_payment_receipt_methods=?,wa_payment_receipt_template=? WHERE id=1`, [b.enabled ? 1 : 0, methods, template]);
   await audit({ userId: req.session.user.id, action: 'update', entityType: 'wa_gateway_settings', entityId: null, description: `Update tanda terima WA pembayaran: enabled=${b.enabled ? 1 : 0}, metode=${methods}`, ip: req.ip });
   req.session.flash = { type: 'success', message: 'Pengaturan tanda terima WA pembayaran disimpan.' };
-  res.redirect('/wa-gateway');
+  res.redirect(`/wa-gateway#${returnTab(req, 'otomatis')}`);
 });
 
 // Polled every few seconds by the WA Gateway page while a QR is pending / connection is settling, so
@@ -183,14 +192,14 @@ router.post('/connect', requireMasterAdmin, async (req, res) => {
   req.session.flash = state.state === 'disconnected'
     ? { type: 'danger', message: `WA Gateway belum dapat dihubungkan: ${state.lastDisconnectReason || 'periksa URL, API key, firewall, dan status WAHA.'}` }
     : { type: 'success', message: state.state === 'connected' ? 'WA Gateway sudah terhubung dan siap mengirim pesan.' : 'Sesi WAHA dimulai. Scan QR code menggunakan WhatsApp di HP Anda.' };
-  res.redirect('/wa-gateway');
+  res.redirect('/wa-gateway#koneksi');
 });
 
 router.post('/logout', requireMasterAdmin, async (req, res) => {
   await logoutGateway();
   await audit({ userId: req.session.user.id, action: 'logout', entityType: 'wa_gateway', entityId: null, description: 'Memutuskan WA Gateway dan menghapus sesi tersimpan.', ip: req.ip });
   req.session.flash = { type: 'success', message: 'WA Gateway diputuskan. Nomor WhatsApp tidak lagi terhubung ke aplikasi.' };
-  res.redirect('/wa-gateway');
+  res.redirect('/wa-gateway#koneksi');
 });
 
 router.post('/settings', requireMasterAdmin, async (req, res) => {
@@ -205,7 +214,7 @@ router.post('/settings', requireMasterAdmin, async (req, res) => {
   );
   await audit({ userId: req.session.user.id, action: 'update', entityType: 'wa_gateway_settings', entityId: null, description: `Update pengaturan auto-reminder WA: enabled=${b.enabled ? 1 : 0}, jam=${hour}, offset=${offsetsClean}`, ip: req.ip });
   req.session.flash = { type: 'success', message: 'Pengaturan auto-reminder WA disimpan.' };
-  res.redirect('/wa-gateway');
+  res.redirect(`/wa-gateway#${returnTab(req, 'otomatis')}`);
 });
 
 // AJAX manual send — used by the "Kirim Pengingat" button on Tagihan/Pelanggan. Falls back to wa.me
