@@ -118,13 +118,24 @@ jobs:
           name: INKAMNET-GO-APK
           path: android-artifact
 
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # disable-animations dimatikan: pada image Android 35 perintah `adb shell settings put` milik
+      # action kadang gagal dengan exit 224 sebelum script tes berjalan. Animasi dimatikan di script
+      # smoke test (tidak fatal), dan emulator boot diberi waktu lebih panjang.
       - name: Install and launch on emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api }}
           arch: x86_64
           profile: pixel_6
-          disable-animations: true
+          disable-animations: false
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
           script: bash scripts/android-emulator-smoke.sh "${{ matrix.api }}" "${GITHUB_WORKSPACE}/android-artifact"
 
       - name: Upload emulator evidence
@@ -136,7 +147,7 @@ jobs:
             emulator-launch-${{ matrix.api }}.txt
             emulator-smoke-${{ matrix.api }}.png
             emulator-logcat-${{ matrix.api }}.txt
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14
 
   publish-internal:

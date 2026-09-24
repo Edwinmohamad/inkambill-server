@@ -9,24 +9,46 @@ launch_log="emulator-launch-${api_level}.txt"
 screen_file="emulator-smoke-${api_level}.png"
 logcat_file="emulator-logcat-${api_level}.txt"
 
+# Bukti selalu ada walau tes gagal di tengah jalan, supaya langkah upload tidak ikut error.
+: > "${launch_log}"
+trap 'adb logcat -d > "${logcat_file}" 2>/dev/null || true' EXIT
+
 test -s "${apk_file}"
 test -s "${package_file}"
 package_name="$(tr -d '\r\n' < "${package_file}")"
 test -n "${package_name}"
 
+# Perintah adb pada emulator Android 35 kadang gagal sesaat (exit 224 / device offline).
+retry() {
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    if "$@"; then return 0; fi
+    echo "Percobaan ${attempt} gagal: $*" >&2
+    sleep 5
+    adb wait-for-device || true
+  done
+  return 1
+}
+
 adb wait-for-device
-for _ in $(seq 1 90); do
+for _ in $(seq 1 150); do
   if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
     break
   fi
   sleep 2
 done
 test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1"
+sleep 10
 
-adb logcat -c
-adb install -r -g "${apk_file}"
-adb shell am force-stop "${package_name}"
-adb shell am start -W -n "${package_name}/id.my.edwinpxmx.inkamnetgo.MainActivity" | tee "${launch_log}"
+for setting in window_animation_scale transition_animation_scale animator_duration_scale; do
+  adb shell settings put global "${setting}" 0 >/dev/null 2>&1 || true
+done
+adb shell input keyevent 82 >/dev/null 2>&1 || true
+
+adb logcat -c || true
+retry adb install -r -g "${apk_file}"
+adb shell am force-stop "${package_name}" || true
+retry adb shell am start -W -n "${package_name}/id.my.edwinpxmx.inkamnetgo.MainActivity" | tee "${launch_log}"
 
 # Android dapat melaporkan Status: ok atau Status: warning ketika Activity sudah
 # aktif. Keberhasilan ditentukan dari Activity yang benar-benar tampil/proses hidup.

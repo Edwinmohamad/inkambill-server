@@ -12,7 +12,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: [self-hosted, linux, x64]
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - name: Update production source
         shell: bash
@@ -41,7 +41,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for attempt in {1..12}; do
+          # Server baru listen setelah seluruh migrasi schema selesai; beri waktu sampai 5 menit
+          # (sebelumnya 60 detik) supaya restart dengan migrasi tidak dianggap gagal.
+          for attempt in {1..60}; do
             if curl -fsS http://127.0.0.1:3301/healthz; then exit 0; fi
             sleep 5
           done
