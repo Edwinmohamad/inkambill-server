@@ -109,6 +109,22 @@ function drawLocationShareCards(doc,recipientName,blocks,title,subtitle){
   // dan "Bersih" tampil sebagai angka besar — bukan baris kecil sejajar
   // "Kotor" seperti sebelumnya.
   const SHARE_PANEL_H=76;
+  // v3.3 — rincian pembagian KBG (Laba Bersih -> Mang Ali 35% -> INKAMNET
+  // internal 65% dianggap 100% -> bagian penerima) di dalam panel Bagian.
+  const pctText=(v)=>`${String(v).replace('.',',')}%`;
+  const BD_ROW_H=11.5;
+  function breakdownCaption(bd){
+    const split=(bd.internalSplit||[]).map(p=>`${safe(p.name)} ${pctText(p.percent)}`).join(' · ');
+    return `Bagian INKAMNET ${pctText(bd.poolPercent)} dihitung ulang sebagai 100% internal, lalu dibagi: ${split}. Setara ${pctText(bd.blendedPercent)} dari laba bersih.`;
+  }
+  function breakdownH(bd,innerW){
+    if(!bd)return 0;
+    doc.font('Helvetica-Oblique').fontSize(6.2);
+    const capH=doc.heightOfString(breakdownCaption(bd),{width:innerW,lineGap:.8});
+    return 4+BD_ROW_H*3+4+capH+10;
+  }
+  const shareInnerW=cw-32-24;
+  const sharePanelH=(share)=>SHARE_PANEL_H+breakdownH(share&&share.breakdown,shareInnerW);
   // v3.0 — rincian Pendapatan/Pengeluaran dulu satu baris caption abu-abu
   // yang dirangkum & tetap bisa terpotong kalau kepanjangan. Sekarang setiap
   // kategori jadi barisnya sendiri ("Petty Cash · Rp 5.266.500"), diakhiri
@@ -140,7 +156,7 @@ function drawLocationShareCards(doc,recipientName,blocks,title,subtitle){
   function rowsH(rows){return rows.reduce((a,r)=>a+itemRowH(r.label,r.bold)+(r.divider?5:0),0);}
   const cardHeight=(block)=>{
     let h=43+rowsH(revenueRows(block))+8+rowsH(expenseRows(block))+10+16;
-    h+=block.share?(8+SHARE_PANEL_H+16):37;
+    h+=block.share?(8+sharePanelH(block.share)+16):37;
     return h;
   };
   // v3.1 — dulu fungsi ini SELALU mengasumsikan tepat 2 kartu dalam 1 baris
@@ -199,7 +215,9 @@ function drawLocationShareCards(doc,recipientName,blocks,title,subtitle){
       const diff=Number(block.share.amount)-Number(block.share.gross);
       const shareColor=diff<0?COLORS.red:(diff>0?COLORS.green:COLORS.ink);
       const panelX=xx+16,panelW=cw-32,panelY=ly+8,padX=12;
-      doc.roundedRect(panelX,panelY,panelW,SHARE_PANEL_H,8).fill(COLORS.purpleSoft);
+      const bd=block.share.breakdown;
+      const panelH=sharePanelH(block.share);
+      doc.roundedRect(panelX,panelY,panelW,panelH,8).fill(COLORS.purpleSoft);
       // header row: nama penerima kiri, persen sebagai pil di kanan — dipisah
       // biar tidak jadi satu untai kalimat kecil yang harus diurai pembaca.
       const pillText=percentText,pillFontSize=7.2;
@@ -208,15 +226,39 @@ function drawLocationShareCards(doc,recipientName,blocks,title,subtitle){
       doc.fillColor(COLORS.purple).font('Helvetica-Bold').fontSize(8.4).text(`Bagian ${safe(recipientName)}`,panelX+padX,headY,{width:panelW-padX*2-pillW-8,height:12,lineBreak:false,ellipsis:true});
       doc.roundedRect(panelX+panelW-padX-pillW,headY-2,pillW,15,7.5).fill(COLORS.purple);
       doc.fillColor(COLORS.white).font('Helvetica-Bold').fontSize(pillFontSize).text(pillText,panelX+panelW-padX-pillW,headY+2,{width:pillW,align:'center',lineBreak:false});
+      // v3.3 — rincian tahapan pembagian (khusus penerima pool internal KBG).
+      let kotorY=headY+21;
+      if(bd){
+        const innerW=panelW-padX*2;
+        let by=headY+20;
+        const bdRow=(label,value,opts={})=>{
+          doc.fillColor(opts.bold?COLORS.ink:COLORS.muted).font(opts.bold?'Helvetica-Bold':'Helvetica').fontSize(6.8).text(label,panelX+padX,by,{width:innerW*.62,height:10,lineBreak:false,ellipsis:true});
+          doc.fillColor(opts.color||COLORS.ink).font(opts.bold?'Helvetica-Bold':'Helvetica').fontSize(6.8).text(value,panelX+padX+innerW*.5,by,{width:innerW*.5,align:'right',height:10,lineBreak:false,ellipsis:true});
+          by+=BD_ROW_H;
+        };
+        bdRow(`Laba Bersih ${safe(block.label)}`,rupiah(bd.baseAmount));
+        bdRow(`${safe(bd.partnerName)} · ${pctText(bd.partnerPercent)}`,`- ${rupiah(bd.partnerAmount)}`,{color:COLORS.red});
+        doc.strokeColor(COLORS.purple).opacity(.25).lineWidth(.6).moveTo(panelX+padX,by+1).lineTo(panelX+panelW-padX,by+1).stroke();doc.opacity(1);
+        by+=4;
+        bdRow(`${safe(bd.poolName)} · ${pctText(bd.poolPercent)} = 100%`,rupiah(bd.poolAmount),{bold:true});
+        by+=2;
+        const cap=breakdownCaption(bd);
+        doc.font('Helvetica-Oblique').fontSize(6.2);
+        const capH=doc.heightOfString(cap,{width:innerW,lineGap:.8});
+        doc.fillColor(COLORS.muted).text(cap,panelX+padX,by,{width:innerW,height:capH+1,lineGap:.8});
+        by+=capH+6;
+        doc.strokeColor(COLORS.purple).opacity(.25).lineWidth(.6).moveTo(panelX+padX,by-2).lineTo(panelX+panelW-padX,by-2).stroke();doc.opacity(1);
+        kotorY=by+2;
+      }
       // baris Kotor: rincian pendukung, kecil & muted.
-      const kotorY=headY+21;
-      doc.fillColor(COLORS.muted).font('Helvetica').fontSize(7.2).text('Kotor',panelX+padX,kotorY,{width:panelW*.5,height:10,lineBreak:false});
+      const kotorLabel=bd?`Kotor · ${pctText(bd.internalPercent)} × internal`:'Kotor';
+      doc.fillColor(COLORS.muted).font('Helvetica').fontSize(7.2).text(kotorLabel,panelX+padX,kotorY,{width:panelW*.6,height:10,lineBreak:false});
       doc.fillColor(COLORS.muted2).font('Helvetica').fontSize(7.4).text(rupiah(block.share.gross),panelX+padX,kotorY,{width:panelW-padX*2,align:'right',height:10,lineBreak:false,ellipsis:true});
       // baris Bersih: angka utama, besar & tegas — ini yang dicari penerima.
       const bersihY=kotorY+18;
       doc.fillColor(COLORS.ink).font('Helvetica-Bold').fontSize(8).text('Bersih diterima',panelX+padX,bersihY+6,{width:panelW*.46,height:13,lineBreak:false});
       doc.fillColor(shareColor).font('Helvetica-Bold').fontSize(12.5).text(rupiah(block.share.amount),panelX+padX,bersihY,{width:panelW-padX*2,align:'right',height:17,lineBreak:false,ellipsis:true});
-      ly=panelY+SHARE_PANEL_H;
+      ly=panelY+panelH;
     } else {
       ly+=13;
       doc.strokeColor(COLORS.line).lineWidth(.6).moveTo(xx+16,ly-4).lineTo(xx+cw-16,ly-4).stroke();

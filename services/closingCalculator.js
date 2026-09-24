@@ -189,10 +189,20 @@ function buildClosingCalculation({ payments = [], expenses = [], heldCash = [], 
   // because it doesn't match the "18,14% dari pool" figure shown right next to it.
   // `displayPercent` lets the UI/PDF show the simpler pool-relative number for their
   // rows while keeping `percent` (blended) intact for anything that still needs it.
+  // v3.3 — rincian tahapan pembagian KBG untuk penerima dari pool internal,
+  // supaya PDF bisa menunjukkan: Laba Bersih KBG -> Mang Ali 35% -> INKAMNET
+  // internal 65% (dianggap 100%) -> bagian masing-masing dari internal.
+  const internalSplit = [{ name: 'Edwin', percent: 63.72 }, { name: 'Jon', percent: 18.14 }, { name: 'Bopung', percent: 18.14 }];
+  const kbgBreakdown = (internalPercent, blendedPercent) => ({
+    baseAmount: money(blocks.kbg.profit),
+    partnerName: 'Mang Ali', partnerPercent: 35, partnerAmount: money(blocks.kbg.profit * .35),
+    poolName: 'INKAMNET (internal)', poolPercent: 65, poolAmount: money(pool),
+    internalPercent, blendedPercent, internalSplit
+  });
   blocks.kbg.shares = [
-    { name: 'Edwin', percent: 41.418, gross: money(pool * .6372), amount: adjusted('Edwin', 'kbg', pool * .6372) },
-    { name: 'Jon', percent: 11.791, displayPercent: 18.14, gross: money(pool * .1814), amount: adjusted('Jon', 'kbg', pool * .1814) },
-    { name: 'Bopung', percent: 11.791, displayPercent: 18.14, gross: money(pool * .1814), amount: adjusted('Bopung', 'kbg', pool * .1814) },
+    { name: 'Edwin', percent: 41.418, gross: money(pool * .6372), amount: adjusted('Edwin', 'kbg', pool * .6372), breakdown: kbgBreakdown(63.72, 41.418) },
+    { name: 'Jon', percent: 11.791, displayPercent: 18.14, gross: money(pool * .1814), amount: adjusted('Jon', 'kbg', pool * .1814), breakdown: kbgBreakdown(18.14, 11.791) },
+    { name: 'Bopung', percent: 11.791, displayPercent: 18.14, gross: money(pool * .1814), amount: adjusted('Bopung', 'kbg', pool * .1814), breakdown: kbgBreakdown(18.14, 11.791) },
     { name: 'Mang Ali', percent: 35, gross: money(blocks.kbg.profit * .35), amount: adjusted('Mang Ali', 'kbg', blocks.kbg.profit * .35) }
   ];
 
