@@ -1049,4 +1049,53 @@ async function ensureV52Schema() {
   await db.query(`ALTER TABLE ticket_updates ADD COLUMN IF NOT EXISTS actor_employee_id BIGINT UNSIGNED NULL AFTER source`);
 }
 
-module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema };
+async function ensureV53Schema() {
+  // v1.28 — Rekonsiliasi cash: nomor setoran per batch (tanda terima), setoran sebagian per collector,
+  // pembatalan setoran, dan tanda terima WhatsApp otomatis untuk pembayaran yang disetujui.
+  await db.query(`CREATE TABLE IF NOT EXISTS cash_settlements (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    code VARCHAR(40) NOT NULL,
+    settlement_date DATE NOT NULL,
+    collector_user_id BIGINT UNSIGNED NULL,
+    mode ENUM('selected','partial') NOT NULL DEFAULT 'selected',
+    payment_count INT UNSIGNED NOT NULL DEFAULT 0,
+    total_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+    handed_amount DECIMAL(14,2) NULL,
+    difference_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+    notes VARCHAR(500) NULL,
+    status ENUM('active','cancelled') NOT NULL DEFAULT 'active',
+    created_by BIGINT UNSIGNED NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_cash_settlement_code (code),
+    INDEX idx_cash_settlement_date (settlement_date),
+    INDEX idx_cash_settlement_collector (collector_user_id,settlement_date)
+  )`);
+  await db.query(`CREATE TABLE IF NOT EXISTS cash_settlement_cancellations (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    settlement_id BIGINT UNSIGNED NULL,
+    payment_id BIGINT UNSIGNED NOT NULL,
+    amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+    cash_transaction_code VARCHAR(60) NULL,
+    reason VARCHAR(500) NOT NULL,
+    cancelled_by BIGINT UNSIGNED NULL,
+    cancelled_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_cash_settlement_cancel_payment (payment_id),
+    INDEX idx_cash_settlement_cancel_settlement (settlement_id)
+  )`);
+  await db.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS settlement_id BIGINT UNSIGNED NULL AFTER settlement_status`);
+  await db.query(`ALTER TABLE payments ADD INDEX IF NOT EXISTS idx_payments_settlement (settlement_id)`);
+  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS cash_aging_alert_days TINYINT UNSIGNED NOT NULL DEFAULT 3`);
+  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS cash_aging_last_alert_date DATE NULL`);
+  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS wa_payment_receipt_enabled TINYINT(1) NOT NULL DEFAULT 0`);
+  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS wa_payment_receipt_methods ENUM('cash','all') NOT NULL DEFAULT 'cash'`);
+  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS wa_payment_receipt_template TEXT NULL`);
+  const [waTypeCol] = await db.query(`SHOW COLUMNS FROM wa_messages LIKE 'message_type'`);
+  if (waTypeCol.length && !/'payment_receipt'/.test(waTypeCol[0].Type)) {
+    const current = (waTypeCol[0].Type.match(/'([^']+)'/g) || []).map(v => v.slice(1, -1));
+    const values = [...new Set([...current, 'manual', 'blast', 'auto_reminder', 'network_alert', 'payment_receipt'])];
+    await db.query(`ALTER TABLE wa_messages MODIFY COLUMN message_type ENUM(${values.map(v => `'${v.replace(/'/g, '')}'`).join(',')}) NOT NULL DEFAULT 'manual'`);
+  }
+}
+
+module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema };

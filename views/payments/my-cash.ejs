@@ -1,0 +1,39 @@
+<section>
+  <div class="module-head">
+    <div><div class="module-kicker">COLLECTOR</div><h1>Cash Saya</h1><p>Uang pembayaran pelanggan yang Anda pegang dan riwayat setoran ke kas perusahaan.</p></div>
+  </div>
+
+  <% if(overdueCount){ %><div class="alert alert-warning d-flex align-items-center gap-2 mb-3"><i class="bi bi-hourglass-bottom"></i><div><strong><%= overdueCount %> transaksi sudah lebih dari <%= agingDays %> hari</strong> (<%= formatRupiah(overdueTotal) %>). Segera setor ke admin.</div></div><% } %>
+
+  <div class="metric-grid">
+    <div class="metric-card orange"><div class="metric-top"><span class="metric-label">Cash di Tangan</span><span class="metric-icon"><i class="bi bi-wallet2"></i></span></div><strong><%= formatRupiah(heldTotal) %></strong><small><%= held.length %> transaksi belum disetor</small></div>
+    <div class="metric-card <%= overdueCount?'red':'' %>"><div class="metric-top"><span class="metric-label">Lewat <%= agingDays %> Hari</span><span class="metric-icon"><i class="bi bi-hourglass-split"></i></span></div><strong><%= formatRupiah(overdueTotal) %></strong><small><%= overdueCount %> transaksi</small></div>
+    <div class="metric-card"><div class="metric-top"><span class="metric-label">Menunggu Approval</span><span class="metric-icon"><i class="bi bi-shield-exclamation"></i></span></div><strong><%= formatRupiah(pending.reduce((a,p)=>a+Number(p.amount||0),0)) %></strong><small><%= pending.length %> pembayaran cash</small></div>
+    <div class="metric-card green"><div class="metric-top"><span class="metric-label">Disetor Bulan Ini</span><span class="metric-icon"><i class="bi bi-safe2-fill"></i></span></div><strong><%= formatRupiah(totals.settled_month||0) %></strong><small><%= Number(totals.settled_month_count||0) %> transaksi</small></div>
+  </div>
+
+  <div class="data-card mb-3">
+    <div class="data-card-head"><div><h3>Cash Belum Disetor</h3><small>Urut dari yang paling lama. Serahkan ke admin untuk dikonfirmasi masuk kas.</small></div></div>
+    <div class="table-responsive"><table class="app-table"><thead><tr><th class="app-seq-col">No.</th><th>Pelanggan</th><th>Site</th><th>Nominal</th><th>Dibayar</th><th>Umur</th></tr></thead><tbody>
+      <% held.forEach((p,index)=>{ const age=Number(p.age_days||0); %><tr><td><span class="cell-main"><%= index+1 %></span></td><td><span class="cell-main"><%= p.customer_name %></span><span class="cell-sub"><%= p.customer_code %> · <%= p.invoice_number %></span></td><td><span class="status-badge purple"><%= p.site_code %><%= p.cluster_name?` · ${p.cluster_name}`:'' %></span></td><td class="money"><%= formatRupiah(p.amount) %></td><td><%= new Date(p.paid_at).toLocaleString('id-ID',{timeZone:'Asia/Jakarta'}) %></td><td><span class="cash-age <%= age>agingDays?'late':age>=Math.max(1,agingDays-1)?'warn':'' %>"><%= age===0?'hari ini':`${age} hari` %></span></td></tr><% }) %>
+      <% if(!held.length){ %><tr><td colspan="6"><div class="empty-state"><i class="bi bi-check2-circle"></i><strong>Tidak ada cash di tangan</strong><small>Semua uang pelanggan yang Anda terima sudah disetor.</small></div></td></tr><% } %>
+    </tbody></table></div>
+  </div>
+
+  <% if(pending.length){ %>
+  <div class="data-card mb-3">
+    <div class="data-card-head"><div><h3>Menunggu Approval Master Admin</h3><small>Belum dihitung sebagai cash dipegang sampai disetujui.</small></div></div>
+    <div class="table-responsive"><table class="app-table"><thead><tr><th>Pelanggan</th><th>Nominal</th><th>Dibayar</th><th>Referensi</th></tr></thead><tbody>
+      <% pending.forEach(p=>{ %><tr><td><span class="cell-main"><%= p.customer_name %></span><span class="cell-sub"><%= p.customer_code %> · <%= p.invoice_number %></span></td><td class="money"><%= formatRupiah(p.amount) %></td><td><%= new Date(p.paid_at).toLocaleString('id-ID',{timeZone:'Asia/Jakarta'}) %></td><td><%= p.reference||('#'+p.id) %></td></tr><% }) %>
+    </tbody></table></div>
+  </div>
+  <% } %>
+
+  <div class="data-card">
+    <div class="data-card-head"><div><h3>Riwayat Setoran Saya</h3><small>60 setoran terakhir yang memuat transaksi Anda.</small></div></div>
+    <div class="table-responsive"><table class="app-table"><thead><tr><th>No. Setoran</th><th>Tanggal</th><th>Transaksi Saya</th><th>Nominal Saya</th><th>Diterima Oleh</th><th>Status</th><th></th></tr></thead><tbody>
+      <% settlements.forEach(st=>{ const cancelled=st.status==='cancelled'; %><tr><td><span class="cell-main"><%= st.code %></span><span class="cell-sub"><%= st.mode==='partial'?'Setoran sebagian':'Konfirmasi setoran' %></span></td><td><%= new Date(st.settlement_date).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'}) %></td><td><%= st.payment_count %></td><td class="money"><%= formatRupiah(st.my_amount) %></td><td><%= st.created_by_name||'-' %></td><td><span class="status-badge <%= cancelled?'red':'green' %>"><%= cancelled?'dibatalkan':'diterima' %></span></td><td><a class="btn-tech btn-sm" href="/my-cash/settlements/<%= st.id %>/receipt.pdf" target="_blank" rel="noopener"><i class="bi bi-printer"></i>Tanda Terima</a></td></tr><% }) %>
+      <% if(!settlements.length){ %><tr><td colspan="7"><div class="empty-state"><i class="bi bi-receipt"></i><strong>Belum ada riwayat setoran</strong><small>Setoran yang dikonfirmasi admin akan muncul di sini.</small></div></td></tr><% } %>
+    </tbody></table></div>
+  </div>
+</section>

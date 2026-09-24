@@ -12,6 +12,7 @@ const { assignCashTransactionCode }=require('../services/cashService');
 const { isoDate, assertDateOpen, resolveBookDate, financialAudit }=require('../services/financialControlService');
 const { requireAdmin, requireMasterAdmin, isAdminRole, isMasterAdminRole }=require('../middleware/auth');
 const { createReportPdf, rupiah, COLORS }=require('../services/reportPdf');
+const { cashAgingDays, queuePaymentReceipts, streamSettlementReceipt }=require('../services/cashSettlementService');
 const router=express.Router();
 
 // v1.26 — shared header styling for reconciliation export sheets (same convention as
@@ -223,11 +224,12 @@ router.post('/:id/method-to-cash',requireMasterAdmin,async(req,res)=>{
   let auditDescription='';
   try{
     await conn.beginTransaction();
-    await assertDateOpen(conn,paidDate);
-    const [rows]=await conn.execute(`SELECT p.id,p.method,p.status,p.settlement_status,p.reference,p.amount,p.invoice_id,u.name collector_name
+    const [rows]=await conn.execute(`SELECT p.id,p.method,p.status,p.settlement_status,p.reference,p.amount,p.invoice_id,p.paid_at,p.booked_at,u.name collector_name
       FROM payments p LEFT JOIN users u ON u.id=? WHERE p.id=? FOR UPDATE`,[collectorId,paymentId]);
     const payment=rows[0];
     if(!payment)throw new Error('Pembayaran tidak ditemukan.');
+    // Sebelumnya memakai variabel `paidDate` yang tidak pernah didefinisikan sehingga koreksi selalu gagal.
+    await assertDateOpen(conn,payment.booked_at||payment.paid_at);
     if(!['transfer','qris'].includes(payment.method))throw new Error('Hanya pembayaran transfer atau QRIS yang dapat dikoreksi menjadi cash.');
     if(!['pending','confirmed'].includes(payment.status))throw new Error('Pembayaran yang ditolak tidak dapat dikoreksi.');
     const [staffRows]=await conn.execute('SELECT id,name FROM users WHERE id=? AND is_active=1 LIMIT 1',[collectorId]);
@@ -297,6 +299,7 @@ router.post('/:id/verify',requireMasterAdmin,async(req,res)=>{
     await conn.commit();
     await audit({userId:req.session.user.id,action:'approve',entityType:'payment',entityId:p.id,description:`Approval Master Admin ${p.proof_path?'dengan bukti':'tanpa bukti'} untuk pembayaran ${p.reference||p.id}`,ip:req.ip});
     await maybeAutoUnisolate(p.invoice_id);
+    await queuePaymentReceipts([p.id],req.session.user.id);
     req.session.flash={type:'success',message:`Pembayaran disetujui Master Admin ${p.proof_path?'berdasarkan bukti':'tanpa bukti lampiran'}. Tagihan dan jurnal terkait sudah diperbarui.`};
   }catch(e){await conn.rollback();req.session.flash={type:'danger',message:`Verifikasi gagal: ${e.message}`};}finally{conn.release();}
   res.redirect(localReturn(req.body.return_to,'/payments'));
@@ -337,6 +340,7 @@ router.post('/bulk-verify',requireMasterAdmin,async(req,res)=>{
   }
   if(done.length){
     for(const p of done){await maybeAutoUnisolate(p.invoice_id);}
+    await queuePaymentReceipts(done.map(p=>p.id),req.session.user.id);
     await audit({userId:req.session.user.id,action:'bulk_approve',entityType:'payment',entityId:null,description:`Approval massal ${done.length} pembayaran: ${done.map(p=>p.reference||`#${p.id}`).slice(0,20).join(', ')}${done.length>20?', ...':''}${skipped.length?` (${skipped.length} dilewati karena sudah tidak menunggu / nominal melebihi sisa tagihan terkini)`:''}`,ip:req.ip});
   }
   if(!done.length){req.session.flash={type:'danger',message:'Semua pembayaran terpilih sudah tidak berstatus menunggu, atau nominalnya melebihi sisa tagihan saat ini.'};return res.redirect(returnTo);}
@@ -381,24 +385,31 @@ router.post('/:id/reject',requireMasterAdmin,async(req,res)=>{
 // since a file download has no <select> to populate.
 async function loadReconciliationData(req,{withLookups=false}={}){
   const q=String(req.query.q||'').trim();const site=String(req.query.site||'').trim();const cluster=String(req.query.cluster||'').trim();
-  let heldSql=`SELECT p.*,c.customer_code,c.name customer_name,s.code site_code,cl.name cluster_name,u.name collector_name,i.invoice_number
+  const agingDays=await cashAgingDays();
+  const aging=req.query.aging==='overdue'?'overdue':'';
+  let heldSql=`SELECT p.*,c.customer_code,c.name customer_name,s.code site_code,cl.name cluster_name,u.name collector_name,i.invoice_number,
+    DATEDIFF(CURDATE(),DATE(p.paid_at)) age_days
     FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id LEFT JOIN users u ON u.id=COALESCE(p.collector_user_id,p.received_by)
     WHERE p.method='cash' AND p.status='confirmed' AND p.settlement_status='held_by_staff'`;
   const heldParams=[];
   if(site){heldSql+=` AND s.code=?`;heldParams.push(site);}
   if(cluster){heldSql+=` AND c.cluster_id=?`;heldParams.push(Number(cluster));}
   if(q){const like=`%${q}%`;heldSql+=` AND (c.name LIKE ? OR c.customer_code LIKE ? OR i.invoice_number LIKE ? OR u.name LIKE ? OR s.code LIKE ? OR cl.name LIKE ?)`;heldParams.push(like,like,like,like,like,like);}
+  if(aging==='overdue'){heldSql+=` AND DATEDIFF(CURDATE(),DATE(p.paid_at))>?`;heldParams.push(agingDays);}
   heldSql+=` ORDER BY u.name,p.paid_at`;
   const [held]=await db.execute(heldSql,heldParams);
-  const [staffBalances]=await db.query(`SELECT COALESCE(u.id,0) user_id,COALESCE(u.name,'Tidak diketahui') collector_name,COUNT(*) transactions,COALESCE(SUM(p.amount),0) amount
+  const [staffBalances]=await db.query(`SELECT COALESCE(u.id,0) user_id,COALESCE(u.name,'Tidak diketahui') collector_name,COUNT(*) transactions,COALESCE(SUM(p.amount),0) amount,
+    MAX(DATEDIFF(CURDATE(),DATE(p.paid_at))) oldest_days,SUM(DATEDIFF(CURDATE(),DATE(p.paid_at))>${Number(agingDays)}) overdue_count
     FROM payments p LEFT JOIN users u ON u.id=COALESCE(p.collector_user_id,p.received_by)
     WHERE p.method='cash' AND p.status='confirmed' AND p.settlement_status='held_by_staff' GROUP BY u.id,u.name ORDER BY amount DESC`);
   const [[summary]]=await db.query(`SELECT
     COALESCE(SUM(CASE WHEN method='cash' AND status='confirmed' AND settlement_status='held_by_staff' THEN amount ELSE 0 END),0) held_total,
     COALESCE(SUM(CASE WHEN method='cash' AND status='confirmed' AND settlement_status='settled' AND DATE(settled_at)=CURDATE() THEN amount ELSE 0 END),0) settled_today,
-    COALESCE(SUM(CASE WHEN method='transfer' AND status='confirmed' AND DATE(paid_at)=CURDATE() THEN amount ELSE 0 END),0) transfer_today
+    COALESCE(SUM(CASE WHEN method='transfer' AND status='confirmed' AND DATE(paid_at)=CURDATE() THEN amount ELSE 0 END),0) transfer_today,
+    COALESCE(SUM(CASE WHEN method='cash' AND status='confirmed' AND settlement_status='held_by_staff' AND DATEDIFF(CURDATE(),DATE(paid_at))>${Number(agingDays)} THEN amount ELSE 0 END),0) overdue_total,
+    COALESCE(SUM(method='cash' AND status='confirmed' AND settlement_status='held_by_staff' AND DATEDIFF(CURDATE(),DATE(paid_at))>${Number(agingDays)}),0) overdue_count
     FROM payments`);
-  const result={held,staffBalances,summary:summary||{},q,site,cluster};
+  const result={held,staffBalances,summary:summary||{},q,site,cluster,aging,agingDays};
   if(withLookups){
     const [sites]=await db.query(`SELECT code,name FROM sites WHERE is_active=1 ORDER BY code`);const [clusters]=await db.query(`SELECT cl.id,cl.name,s.code site_code FROM clusters cl JOIN sites s ON s.id=cl.site_id WHERE cl.status!='inactive' ORDER BY s.code,cl.name`);
     result.sites=sites;result.clusters=clusters;
@@ -430,15 +441,24 @@ async function loadReconciliationHistory(req){
   if(cluster){where+=` AND c.cluster_id=?`;params.push(Number(cluster));}
   if(q){const like=`%${q}%`;where+=` AND (c.name LIKE ? OR c.customer_code LIKE ? OR i.invoice_number LIKE ? OR u.name LIKE ? OR su.name LIKE ? OR s.code LIKE ? OR cl.name LIKE ? OR p.reference LIKE ?)`;params.push(like,like,like,like,like,like,like,like);}
   const from=`FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id
-    LEFT JOIN clusters cl ON cl.id=c.cluster_id LEFT JOIN users u ON u.id=COALESCE(p.collector_user_id,p.received_by) LEFT JOIN users su ON su.id=p.settled_by`;
-  const [history]=await db.execute(`SELECT p.id,p.amount,p.reference,p.paid_at,p.settled_at,p.settlement_status,c.customer_code,c.name customer_name,s.code site_code,cl.name cluster_name,
+    LEFT JOIN clusters cl ON cl.id=c.cluster_id LEFT JOIN users u ON u.id=COALESCE(p.collector_user_id,p.received_by) LEFT JOIN users su ON su.id=p.settled_by
+    LEFT JOIN cash_settlements cs ON cs.id=p.settlement_id`;
+  const [history]=await db.execute(`SELECT p.id,p.amount,p.reference,p.paid_at,p.settled_at,p.settlement_status,p.settlement_id,cs.code settlement_code,c.customer_code,c.name customer_name,s.code site_code,cl.name cluster_name,
     i.invoice_number,COALESCE(u.name,'Tidak diketahui') collector_name,COALESCE(su.name,'-') settled_by_name
     ${from} ${where} ORDER BY p.paid_at DESC,p.id DESC LIMIT ${RECON_HISTORY_LIMIT}`,params);
   const [[historySummary]]=await db.execute(`SELECT COUNT(*) transactions,COALESCE(SUM(p.amount),0) amount,COUNT(DISTINCT c.id) customers,
     COALESCE(SUM(CASE WHEN ${settledCond} THEN 1 ELSE 0 END),0) settled_count,COALESCE(SUM(CASE WHEN ${settledCond} THEN p.amount ELSE 0 END),0) settled_amount,
     COALESCE(SUM(CASE WHEN ${heldCond} THEN 1 ELSE 0 END),0) held_count,COALESCE(SUM(CASE WHEN ${heldCond} THEN p.amount ELSE 0 END),0) held_amount
     ${from} ${where}`,params);
-  return {history,historySummary:historySummary||{},historyLimit:RECON_HISTORY_LIMIT,dateFrom,dateTo,status,q,site,cluster};
+  const [collectorSummary]=await db.execute(`SELECT COALESCE(u.name,'Tidak diketahui') collector_name,COUNT(*) transactions,
+    COALESCE(SUM(CASE WHEN ${settledCond} THEN p.amount ELSE 0 END),0) settled_amount,COALESCE(SUM(CASE WHEN ${settledCond} THEN 1 ELSE 0 END),0) settled_count,
+    COALESCE(SUM(CASE WHEN ${heldCond} THEN p.amount ELSE 0 END),0) held_amount,COALESCE(SUM(CASE WHEN ${heldCond} THEN 1 ELSE 0 END),0) held_count
+    ${from} ${where} GROUP BY COALESCE(u.id,0),u.name ORDER BY settled_amount+held_amount DESC`,params);
+  const [settlements]=await db.execute(`SELECT cs.id,cs.code,cs.settlement_date,cs.mode,cs.payment_count,cs.total_amount,cs.handed_amount,cs.difference_amount,cs.status,cs.notes,
+      COALESCE(cu.name,'Beberapa collector') collector_name,au.name created_by_name
+    FROM cash_settlements cs LEFT JOIN users cu ON cu.id=cs.collector_user_id LEFT JOIN users au ON au.id=cs.created_by
+    WHERE cs.settlement_date BETWEEN ? AND ? ORDER BY cs.id DESC LIMIT 200`,[dateFrom,dateTo]);
+  return {history,historySummary:historySummary||{},collectorSummary,settlements,historyLimit:RECON_HISTORY_LIMIT,dateFrom,dateTo,status,q,site,cluster};
 }
 const reconStatusLabel=p=>p.settlement_status==='settled'?'Sudah Disetor':'Belum Disetor';
 const reconStatusTitle={all:'Semua status',held:'Belum Disetor',settled:'Sudah Disetor'};
@@ -446,8 +466,10 @@ const reconStatusTitle={all:'Semua status',held:'Belum Disetor',settled:'Sudah D
 router.get('/reconciliation',requireAdmin,async(req,res)=>{
   const tab=req.query.tab==='history'?'history':'held';
   const data=await loadReconciliationData(req,{withLookups:true});
-  const historyData=tab==='history'?await loadReconciliationHistory(req):{history:[],historySummary:{},historyLimit:RECON_HISTORY_LIMIT,dateFrom:'',dateTo:'',status:'all'};
-  res.render('payments/reconciliation',{title:'Rekonsiliasi Pembayaran',...data,...historyData,tab});
+  const historyData=tab==='history'?await loadReconciliationHistory(req):{history:[],historySummary:{},collectorSummary:[],settlements:[],historyLimit:RECON_HISTORY_LIMIT,dateFrom:'',dateTo:'',status:'all'};
+  let justSettled=null;
+  if(Number(req.query.settled)>0){const [[row]]=await db.execute(`SELECT id,code,payment_count,total_amount,handed_amount,difference_amount FROM cash_settlements WHERE id=? LIMIT 1`,[Number(req.query.settled)]);justSettled=row||null;}
+  res.render('payments/reconciliation',{title:'Rekonsiliasi Pembayaran',...data,...historyData,tab,justSettled,canCancelSettlement:isMasterAdminRole(req.session.user.role)});
 });
 
 // v1.26 — "Export Excel" untuk menu Rekonsiliasi: 3 sheet (rincian cash belum disetor, rekap per
@@ -458,8 +480,8 @@ router.get('/reconciliation/export.xlsx',requireAdmin,async(req,res)=>{
     const {history,historySummary,dateFrom,dateTo,status,site:hSite}=await loadReconciliationHistory(req);
     const wb=new ExcelJS.Workbook();wb.creator='INKAMNET Control Center';wb.created=new Date();
     const ws=wb.addWorksheet('Histori Cash');
-    ws.columns=[['status','Status Setoran',16],['customer_name','Pelanggan',28],['customer_code','Customer ID',16],['invoice_number','Faktur',18],['site_code','Site',10],['cluster_name','Cluster',20],['collector_name','Collector',22],['amount','Nominal (Rp)',18],['paid_at','Dibayar Pelanggan',20],['settled_at','Diterima Kas',20],['settled_by_name','Dikonfirmasi Oleh',22]].map(([key,header,width])=>({header,key,width}));
-    history.forEach(p=>ws.addRow({status:reconStatusLabel(p),customer_name:p.customer_name,customer_code:p.customer_code,invoice_number:p.invoice_number,site_code:p.site_code,cluster_name:p.cluster_name||'',collector_name:p.collector_name,amount:Number(p.amount),paid_at:p.paid_at?new Date(p.paid_at):'',settled_at:p.settled_at?new Date(p.settled_at):'',settled_by_name:p.settled_by_name==='-'?'':p.settled_by_name}));
+    ws.columns=[['status','Status Setoran',16],['customer_name','Pelanggan',28],['customer_code','Customer ID',16],['invoice_number','Faktur',18],['site_code','Site',10],['cluster_name','Cluster',20],['collector_name','Collector',22],['amount','Nominal (Rp)',18],['paid_at','Dibayar Pelanggan',20],['settled_at','Diterima Kas',20],['settled_by_name','Dikonfirmasi Oleh',22],['settlement_code','No. Setoran',22]].map(([key,header,width])=>({header,key,width}));
+    history.forEach(p=>ws.addRow({status:reconStatusLabel(p),customer_name:p.customer_name,customer_code:p.customer_code,invoice_number:p.invoice_number,site_code:p.site_code,cluster_name:p.cluster_name||'',collector_name:p.collector_name,amount:Number(p.amount),paid_at:p.paid_at?new Date(p.paid_at):'',settled_at:p.settled_at?new Date(p.settled_at):'',settled_by_name:p.settled_by_name==='-'?'':p.settled_by_name,settlement_code:p.settlement_code||''}));
     styleWorkbook(ws);ws.getColumn('amount').numFmt='#,##0';ws.getColumn('paid_at').numFmt='dd/mm/yyyy hh:mm';ws.getColumn('settled_at').numFmt='dd/mm/yyyy hh:mm';
     if(history.length){const totalRow=ws.addRow({status:'TOTAL',amount:history.reduce((a,p)=>a+Number(p.amount||0),0)});totalRow.font={bold:true};totalRow.getCell('amount').numFmt='#,##0';}
     const ws2=wb.addWorksheet('Ringkasan');
@@ -508,7 +530,7 @@ router.get('/reconciliation/export.pdf',requireAdmin,async(req,res)=>{
   if(req.query.tab==='history'){
     const {history,historySummary,dateFrom,dateTo,status,q:hq,site:hSite,cluster:hCluster}=await loadReconciliationHistory(req);
     const fmt=v=>v?new Date(v).toLocaleString('id-ID',{timeZone:'Asia/Jakarta'}):'-';
-    const rows=history.map(p=>({status:reconStatusLabel(p),customer:`${p.customer_name} (${p.customer_code})`,invoice:p.invoice_number,siteCluster:`${p.site_code}${p.cluster_name?' · '+p.cluster_name:''}`,collector:p.collector_name,amount:rupiah(p.amount),_rawAmount:Number(p.amount||0),paidAt:fmt(p.paid_at),settledAt:p.settled_at?fmt(p.settled_at):'-',settledBy:p.settled_by_name}));
+    const rows=history.map(p=>({status:reconStatusLabel(p),customer:`${p.customer_name} (${p.customer_code})`,invoice:p.invoice_number,siteCluster:`${p.site_code}${p.cluster_name?' · '+p.cluster_name:''}`,collector:p.collector_name,amount:rupiah(p.amount),_rawAmount:Number(p.amount||0),paidAt:fmt(p.paid_at),settledAt:p.settled_at?`${fmt(p.settled_at)}${p.settlement_code?` · ${p.settlement_code}`:''}`:'-',settledBy:p.settled_by_name}));
     const filterLabel=[`Periode bayar ${dateFrom} s.d. ${dateTo}`,reconStatusTitle[status],hq?`Cari: "${hq}"`:'',hSite?`Site: ${hSite}`:'',hCluster?`Cluster ID: ${hCluster}`:''].filter(Boolean).join(' · ');
     return createReportPdf(res,{
       title:'Histori Cash Pelanggan',
@@ -566,55 +588,190 @@ router.get('/reconciliation/export.pdf',requireAdmin,async(req,res)=>{
   });
 });
 
+// v1.28 — Setoran cash kini dicatat per batch di cash_settlements dengan nomor setoran
+// (STR-YYYYMMDD-000123) supaya bisa dicetak sebagai tanda terima dan dibatalkan dengan jejak audit.
+// Semua jalur (satu baris, massal, dan setoran sebagian per collector) memakai fungsi yang sama.
+function settlementCode(id,date){return `STR-${String(date).replace(/-/g,'').slice(0,8)}-${String(id).padStart(6,'0')}`;}
+function cleanMoney(value){const n=Number(String(value??'').replace(/[^\d.,-]/g,'').replace(/\./g,'').replace(',','.'));return Number.isFinite(n)?Math.round(n*100)/100:NaN;}
+async function settleCashPayments(conn,{paymentIds,settlementDate,actorId,mode='selected',collectorId=null,handedAmount=null,notes=null,strict=false}){
+  const [ins]=await conn.execute(`INSERT INTO cash_settlements(code,settlement_date,collector_user_id,mode,handed_amount,notes,created_by) VALUES(?,?,?,?,?,?,?)`,[
+    `TMP-${crypto.randomUUID()}`,settlementDate,collectorId||null,mode,handedAmount,notes?String(notes).slice(0,500):null,actorId
+  ]);
+  const settlementId=ins.insertId;const code=settlementCode(settlementId,settlementDate);
+  const done=[];const skipped=[];
+  for(const id of paymentIds){
+    const [rows]=await conn.execute(`SELECT * FROM payments WHERE id=? FOR UPDATE`,[id]);
+    const p=rows[0];
+    if(strict){
+      if(!p)throw new Error('Pembayaran tidak ditemukan');
+      if(p.method!=='cash')throw new Error('Hanya pembayaran cash yang perlu disetor');
+      if(p.status!=='confirmed')throw new Error('Pembayaran cash belum disetujui Master Admin. Setoran belum boleh masuk Data Kas.');
+      if(p.settlement_status!=='held_by_staff')throw new Error('Pembayaran ini sudah disetor atau tidak sedang dipegang staff.');
+    }
+    if(!p||p.method!=='cash'||p.status!=='confirmed'||p.settlement_status!=='held_by_staff'){skipped.push(p||{id});continue;}
+    await conn.execute(`UPDATE payments SET settlement_status='settled',settlement_id=?,settled_by=?,settled_at=NOW(),booked_at=COALESCE(booked_at,?) WHERE id=?`,[settlementId,actorId,settlementDate,p.id]);
+    await postCashTransaction(conn,{paymentId:p.id,invoiceId:p.invoice_id,amount:p.amount,reference:`${p.reference||`#${p.id}`} · ${code}`,bookDate:settlementDate,categoryName:'Setoran Cash Pelanggan',prefix:'Setoran Cash',actorUserId:actorId});
+    done.push(p);
+  }
+  if(!done.length)throw new Error('Semua setoran terpilih sudah disetor sebelumnya, atau bukan lagi cash yang tertahan di staff.');
+  const total=Math.round(done.reduce((a,p)=>a+Number(p.amount||0),0)*100)/100;
+  const collectors=[...new Set(done.map(p=>Number(p.collector_user_id||p.received_by||0)))];
+  const resolvedCollector=collectorId||(collectors.length===1&&collectors[0]?collectors[0]:null);
+  const difference=handedAmount==null?0:Math.round((Number(handedAmount)-total)*100)/100;
+  await conn.execute(`UPDATE cash_settlements SET code=?,collector_user_id=?,payment_count=?,total_amount=?,difference_amount=? WHERE id=?`,[code,resolvedCollector,done.length,total,difference,settlementId]);
+  return {settlementId,code,done,skipped,total,difference};
+}
+
 router.post('/:id/settle',requireAdmin,async(req,res)=>{
-  const conn=await db.getConnection();
+  const conn=await db.getConnection();let result;
   try{
     await conn.beginTransaction();
-    const [rows]=await conn.execute(`SELECT * FROM payments WHERE id=? FOR UPDATE`,[req.params.id]);
-    const p=rows[0];if(!p)throw new Error('Pembayaran tidak ditemukan');
-    if(p.method!=='cash')throw new Error('Hanya pembayaran cash yang perlu disetor');
-    if(p.status!=='confirmed')throw new Error('Pembayaran cash belum disetujui Master Admin. Setoran belum boleh masuk Data Kas.');
-    if(p.settlement_status!=='held_by_staff')throw new Error('Pembayaran ini sudah disetor atau tidak sedang dipegang staff.');
     const settlementDate=await assertDateOpen(conn,req.body.settlement_date||new Date());
-    await conn.execute(`UPDATE payments SET settlement_status='settled',settled_by=?,settled_at=NOW(),booked_at=COALESCE(booked_at,?) WHERE id=?`,[req.session.user.id,settlementDate,p.id]);
-    await postCashTransaction(conn,{paymentId:p.id,invoiceId:p.invoice_id,amount:p.amount,reference:p.reference,bookDate:settlementDate,categoryName:'Setoran Cash Pelanggan',prefix:'Setoran Cash',actorUserId:req.session.user.id});
+    result=await settleCashPayments(conn,{paymentIds:[Number(req.params.id)],settlementDate,actorId:req.session.user.id,strict:true});
     await conn.commit();
-    await audit({userId:req.session.user.id,action:'settle',entityType:'payment',entityId:p.id,description:'Konfirmasi setoran cash staff ke kas perusahaan',ip:req.ip});
-    req.session.flash={type:'success',message:'Setoran cash dikonfirmasi dan masuk ke kas perusahaan.'};
   }catch(e){await conn.rollback();throw e;}finally{conn.release();}
-  res.redirect('/payments/reconciliation');
+  await audit({userId:req.session.user.id,action:'settle',entityType:'payment',entityId:result.done[0].id,description:`Konfirmasi setoran cash staff ke kas perusahaan · ${result.code}`,ip:req.ip});
+  req.session.flash={type:'success',message:`Setoran cash dikonfirmasi dan masuk ke kas perusahaan (${result.code}).`};
+  res.redirect(`/payments/reconciliation?settled=${result.settlementId}`);
 });
 
-// v1.25.5 (update) — "Konfirmasi Setoran Massal": same idea as Approve Massal on Menu Approval &
-// Transaksi. Loops the EXACT same per-row guard/locking as the single /:id/settle route above (one
-// `SELECT ... FOR UPDATE` transaction per payment), so a batch can never settle something the single-row
-// action would have refused. Rows that are no longer held-by-staff cash (already settled, or turned out
-// not to be cash) are skipped rather than aborting the whole batch.
+// v1.25.5 (update) — "Konfirmasi Setoran Massal". Sejak v1.28 satu batch = satu nomor setoran dalam satu
+// transaksi DB; baris yang sudah tidak tertahan di staff tetap dilewati, bukan menggagalkan batch.
 router.post('/bulk-settle',requireAdmin,async(req,res)=>{
   const returnTo=localReturn(req.body.return_to,'/payments/reconciliation');
   const ids=selectedPaymentIds(req.body);
   if(!ids.length){req.session.flash={type:'warning',message:'Pilih minimal satu setoran terlebih dahulu.'};return res.redirect(returnTo);}
   if(ids.length>200){req.session.flash={type:'danger',message:'Maksimal 200 setoran per konfirmasi massal.'};return res.redirect(returnTo);}
-  const done=[];const skipped=[];
-  for(const id of ids){
-    const conn=await db.getConnection();
-    try{
-      await conn.beginTransaction();
-      const [rows]=await conn.execute(`SELECT * FROM payments WHERE id=? FOR UPDATE`,[id]);
-      const p=rows[0];
-      if(!p||p.method!=='cash'||p.settlement_status!=='held_by_staff'){await conn.rollback();skipped.push(p||{id});continue;}
-      const settlementDate=await assertDateOpen(conn,req.body.settlement_date||new Date());
-      await conn.execute(`UPDATE payments SET settlement_status='settled',settled_by=?,settled_at=NOW(),booked_at=COALESCE(booked_at,?) WHERE id=?`,[req.session.user.id,settlementDate,p.id]);
-      await postCashTransaction(conn,{paymentId:p.id,invoiceId:p.invoice_id,amount:p.amount,reference:p.reference,bookDate:settlementDate,categoryName:'Setoran Cash Pelanggan',prefix:'Setoran Cash',actorUserId:req.session.user.id});
-      await conn.commit();
-      done.push(p);
-    }catch(e){await conn.rollback();skipped.push({id});}finally{conn.release();}
+  const conn=await db.getConnection();let result;
+  try{
+    await conn.beginTransaction();
+    const settlementDate=await assertDateOpen(conn,req.body.settlement_date||new Date());
+    result=await settleCashPayments(conn,{paymentIds:ids,settlementDate,actorId:req.session.user.id});
+    await conn.commit();
+  }catch(e){await conn.rollback();req.session.flash={type:'danger',message:e.message};return res.redirect(returnTo);}finally{conn.release();}
+  const {done,skipped,code}=result;
+  await audit({userId:req.session.user.id,action:'bulk_settle',entityType:'cash_settlement',entityId:result.settlementId,description:`Konfirmasi setoran massal ${code}: ${done.length} pembayaran cash (${done.map(p=>p.reference||`#${p.id}`).slice(0,20).join(', ')}${done.length>20?', ...':''})${skipped.length?` · ${skipped.length} dilewati`:''}`,ip:req.ip});
+  req.session.flash={type:'success',message:`${done.length} setoran cash dikonfirmasi dengan nomor ${code} dan masuk ke kas perusahaan.${skipped.length?` ${skipped.length} dilewati karena sudah disetor sebelumnya.`:''}`};
+  res.redirect(`/payments/reconciliation?settled=${result.settlementId}`);
+});
+
+// v1.28 — Setoran sebagian per collector: admin memasukkan nominal uang yang benar-benar diserahkan,
+// sistem mencocokkan ke transaksi cash tertua (FIFO) yang muat utuh. Transaksi yang tidak muat tetap
+// "Belum Disetor"; kelebihan uang yang tidak cocok ke transaksi mana pun dicatat sebagai selisih lebih.
+router.post('/reconciliation/partial-settle',requireAdmin,async(req,res)=>{
+  const returnTo='/payments/reconciliation';
+  const collectorId=Number(req.body.collector_user_id);
+  const handed=cleanMoney(req.body.handed_amount);
+  if(!Number.isInteger(collectorId)||collectorId<1){req.session.flash={type:'danger',message:'Pilih collector yang menyetor.'};return res.redirect(returnTo);}
+  if(!Number.isFinite(handed)||handed<=0){req.session.flash={type:'danger',message:'Nominal uang yang diserahkan harus lebih dari 0.'};return res.redirect(returnTo);}
+  const conn=await db.getConnection();let result;let remaining=0;let remainingCount=0;
+  try{
+    await conn.beginTransaction();
+    const settlementDate=await assertDateOpen(conn,req.body.settlement_date||new Date());
+    const [candidates]=await conn.execute(`SELECT id,amount FROM payments WHERE method='cash' AND status='confirmed' AND settlement_status='held_by_staff'
+      AND COALESCE(collector_user_id,received_by)=? ORDER BY paid_at,id FOR UPDATE`,[collectorId]);
+    if(!candidates.length)throw new Error('Collector ini tidak sedang memegang cash yang belum disetor.');
+    const picked=[];let sum=0;
+    for(const row of candidates){
+      const amount=Number(row.amount||0);
+      // FIFO ketat: berhenti di transaksi tertua pertama yang tidak muat, supaya urutan setoran tetap jelas.
+      if(sum+amount>handed+0.001)break;
+      picked.push(row.id);sum+=amount;
+    }
+    if(!picked.length)throw new Error(`Nominal ${rupiah(handed)} belum cukup untuk transaksi tertua (${rupiah(candidates[0].amount)}). Transaksi tidak dipecah.`);
+    result=await settleCashPayments(conn,{paymentIds:picked,settlementDate,actorId:req.session.user.id,mode:'partial',collectorId,handedAmount:handed,notes:req.body.notes});
+    const left=candidates.filter(r=>!picked.includes(r.id));
+    remaining=left.reduce((a,r)=>a+Number(r.amount||0),0);remainingCount=left.length;
+    await financialAudit({conn,userId:req.session.user.id,action:'partial_settle',entityType:'cash_settlement',entityId:result.settlementId,before:null,
+      after:{code:result.code,handed,matched:result.total,difference:result.difference,remaining},reason:`Setoran sebagian collector #${collectorId}`,ip:req.ip});
+    await conn.commit();
+  }catch(e){await conn.rollback();req.session.flash={type:'danger',message:`Setoran sebagian gagal: ${e.message}`};return res.redirect(returnTo);}finally{conn.release();}
+  await audit({userId:req.session.user.id,action:'partial_settle',entityType:'cash_settlement',entityId:result.settlementId,description:`Setoran sebagian ${result.code}: diserahkan ${rupiah(handed)}, dicocokkan ${rupiah(result.total)} (${result.done.length} transaksi)${result.difference?`, selisih lebih ${rupiah(result.difference)}`:''}`,ip:req.ip});
+  const parts=[`Setoran ${result.code}: ${result.done.length} transaksi senilai ${rupiah(result.total)} masuk kas.`];
+  if(remainingCount)parts.push(`Sisa ${remainingCount} transaksi (${rupiah(remaining)}) masih di collector.`);
+  if(result.difference>0)parts.push(`Kelebihan ${rupiah(result.difference)} tidak cocok ke transaksi mana pun — tercatat sebagai selisih lebih di tanda terima.`);
+  req.session.flash={type:result.difference>0?'warning':'success',message:parts.join(' ')};
+  res.redirect(`/payments/reconciliation?settled=${result.settlementId}`);
+});
+
+router.post('/reconciliation/settings',requireMasterAdmin,async(req,res)=>{
+  const days=Math.min(60,Math.max(1,Number.parseInt(req.body.cash_aging_alert_days,10)||3));
+  await db.execute(`UPDATE settings SET cash_aging_alert_days=? WHERE id=1`,[days]);
+  await audit({userId:req.session.user.id,action:'update',entityType:'reconciliation_settings',entityId:null,description:`Batas umur cash di tim diubah menjadi ${days} hari`,ip:req.ip});
+  req.session.flash={type:'success',message:`Batas pengingat umur cash diset ${days} hari.`};
+  res.redirect('/payments/reconciliation');
+});
+
+router.get('/settlements/:id/receipt.pdf',requireAdmin,async(req,res)=>{
+  return streamSettlementReceipt(res,req.params.id,{disposition:req.query.download==='1'?'attachment':'inline'});
+});
+
+// v1.28 — Batalkan setoran (Master Admin, wajib alasan). Jurnal "Setoran Cash" di Data Kas dihapus,
+// baris Closing hasil sinkron di-exclude, dan pembayaran kembali ke "Belum Disetor". Ditolak jika
+// tanggal jurnalnya berada di periode Closing yang sudah dikunci.
+async function cancelSettledPayment(conn,paymentId,{reason,actorId,ip}){
+  const [rows]=await conn.execute(`SELECT * FROM payments WHERE id=? FOR UPDATE`,[paymentId]);
+  const p=rows[0];
+  if(!p)throw new Error('Pembayaran tidak ditemukan.');
+  if(p.method!=='cash'||p.settlement_status!=='settled')throw new Error(`Pembayaran ${p.reference||`#${p.id}`} tidak berstatus sudah disetor.`);
+  const [txRows]=await conn.execute(`SELECT id,transaction_code,transaction_date FROM cash_transactions WHERE source_type='payment' AND source_id=? FOR UPDATE`,[p.id]);
+  for(const tx of txRows)await assertDateOpen(conn,tx.transaction_date);
+  if(txRows.length){
+    const txIds=txRows.map(t=>t.id);const marks=txIds.map(()=>'?').join(',');
+    await conn.execute(`UPDATE closing_entries SET excluded_at=NOW(),excluded_by=? WHERE cash_transaction_id IN (${marks}) AND excluded_at IS NULL`,[actorId,...txIds]);
+    await conn.execute(`DELETE FROM cash_transactions WHERE id IN (${marks})`,txIds);
   }
-  if(done.length){
-    await audit({userId:req.session.user.id,action:'bulk_settle',entityType:'payment',entityId:null,description:`Konfirmasi setoran massal ${done.length} pembayaran cash: ${done.map(p=>p.reference||`#${p.id}`).slice(0,20).join(', ')}${done.length>20?', ...':''}${skipped.length?` (${skipped.length} dilewati karena sudah disetor atau bukan lagi cash tertahan di staff)`:''}`,ip:req.ip});
+  await conn.execute(`UPDATE payments SET settlement_status='held_by_staff',settlement_id=NULL,settled_by=NULL,settled_at=NULL WHERE id=?`,[p.id]);
+  await conn.execute(`INSERT INTO cash_settlement_cancellations(settlement_id,payment_id,amount,cash_transaction_code,reason,cancelled_by) VALUES(?,?,?,?,?,?)`,[
+    p.settlement_id||null,p.id,p.amount,txRows.map(t=>t.transaction_code).filter(Boolean).join(', ').slice(0,60)||null,reason,actorId
+  ]);
+  if(p.settlement_id){
+    // MySQL/MariaDB mengevaluasi SET dari kiri ke kanan memakai nilai yang sudah diperbarui, jadi status dan
+    // selisih dihitung dulu dari nilai lama sebelum jumlah/total dikurangi.
+    await conn.execute(`UPDATE cash_settlements SET status=CASE WHEN payment_count<=1 THEN 'cancelled' ELSE status END,
+      difference_amount=CASE WHEN handed_amount IS NULL THEN 0 ELSE handed_amount-GREATEST(total_amount-?,0) END,
+      payment_count=GREATEST(payment_count-1,0),total_amount=GREATEST(total_amount-?,0) WHERE id=?`,[p.amount,p.amount,p.settlement_id]);
   }
-  if(!done.length){req.session.flash={type:'danger',message:'Semua setoran terpilih sudah disetor sebelumnya, atau bukan lagi cash yang tertahan di staff.'};return res.redirect(returnTo);}
-  req.session.flash={type:'success',message:`${done.length} setoran cash dikonfirmasi dan masuk ke kas perusahaan.${skipped.length?` ${skipped.length} dilewati karena sudah disetor sebelumnya.`:''}`};
+  await financialAudit({conn,userId:actorId,action:'cancel_settlement',entityType:'payment',entityId:p.id,
+    before:{settlement_status:'settled',settlement_id:p.settlement_id,settled_at:p.settled_at,cash_transactions:txRows.map(t=>t.transaction_code)},
+    after:{settlement_status:'held_by_staff'},reason,ip});
+  return p;
+}
+function cancelReason(body){return String(body.reason||'').trim().replace(/\s+/g,' ').slice(0,500);}
+
+router.post('/:id/cancel-settlement',requireMasterAdmin,async(req,res)=>{
+  const returnTo=localReturn(req.body.return_to,'/payments/reconciliation?tab=history');
+  const reason=cancelReason(req.body);
+  if(reason.length<5){req.session.flash={type:'danger',message:'Alasan pembatalan setoran wajib diisi minimal 5 karakter.'};return res.redirect(returnTo);}
+  const conn=await db.getConnection();let p;
+  try{
+    await conn.beginTransaction();
+    p=await cancelSettledPayment(conn,Number(req.params.id),{reason,actorId:req.session.user.id,ip:req.ip});
+    await conn.commit();
+  }catch(e){await conn.rollback();req.session.flash={type:'danger',message:`Pembatalan gagal: ${e.message}`};return res.redirect(returnTo);}finally{conn.release();}
+  await audit({userId:req.session.user.id,action:'cancel_settlement',entityType:'payment',entityId:p.id,description:`Batalkan setoran ${p.reference||`#${p.id}`} (${rupiah(p.amount)}) · alasan: ${reason}`,ip:req.ip});
+  req.session.flash={type:'warning',message:`Setoran ${p.reference||`#${p.id}`} dibatalkan. Jurnal Data Kas dihapus dan pembayaran kembali ke Belum Disetor.`};
+  res.redirect(returnTo);
+});
+
+router.post('/settlements/:id/cancel',requireMasterAdmin,async(req,res)=>{
+  const returnTo=localReturn(req.body.return_to,'/payments/reconciliation?tab=history');
+  const reason=cancelReason(req.body);
+  if(reason.length<5){req.session.flash={type:'danger',message:'Alasan pembatalan setoran wajib diisi minimal 5 karakter.'};return res.redirect(returnTo);}
+  const conn=await db.getConnection();let settlement;let count=0;let total=0;
+  try{
+    await conn.beginTransaction();
+    const [[row]]=await conn.execute(`SELECT * FROM cash_settlements WHERE id=? FOR UPDATE`,[Number(req.params.id)]);
+    if(!row)throw new Error('Setoran tidak ditemukan.');
+    if(row.status==='cancelled')throw new Error(`Setoran ${row.code} sudah dibatalkan.`);
+    settlement=row;
+    const [paymentRows]=await conn.execute(`SELECT id FROM payments WHERE settlement_id=? ORDER BY id`,[row.id]);
+    for(const pr of paymentRows){const p=await cancelSettledPayment(conn,pr.id,{reason,actorId:req.session.user.id,ip:req.ip});count++;total+=Number(p.amount||0);}
+    await conn.execute(`UPDATE cash_settlements SET status='cancelled' WHERE id=?`,[row.id]);
+    await conn.commit();
+  }catch(e){await conn.rollback();req.session.flash={type:'danger',message:`Pembatalan gagal: ${e.message}`};return res.redirect(returnTo);}finally{conn.release();}
+  await audit({userId:req.session.user.id,action:'cancel_settlement',entityType:'cash_settlement',entityId:settlement.id,description:`Batalkan setoran ${settlement.code}: ${count} transaksi (${rupiah(total)}) · alasan: ${reason}`,ip:req.ip});
+  req.session.flash={type:'warning',message:`Setoran ${settlement.code} dibatalkan: ${count} transaksi kembali ke Belum Disetor dan jurnal Data Kas terkait dihapus.`};
   res.redirect(returnTo);
 });
 

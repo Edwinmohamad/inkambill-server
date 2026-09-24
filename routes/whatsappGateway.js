@@ -6,6 +6,7 @@ const {
   startGateway, logoutGateway, getGatewayStatus, reconcileGatewayStatus, enqueueWaMessage,
   getQueueStats, getRecentMessages, DEFAULT_REMINDER_TEMPLATE, renderReminderTemplate,
 } = require('../services/whatsappGatewayService');
+const { DEFAULT_RECEIPT_TEMPLATE } = require('../services/cashSettlementService');
 const router = express.Router();
 
 // v1.25 audit: /send and /blast used to be reachable by ANY authenticated user (even one whose only
@@ -24,7 +25,8 @@ function requireWaSendPermission(req, res, next) {
 // personal WhatsApp number to the app.
 router.get('/', requirePermission('settings'), async (req, res) => {
   const [settingsResult, gateway, stats, messages] = await Promise.all([
-    db.query(`SELECT wa_auto_reminder_enabled,wa_auto_reminder_hour,wa_auto_reminder_offsets,wa_auto_reminder_template FROM settings WHERE id=1 LIMIT 1`),
+    db.query(`SELECT wa_auto_reminder_enabled,wa_auto_reminder_hour,wa_auto_reminder_offsets,wa_auto_reminder_template,
+      wa_payment_receipt_enabled,wa_payment_receipt_methods,wa_payment_receipt_template FROM settings WHERE id=1 LIMIT 1`),
     reconcileGatewayStatus(),
     getQueueStats(),
     getRecentMessages(50),
@@ -42,7 +44,23 @@ router.get('/', requirePermission('settings'), async (req, res) => {
       template: settingsRow?.wa_auto_reminder_template || DEFAULT_REMINDER_TEMPLATE,
     },
     defaultReminderTemplate: DEFAULT_REMINDER_TEMPLATE,
+    receiptSettings: {
+      enabled: !!settingsRow?.wa_payment_receipt_enabled,
+      methods: settingsRow?.wa_payment_receipt_methods === 'all' ? 'all' : 'cash',
+      template: settingsRow?.wa_payment_receipt_template || DEFAULT_RECEIPT_TEMPLATE,
+    },
   });
+});
+
+// v1.28 — Tanda terima WhatsApp otomatis saat pembayaran disetujui Master Admin.
+router.post('/receipt-settings', requireMasterAdmin, async (req, res) => {
+  const b = req.body;
+  const methods = b.methods === 'all' ? 'all' : 'cash';
+  const template = String(b.template || '').trim().slice(0, 1500) || null;
+  await db.execute(`UPDATE settings SET wa_payment_receipt_enabled=?,wa_payment_receipt_methods=?,wa_payment_receipt_template=? WHERE id=1`, [b.enabled ? 1 : 0, methods, template]);
+  await audit({ userId: req.session.user.id, action: 'update', entityType: 'wa_gateway_settings', entityId: null, description: `Update tanda terima WA pembayaran: enabled=${b.enabled ? 1 : 0}, metode=${methods}`, ip: req.ip });
+  req.session.flash = { type: 'success', message: 'Pengaturan tanda terima WA pembayaran disimpan.' };
+  res.redirect('/wa-gateway');
 });
 
 // Polled every few seconds by the WA Gateway page while a QR is pending / connection is settling, so

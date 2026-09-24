@@ -31,8 +31,9 @@ const { pingAllOlts } = require('./services/oltService');
 const { syncDevices: syncAcsDevices } = require('./services/acsService');
 const { scanLowStock } = require('./services/inventoryService');
 const { deliverMobilePushes } = require('./services/mobilePushService');
+const { runCashAgingAlert } = require('./services/cashSettlementService');
 const { purgeOldLogs } = require('./services/logRetentionService');
-const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema } = require('./services/schemaService');
+const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema } = require('./services/schemaService');
 const { requireN8nToken } = require('./middleware/n8n');
 const { initGatewayOnBoot, reconcileGatewayStatus, processQueue, runAutoReminderSweep } = require('./services/whatsappGatewayService');
 const { requireWahaWebhookToken } = require('./middleware/waha');
@@ -227,6 +228,8 @@ app.get('/healthz', async (req, res) => {
 });
 
 app.use(require('./routes/auth'));
+// v1.28 — "Cash Saya" untuk setiap user yang login (hanya data miliknya sendiri).
+app.use('/my-cash', requireAuth, require('./routes/myCash'));
 app.use('/', requireAuth, requirePermission('dashboard'), require('./routes/dashboard'));
 app.use('/analytics', requireAuth, requirePermission('finance'), require('./routes/analytics'));
 app.use('/customers', requireAuth, requirePermission('customers'), require('./routes/customers'));
@@ -312,6 +315,7 @@ async function bootstrap() {
   await ensureV50Schema();
   await ensureV51Schema();
   await ensureV52Schema();
+  await ensureV53Schema();
   const [rows] = await db.query('SELECT COUNT(*) total FROM users');
   if (Number(rows[0].total) === 0) {
     const username = process.env.DEFAULT_ADMIN_USERNAME || 'admin';
@@ -353,6 +357,12 @@ async function bootstrap() {
     if (!process.env.GENIEACS_NBI_URL) return;
     try { const result=await syncAcsDevices();if(result.status==='success')console.log('ACS sync:',result.devices,'ONT,',result.linked,'mapping baru'); }
     catch (err) { console.error('ACS sync gagal:',err.message); }
+  }, { timezone: 'Asia/Jakarta' });
+
+  // v1.28 — pengingat umur cash di tim: dicek tiap 30 menit, dikirim maksimal sekali per hari (>= 08:00 WIB).
+  cron.schedule('*/30 * * * *', async () => {
+    try { const result = await runCashAgingAlert(); if (result.ran && result.notified) console.log('Cash aging alert:', result); }
+    catch (err) { console.error('Cash aging alert gagal:', err.message); }
   }, { timezone: 'Asia/Jakarta' });
 
   cron.schedule('* * * * *', async () => {

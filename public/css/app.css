@@ -2112,3 +2112,12 @@ html[data-theme="light"] .sidebar{background:var(--topbar);border-right-color:va
 .recon-tabs a{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .recon-tabs .status-badge{padding:1px 7px}
 .metric-card-link.active{outline:2px solid rgba(var(--brand-rgb),.55);outline-offset:-2px}
+.cash-age{width:max-content;max-width:100%;display:inline-flex;align-items:center;padding:1px 8px;border-radius:999px;font-weight:700;font-size:var(--fs-10,.6rem);background:rgba(34,197,94,.12);color:#15803d;white-space:nowrap}
+.cash-age.warn{background:rgba(245,158,11,.15);color:#b45309}
+.cash-age.late{background:rgba(239,68,68,.14);color:#b91c1c}
+.recon-progress{width:110px;height:6px;border-radius:6px;background:rgba(127,127,127,.18);overflow:hidden}
+.recon-progress span{display:block;height:100%;background:linear-gradient(90deg,#22c55e,#16a34a)}
+.recon-settled-banner{align-items:center}
+.recon-settled-banner .btn-tech{margin-left:auto}
+.recon-aging-setting{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:var(--fs-11,.62rem);color:var(--muted)}
+.recon-aging-setting input{width:72px}
