@@ -13,6 +13,9 @@ const { isoDate, assertDateOpen, resolveBookDate, financialAudit }=require('../s
 const { requireAdmin, requireMasterAdmin, isAdminRole, isMasterAdminRole }=require('../middleware/auth');
 const { createReportPdf, rupiah, COLORS }=require('../services/reportPdf');
 const { cashAgingDays, queuePaymentReceipts, streamSettlementReceipt }=require('../services/cashSettlementService');
+const { getScanSettings, queueProofScan, approvalGate, saveCustomerPayerAlias, loadScansForPayments, reevaluateCustomerPending, SCANNABLE_METHODS }=require('../services/proofScanService');
+const { encrypt }=require('../services/cryptoService');
+const { DEFAULT_MODEL: PROOF_SCAN_DEFAULT_MODEL }=require('../services/proofAiService');
 const router=express.Router();
 
 // v1.26 — shared header styling for reconciliation export sheets (same convention as
@@ -121,17 +124,41 @@ router.get('/',async(req,res)=>{
   const month=Number(req.query.month)>=1&&Number(req.query.month)<=12?Number(req.query.month):'';
   const year=Number(req.query.year)>=2020&&Number(req.query.year)<=2100?Number(req.query.year):'';
   const approval=['pending','confirmed','failed'].includes(String(req.query.approval||''))?String(req.query.approval):'';
-  let sql=`SELECT p.*,i.invoice_number,i.due_date,c.customer_code,c.name customer_name,s.code site_code,cl.name cluster_name,u.name collector_name,v.name verifier_name,pu.name proof_uploader_name
+  // v1.29 — filter metode (cash/transfer/QRIS) dan hasil scan bukti transfer.
+  const method=['cash','transfer','qris'].includes(String(req.query.method||''))?String(req.query.method):'';
+  const scanFilter=['ok','warning','mismatch','unreadable','processing','none'].includes(String(req.query.scan||''))?String(req.query.scan):'';
+  let sql=`SELECT p.*,i.invoice_number,i.due_date,c.customer_code,c.name customer_name,s.code site_code,cl.name cluster_name,u.name collector_name,v.name verifier_name,pu.name proof_uploader_name,ps.overall_status scan_overall,ps.status scan_state
     FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id
-    LEFT JOIN users u ON u.id=COALESCE(p.collector_user_id,p.received_by) LEFT JOIN users v ON v.id=p.verified_by LEFT JOIN users pu ON pu.id=p.proof_uploaded_by WHERE 1=1`;
+    LEFT JOIN users u ON u.id=COALESCE(p.collector_user_id,p.received_by) LEFT JOIN users v ON v.id=p.verified_by LEFT JOIN users pu ON pu.id=p.proof_uploaded_by
+    LEFT JOIN payment_proof_scans ps ON ps.payment_id=p.id WHERE 1=1`;
   const params=[];
   if(site){sql+=` AND s.code=?`;params.push(site);}
   if(cluster){sql+=` AND c.cluster_id=?`;params.push(Number(cluster));}
   if(month&&year){sql+=` AND MONTH(p.paid_at)=? AND YEAR(p.paid_at)=?`;params.push(month,year);}
   if(approval){sql+=` AND p.status=?`;params.push(approval);}
+  if(method){sql+=` AND p.method=?`;params.push(method);}
+  if(scanFilter==='none')sql+=` AND p.method IN ('transfer','qris') AND ps.id IS NULL`;
+  else if(scanFilter==='processing')sql+=` AND p.method IN ('transfer','qris') AND ps.id IS NOT NULL AND (ps.status<>'done' OR ps.overall_status='processing')`;
+  else if(scanFilter){sql+=` AND p.method IN ('transfer','qris') AND ps.status='done' AND ps.overall_status=?`;params.push(scanFilter);}
   if(q){const like=`%${q}%`;sql+=` AND (c.name LIKE ? OR c.customer_code LIKE ? OR i.invoice_number LIKE ? OR p.reference LIKE ? OR s.code LIKE ? OR cl.name LIKE ?)`;params.push(like,like,like,like,like,like);}
   sql+=approval==='pending'?` ORDER BY p.id ASC`:` ORDER BY p.id DESC`;
   const pageResult=await paginate(db,sql,params,req,50);const payments=pageResult.rows;res.locals.pagination=pageResult.pagination;
+  const scanMap=await loadScansForPayments(payments.filter(p=>SCANNABLE_METHODS.has(p.method)&&p.proof_path).map(p=>p.id));
+  for(const p of payments)p.scan=SCANNABLE_METHODS.has(p.method)&&p.proof_path?(scanMap.get(Number(p.id))||null):null;
+  const countWhere=[];const countParams=[];
+  if(site){countWhere.push('s.code=?');countParams.push(site);}if(cluster){countWhere.push('c.cluster_id=?');countParams.push(Number(cluster));}
+  if(month&&year){countWhere.push('MONTH(p.paid_at)=? AND YEAR(p.paid_at)=?');countParams.push(month,year);}
+  const countSql=countWhere.length?` AND ${countWhere.join(' AND ')}`:'';
+  const [methodRows]=await db.execute(`SELECT p.method,COUNT(*) total,SUM(p.status='pending') pending FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id WHERE 1=1${countSql} GROUP BY p.method`,countParams);
+  const methodCounts={cash:{total:0,pending:0},transfer:{total:0,pending:0},qris:{total:0,pending:0}};
+  for(const r of methodRows)if(methodCounts[r.method])methodCounts[r.method]={total:Number(r.total||0),pending:Number(r.pending||0)};
+  const [scanRows]=await db.execute(`SELECT CASE WHEN ps.id IS NULL THEN 'none' WHEN ps.status<>'done' THEN 'processing' ELSE ps.overall_status END scan_key,COUNT(*) total
+    FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id LEFT JOIN payment_proof_scans ps ON ps.payment_id=p.id
+    WHERE p.status='pending' AND p.method IN ('transfer','qris') AND p.proof_path IS NOT NULL AND p.proof_path<>''${countSql} GROUP BY scan_key`,countParams);
+  const scanCounts={ok:0,warning:0,mismatch:0,unreadable:0,processing:0,none:0};
+  for(const r of scanRows)if(r.scan_key in scanCounts)scanCounts[r.scan_key]=Number(r.total||0);
+  const scanConfig=await getScanSettings();
+  const proofScan={enabled:scanConfig.enabled,hasKey:!!scanConfig.apiKey,keySource:scanConfig.apiKeySource,model:scanConfig.model,defaultModel:PROOF_SCAN_DEFAULT_MODEL,tolerance:scanConfig.tolerance,maxDateDiffDays:scanConfig.maxDateDiffDays,recipientNames:scanConfig.recipientNames.join(', ')};
   const openInvoices=await openInvoiceOptions(site,cluster);
   const staff=await staffOptions();
   const banks=await bankOptions();
@@ -154,7 +181,54 @@ router.get('/',async(req,res)=>{
   // otherwise an Admin can submit Data Kas successfully and it appears to vanish. Approve/Reject
   // remain protected by requireMasterAdmin on the mutation routes.
   const [cashApprovals]=await db.query(`SELECT ct.id,ct.transaction_code,ct.transaction_date,ct.name,ct.amount,ct.notes,ct.proof_path,ct.proof_mime,COALESCE(ct.approval_status,'PENDING_APPROVAL') approval_status,cc.name category_name,cc.type category_type,s.code site_code,u.name creator_name FROM cash_transactions ct JOIN cash_categories cc ON cc.id=ct.category_id LEFT JOIN sites s ON s.id=ct.site_id LEFT JOIN users u ON u.id=ct.created_by WHERE ct.approval_status='PENDING_APPROVAL' OR (ct.approval_status IS NULL AND COALESCE(ct.source_type,'manual')='manual') ORDER BY ct.transaction_date DESC,ct.id DESC LIMIT 250`);
-  res.render('payments/index',{title:'Approval & Transaksi',payments,openInvoices,staff,banks,sites,clusters,cashApprovals,summary:summary||{},missingProof:missingProof||{total:0,amount:0},preselectedInvoiceId,filters:{q,site,cluster,month,year,approval},summaryMonth,summaryYear});
+  res.render('payments/index',{title:'Approval & Transaksi',payments,openInvoices,staff,banks,sites,clusters,cashApprovals,summary:summary||{},missingProof:missingProof||{total:0,amount:0},preselectedInvoiceId,filters:{q,site,cluster,month,year,approval,method,scan:scanFilter},methodCounts,scanCounts,proofScan,summaryMonth,summaryYear});
+});
+
+// v1.29 — Scan bukti transfer: pengaturan, status polling, scan ulang, dan pengirim dikenal.
+router.post('/proof-scan/settings',requireMasterAdmin,async(req,res)=>{
+  const b=req.body;
+  const enabled=b.proof_scan_enabled==='1'?1:0;
+  const model=String(b.proof_scan_model||'').trim().replace(/[^A-Za-z0-9._:@\/-]/g,'').slice(0,80)||null;
+  const tolerance=Math.min(1000000,Math.max(0,Number.parseInt(b.proof_scan_amount_tolerance,10)||0));
+  const maxDiff=Math.min(60,Math.max(1,Number.parseInt(b.proof_scan_max_date_diff_days,10)||3));
+  const names=String(b.proof_scan_recipient_names||'').split(/[,\n;]/).map(x=>x.trim()).filter(Boolean).join(', ').slice(0,500)||null;
+  await db.execute(`UPDATE settings SET proof_scan_enabled=?,proof_scan_model=?,proof_scan_amount_tolerance=?,proof_scan_max_date_diff_days=?,proof_scan_recipient_names=? WHERE id=1`,[enabled,model,tolerance,maxDiff,names]);
+  const newKey=String(b.proof_scan_api_key||'').trim();
+  if(b.proof_scan_clear_key==='1')await db.execute(`UPDATE settings SET proof_scan_api_key_enc=NULL WHERE id=1`);
+  else if(newKey){
+    if(newKey.length<20||/\s/.test(newKey)){req.session.flash={type:'danger',message:'API key tidak valid.'};return res.redirect('/payments');}
+    await db.execute(`UPDATE settings SET proof_scan_api_key_enc=? WHERE id=1`,[encrypt(newKey)]);
+  }
+  await audit({userId:req.session.user.id,action:'update_settings',entityType:'proof_scan',entityId:null,description:`Pengaturan scan bukti: ${enabled?'aktif':'nonaktif'} · model ${model||'default'} · toleransi Rp${tolerance} · selisih tanggal ${maxDiff} hari${newKey?' · API key diganti':''}${b.proof_scan_clear_key==='1'?' · API key dihapus':''}`,ip:req.ip});
+  req.session.flash={type:'success',message:'Pengaturan scan bukti transfer tersimpan.'};
+  res.redirect(localReturn(req.body.return_to,'/payments'));
+});
+
+router.get('/proof-scan/status',async(req,res)=>{
+  const ids=String(req.query.ids||'').split(',').map(Number).filter(n=>Number.isInteger(n)&&n>0).slice(0,100);
+  const map=await loadScansForPayments(ids);
+  res.set('Cache-Control','no-store');
+  res.json({ok:true,items:ids.map(id=>({id,state:map.get(id)?.state||null,overall:map.get(id)?.overall||null}))});
+});
+
+router.post('/:id/rescan-proof',requireAdmin,async(req,res)=>{
+  const [rows]=await db.execute(`SELECT id,method,proof_path FROM payments WHERE id=? LIMIT 1`,[req.params.id]);
+  const p=rows[0];
+  if(!p||!p.proof_path||!SCANNABLE_METHODS.has(p.method))req.session.flash={type:'warning',message:'Hanya bukti transfer/QRIS yang dapat dibaca ulang.'};
+  else{await queueProofScan(p.id);await audit({userId:req.session.user.id,action:'rescan_proof',entityType:'payment',entityId:p.id,description:'Scan ulang bukti pembayaran',ip:req.ip});req.session.flash={type:'success',message:'Bukti sedang dibaca ulang. Hasil muncul dalam beberapa detik.'};}
+  res.redirect(localReturn(req.body.return_to,'/payments'));
+});
+
+router.post('/:id/payer-alias',requireAdmin,async(req,res)=>{
+  const [rows]=await db.execute(`SELECT ps.sender_name,i.customer_id,c.name customer_name FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN payment_proof_scans ps ON ps.payment_id=p.id WHERE p.id=? LIMIT 1`,[req.params.id]);
+  const r=rows[0];
+  if(!r?.sender_name)req.session.flash={type:'warning',message:'Nama pengirim belum terbaca pada bukti ini.'};
+  else{
+    const saved=await saveCustomerPayerAlias(db,{customerId:r.customer_id,payerName:r.sender_name,userId:req.session.user.id});
+    if(saved){await reevaluateCustomerPending(r.customer_id);await audit({userId:req.session.user.id,action:'create',entityType:'customer_payer_alias',entityId:r.customer_id,description:`Pengirim dikenal "${r.sender_name}" untuk ${r.customer_name}`,ip:req.ip});}
+    req.session.flash={type:saved?'success':'warning',message:saved?`"${r.sender_name}" disimpan sebagai pengirim dikenal untuk ${r.customer_name}.`:'Nama pengirim terlalu pendek untuk disimpan.'};
+  }
+  res.redirect(localReturn(req.body.return_to,'/payments'));
 });
 
 router.post('/',requireAdmin,async(req,res)=>{
@@ -202,6 +276,7 @@ router.post('/',requireAdmin,async(req,res)=>{
       await refreshInvoiceStatus(conn,invoiceId);
     }
     await conn.commit();
+    if(req.file&&SCANNABLE_METHODS.has(normalizedMethod)){for(const [index,c] of created.entries())await queueProofScan(c.paymentId,{kick:index===created.length-1});}
     await audit({userId:req.session.user.id,action:'create',entityType:'payment_batch',entityId:created[0]?.paymentId||null,description:`Pembayaran ${normalizedMethod} ${created.length} faktur · total Rp${created.reduce((a,x)=>a+x.amount,0)}${req.file?' · bukti terupload':' · tanpa bukti'}`,ip:req.ip});
     const total=created.reduce((a,x)=>a+x.amount,0);
     req.session.flash={type:'success',message:`${created.length} pembayaran berhasil diajukan dengan total Rp${total.toLocaleString('id-ID')}${req.file?' beserta bukti':' tanpa bukti'}. Menunggu approval Master Admin sebelum tagihan dinyatakan lunas.`};
@@ -273,13 +348,14 @@ router.post('/:id/proof',async(req,res)=>{
     ]);
     await removeProofFile(payment.proof_path);
     await audit({userId:req.session.user.id,action:'upload_proof',entityType:'payment',entityId:payment.id,description:'Upload/ganti bukti pembayaran',ip:req.ip});
-    req.session.flash={type:'success',message:'Bukti pembayaran berhasil diupload.'};
+    const scanQueued=SCANNABLE_METHODS.has(payment.method)?await queueProofScan(payment.id):false;
+    req.session.flash={type:'success',message:`Bukti pembayaran berhasil diupload.${scanQueued?' Sistem sedang membaca bukti (nominal, penerima, pengirim) — hasilnya muncul di kolom bukti dalam beberapa detik.':''}`};
   }catch(e){if(savedProof)await removeProofFile(savedProof.filename);throw e;}
   res.redirect(localReturn(req.body.return_to,'/payments'));
 });
 
 router.post('/:id/verify',requireMasterAdmin,async(req,res)=>{
-  const conn=await db.getConnection();
+  const conn=await db.getConnection();let aliasSaved=null;
   try{
     await conn.beginTransaction();
     const [rows]=await conn.execute(`SELECT * FROM payments WHERE id=? FOR UPDATE`,[req.params.id]);
@@ -292,11 +368,18 @@ router.post('/:id/verify',requireMasterAdmin,async(req,res)=>{
       WHERE i.id=? AND c.customer_status='active' AND c.archived_at IS NULL FOR UPDATE`,[p.invoice_id]);
     if(!invoiceRows.length)throw new Error('Faktur pembayaran tidak ditemukan.');
     if(Number(p.amount)>Number(invoiceRows[0].outstanding))throw new Error('Nominal transfer melebihi sisa tagihan saat ini. Periksa pembayaran lain sebelum verifikasi.');
+    // v1.29 — hasil scan bukti bermasalah (nominal/penerima/pengirim/duplikat) wajib disertai alasan.
+    const scanGate=await approvalGate(conn,p,{reason:req.body.scan_override_reason,actorUserId:req.session.user.id});
+    if(req.body.save_payer_alias==='1'&&SCANNABLE_METHODS.has(p.method)){
+      const [aliasRows]=await conn.execute(`SELECT ps.sender_name,i.customer_id FROM payment_proof_scans ps JOIN invoices i ON i.id=? WHERE ps.payment_id=? LIMIT 1`,[p.invoice_id,p.id]);
+      if(aliasRows[0]?.sender_name)aliasSaved=await saveCustomerPayerAlias(conn,{customerId:aliasRows[0].customer_id,payerName:aliasRows[0].sender_name,userId:req.session.user.id})?aliasRows[0]:null;
+    }
     await conn.execute(`UPDATE payments SET status='confirmed',settlement_status=?,booked_at=?,booked_date_mode=?,verified_by=?,verified_at=NOW() WHERE id=?`,[p.method==='cash'?'held_by_staff':'not_applicable',booking.date,booking.mode,req.session.user.id,p.id]);
     await refreshInvoiceStatus(conn,p.invoice_id);
     if(p.method!=='cash')await postCashTransaction(conn,{paymentId:p.id,invoiceId:p.invoice_id,amount:p.amount,reference:p.reference,bookDate:booking.date,actorUserId:req.session.user.id});
-    await financialAudit({conn,userId:req.session.user.id,action:'approve',entityType:'payment',entityId:p.id,before:p,after:{status:'confirmed',booked_at:booking.date,booked_date_mode:booking.mode},reason:`Approval pembayaran (${booking.mode})`,ip:req.ip});
+    await financialAudit({conn,userId:req.session.user.id,action:'approve',entityType:'payment',entityId:p.id,before:p,after:{status:'confirmed',booked_at:booking.date,booked_date_mode:booking.mode,proof_scan:scanGate.status||null},reason:`Approval pembayaran (${booking.mode})${scanGate.overridden?` · hasil scan bukti ${scanGate.status}, alasan: ${scanGate.reason}`:''}`,ip:req.ip});
     await conn.commit();
+    if(aliasSaved)reevaluateCustomerPending(aliasSaved.customer_id).catch(err=>console.error('Re-evaluasi pengirim dikenal gagal:',err.message));
     await audit({userId:req.session.user.id,action:'approve',entityType:'payment',entityId:p.id,description:`Approval Master Admin ${p.proof_path?'dengan bukti':'tanpa bukti'} untuk pembayaran ${p.reference||p.id}`,ip:req.ip});
     await maybeAutoUnisolate(p.invoice_id);
     await queuePaymentReceipts([p.id],req.session.user.id);
@@ -316,7 +399,7 @@ router.post('/bulk-verify',requireMasterAdmin,async(req,res)=>{
   const ids=selectedPaymentIds(req.body);
   if(!ids.length){req.session.flash={type:'warning',message:'Pilih minimal satu pembayaran terlebih dahulu.'};return res.redirect(returnTo);}
   if(ids.length>200){req.session.flash={type:'danger',message:'Maksimal 200 pembayaran per approval massal.'};return res.redirect(returnTo);}
-  const done=[];const skipped=[];
+  const done=[];const skipped=[];let scanSkipped=0;
   for(const id of ids){
     const conn=await db.getConnection();
     try{
@@ -325,6 +408,8 @@ router.post('/bulk-verify',requireMasterAdmin,async(req,res)=>{
       const p=rows[0];
       if(!p||p.status!=='pending'){await conn.rollback();continue;}
       if(['transfer','qris'].includes(p.method)&&!p.proof_path){await conn.rollback();skipped.push(p);continue;}
+      // v1.29 — bukti yang hasil scan-nya "perlu dicek"/"tidak cocok" wajib di-approve satu per satu dengan alasan.
+      if(SCANNABLE_METHODS.has(p.method)){const [scanRows]=await conn.execute(`SELECT overall_status FROM payment_proof_scans WHERE payment_id=? AND status='done' LIMIT 1`,[p.id]);if(['warning','mismatch'].includes(scanRows[0]?.overall_status)){await conn.rollback();skipped.push(p);scanSkipped++;continue;}}
       const booking=await resolveBookDate(conn,{mode:req.body.book_date_mode,paidAt:p.paid_at,manualDate:req.body.manual_book_date});
       const [invoiceRows]=await conn.execute(`SELECT i.outstanding,i.status
         FROM invoices i JOIN customers c ON c.id=i.customer_id
@@ -343,8 +428,9 @@ router.post('/bulk-verify',requireMasterAdmin,async(req,res)=>{
     await queuePaymentReceipts(done.map(p=>p.id),req.session.user.id);
     await audit({userId:req.session.user.id,action:'bulk_approve',entityType:'payment',entityId:null,description:`Approval massal ${done.length} pembayaran: ${done.map(p=>p.reference||`#${p.id}`).slice(0,20).join(', ')}${done.length>20?', ...':''}${skipped.length?` (${skipped.length} dilewati karena sudah tidak menunggu / nominal melebihi sisa tagihan terkini)`:''}`,ip:req.ip});
   }
-  if(!done.length){req.session.flash={type:'danger',message:'Semua pembayaran terpilih sudah tidak berstatus menunggu, atau nominalnya melebihi sisa tagihan saat ini.'};return res.redirect(returnTo);}
-  req.session.flash={type:'success',message:`${done.length} pembayaran disetujui. Tagihan dan jurnal kas terkait sudah diperbarui.${skipped.length?` ${skipped.length} pembayaran dilewati karena sudah tidak menunggu approval atau nominalnya melebihi sisa tagihan saat ini.`:''}`};
+  const scanNote=scanSkipped?` ${scanSkipped} di antaranya dilewati karena hasil scan bukti perlu dicek / tidak cocok — approve satu per satu dengan alasan.`:'';
+  if(!done.length){req.session.flash={type:'danger',message:`Tidak ada pembayaran yang disetujui. Pembayaran terpilih sudah tidak menunggu, nominalnya melebihi sisa tagihan saat ini, atau hasil scan buktinya bermasalah.${scanNote}`};return res.redirect(returnTo);}
+  req.session.flash={type:'success',message:`${done.length} pembayaran disetujui. Tagihan dan jurnal kas terkait sudah diperbarui.${skipped.length?` ${skipped.length} pembayaran dilewati (sudah tidak menunggu approval, nominal melebihi sisa tagihan, atau tanpa bukti).${scanNote}`:''}`};
   res.redirect(returnTo);
 });
 

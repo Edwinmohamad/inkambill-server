@@ -113,14 +113,15 @@ function drawLocationShareCards(doc,recipientName,blocks,title,subtitle){
   // internal 65% dianggap 100% -> bagian penerima) di dalam panel Bagian.
   const pctText=(v)=>`${String(v).replace('.',',')}%`;
   const BD_ROW_H=11.5;
-  function breakdownCaption(bd){
-    const split=(bd.internalSplit||[]).map(p=>`${safe(p.name)} ${pctText(p.percent)}`).join(' · ');
-    return `Bagian INKAMNET ${pctText(bd.poolPercent)} dihitung ulang sebagai 100% internal, lalu dibagi: ${split}. Setara ${pctText(bd.blendedPercent)} dari laba bersih.`;
+  // v3.3.1 — caption hanya menyebut bagian penerima PDF ini sendiri (tidak
+  // menampilkan persen penerima internal lain).
+  function breakdownCaption(bd,name){
+    return `Bagian INKAMNET ${pctText(bd.poolPercent)} dihitung ulang sebagai 100% internal. Bagian ${safe(name)} ${pctText(bd.internalPercent)} dari internal, setara ${pctText(bd.blendedPercent)} dari laba bersih.`;
   }
   function breakdownH(bd,innerW){
     if(!bd)return 0;
     doc.font('Helvetica-Oblique').fontSize(6.2);
-    const capH=doc.heightOfString(breakdownCaption(bd),{width:innerW,lineGap:.8});
+    const capH=doc.heightOfString(breakdownCaption(bd,recipientName),{width:innerW,lineGap:.8});
     return 4+BD_ROW_H*3+4+capH+10;
   }
   const shareInnerW=cw-32-24;
@@ -242,7 +243,7 @@ function drawLocationShareCards(doc,recipientName,blocks,title,subtitle){
         by+=4;
         bdRow(`${safe(bd.poolName)} · ${pctText(bd.poolPercent)} = 100%`,rupiah(bd.poolAmount),{bold:true});
         by+=2;
-        const cap=breakdownCaption(bd);
+        const cap=breakdownCaption(bd,recipientName);
         doc.font('Helvetica-Oblique').fontSize(6.2);
         const capH=doc.heightOfString(cap,{width:innerW,lineGap:.8});
         doc.fillColor(COLORS.muted).text(cap,panelX+padX,by,{width:innerW,height:capH+1,lineGap:.8});

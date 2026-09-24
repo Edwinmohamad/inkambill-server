@@ -33,7 +33,8 @@ const { scanLowStock } = require('./services/inventoryService');
 const { deliverMobilePushes } = require('./services/mobilePushService');
 const { runCashAgingAlert } = require('./services/cashSettlementService');
 const { purgeOldLogs } = require('./services/logRetentionService');
-const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema } = require('./services/schemaService');
+const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema } = require('./services/schemaService');
+const { runProofScanSweep, recoverOnBoot: recoverProofScans } = require('./services/proofScanService');
 const { requireN8nToken } = require('./middleware/n8n');
 const { initGatewayOnBoot, reconcileGatewayStatus, processQueue, runAutoReminderSweep } = require('./services/whatsappGatewayService');
 const { requireWahaWebhookToken } = require('./middleware/waha');
@@ -316,6 +317,7 @@ async function bootstrap() {
   await ensureV51Schema();
   await ensureV52Schema();
   await ensureV53Schema();
+  await ensureV54Schema();
   const [rows] = await db.query('SELECT COUNT(*) total FROM users');
   if (Number(rows[0].total) === 0) {
     const username = process.env.DEFAULT_ADMIN_USERNAME || 'admin';
@@ -370,6 +372,13 @@ async function bootstrap() {
       const result = await deliverMobilePushes();
       if (result.configured && (result.sent || result.failed)) console.log('INKAMNET GO push:', result);
     } catch (err) { console.error('INKAMNET GO push gagal:', err.message); }
+  }, { timezone: 'Asia/Jakarta' });
+
+  // v1.29 — scan bukti transfer: pulihkan antrean macet + proses bukti yang belum dibaca.
+  await recoverProofScans().catch(err => console.error('Proof scan recover gagal:', err.message));
+  cron.schedule('* * * * *', async () => {
+    try { const result = await runProofScanSweep(); if (result.processed) console.log('Proof scan:', result.processed, 'bukti diproses'); }
+    catch (err) { console.error('Proof scan sweep gagal:', err.message); }
   }, { timezone: 'Asia/Jakarta' });
 
   cron.schedule('30 3 * * 0', async () => {
