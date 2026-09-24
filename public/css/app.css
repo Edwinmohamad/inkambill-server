@@ -2121,3 +2121,43 @@ html[data-theme="light"] .sidebar{background:var(--topbar);border-right-color:va
 .recon-settled-banner .btn-tech{margin-left:auto}
 .recon-aging-setting{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:var(--fs-11,.62rem);color:var(--muted)}
 .recon-aging-setting input{width:72px}
+
+/* v1.29 — Rekonsiliasi: tombol tab dipertegas (ini tombol fungsi, bukan label) + panel analisis */
+.recon-switch{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:0 0 16px}
+.recon-switch-btn{position:relative;display:flex;align-items:center;gap:12px;min-height:62px;padding:11px 14px;border:1.5px solid var(--line);border-radius:15px;background:var(--panel-2);color:var(--text);text-decoration:none;box-shadow:0 2px 6px rgba(20,16,40,.05);transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease,background .15s ease;cursor:pointer}
+.recon-switch-btn>i:first-child{flex:0 0 38px;height:38px;display:grid;place-items:center;border-radius:12px;background:rgba(var(--brand-rgb),.12);color:var(--brand,#6C4FE0);font-size:1.05rem}
+.recon-switch-btn span{display:flex;flex-direction:column;min-width:0;line-height:1.2}
+.recon-switch-btn b{font-size:.86rem;font-weight:750}
+.recon-switch-btn small{font-size:.64rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.recon-switch-btn em{margin-left:auto;font-style:normal;min-width:30px;height:26px;padding:0 9px;display:grid;place-items:center;border-radius:999px;background:rgba(245,158,11,.16);color:#b45309;font-weight:800;font-size:.74rem}
+.recon-switch-go{margin-left:auto;color:var(--muted);font-size:.9rem}
+.recon-switch-btn:hover{border-color:rgba(var(--brand-rgb),.55);transform:translateY(-1px);box-shadow:0 8px 20px rgba(var(--brand-rgb),.16);color:var(--text)}
+.recon-switch-btn:active{transform:scale(.98)}
+.recon-switch-btn:focus-visible{outline:3px solid rgba(var(--brand-rgb),.45);outline-offset:2px}
+.recon-switch-btn.active{border-color:transparent;background:linear-gradient(135deg,var(--brand,#6C4FE0),var(--brand-2,#8F7AF0));color:#fff;box-shadow:0 10px 24px rgba(var(--brand-rgb),.32)}
+.recon-switch-btn.active>i:first-child{background:rgba(255,255,255,.2);color:#fff}
+.recon-switch-btn.active small,.recon-switch-btn.active .recon-switch-go{color:rgba(255,255,255,.82)!important}
+.recon-switch-btn.active em{background:#fff;color:#b45309}
+.recon-switch-btn.active::after{content:'';position:absolute;left:50%;bottom:-7px;width:12px;height:12px;background:var(--brand-2,#8F7AF0);transform:translateX(-50%) rotate(45deg);border-radius:2px}
+@media(max-width:420px){.recon-switch-btn{gap:9px;padding:10px}.recon-switch-btn small{display:none}.recon-switch-btn>i:first-child{flex-basis:32px;height:32px}}
+.recon-analytics{display:flex;flex-direction:column;gap:12px}
+.recon-kpi-strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.recon-kpi-strip>div{padding:11px 14px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
+.recon-kpi-strip span{display:block;font-size:.62rem;color:var(--muted);font-weight:650;text-transform:uppercase;letter-spacing:.04em}
+.recon-kpi-strip b{display:block;margin-top:3px;font-size:1.02rem}
+.recon-chart-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.recon-chart-card{min-height:300px;margin:0}
+.recon-chart-card.wide{grid-column:span 2}
+.recon-chart-body{position:relative;height:240px;margin-top:8px}
+@media(max-width:991.98px){.recon-chart-grid{grid-template-columns:1fr 1fr}.recon-chart-card.wide{grid-column:1/-1}}
+@media(max-width:640px){.recon-kpi-strip{grid-template-columns:1fr 1fr}.recon-chart-grid{grid-template-columns:1fr}.recon-chart-card.wide{grid-column:auto}.recon-chart-body{height:220px}}
+@media(max-width:640px){.recon-chart-card .data-card-head>i{display:none}}
+.recon-chart-card.full{grid-column:1/-1}
+.recon-oldest-list{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column}
+.recon-oldest-list li{display:flex;align-items:center;gap:12px;padding:10px 2px;border-bottom:1px solid var(--line)}
+.recon-oldest-list li:last-child{border-bottom:0}
+.recon-oldest-list .cash-age{flex:0 0 auto;min-width:64px;justify-content:center}
+.recon-oldest-list div{display:flex;flex-direction:column;min-width:0;flex:1}
+.recon-oldest-list b{font-size:.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.recon-oldest-list small{font-size:.64rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.recon-oldest-list strong{font-size:.8rem;white-space:nowrap}

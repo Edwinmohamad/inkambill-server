@@ -437,9 +437,11 @@ async function loadReconciliationHistory(req){
   let where=`WHERE p.method='cash' AND DATE(p.paid_at) BETWEEN ? AND ?`;
   const params=[dateFrom,dateTo];
   where+=status==='held'?` AND ${heldCond}`:status==='settled'?` AND ${settledCond}`:` AND (${heldCond} OR ${settledCond})`;
-  if(site){where+=` AND s.code=?`;params.push(site);}
-  if(cluster){where+=` AND c.cluster_id=?`;params.push(Number(cluster));}
-  if(q){const like=`%${q}%`;where+=` AND (c.name LIKE ? OR c.customer_code LIKE ? OR i.invoice_number LIKE ? OR u.name LIKE ? OR su.name LIKE ? OR s.code LIKE ? OR cl.name LIKE ? OR p.reference LIKE ?)`;params.push(like,like,like,like,like,like,like,like);}
+  let filterSql='';const filterParams=[];
+  if(site){filterSql+=` AND s.code=?`;filterParams.push(site);}
+  if(cluster){filterSql+=` AND c.cluster_id=?`;filterParams.push(Number(cluster));}
+  if(q){const like=`%${q}%`;filterSql+=` AND (c.name LIKE ? OR c.customer_code LIKE ? OR i.invoice_number LIKE ? OR u.name LIKE ? OR su.name LIKE ? OR s.code LIKE ? OR cl.name LIKE ? OR p.reference LIKE ?)`;filterParams.push(like,like,like,like,like,like,like,like);}
+  where+=filterSql;params.push(...filterParams);
   const from=`FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id
     LEFT JOIN clusters cl ON cl.id=c.cluster_id LEFT JOIN users u ON u.id=COALESCE(p.collector_user_id,p.received_by) LEFT JOIN users su ON su.id=p.settled_by
     LEFT JOIN cash_settlements cs ON cs.id=p.settlement_id`;
@@ -458,7 +460,52 @@ async function loadReconciliationHistory(req){
       COALESCE(cu.name,'Beberapa collector') collector_name,au.name created_by_name
     FROM cash_settlements cs LEFT JOIN users cu ON cu.id=cs.collector_user_id LEFT JOIN users au ON au.id=cs.created_by
     WHERE cs.settlement_date BETWEEN ? AND ? ORDER BY cs.id DESC LIMIT 200`,[dateFrom,dateTo]);
-  return {history,historySummary:historySummary||{},collectorSummary,settlements,historyLimit:RECON_HISTORY_LIMIT,dateFrom,dateTo,status,q,site,cluster};
+  // v1.29 — data grafik analisis tab Histori. Tren memakai tanggal bayar (uang diterima tim) dan
+  // tanggal setor (uang masuk kas) pada rentang yang sama; rentang panjang dikelompokkan per bulan.
+  const spanDays=Math.round((new Date(`${dateTo}T00:00:00Z`)-new Date(`${dateFrom}T00:00:00Z`))/86400000)+1;
+  const monthly=spanDays>62;
+  const bucketExpr=col=>monthly?`DATE_FORMAT(${col},'%Y-%m')`:`DATE_FORMAT(${col},'%Y-%m-%d')`;
+  const settledWhere=`WHERE p.method='cash' AND ${settledCond} AND DATE(p.settled_at) BETWEEN ? AND ?${filterSql}`;
+  const settledParams=[dateFrom,dateTo,...filterParams];
+  const [[collectedRows],[settledRows],[siteRows],[[speed]]]=await Promise.all([
+    db.execute(`SELECT ${bucketExpr('p.paid_at')} bucket,COALESCE(SUM(p.amount),0) amount ${from} ${where} GROUP BY bucket ORDER BY bucket`,params),
+    db.execute(`SELECT ${bucketExpr('p.settled_at')} bucket,COALESCE(SUM(p.amount),0) amount ${from} ${settledWhere} GROUP BY bucket ORDER BY bucket`,settledParams),
+    db.execute(`SELECT s.code site_code,COALESCE(SUM(CASE WHEN ${settledCond} THEN p.amount ELSE 0 END),0) settled_amount,
+      COALESCE(SUM(CASE WHEN ${heldCond} THEN p.amount ELSE 0 END),0) held_amount ${from} ${where} GROUP BY s.code ORDER BY settled_amount+held_amount DESC LIMIT 12`,params),
+    db.execute(`SELECT COUNT(*) settled_count,COALESCE(AVG(TIMESTAMPDIFF(HOUR,p.paid_at,p.settled_at)),0) avg_hours,
+      COALESCE(SUM(TIMESTAMPDIFF(HOUR,p.paid_at,p.settled_at)<=24),0) within_day,COALESCE(SUM(TIMESTAMPDIFF(HOUR,p.paid_at,p.settled_at)>72),0) over_three_days
+      ${from} ${settledWhere}`,settledParams)
+  ]);
+  const labels=[];
+  if(monthly){const d=new Date(`${dateFrom.slice(0,7)}-01T00:00:00Z`);const end=dateTo.slice(0,7);while(labels.length<60){const key=d.toISOString().slice(0,7);labels.push(key);if(key>=end)break;d.setUTCMonth(d.getUTCMonth()+1);}}
+  else{const d=new Date(`${dateFrom}T00:00:00Z`);while(labels.length<62){const key=d.toISOString().slice(0,10);labels.push(key);if(key>=dateTo)break;d.setUTCDate(d.getUTCDate()+1);}}
+  const toMap=rows=>new Map(rows.map(r=>[String(r.bucket),Number(r.amount||0)]));
+  const collectedMap=toMap(collectedRows),settledMap=toMap(settledRows);
+  const historyCharts={
+    monthly,
+    trend:{labels,collected:labels.map(k=>collectedMap.get(k)||0),settled:labels.map(k=>settledMap.get(k)||0)},
+    sites:siteRows.map(r=>({label:r.site_code,settled:Number(r.settled_amount||0),held:Number(r.held_amount||0)})),
+    collectors:collectorSummary.slice(0,10).map(c=>({label:c.collector_name,settled:Number(c.settled_amount||0),held:Number(c.held_amount||0)})),
+    speed:{count:Number(speed?.settled_count||0),avgHours:Number(speed?.avg_hours||0),withinDay:Number(speed?.within_day||0),overThreeDays:Number(speed?.over_three_days||0)}
+  };
+  return {history,historySummary:historySummary||{},collectorSummary,settlements,historyCharts,historyLimit:RECON_HISTORY_LIMIT,dateFrom,dateTo,status,q,site,cluster};
+}
+
+// v1.29 — grafik tab Belum Disetor dihitung dari baris yang sedang tampil (ikut filter aktif).
+function heldCharts(held,agingDays){
+  const buckets=[
+    {label:'0–1 hari',test:a=>a<=1},
+    {label:`2–${agingDays} hari`,test:a=>a>=2&&a<=agingDays},
+    {label:`${agingDays+1}–7 hari`,test:a=>a>agingDays&&a<=7},
+    {label:'> 7 hari',test:a=>a>7}
+  ].filter((b,i)=>!(i===1&&agingDays<2)&&!(i===2&&agingDays>=7));
+  const aging=buckets.map(b=>{const rows=held.filter(p=>b.test(Number(p.age_days||0)));return {label:b.label,amount:rows.reduce((a,p)=>a+Number(p.amount||0),0),count:rows.length};});
+  const group=(key)=>{const m=new Map();for(const p of held){const k=p[key]||'Tidak diketahui';const cur=m.get(k)||{label:k,amount:0,overdue:0,count:0};cur.amount+=Number(p.amount||0);cur.count++;if(Number(p.age_days||0)>agingDays)cur.overdue+=Number(p.amount||0);m.set(k,cur);}return [...m.values()].sort((a,b)=>b.amount-a.amount);};
+  const total=held.reduce((a,p)=>a+Number(p.amount||0),0);
+  const avgAge=held.length?held.reduce((a,p)=>a+Number(p.age_days||0),0)/held.length:0;
+  const weightedAge=total?held.reduce((a,p)=>a+Number(p.age_days||0)*Number(p.amount||0),0)/total:0;
+  const overdueTotal=held.filter(p=>Number(p.age_days||0)>agingDays).reduce((a,p)=>a+Number(p.amount||0),0);
+  return {aging,collectors:group('collector_name').slice(0,10),sites:group('site_code').slice(0,10),total,avgAge,weightedAge,overdueTotal,oldest:held.reduce((a,p)=>Math.max(a,Number(p.age_days||0)),0)};
 }
 const reconStatusLabel=p=>p.settlement_status==='settled'?'Sudah Disetor':'Belum Disetor';
 const reconStatusTitle={all:'Semua status',held:'Belum Disetor',settled:'Sudah Disetor'};
@@ -466,7 +513,8 @@ const reconStatusTitle={all:'Semua status',held:'Belum Disetor',settled:'Sudah D
 router.get('/reconciliation',requireAdmin,async(req,res)=>{
   const tab=req.query.tab==='history'?'history':'held';
   const data=await loadReconciliationData(req,{withLookups:true});
-  const historyData=tab==='history'?await loadReconciliationHistory(req):{history:[],historySummary:{},collectorSummary:[],settlements:[],historyLimit:RECON_HISTORY_LIMIT,dateFrom:'',dateTo:'',status:'all'};
+  const historyData=tab==='history'?await loadReconciliationHistory(req):{history:[],historySummary:{},collectorSummary:[],settlements:[],historyCharts:null,historyLimit:RECON_HISTORY_LIMIT,dateFrom:'',dateTo:'',status:'all'};
+  data.heldCharts=heldCharts(data.held,data.agingDays);
   let justSettled=null;
   if(Number(req.query.settled)>0){const [[row]]=await db.execute(`SELECT id,code,payment_count,total_amount,handed_amount,difference_amount FROM cash_settlements WHERE id=? LIMIT 1`,[Number(req.query.settled)]);justSettled=row||null;}
   res.render('payments/reconciliation',{title:'Rekonsiliasi Pembayaran',...data,...historyData,tab,justSettled,canCancelSettlement:isMasterAdminRole(req.session.user.role)});

@@ -8,6 +8,13 @@
     <div class="module-actions"><a class="btn-tech" href="/payments/reconciliation/export.pdf?<%= reconciliationExportQuery %>"><i class="bi bi-filetype-pdf"></i>PDF</a><a class="btn-tech" href="/payments/reconciliation/export.xlsx?<%= reconciliationExportQuery %>"><i class="bi bi-file-earmark-spreadsheet"></i>Excel</a><a href="/payments" class="btn-tech"><i class="bi bi-arrow-left"></i>Kembali ke Pembayaran</a></div>
   </div>
   <% if(justSettled){ %><div class="success-banner mb-3 recon-settled-banner"><i class="bi bi-receipt-cutoff"></i><div><strong>Setoran <%= justSettled.code %> tersimpan</strong><small><%= justSettled.payment_count %> transaksi · <%= formatRupiah(justSettled.total_amount) %><% if(justSettled.handed_amount!=null){ %> · diserahkan <%= formatRupiah(justSettled.handed_amount) %><% if(Number(justSettled.difference_amount)){ %> · selisih lebih <%= formatRupiah(justSettled.difference_amount) %><% } %><% } %></small></div><a class="btn-tech success" href="/payments/settlements/<%= justSettled.id %>/receipt.pdf" target="_blank" rel="noopener"><i class="bi bi-printer"></i>Tanda Terima</a></div><% } %>
+  <form class="filter-card" method="get" action="/payments/reconciliation">
+  <nav class="recon-switch" role="tablist" aria-label="Tampilan rekonsiliasi">
+    <a class="recon-switch-btn is-held <%= !isHistory?'active':'' %>" href="<%= tabHref('held') %>" role="tab" aria-selected="<%= !isHistory %>"><i class="bi bi-hourglass-split"></i><span><b>Belum Disetor</b><small>Konfirmasi &amp; setor per collector</small></span><em><%= held.length %></em></a>
+    <a class="recon-switch-btn is-history <%= isHistory?'active':'' %>" href="<%= tabHref('history') %>" role="tab" aria-selected="<%= isHistory %>"><i class="bi bi-clock-history"></i><span><b>Histori &amp; Status</b><small>Riwayat, analisis &amp; tanda terima</small></span><i class="bi bi-chevron-right recon-switch-go"></i></a>
+  </nav>
+<% if(isHistory){ %><input type="hidden" name="tab" value="history"><% } %><div class="filter-grid payment-filter-grid"><div class="filter-group"><label>CARI</label><div class="search-box"><i class="bi bi-search"></i><input name="q" value="<%= q %>" placeholder="Pelanggan, Customer ID, faktur, collector..."></div></div><div class="filter-group"><label>SITE / POP</label><select class="form-select" name="site"><option value="">Semua Site</option><% sites.forEach(s=>{ %><option value="<%= s.code %>" <%= site===s.code?'selected':'' %>><%= s.code %> · <%= s.name %></option><% }) %></select></div><div class="filter-group"><label>CLUSTER / ODP</label><select class="form-select" name="cluster"><option value="">Semua Cluster</option><% clusters.forEach(c=>{ %><option value="<%= c.id %>" <%= String(cluster)===String(c.id)?'selected':'' %>><%= c.site_code %> · <%= c.name %></option><% }) %></select></div><% if(isHistory){ %><div class="filter-group"><label>STATUS SETORAN</label><select class="form-select" name="status"><option value="all" <%= status==='all'?'selected':'' %>>Semua</option><option value="held" <%= status==='held'?'selected':'' %>>Belum Disetor</option><option value="settled" <%= status==='settled'?'selected':'' %>>Sudah Disetor</option></select></div><div class="filter-group"><label>DIBAYAR DARI</label><input type="date" class="form-control" name="date_from" value="<%= dateFrom %>"></div><div class="filter-group"><label>SAMPAI</label><input type="date" class="form-control" name="date_to" value="<%= dateTo %>"></div><% } %><div class="filter-group d-flex align-items-end gap-2"><button class="btn-tech flex-fill"><i class="bi bi-search"></i>Cari</button><a class="btn-tech" href="/payments/reconciliation<%= isHistory?'?tab=history':'' %>" aria-label="Reset filter"><i class="bi bi-x-lg"></i></a></div></div></form>
+
   <!-- v1.25.5 (update) — setiap widget di bawah sekarang bisa diklik: kartu ringkasan mengarah ke
        tempat datanya bisa diperiksa lebih lanjut (tabel di halaman ini atau Data Kas terkait), dan kartu
        collector memfilter tabel "Cash Belum Disetor" di bawah untuk collector tersebut. -->
@@ -20,6 +27,29 @@
     <a class="metric-card metric-card-link" href="#collectorGrid"><div class="metric-top"><span class="metric-label">Collector Aktif</span><span class="metric-icon"><i class="bi bi-people-fill"></i></span></div><strong><%= staffBalances.length %></strong><small>Memegang cash pelanggan</small></a>
   </div>
 
+  <% if(held.length){ const hc=heldCharts; %>
+  <section class="recon-analytics mb-3" aria-label="Analisis cash tertahan">
+    <div class="recon-kpi-strip">
+      <div><span>Rata-rata umur</span><b><%= hc.avgAge.toFixed(1) %> hari</b></div>
+      <div><span>Umur tertimbang nominal</span><b><%= hc.weightedAge.toFixed(1) %> hari</b></div>
+      <div><span>Transaksi tertua</span><b class="<%= hc.oldest>agingDays?'text-danger':'' %>"><%= hc.oldest %> hari</b></div>
+      <div><span>Porsi lewat <%= agingDays %> hari</span><b class="<%= hc.overdueTotal?'text-danger':'' %>"><%= hc.total?Math.round(hc.overdueTotal/hc.total*100):0 %>%</b></div>
+    </div>
+    <div class="recon-chart-grid">
+      <article class="data-card recon-chart-card"><div class="data-card-head"><div><h3>Umur Cash</h3><small>Nominal per kelompok umur</small></div><i class="bi bi-pie-chart-fill"></i></div><div class="recon-chart-body"><canvas id="reconAgingChart" aria-label="Grafik umur cash"></canvas></div></article>
+      <article class="data-card recon-chart-card wide"><div class="data-card-head"><div><h3>Cash per Collector</h3><small>Normal vs lewat <%= agingDays %> hari</small></div><i class="bi bi-bar-chart-fill"></i></div><div class="recon-chart-body"><canvas id="reconHeldCollectorChart" aria-label="Grafik cash per collector"></canvas></div></article>
+      <article class="data-card recon-chart-card"><div class="data-card-head"><div><h3>Sebaran Site</h3><small>Cash tertahan per site</small></div><i class="bi bi-geo-alt-fill"></i></div><div class="recon-chart-body"><canvas id="reconHeldSiteChart" aria-label="Grafik cash per site"></canvas></div></article>
+      <article class="data-card recon-chart-card wide"><div class="data-card-head"><div><h3>Prioritas Tagih ke Collector</h3><small>6 transaksi cash paling lama belum disetor</small></div><i class="bi bi-flag-fill"></i></div>
+        <ol class="recon-oldest-list">
+          <% held.slice().sort((a,b)=>Number(b.age_days||0)-Number(a.age_days||0)||Number(b.amount||0)-Number(a.amount||0)).slice(0,6).forEach(p=>{ const age=Number(p.age_days||0); %>
+          <li><span class="cash-age <%= age>agingDays?'late':age>=Math.max(1,agingDays-1)?'warn':'' %>"><%= age===0?'hari ini':`${age} hari` %></span><div><b><%= p.customer_name %></b><small><%= p.collector_name||'Tidak diketahui' %> · <%= p.site_code %> · <%= p.invoice_number %></small></div><strong><%= formatRupiah(p.amount) %></strong></li>
+          <% }) %>
+        </ol>
+      </article>
+    </div>
+  </section>
+  <% } %>
+
   <div class="collector-grid mb-3" id="collectorGrid">
     <% staffBalances.forEach((s,index)=>{ %>
     <a class="collector-card reveal-item collector-card-link" style="--enter-delay:<%= index*45 %>ms" href="/payments/reconciliation?<%= new URLSearchParams({q:s.collector_name==='Tidak diketahui'?'':s.collector_name,site,cluster}).toString() %>#cashHeldTable" title="Filter tabel di bawah untuk collector ini"><div class="collector-avatar"><%= String(s.collector_name).charAt(0).toUpperCase() %></div><div><span>Cash di <%= s.collector_name %></span><strong><%= formatRupiah(s.amount) %></strong><small><%= s.transactions %> transaksi belum disetor · tertua <span class="cash-age <%= Number(s.oldest_days)>agingDays?'late':Number(s.oldest_days)>=Math.max(1,agingDays-1)?'warn':'' %>"><%= Number(s.oldest_days||0) %> hari</span></small></div><div class="collector-signal"></div></a>
@@ -29,12 +59,7 @@
   <% if(canCancelSettlement){ %><form class="recon-aging-setting mb-3" method="post" action="/payments/reconciliation/settings"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><i class="bi bi-bell"></i><span>Ingatkan admin &amp; collector bila cash dipegang lebih dari</span><input class="form-control form-control-sm" type="number" name="cash_aging_alert_days" min="1" max="60" value="<%= agingDays %>" aria-label="Batas hari"><span>hari</span><button class="btn-tech btn-sm">Simpan</button></form><% } %>
   <% } %>
 
-  <form class="filter-card" method="get" action="/payments/reconciliation">
-  <div class="warehouse-tabs recon-tabs mb-3" role="tablist" aria-label="Tampilan rekonsiliasi">
-    <a class="<%= !isHistory?'active':'' %>" href="<%= tabHref('held') %>" role="tab" aria-selected="<%= !isHistory %>"><i class="bi bi-hourglass-split"></i> Belum Disetor <span class="status-badge orange"><%= held.length %></span></a>
-    <a class="<%= isHistory?'active':'' %>" href="<%= tabHref('history') %>" role="tab" aria-selected="<%= isHistory %>"><i class="bi bi-clock-history"></i> Histori &amp; Status Setoran</a>
-  </div>
-<% if(isHistory){ %><input type="hidden" name="tab" value="history"><% } %><div class="filter-grid payment-filter-grid"><div class="filter-group"><label>CARI</label><div class="search-box"><i class="bi bi-search"></i><input name="q" value="<%= q %>" placeholder="Pelanggan, Customer ID, faktur, collector..."></div></div><div class="filter-group"><label>SITE / POP</label><select class="form-select" name="site"><option value="">Semua Site</option><% sites.forEach(s=>{ %><option value="<%= s.code %>" <%= site===s.code?'selected':'' %>><%= s.code %> · <%= s.name %></option><% }) %></select></div><div class="filter-group"><label>CLUSTER / ODP</label><select class="form-select" name="cluster"><option value="">Semua Cluster</option><% clusters.forEach(c=>{ %><option value="<%= c.id %>" <%= String(cluster)===String(c.id)?'selected':'' %>><%= c.site_code %> · <%= c.name %></option><% }) %></select></div><% if(isHistory){ %><div class="filter-group"><label>STATUS SETORAN</label><select class="form-select" name="status"><option value="all" <%= status==='all'?'selected':'' %>>Semua</option><option value="held" <%= status==='held'?'selected':'' %>>Belum Disetor</option><option value="settled" <%= status==='settled'?'selected':'' %>>Sudah Disetor</option></select></div><div class="filter-group"><label>DIBAYAR DARI</label><input type="date" class="form-control" name="date_from" value="<%= dateFrom %>"></div><div class="filter-group"><label>SAMPAI</label><input type="date" class="form-control" name="date_to" value="<%= dateTo %>"></div><% } %><div class="filter-group d-flex align-items-end gap-2"><button class="btn-tech flex-fill"><i class="bi bi-search"></i>Cari</button><a class="btn-tech" href="/payments/reconciliation<%= isHistory?'?tab=history':'' %>" aria-label="Reset filter"><i class="bi bi-x-lg"></i></a></div></div></form>
+
 
   <% if(!isHistory){ %>
   <div class="data-card" id="cashHeldTable">
@@ -70,6 +95,24 @@
     <a class="metric-card green metric-card-link <%= status==='settled'?'active':'' %>" href="<%= statusLink('settled') %>"><div class="metric-top"><span class="metric-label">Sudah Disetor</span><span class="metric-icon"><i class="bi bi-safe2-fill"></i></span></div><strong><%= formatRupiah(historySummary.settled_amount||0) %></strong><small><%= Number(historySummary.settled_count||0) %> transaksi sudah masuk kas</small></a>
     <a class="metric-card orange metric-card-link <%= status==='held'?'active':'' %>" href="<%= statusLink('held') %>"><div class="metric-top"><span class="metric-label">Belum Disetor</span><span class="metric-icon"><i class="bi bi-hourglass-split"></i></span></div><strong><%= formatRupiah(historySummary.held_amount||0) %></strong><small><%= Number(historySummary.held_count||0) %> transaksi masih di tim</small></a>
   </div>
+  <% if(historyCharts){ const hs=historySummary, sp=historyCharts.speed; const totalAmt=Number(hs.amount||0); const ratio=totalAmt?Math.round(Number(hs.settled_amount||0)/totalAmt*100):0; %>
+  <section class="recon-analytics mb-3" aria-label="Analisis histori setoran">
+    <div class="recon-kpi-strip">
+      <div><span>Rasio disetor</span><b class="<%= ratio>=90?'text-success':ratio<70?'text-danger':'' %>"><%= ratio %>%</b></div>
+      <div><span>Rata-rata lama setor</span><b><%= sp.count?(sp.avgHours>=48?(sp.avgHours/24).toFixed(1)+' hari':Math.round(sp.avgHours)+' jam'):'-' %></b></div>
+      <div><span>Disetor ≤ 24 jam</span><b><%= sp.count?Math.round(sp.withinDay/sp.count*100)+'%':'-' %></b></div>
+      <div><span>Disetor &gt; 3 hari</span><b class="<%= sp.overThreeDays?'text-danger':'' %>"><%= sp.overThreeDays %> transaksi</b></div>
+    </div>
+    <div class="recon-chart-grid">
+      <article class="data-card recon-chart-card"><div class="data-card-head"><div><h3>Status Setoran</h3><small>Sudah vs belum disetor (nominal)</small></div><i class="bi bi-pie-chart-fill"></i></div><div class="recon-chart-body"><canvas id="reconStatusChart" aria-label="Grafik status setoran"></canvas></div></article>
+      <article class="data-card recon-chart-card wide"><div class="data-card-head"><div><h3>Tren <%= historyCharts.monthly?'Bulanan':'Harian' %></h3><small>Cash diterima tim vs masuk kas perusahaan</small></div><i class="bi bi-graph-up-arrow"></i></div><div class="recon-chart-body"><canvas id="reconTrendChart" aria-label="Grafik tren setoran"></canvas></div></article>
+      <article class="data-card recon-chart-card"><div class="data-card-head"><div><h3>Kecepatan Setor</h3><small>Lama dari dibayar sampai masuk kas</small></div><i class="bi bi-speedometer2"></i></div><div class="recon-chart-body"><canvas id="reconSpeedChart" aria-label="Grafik kecepatan setor"></canvas></div></article>
+      <article class="data-card recon-chart-card wide"><div class="data-card-head"><div><h3>Per Collector</h3><small>Sudah vs belum disetor</small></div><i class="bi bi-people-fill"></i></div><div class="recon-chart-body"><canvas id="reconHistCollectorChart" aria-label="Grafik per collector"></canvas></div></article>
+      <article class="data-card recon-chart-card full"><div class="data-card-head"><div><h3>Per Site</h3><small>Sudah vs belum disetor</small></div><i class="bi bi-geo-alt-fill"></i></div><div class="recon-chart-body"><canvas id="reconHistSiteChart" aria-label="Grafik per site"></canvas></div></article>
+    </div>
+  </section>
+  <% } %>
+
   <% if(collectorSummary.length){ %>
   <div class="data-card mb-3">
     <div class="data-card-head"><div><h3>Ringkasan per Collector</h3><small>Periode dan filter yang sama dengan tabel histori di bawah.</small></div></div>
@@ -110,3 +153,50 @@
   <% } %>
   <% } %>
 </section>
+<% const reconChartData=isHistory?(historyCharts?{mode:'history',summary:{settled:Number(historySummary.settled_amount||0),held:Number(historySummary.held_amount||0)},...historyCharts}:null):(held.length?{mode:'held',agingDays,...heldCharts}:null); %>
+<% if(reconChartData){ %>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+(()=>{
+  if(typeof Chart==='undefined')return;
+  const data=<%- safeJson(reconChartData) %>;
+  const money=v=>'Rp '+new Intl.NumberFormat('id-ID',{maximumFractionDigits:0}).format(v||0);
+  const short=v=>{v=Number(v)||0;if(Math.abs(v)>=1e9)return (v/1e9).toFixed(1)+' M';if(Math.abs(v)>=1e6)return (v/1e6).toFixed(1)+' jt';if(Math.abs(v)>=1e3)return Math.round(v/1e3)+' rb';return String(v);};
+  const css=getComputedStyle(document.documentElement);const tick=(css.getPropertyValue('--muted')||'#77839a').trim()||'#77839a';const grid='rgba(148,163,184,.14)';
+  const GREEN='#22c55e',ORANGE='#f59e0b',RED='#ef4444',PURPLE='#6C4FE0',BLUE='#3b82f6';
+  const legend={labels:{color:tick,usePointStyle:true,boxWidth:8,font:{size:10}}};
+  const make=(id,cfg)=>{const el=document.getElementById(id);if(el)new Chart(el,cfg);};
+  const donut=(id,labels,values,colors)=>{
+    const total=values.reduce((a,b)=>a+b,0);
+    make(id,{type:'doughnut',data:{labels,datasets:[{data:values,backgroundColor:colors,borderWidth:2,borderColor:(css.getPropertyValue('--panel')||'#fff').trim()||'#fff',hoverOffset:6}]},
+      options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{position:'bottom',...legend},
+        tooltip:{callbacks:{label:c=>`${c.label}: ${money(c.raw)} (${total?Math.round(c.raw/total*100):0}%)`}}}}});
+  };
+  const stacked=(id,rows,aLabel,aColor,bLabel,bColor,aKey,bKey,horizontal)=>make(id,{type:'bar',data:{labels:rows.map(r=>r.label),datasets:[
+      {label:aLabel,data:rows.map(r=>r[aKey]),backgroundColor:aColor,borderRadius:5,maxBarThickness:26},
+      {label:bLabel,data:rows.map(r=>r[bKey]),backgroundColor:bColor,borderRadius:5,maxBarThickness:26}]},
+    options:{responsive:true,maintainAspectRatio:false,indexAxis:horizontal?'y':'x',interaction:{mode:'index',intersect:false},plugins:{legend,tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${money(c.raw)}`}}},
+      // Kunci `callback` hanya dipasang pada sumbu nilai: `callback:undefined` menimpa formatter bawaan
+      // sumbu kategori sehingga label berubah jadi 0,1,2.
+      scales:(()=>{const value={stacked:true,beginAtZero:true,grid:{color:grid},ticks:{color:tick,callback:v=>short(v)}};const cat={stacked:true,grid:{display:false},ticks:{color:tick,autoSkip:false}};return horizontal?{x:value,y:cat}:{x:cat,y:value};})()}});
+  if(data.mode==='held'){
+    donut('reconAgingChart',data.aging.map(x=>`${x.label} (${x.count})`),data.aging.map(x=>x.amount),[GREEN,ORANGE,RED,'#991b1b'].slice(0,data.aging.length));
+    stacked('reconHeldCollectorChart',data.collectors.map(c=>({label:c.label,normal:c.amount-c.overdue,overdue:c.overdue})),'Normal',PURPLE,`Lewat ${data.agingDays} hari`,RED,'normal','overdue',true);
+    donut('reconHeldSiteChart',data.sites.map(x=>x.label),data.sites.map(x=>x.amount),[PURPLE,BLUE,'#14b8a6',ORANGE,'#ec4899','#84cc16','#06b6d4','#a855f7','#f97316','#64748b']);
+  }else{
+    donut('reconStatusChart',['Sudah disetor','Belum disetor'],[data.summary.settled,data.summary.held],[GREEN,ORANGE]);
+    const fmtLabel=k=>data.monthly?new Date(k+'-01T00:00:00').toLocaleDateString('id-ID',{month:'short',year:'2-digit'}):new Date(k+'T00:00:00').toLocaleDateString('id-ID',{day:'2-digit',month:'short'});
+    make('reconTrendChart',{type:'line',data:{labels:data.trend.labels.map(fmtLabel),datasets:[
+        {label:'Diterima tim (tgl bayar)',data:data.trend.collected,borderColor:ORANGE,backgroundColor:'rgba(245,158,11,.12)',fill:true,tension:.35,pointRadius:1.5},
+        {label:'Masuk kas (tgl setor)',data:data.trend.settled,borderColor:GREEN,backgroundColor:'rgba(34,197,94,.12)',fill:true,tension:.35,pointRadius:1.5}]},
+      options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend,tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${money(c.raw)}`}}},
+        scales:{x:{grid:{display:false},ticks:{color:tick,maxTicksLimit:12}},y:{beginAtZero:true,grid:{color:grid},ticks:{color:tick,callback:v=>short(v)}}}}});
+    const sp=data.speed;const mid=Math.max(0,sp.count-sp.withinDay-sp.overThreeDays);
+    make('reconSpeedChart',{type:'doughnut',data:{labels:['≤ 24 jam','1–3 hari','> 3 hari'],datasets:[{data:[sp.withinDay,mid,sp.overThreeDays],backgroundColor:[GREEN,ORANGE,RED],borderWidth:2,borderColor:(css.getPropertyValue('--panel')||'#fff').trim()||'#fff'}]},
+      options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{position:'bottom',...legend},tooltip:{callbacks:{label:c=>`${c.label}: ${c.raw} transaksi`}}}}});
+    stacked('reconHistCollectorChart',data.collectors,'Sudah disetor',GREEN,'Belum disetor',ORANGE,'settled','held',true);
+    stacked('reconHistSiteChart',data.sites,'Sudah disetor',GREEN,'Belum disetor',ORANGE,'settled','held',false);
+  }
+})();
+</script>
+<% } %>

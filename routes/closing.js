@@ -4,7 +4,7 @@ const ExcelJS = require('exceljs');
 const db = require('../config/db');
 const { createClosingReportPdf, rupiah, date } = require('../services/reportPdf');
 const { money, personKey, siteBlock, locationText, normalizeSiteCluster, isPsbRevenue, buildClosingCalculation } = require('../services/closingCalculator');
-const { syncCashDataIntoClosing, countPendingCashData, selectUnsyncedCashRows } = require('../services/closingSyncService');
+const { syncCashDataIntoClosing, countPendingCashData, selectUnsyncedCashRows, planSyncedReconciliation } = require('../services/closingSyncService');
 const { requireMasterAdmin } = require('../middleware/auth');
 const { financialAudit } = require('../services/financialControlService');
 
@@ -304,14 +304,32 @@ router.get('/', async (req, res, next) => {
         const entry = { site_code: site.site, cluster_name: site.cluster, amount, category: row.category_name || 'Lain-lain', description: [row.name, row.notes].filter(Boolean).join(' · ') || null };
         if (row.category_type === 'income') extraPayments.push(entry); else extraExpenses.push(entry);
       });
+      // v3.2 — estimasi juga menerapkan koreksi Data Kas pada baris yang sudah
+      // pernah ditarik (update/hapus), bukan cuma menambah baris baru, supaya
+      // angka pratinjau sama dengan hasil setelah tombol Sync ditekan.
+      const reconPlan = await planSyncedReconciliation({ db, closingId: data.period ? data.period.id : null, start, end });
+      const planById = new Map(reconPlan.map((item) => [item.entryId, item]));
+      const projectedItems = [];
+      data.lineItems.forEach((row) => {
+        const item = planById.get(row.id);
+        if (item && item.action === 'delete') return;
+        if (item && item.action === 'update') {
+          const a = item.after;
+          projectedItems.push({ ...row, entry_type: a.entryType, site_code: a.site, cluster_name: a.cluster, category: a.category, amount: a.amount, entry_date: a.entryDate, description: a.description });
+          return;
+        }
+        projectedItems.push(row);
+      });
+      const projectedPayments = projectedItems.filter((row) => row.entry_type === 'INCOME').map(manualIncomeRow);
+      const projectedExpenses = projectedItems.filter((row) => row.entry_type === 'EXPENSE').map(manualExpenseRow);
       const estimateCalc = buildClosingCalculation({
-        payments: [...data.payments, ...extraPayments],
-        expenses: [...data.expenses, ...extraExpenses],
+        payments: [...projectedPayments, ...extraPayments],
+        expenses: [...projectedExpenses, ...extraExpenses],
         heldCash: [],
         adjustments: data.adjustments,
         closing: data.closing,
         mode: 'auto',
-        lineItems: [...data.lineItems, ...extraPayments, ...extraExpenses]
+        lineItems: [...projectedItems, ...extraPayments, ...extraExpenses]
       });
       const perPerson = new Map();
       [estimateCalc.blocks.krwclm, estimateCalc.blocks.kbg].forEach((block) => {
@@ -319,7 +337,7 @@ router.get('/', async (req, res, next) => {
       });
       estimate = {
         people: ['Edwin', 'Jon', 'Bopung', 'Mang Ali'].map((name) => ({ name, amount: perPerson.get(name) || 0 })),
-        pendingCount: unsyncedRows.length
+        pendingCount: unsyncedRows.length + reconPlan.filter((item) => item.action !== 'keep').length
       };
     }
     // v2.2 — navigasi cepat bulan sebelumnya/berikutnya selalu tersedia (tidak
@@ -415,9 +433,12 @@ router.post('/sync', async (req, res, next) => {
     await financialAudit({ conn, userId: req.session.user.id, action: 'sync_closing_cash', entityType: 'closing_period', entityId: existing.id, before: {}, after: result, reason: `Sinkron Data Kas periode ${start} s/d ${end}`, ip: req.ip });
     await conn.commit();
     const parts = [];
-    if (result.inserted) parts.push(`${result.inserted} transaksi ditarik dari Data Kas`);
+    if (result.inserted) parts.push(`${result.inserted} transaksi baru ditarik dari Data Kas`);
+    if (result.updated) parts.push(`${result.updated} baris diperbarui mengikuti koreksi di Data Kas`);
+    if (result.removed) parts.push(`${result.removed} baris dikeluarkan (dihapus / belum APPROVED / pindah periode di Data Kas)`);
     if (result.skippedUnmapped) parts.push(`${result.skippedUnmapped} dilewati (lokasi bukan CDS/KBG)`);
-    req.session.flash = { type: result.inserted ? 'success' : 'warning', message: parts.length ? `${parts.join(', ')}.` : 'Tidak ada transaksi Data Kas baru untuk periode ini.' };
+    const changedAny = result.inserted || result.updated || result.removed;
+    req.session.flash = { type: changedAny ? 'success' : 'info', message: parts.length ? `${parts.join(', ')}.` : 'Closing sudah sama dengan Data Kas — tidak ada perubahan.' };
     res.redirect(`/closing?from=${start}&to=${end}`);
   } catch (err) { if (conn) await conn.rollback(); next(err); } finally { if (conn) conn.release(); }
 });
@@ -433,8 +454,11 @@ router.post('/period-lock', async (req, res, next) => {
     // "kunci walau belum sync semua" di form kalau memang itu yang dimaksud.
     if (String(period.mode||'MANUAL').toUpperCase()==='AUTO' && String(req.body.force_lock||'')!=='1') {
       const pending = await countPendingCashData({ db: conn, closingId: period.id, start, end });
-      if (pending.unsyncedApproved > 0) {
-        throw new Error(`Masih ada ${pending.unsyncedApproved} transaksi Data Kas APPROVED yang belum disinkron ke periode ini. Klik "Sync dari Data Kas" dulu, atau centang "Kunci walau belum sync semua" kalau memang sengaja.`);
+      if (pending.needsSync > 0) {
+        const detail = [];
+        if (pending.unsyncedApproved) detail.push(`${pending.unsyncedApproved} transaksi APPROVED belum ditarik`);
+        if (pending.staleSynced) detail.push(`${pending.staleSynced} baris sudah berubah di Data Kas (lokasi/kategori/nominal/tanggal/dihapus)`);
+        throw new Error(`Closing belum sama dengan Data Kas: ${detail.join(', ')}. Klik "Sync dari Data Kas" dulu, atau centang "Kunci walau belum sync semua" kalau memang sengaja.`);
       }
     }
     const data=await loadClosing(start,end);
@@ -505,7 +529,7 @@ router.post('/entries/:id/update', async (req, res, next) => {
     const { start, end } = selectedPeriod(req);
     if (!Number.isInteger(id) || id < 1) return res.status(400).send('Transaksi tidak valid.');
     await assertClosingChildDraft('closing_entries',id);
-    const [[entry]] = await db.execute('SELECT id,entry_type FROM closing_entries WHERE id=? LIMIT 1', [id]);
+    const [[entry]] = await db.execute('SELECT id,entry_type,source_type FROM closing_entries WHERE id=? LIMIT 1', [id]);
     if (!entry) return res.status(404).send('Transaksi tidak ditemukan.');
     const site = normalizeSiteCluster(req.body.site_code, req.body.cluster_name);
     if (!site) return res.status(400).send('Lokasi hanya boleh CDS atau KBG.');
@@ -517,7 +541,9 @@ router.post('/entries/:id/update', async (req, res, next) => {
     if (!category) return res.status(400).send('Kategori wajib diisi.');
     const description = String(req.body.description || '').trim().slice(0, 255) || null;
     await db.execute('UPDATE closing_entries SET site_code=?,cluster_name=?,category=?,amount=?,entry_date=?,description=? WHERE id=?', [site.site, site.cluster, category, amount, entryDate, description, id]);
-    req.session.flash = { type: 'success', message: 'Baris kalkulator diperbarui.' };
+    req.session.flash = entry.source_type === 'cash_sync'
+      ? { type: 'warning', message: 'Baris diperbarui. Catatan: baris ini berasal dari Data Kas — saat Sync berikutnya akan dikembalikan sesuai Data Kas. Untuk koreksi permanen, ubah transaksinya di Data Kas lalu Sync.' }
+      : { type: 'success', message: 'Baris kalkulator diperbarui.' };
     res.redirect(`/closing?from=${start}&to=${end}`);
   } catch (err) { next(err); }
 });
@@ -770,12 +796,37 @@ function buildTransactionRows(data, allowedBlocks) {
   return [...rows, ...expenseRows];*/
 }
 
+async function autoSyncBeforeReport({ start, end, userId, ip }) {
+  const [[period]] = await db.execute('SELECT id,status,mode FROM closing_periods WHERE period_start=? AND period_end=? LIMIT 1', [start, end]);
+  if (!period || period.status === 'LOCKED' || String(period.mode || 'MANUAL').toUpperCase() !== 'AUTO') return null;
+  const pending = await countPendingCashData({ db, closingId: period.id, start, end });
+  if (!pending.needsSync) return null;
+  let conn;
+  try {
+    conn = await db.getConnection();
+    await conn.beginTransaction();
+    const [[locked]] = await conn.execute('SELECT id,status,mode FROM closing_periods WHERE id=? FOR UPDATE', [period.id]);
+    if (!locked || locked.status === 'LOCKED' || String(locked.mode || 'MANUAL').toUpperCase() !== 'AUTO') { await conn.rollback(); return null; }
+    const result = await syncCashDataIntoClosing({ conn, closingId: period.id, start, end, userId });
+    await conn.execute('UPDATE closing_periods SET last_synced_at=NOW() WHERE id=?', [period.id]);
+    await financialAudit({ conn, userId, action: 'sync_closing_cash', entityType: 'closing_period', entityId: period.id, before: {}, after: result, reason: `Sinkron otomatis Data Kas sebelum cetak PDF periode ${start} s/d ${end}`, ip });
+    await conn.commit();
+    return result;
+  } catch (err) { if (conn) await conn.rollback(); throw err; } finally { if (conn) conn.release(); }
+}
+
 router.get('/pdf', async (req, res, next) => {
   try {
     const { start, end, hideEdwin } = selectedPeriod(req);
     if (start > end) return res.status(400).send('Periode tidak valid.');
     const recipient = personFromReport(req.query.report);
     if (!recipient) return res.status(400).send('Penerima PDF tidak valid.');
+    // v3.2 — PDF mode Otomatis selalu dibuat dari data yang sudah sama dengan
+    // Data Kas terkini. Kalau periode masih DRAFT dan ada transaksi baru / baris
+    // yang sudah dikoreksi di Data Kas, sinkron dijalankan dulu (idempoten, sama
+    // persis dengan tombol "Sync dari Data Kas") supaya PDF tidak pernah memakai
+    // lokasi/kategori/nominal lama.
+    await autoSyncBeforeReport({ start, end, userId: req.session.user.id, ip: req.ip });
     const data = await loadClosing(start, end);
     const customerActivity = await loadCustomerActivitySummary(start, end);
     const effectiveMode = data.mode || 'manual';
@@ -887,16 +938,27 @@ router.get('/history', async (req, res, next) => {
 
 // v1.29 — income/expense export for a period, filterable by type/category, so
 // the numbers can be shared outside the app (e.g. reporting to partners).
+// mysql2 mengembalikan kolom DATE/DATETIME sebagai objek Date; String(Date).slice(0,10)
+// dulu menghasilkan "Mon Aug 03" bukan tanggal. Format selalu YYYY-MM-DD.
+function excelDate(value) {
+  if (!value) return '';
+  if (typeof value === 'string') return value.slice(0, 10);
+  const d = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(d.getTime()) ? '' : localDateKey(d);
+}
+
 router.get('/export.xlsx', async (req, res, next) => {
   try {
     const { start, end } = selectedPeriod(req);
     if (start > end) return res.status(400).send('Periode tidak valid.');
     const category = String(req.query.category || '').trim();
     const type = String(req.query.type || '').trim().toUpperCase();
+    // v3.2 — Excel harus sama dengan PDF: sinkron dulu bila mode Otomatis & DRAFT.
+    await autoSyncBeforeReport({ start, end, userId: req.session.user.id, ip: req.ip });
     const [[period]] = await db.execute('SELECT id FROM closing_periods WHERE period_start=? AND period_end=? LIMIT 1', [start, end]);
     let rows = [];
     if (period) {
-      let sql = 'SELECT entry_type,site_code,cluster_name,category,amount,entry_date,description FROM closing_entries WHERE closing_id=?';
+      let sql = 'SELECT entry_type,site_code,cluster_name,category,amount,entry_date,description FROM closing_entries WHERE closing_id=? AND excluded_at IS NULL';
       const params = [period.id];
       if (['INCOME', 'EXPENSE'].includes(type)) { sql += ' AND entry_type=?'; params.push(type); }
       if (category) { sql += ' AND category=?'; params.push(category); }
@@ -910,7 +972,7 @@ router.get('/export.xlsx', async (req, res, next) => {
       { header: 'Kategori', key: 'category', width: 28 }, { header: 'Keterangan', key: 'description', width: 40 },
       { header: 'Nominal', key: 'amount', width: 18 }
     ];
-    const addSheet = (name, source) => { const ws = wb.addWorksheet(name); ws.columns = columns; ws.getRow(1).font = { bold: true }; source.forEach(r => ws.addRow({ ...r, entry_type: r.entry_type === 'INCOME' ? 'Pendapatan' : 'Pengeluaran', entry_date: String(r.entry_date).slice(0, 10), cluster_name: r.cluster_name || '' })); ws.getColumn('amount').numFmt = '#,##0'; return ws; };
+    const addSheet = (name, source) => { const ws = wb.addWorksheet(name); ws.columns = columns; ws.getRow(1).font = { bold: true }; source.forEach(r => ws.addRow({ ...r, entry_type: r.entry_type === 'INCOME' ? 'Pendapatan' : 'Pengeluaran', entry_date: excelDate(r.entry_date), cluster_name: r.cluster_name || '' })); ws.getColumn('amount').numFmt = '#,##0'; return ws; };
     const summary = wb.addWorksheet('Ringkasan');
     summary.columns = [{ header: 'Kategori', key: 'category', width: 32 }, { header: 'Jenis', key: 'type', width: 16 }, { header: 'Jumlah transaksi', key: 'count', width: 18 }, { header: 'Total', key: 'total', width: 20 }]; summary.getRow(1).font = { bold: true };
     [...new Map(rows.map(r => { const key = `${r.entry_type}|${r.category}`; const old = rows.filter(x => `${x.entry_type}|${x.category}` === key); return [key, { category: r.category, type: r.entry_type === 'INCOME' ? 'Pendapatan' : 'Pengeluaran', count: old.length, total: old.reduce((n,x) => n + money(x.amount), 0) }]; })).values()].forEach(row => summary.addRow(row)); summary.getColumn('total').numFmt = '#,##0';
@@ -933,7 +995,7 @@ router.get('/export.xlsx', async (req, res, next) => {
       { header: 'Nominal', key: 'amount', width: 18 }
     ];
     ws.getRow(1).font = { bold: true };
-    rows.forEach((r) => ws.addRow({ ...r, entry_type: r.entry_type === 'INCOME' ? 'Pendapatan' : 'Pengeluaran', entry_date: String(r.entry_date).slice(0, 10), cluster_name: r.cluster_name || '' }));
+    rows.forEach((r) => ws.addRow({ ...r, entry_type: r.entry_type === 'INCOME' ? 'Pendapatan' : 'Pengeluaran', entry_date: excelDate(r.entry_date), cluster_name: r.cluster_name || '' }));
     ws.getColumn('amount').numFmt = '#,##0';*/
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="closing-${start}-${end}.xlsx"`);
