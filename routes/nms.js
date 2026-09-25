@@ -17,6 +17,7 @@ const bus = require('../services/nms/eventBus');
 const insights = require('../services/nms/insights');
 const automation = require('../services/nms/automation');
 const nmsSettings = require('../services/nms/settings');
+const widgets = require('../services/nms/widgets');
 
 const router = express.Router();
 
@@ -85,6 +86,7 @@ router.get('/automation', async (req, res, next) => {
 
 // ---------- Dashboard & telemetry ----------
 router.get('/api/dashboard', api(async req => ({ data: await dashboard.getDashboard(siteParam(req)) })));
+router.get('/api/widgets', api(async req => ({ data: await widgets.all(siteParam(req)) })));
 router.get('/api/events', api(async req => ({ rows: await dashboard.recentEvents(siteParam(req), Number(req.query.limit) || 60) })));
 
 // Server-Sent Events: push telemetry/PPP log/alert tanpa polling dari browser.

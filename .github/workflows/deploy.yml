@@ -20,7 +20,16 @@ jobs:
           set -euo pipefail
           cd /opt/inkambilling
           git fetch origin main
-          git pull --ff-only origin main
+          # Simpan dulu perubahan lokal di server (kalau ada) sebelum disamakan dengan GitHub,
+          # supaya edit manual di server tidak hilang begitu saja dan tidak memblokir deploy.
+          if ! git diff --quiet || ! git diff --cached --quiet; then
+            mkdir -p $HOME/inkambilling-local-changes
+            BACKUP="$HOME/inkambilling-local-changes/$(date +%Y%m%d-%H%M%S).patch"
+            git diff HEAD > "$BACKUP"
+            echo "Perubahan lokal di server disimpan ke $BACKUP:"
+            git status --short
+          fi
+          git reset --hard origin/main
 
       - name: Backup production database
         shell: bash
