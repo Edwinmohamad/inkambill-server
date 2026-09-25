@@ -2372,3 +2372,23 @@ html[data-theme="dark"] .recon-page .cash-age.late{background:var(--danger-tint)
 .payment-chip:hover{border-color:rgba(var(--brand-rgb),.4);color:var(--text)}
 .payment-chip.active{border-color:rgba(var(--brand-rgb),.6);background:rgba(var(--brand-rgb),.12)}
 .payment-chip b{min-width:18px;padding:0 6px;border-radius:999px;background:rgba(var(--brand-rgb),.14);font-size:var(--fs-7);text-align:center;line-height:18px}
+
+/* v1.30 -- Closing: Hutang internal teknisi (Apple-style grouped list) */
+.closing-idebt-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border-radius:14px;overflow:hidden;margin:14px 0}
+.closing-idebt-stats>div{background:var(--panel-2);padding:12px 14px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.closing-idebt-stats span{font-size:12px;color:var(--muted)}
+.closing-idebt-stats strong{font-size:16px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.closing-idebt-list{border:.5px solid var(--line);border-radius:14px;overflow:hidden}
+.closing-idebt-person+.closing-idebt-person{border-top:.5px solid var(--line)}
+.closing-idebt-person>summary{list-style:none;display:flex;align-items:center;gap:12px;padding:12px 14px;cursor:pointer}
+.closing-idebt-person>summary::-webkit-details-marker{display:none}
+.closing-idebt-person>summary:hover{background:var(--soft)}
+.closing-idebt-person>summary>i{color:var(--muted);transition:transform .2s}
+.closing-idebt-person[open]>summary>i{transform:rotate(180deg)}
+.closing-idebt-avatar{width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#ffb340,#ff9500);color:#fff;font-weight:600;font-size:13px;flex:0 0 auto}
+.closing-idebt-name{flex:1;min-width:0;display:flex;flex-direction:column}
+.closing-idebt-name small,.closing-idebt-amount small{font-size:12px;color:var(--muted)}
+.closing-idebt-amount{display:flex;flex-direction:column;align-items:flex-end;text-align:right}
+.closing-idebt-person .table-responsive{padding:0 14px}
+.closing-idebt-link{display:inline-flex;gap:4px;align-items:center;font-size:13px;color:var(--info);text-decoration:none;padding:10px 14px 14px}
+@media (max-width:640px){.closing-idebt-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.closing-idebt-amount small{display:none}}

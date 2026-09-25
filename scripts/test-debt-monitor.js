@@ -7,6 +7,10 @@ const schema = fs.readFileSync(path.join(root, 'services/schemaService.js'), 'ut
 const app = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
 const view = fs.readFileSync(path.join(root, 'views/debts/index.ejs'), 'utf8');
 const layout = fs.readFileSync(path.join(root, 'views/partials/layout.ejs'), 'utf8');
+const closingRoute = fs.readFileSync(path.join(root, 'routes/closing.js'), 'utf8');
+const closingView = fs.readFileSync(path.join(root, 'views/closing/index.ejs'), 'utf8');
+const pdf = fs.readFileSync(path.join(root, 'services/reportPdf.js'), 'utf8');
+const internal = fs.readFileSync(path.join(root, 'services/internalDebtService.js'), 'utf8');
 
 const checks = [
   [schema.includes('async function ensureV40Schema()'), 'schema V40'],
@@ -25,7 +29,12 @@ const checks = [
   [view.includes('tidak otomatis masuk ke Closing'), 'proteksi hitung ganda'],
   [view.includes('debt-page') && view.includes('debt-money-grid'), 'layout profesional dan kolom nominal'],
   [view.includes('data-debt-search') && view.includes("search?.addEventListener('input'"), 'pencarian instan'],
-  [view.includes('data-auto-filter') && view.includes('debt-filter-reset'), 'filter otomatis dan reset']
+  [view.includes('data-auto-filter') && view.includes('debt-filter-reset'), 'filter otomatis dan reset'],
+  [schema.includes('async function ensureV58Schema()') && schema.includes("scope ENUM('EXTERNAL','INTERNAL')") && app.includes('await ensureV58Schema()'), 'schema hutang internal/eksternal'],
+  [route.includes('SELECT id,name,user_id FROM employees') && route.includes('employee_id,user_id'), 'hutang internal tertaut ke teknisi & user'],
+  [view.includes('name="scope" value="INTERNAL"') && view.includes('name="employee_id"') && view.includes('hp-segmented'), 'UI internal/eksternal'],
+  [internal.includes("d.scope='INTERNAL'") && closingRoute.includes('loadInternalDebtSummary') && closingView.includes('Hutang internal teknisi'), 'rincian hutang teknisi di Closing'],
+  [pdf.includes('function drawInternalDebtSection') && closingRoute.includes('internalDebtRows'), 'rincian hutang teknisi di PDF Closing']
 ];
 
 for (const [valid, label] of checks) if (!valid) throw new Error(`Validasi Hutang gagal: ${label}`);

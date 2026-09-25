@@ -439,7 +439,83 @@ function summarizeCategoryBreakdown(doc,cats,availWidth,fontSize=6.7,font='Helve
   const mainText=shown.map(([k,v])=>`${k} ${rupiah(v)}`).join(sep);
   return remaining>0?`${mainText}${sep}+${remaining} lainnya ${rupiah(restSum)}`:mainText;
 }
-function createClosingReportPdf(res,{title,subtitle,filename,recipientName='',summaryItems=[],blocks=[],adjustmentRows=[],transactionRows=[],customerActivityRows=[],disposition='attachment',watermark=''}){
+// v1.30 - "Hutang Internal Teknisi": rincian per teknisi (saldo awal, pinjaman baru,
+// cicilan dibayar, sisa) + rincian barang dan pembayaran per catatan. Informasi saja,
+// tidak memengaruhi pembagian hasil di atasnya.
+function drawInternalDebtSection(doc,people,summary,title,subtitle){
+  if(!Array.isArray(people)||!people.length)return;
+  const x=doc.page.margins.left,total=doc.page.width-doc.page.margins.left-doc.page.margins.right;
+  const bottomLimit=doc.page.height-doc.page.margins.bottom-30;
+  const ensure=(h)=>{if(doc.y+h>bottomLimit){doc.addPage();drawBrandHeader(doc,title,subtitle,true);return true;}return false;};
+  ensure(120);
+  drawSectionLabel(doc,'Hutang Internal Teknisi',`${people.length} orang · informasi, tidak memengaruhi pembagian`);
+  // strip ringkasan
+  const s=summary||{};
+  const cards=[
+    {label:'Sisa hutang teknisi',value:rupiah(s.receivableBalance),color:COLORS.red},
+    {label:'Pinjaman baru periode ini',value:rupiah(s.newInPeriod),color:COLORS.ink},
+    {label:'Dibayar / dicicil periode ini',value:rupiah(s.paidInPeriod),color:COLORS.green},
+    {label:'Talangan (kantor hutang)',value:rupiah(s.debtBalance),color:COLORS.blue}
+  ];
+  const gap=8,cw=(total-gap*3)/4,cy=doc.y;
+  cards.forEach((c,i)=>{const cx=x+i*(cw+gap);doc.save();doc.roundedRect(cx,cy,cw,40,7).lineWidth(.7).fillAndStroke(COLORS.white,COLORS.line);
+    doc.fillColor(COLORS.muted).font('Helvetica').fontSize(6.3).text(safe(c.label),cx+10,cy+8,{width:cw-20,height:9,lineBreak:false,ellipsis:true});
+    doc.fillColor(c.color).font('Helvetica-Bold').fontSize(10).text(c.value,cx+10,cy+20,{width:cw-20,height:13,lineBreak:false,ellipsis:true});doc.restore();});
+  doc.y=cy+52;
+  const cols=[{label:'Tanggal',w:.13},{label:'Keperluan',w:.33},{label:'Saldo awal',w:.135,align:'right'},{label:'Baru',w:.135,align:'right'},{label:'Dibayar',w:.135,align:'right'},{label:'Sisa',w:.135,align:'right'}];
+  const widths=cols.map(c=>c.w*total);
+  const colX=(i)=>x+widths.slice(0,i).reduce((a,b)=>a+b,0);
+  const drawHead=()=>{const y=doc.y;doc.save();doc.rect(x,y,total,18).fill(COLORS.soft);
+    cols.forEach((c,i)=>{doc.fillColor(COLORS.muted).font('Helvetica-Bold').fontSize(6.1).text(c.label.toUpperCase(),colX(i)+8,y+6,{width:widths[i]-14,align:c.align||'left',height:8,lineBreak:false,ellipsis:true});});
+    doc.restore();doc.y=y+20;};
+  const personHeader=(p,cont)=>{
+    const y=doc.y;doc.save();
+    doc.roundedRect(x,y,total,30,6).fill(COLORS.purpleSoft);
+    doc.fillColor(COLORS.ink).font('Helvetica-Bold').fontSize(8.6).text(safe(p.name)+(cont?' (lanjutan)':''),x+10,y+6,{width:total*.55,height:11,lineBreak:false,ellipsis:true});
+    doc.fillColor(COLORS.muted).font('Helvetica').fontSize(6.6).text(safe(p.meta||'Karyawan'),x+10,y+18,{width:total*.55,height:9,lineBreak:false,ellipsis:true});
+    doc.fillColor(COLORS.muted).font('Helvetica').fontSize(6.3).text('SISA DIBAWA KE PERIODE BERIKUT',x+total*.52,y+6,{width:total*.46,align:'right',height:8,lineBreak:false,ellipsis:true});
+    const tail=p.owedByOffice?` · talangan ${rupiah(p.owedByOffice)}`:'';
+    doc.fillColor(p.owedToOffice?COLORS.red:COLORS.green).font('Helvetica-Bold').fontSize(9).text(rupiah(p.owedToOffice)+tail,x+total*.40,y+15,{width:total*.58,align:'right',height:12,lineBreak:false,ellipsis:true});
+    doc.restore();doc.y=y+34;drawHead();
+  };
+  const num=(v,color)=>({text:v?rupiah(v):'-',color:v?color:COLORS.muted2});
+  people.forEach((p)=>{
+    ensure(30+20+26+20);
+    personHeader(p,false);
+    p.records.forEach((r)=>{
+      const itemLines=(r.items||[]).map(it=>`${safe(it.name)} - ${Number(it.qty).toLocaleString('id-ID')} x ${rupiah(it.price)} = ${rupiah(it.subtotal)}${it.notes?` (${safe(it.notes)})`:''}`);
+      const payLines=(r.payments||[]).map(py=>`Bayar ${date(py.date)} · ${documentLabel(py.method)} · ${rupiah(py.amount)}${py.notes?` · ${safe(py.notes)}`:''}`);
+      const dirText=r.direction==='TO_OFFICE'?'Hutang ke kantor':'Talangan (kantor hutang)';
+      const subText=`${dirText} · ${safe(r.site)}${r.method==='INSTALLMENT'?` · cicilan ${r.months} bln`:''}${r.dueDate?` · jatuh tempo ${date(r.dueDate)}`:''}${r.overdue?' · TERLAMBAT':''}`;
+      doc.font('Helvetica').fontSize(6.4);
+      const detailW=total-widths[0]-16;
+      const detailText=[...itemLines.map(l=>`- ${l}`),...payLines.map(l=>`> ${l}`)].join('\n');
+      const detailH=detailText?doc.heightOfString(detailText,{width:detailW,lineGap:1.2}):0;
+      const rh=26+(detailText?detailH+4:0);
+      if(ensure(rh)){personHeader(p,true);}
+      const y=doc.y;doc.save();
+      doc.strokeColor(COLORS.line).lineWidth(.5).moveTo(x,y+rh).lineTo(x+total,y+rh).stroke();
+      doc.fillColor(COLORS.muted).font('Helvetica').fontSize(7).text(date(r.issueDate),colX(0)+8,y+6,{width:widths[0]-12,height:9,lineBreak:false,ellipsis:true});
+      doc.fillColor(COLORS.ink).font('Helvetica-Bold').fontSize(7.4).text(safe(r.purpose),colX(1)+8,y+5,{width:widths[1]-12,height:10,lineBreak:false,ellipsis:true});
+      doc.fillColor(r.overdue?COLORS.red:COLORS.muted2).font('Helvetica').fontSize(6.2).text(subText,colX(1)+8,y+15.5,{width:widths[1]+widths[2]-12,height:8,lineBreak:false,ellipsis:true});
+      const sign=r.direction==='TO_OFFICE'?COLORS.red:COLORS.blue;
+      [num(r.opening,COLORS.ink),num(r.newAmount,COLORS.ink),num(r.paidInPeriod,COLORS.green),num(r.balance,sign)].forEach((v,k)=>{
+        doc.fillColor(v.color).font(k===3?'Helvetica-Bold':'Helvetica').fontSize(7.3).text(v.text,colX(k+2)+6,y+6,{width:widths[k+2]-12,align:'right',height:9,lineBreak:false,ellipsis:true});
+      });
+      if(detailText){doc.fillColor(COLORS.muted).font('Helvetica').fontSize(6.4).text(detailText,colX(1)+8,y+26,{width:detailW,lineGap:1.2});}
+      doc.restore();doc.y=y+rh+2;
+    });
+    // subtotal per orang
+    ensure(20);
+    const y=doc.y;doc.save();doc.rect(x,y,total,18).fill(COLORS.soft);
+    doc.fillColor(COLORS.ink).font('Helvetica-Bold').fontSize(7).text(`Subtotal ${safe(p.name)}`,colX(0)+8,y+5.5,{width:widths[0]+widths[1]-16,height:9,lineBreak:false,ellipsis:true});
+    [p.opening,p.newAmount,p.paidInPeriod,p.balance].forEach((v,k)=>{doc.fillColor(k===2?COLORS.green:COLORS.ink).font('Helvetica-Bold').fontSize(7.2).text(rupiah(v),colX(k+2)+6,y+5.5,{width:widths[k+2]-12,align:'right',height:9,lineBreak:false,ellipsis:true});});
+    doc.restore();doc.y=y+28;
+  });
+  doc.fillColor(COLORS.muted2).font('Helvetica').fontSize(6.3).text('Saldo awal = sisa sebelum periode ini · Baru = hutang yang dicatat dalam periode · Dibayar = cicilan/pelunasan dalam periode · Sisa = saldo per akhir periode.',x,doc.y,{width:total,lineGap:1});
+  doc.y+=16;
+}
+function createClosingReportPdf(res,{title,subtitle,filename,recipientName='',summaryItems=[],blocks=[],adjustmentRows=[],transactionRows=[],customerActivityRows=[],internalDebtRows=[],internalDebtSummary=null,disposition='attachment',watermark=''}){
   const doc=new PDFDocument({size:'A4',layout:'portrait',margins:{top:36,bottom:42,left:36,right:36},bufferPages:true,info:{Title:safe(title),Author:COMPANY,Subject:safe(subtitle||'')}});
   res.setHeader('Content-Type','application/pdf');
   res.setHeader('Content-Disposition',`${disposition==='inline'?'inline':'attachment'}; filename="${String(filename).replace(/[\r\n"]/g,'-')}"`);
@@ -450,6 +526,7 @@ function createClosingReportPdf(res,{title,subtitle,filename,recipientName='',su
   drawCustomerActivityTable(doc,customerActivityRows,title,subtitle);
   drawAdjustmentTable(doc,adjustmentRows,title,subtitle);
   drawTransactionTable(doc,transactionRows,title,subtitle);
+  drawInternalDebtSection(doc,internalDebtRows,internalDebtSummary,title,subtitle);
   drawReportSignoff(doc);
   drawWatermarkOnAllPages(doc,watermark);
   drawFooterOnAllPages(doc);

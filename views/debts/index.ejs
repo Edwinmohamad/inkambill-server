@@ -1,277 +1,410 @@
-<!-- v1.27 -- total redesign: menu ini sekarang memakai komponen desain yang sama dengan modul lain
-     (module-head, metric-grid/metric-card, filter-card/filter-grid, data-card, status-badge, app-dropdown,
-     btn-tech) alih-alih gaya "v2" tersendiri yang penuh gradasi/glow. Semua id, name, class, dan
-     data-attribute yang dipakai script di bagian bawah file ini TIDAK diubah -- hanya tampilan & susunan
-     visualnya yang dirapikan supaya konsisten dan terasa lebih profesional dengan modul keuangan lain
-     (Rekonsiliasi, Pembayaran, Pelanggan, dst). -->
-<div class="debt-page">
-  <div class="module-head">
-    <div><div class="module-kicker">KEUANGAN · MONITORING</div><h1>Hutang & Piutang</h1><p>Pantau kewajiban, tagihan masuk, jatuh tempo, pembayaran, dan sisa secara terpisah dari Closing.</p></div>
-    <div class="module-actions">
-      <details class="debt-create-panel">
-        <summary class="btn-tech primary"><i class="bi bi-plus-lg"></i>Catat Baru</summary>
-        <form method="post" action="/debts" class="debt-create-form">
-          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-          <div class="debt-form-section span-4"><i class="bi bi-info-circle"></i>Informasi Umum</div>
-          <label><span>Jenis</span><select class="form-select form-select-sm" name="record_type" required><option value="DEBT">Hutang INKAMNET</option><option value="RECEIVABLE">Piutang / belum diterima</option></select></label>
-          <label><span>Lokasi</span><select class="form-select form-select-sm" name="site_code" required><option value="GLOBAL">Global</option><option value="CDS">CDS</option><option value="KBG">KBG</option></select></label>
-          <label class="span-2"><span>Nama pihak</span><input class="form-control form-control-sm" name="party_name" maxlength="160" placeholder="Vendor / pemberi hutang / pemegang cash" required></label>
-          <label class="span-2"><span>Keperluan</span><input class="form-control form-control-sm" name="purpose" maxlength="255" placeholder="Contoh: pembelian router" required></label>
-          <label><span>Metode</span><select class="form-select form-select-sm" name="payment_method" id="debtPaymentMethod"><option value="ONCE">Sekali bayar</option><option value="INSTALLMENT">Cicilan</option></select></label>
-          <label id="debtInstallmentMonths" hidden><span>Durasi cicilan</span><select class="form-select form-select-sm" name="installment_months"><option value="3">3 bulan</option><option value="6">6 bulan</option><option value="12">12 bulan</option><option value="18">18 bulan</option><option value="24">24 bulan</option></select></label>
-          <label><span>Tanggal dicatat</span><input class="form-control form-control-sm" type="date" name="issue_date" value="<%= today %>" required></label>
-          <label><span>Jatuh tempo pertama</span><input class="form-control form-control-sm" type="date" name="due_date"></label>
-          <label class="span-2"><span>Penanggung jawab</span><input class="form-control form-control-sm" name="responsible_name" maxlength="160" placeholder="Edwin / Jon / Bopung / bersama"></label>
-          <label class="span-2"><span>Catatan</span><input class="form-control form-control-sm" name="notes" maxlength="2000" placeholder="Opsional"></label>
+<%#
+  v1.30 -- Hutang & Piutang, Apple-style redesign + Hutang Internal (teknisi) vs Eksternal.
+  Layout: judul besar, segmented control Semua/Internal/Eksternal, kartu ringkasan, strip teknisi,
+  toolbar pencarian + filter pil, daftar "inset grouped" ala iOS, dan semua detail/aksi dibuka
+  sebagai sheet (modal) supaya halaman utama tetap bersih. Style ada di /css/debts.css.
+%>
+<link rel="stylesheet" href="/css/debts.css?v=<%= typeof assetVersion!=='undefined'?assetVersion:'1' %>">
+<%
+  const rp = (v) => 'Rp ' + Math.round(Number(v || 0)).toLocaleString('id-ID');
+  const scope = filters.scope || '';
+  const qs = (patch) => {
+    const base = { scope, type: filters.type, status: filters.status !== 'ACTIVE' ? filters.status : '', site: filters.site, q: filters.query, period: filters.period, from: filters.from, to: filters.to, employee: filters.employee || '' };
+    const merged = Object.assign(base, patch || {});
+    const parts = Object.entries(merged).filter(([, v]) => v !== '' && v !== null && v !== undefined && v !== 0).map(([k, v]) => `${k}=${encodeURIComponent(v)}`);
+    return parts.length ? `/debts?${parts.join('&')}` : '/debts';
+  };
+  const kindLabel = (row) => row.scope === 'INTERNAL'
+    ? (row.record_type === 'RECEIVABLE' ? 'Hutang teknisi' : 'Talangan teknisi')
+    : (row.record_type === 'DEBT' ? 'Hutang' : 'Piutang');
+  const kindClass = (row) => row.scope === 'INTERNAL' ? (row.record_type === 'RECEIVABLE' ? 'orange' : 'teal') : (row.record_type === 'DEBT' ? 'purple' : 'green');
+  const initials = (name) => String(name || '?').trim().split(/\s+/).slice(0, 2).map((w) => w.charAt(0).toUpperCase()).join('') || '?';
+  const technicians = people.filter((p) => p.category === 'technical');
+  const otherPeople = people.filter((p) => p.category !== 'technical');
+  const I = summary.INTERNAL, E = summary.EXTERNAL;
+  const totalOverdue = summary.DEBT.overdue + summary.RECEIVABLE.overdue;
+  const internalOverdue = I.DEBT.overdue + I.RECEIVABLE.overdue;
+  const externalOverdue = E.DEBT.overdue + E.RECEIVABLE.overdue;
+  const owingTechs = techRows.filter((t) => Number(t.owed_to_office) > 0).length;
+  const hasFilter = filters.type || filters.site || filters.status !== 'ACTIVE' || filters.query || filters.period || filters.employee;
+  const selectedPerson = filters.employee ? techRows.find((t) => Number(t.employee_id) === Number(filters.employee)) : null;
+%>
+<div class="debt-page hp-page">
 
-          <div class="debt-form-section span-4"><i class="bi bi-receipt"></i>Rincian Pembelian</div>
-          <div class="debt-items-editor span-4"><div class="debt-items-head"><span>Rincian pembelian</span><button class="btn-tech compact" type="button" id="addDebtItem"><i class="bi bi-plus-lg"></i> Tambah item</button></div><div id="debtItemRows"><div class="debt-item-input"><input class="form-control form-control-sm" name="item_name[]" placeholder="Nama barang / keperluan" required><input class="form-control form-control-sm debt-item-qty" type="number" min="0.01" step="0.01" name="item_quantity[]" value="1" aria-label="Jumlah" required><input class="form-control form-control-sm debt-item-price" type="number" min="1" step="1" name="item_unit_price[]" placeholder="Harga satuan" required><input class="form-control form-control-sm" name="item_notes[]" placeholder="Catatan item"><button class="btn btn-link text-danger debt-remove-item" type="button" title="Hapus"><i class="bi bi-trash"></i></button><strong class="debt-item-subtotal">Rp 0</strong></div></div><div class="debt-items-total"><span>Total otomatis</span><strong id="debtItemsTotal">Rp 0</strong></div></div>
-          <div class="debt-form-action span-4"><button class="btn-tech primary" type="submit"><i class="bi bi-save2"></i>Simpan</button></div>
-        </form>
-      </details>
+  <header class="hp-header">
+    <div>
+      <span class="hp-eyebrow">Keuangan</span>
+      <h1>Hutang &amp; Piutang</h1>
+      <p>Catat hutang teknisi (internal) dan hutang/piutang dengan pihak luar (eksternal) di satu tempat.</p>
     </div>
-  </div>
+    <button type="button" class="hp-btn hp-btn-primary" data-bs-toggle="modal" data-bs-target="#debtCreateModal" data-create-scope="<%= scope === 'EXTERNAL' ? 'EXTERNAL' : 'INTERNAL' %>" data-create-employee="<%= filters.employee || '' %>"><i class="bi bi-plus-lg"></i><span>Catat Baru</span></button>
+  </header>
 
-  <% const totalOutstanding=summary.DEBT.remaining+summary.RECEIVABLE.remaining; const totalOverdue=summary.DEBT.overdue+summary.RECEIVABLE.overdue; %>
-  <div class="metric-grid debt-metric-grid" aria-label="Ringkasan hutang dan piutang">
-    <a class="metric-card metric-card-link" href="/debts?type=DEBT&status=ACTIVE"><div class="metric-top"><span class="metric-label">Sisa Hutang</span><span class="metric-icon"><i class="bi bi-arrow-down-left"></i></span></div><strong>Rp <%= summary.DEBT.remaining.toLocaleString('id-ID') %></strong><small><b><%= summary.DEBT.total %></b> kewajiban aktif</small></a>
-    <a class="metric-card green metric-card-link" href="/debts?type=RECEIVABLE&status=ACTIVE"><div class="metric-top"><span class="metric-label">Sisa Piutang</span><span class="metric-icon"><i class="bi bi-arrow-up-right"></i></span></div><strong>Rp <%= summary.RECEIVABLE.remaining.toLocaleString('id-ID') %></strong><small><b><%= summary.RECEIVABLE.total %></b> tagihan aktif</small></a>
-    <div class="metric-card <%= totalOverdue>0?'red':'' %>"><div class="metric-top"><span class="metric-label">Lewat Jatuh Tempo</span><span class="metric-icon"><i class="bi bi-exclamation-triangle"></i></span></div><strong>Rp <%= totalOverdue.toLocaleString('id-ID') %></strong><small class="debt-health-line"><span class="debt-health-dot <%= totalOverdue>0?'danger':'safe' %>"></span><%= totalOverdue>0?'Perlu segera ditindaklanjuti':'Semua pembayaran terkendali' %></small></div>
-    <div class="metric-card"><div class="metric-top"><span class="metric-label">Total Outstanding</span><span class="metric-icon"><i class="bi bi-wallet2"></i></span></div><strong>Rp <%= totalOutstanding.toLocaleString('id-ID') %></strong><small>Hutang + piutang aktif gabungan</small></div>
-  </div>
+  <nav class="hp-segmented" aria-label="Jenis hutang">
+    <a class="<%= !scope ? 'active' : '' %>" href="<%= qs({ scope: '', employee: '', type: '' }) %>">Semua</a>
+    <a class="<%= scope === 'INTERNAL' ? 'active' : '' %>" href="<%= qs({ scope: 'INTERNAL', type: '' }) %>"><i class="bi bi-person-badge"></i>Internal · Teknisi</a>
+    <a class="<%= scope === 'EXTERNAL' ? 'active' : '' %>" href="<%= qs({ scope: 'EXTERNAL', employee: '', type: '' }) %>"><i class="bi bi-building"></i>Eksternal</a>
+  </nav>
 
-  <form class="filter-card debt-filter" method="get" action="/debts" data-auto-filter>
-    <div class="filter-grid debt-filter-grid">
-      <div class="filter-group debt-filter-search-group"><label>CARI</label><div class="search-box"><i class="bi bi-search"></i><input name="q" value="<%= filters.query %>" maxlength="100" autocomplete="off" placeholder="Cari nama pihak, keperluan, atau penanggung jawab…"></div></div>
-      <div class="filter-group"><label>JENIS</label><select class="form-select" name="type" aria-label="Jenis"><option value="">Semua jenis</option><option value="DEBT" <%= filters.type==='DEBT'?'selected':'' %>>Hutang</option><option value="RECEIVABLE" <%= filters.type==='RECEIVABLE'?'selected':'' %>>Piutang</option></select></div>
-      <div class="filter-group"><label>LOKASI</label><select class="form-select" name="site" aria-label="Lokasi"><option value="">Semua lokasi</option><option value="GLOBAL" <%= filters.site==='GLOBAL'?'selected':'' %>>Global</option><option value="CDS" <%= filters.site==='CDS'?'selected':'' %>>CDS</option><option value="KBG" <%= filters.site==='KBG'?'selected':'' %>>KBG</option></select></div>
-      <div class="filter-group"><label>STATUS</label><select class="form-select" name="status" aria-label="Status"><option value="ACTIVE" <%= filters.status==='ACTIVE'?'selected':'' %>>Aktif</option><option value="PAID" <%= filters.status==='PAID'?'selected':'' %>>Lunas</option><option value="ARCHIVED" <%= filters.status==='ARCHIVED'?'selected':'' %>>Arsip</option></select></div>
-      <div class="filter-group"><label>PERIODE</label><select class="form-select" name="period" aria-label="Periode"><option value="">Semua waktu</option><option value="today" <%= filters.period==='today'?'selected':'' %>>Hari ini</option><option value="month" <%= filters.period==='month'?'selected':'' %>>Bulan ini</option><option value="custom" <%= filters.period==='custom'?'selected':'' %>>Custom</option></select></div>
-      <% if(filters.period==='custom'){ %><div class="filter-group debt-filter-custom-range"><label>RENTANG TANGGAL</label><div class="debt-filter-custom-range-inputs"><input class="form-control" type="date" name="from" value="<%= filters.from %>" aria-label="Dari tanggal"><span>—</span><input class="form-control" type="date" name="to" value="<%= filters.to %>" aria-label="Sampai tanggal"></div></div><% } %>
-      <div class="filter-group d-flex align-items-end gap-2"><button class="btn-tech flex-fill"><i class="bi bi-search"></i>Cari</button><% if(filters.type||filters.site||filters.status!=='ACTIVE'||filters.query||filters.period){ %><a class="btn-tech debt-filter-reset" href="/debts" title="Reset filter"><i class="bi bi-x-lg"></i></a><% } %></div>
+  <section class="hp-stats" aria-label="Ringkasan">
+    <% if (scope === 'INTERNAL') { %>
+      <a class="hp-stat tone-orange" href="<%= qs({ type: 'RECEIVABLE' }) %>"><span class="hp-stat-label"><i class="bi bi-person-down"></i>Hutang Teknisi ke Kantor</span><strong><%= rp(I.RECEIVABLE.remaining) %></strong><small><%= I.RECEIVABLE.total %> catatan aktif</small></a>
+      <a class="hp-stat tone-teal" href="<%= qs({ type: 'DEBT' }) %>"><span class="hp-stat-label"><i class="bi bi-person-up"></i>Talangan (Kantor Hutang)</span><strong><%= rp(I.DEBT.remaining) %></strong><small><%= I.DEBT.total %> catatan aktif</small></a>
+      <div class="hp-stat <%= internalOverdue > 0 ? 'tone-red' : '' %>"><span class="hp-stat-label"><i class="bi bi-exclamation-triangle"></i>Lewat Jatuh Tempo</span><strong><%= rp(internalOverdue) %></strong><small><%= internalOverdue > 0 ? 'Perlu ditagih' : 'Semua terkendali' %></small></div>
+      <div class="hp-stat"><span class="hp-stat-label"><i class="bi bi-people"></i>Teknisi Berhutang</span><strong><%= owingTechs %></strong><small>dari <%= technicians.length %> teknisi aktif</small></div>
+    <% } else if (scope === 'EXTERNAL') { %>
+      <a class="hp-stat tone-purple" href="<%= qs({ type: 'DEBT' }) %>"><span class="hp-stat-label"><i class="bi bi-arrow-down-left"></i>Sisa Hutang</span><strong><%= rp(E.DEBT.remaining) %></strong><small><%= E.DEBT.total %> kewajiban aktif</small></a>
+      <a class="hp-stat tone-green" href="<%= qs({ type: 'RECEIVABLE' }) %>"><span class="hp-stat-label"><i class="bi bi-arrow-up-right"></i>Sisa Piutang</span><strong><%= rp(E.RECEIVABLE.remaining) %></strong><small><%= E.RECEIVABLE.total %> tagihan aktif</small></a>
+      <div class="hp-stat <%= externalOverdue > 0 ? 'tone-red' : '' %>"><span class="hp-stat-label"><i class="bi bi-exclamation-triangle"></i>Lewat Jatuh Tempo</span><strong><%= rp(externalOverdue) %></strong><small><%= externalOverdue > 0 ? 'Perlu ditindaklanjuti' : 'Semua terkendali' %></small></div>
+      <div class="hp-stat"><span class="hp-stat-label"><i class="bi bi-wallet2"></i>Total Outstanding</span><strong><%= rp(E.DEBT.remaining + E.RECEIVABLE.remaining) %></strong><small>Hutang + piutang eksternal</small></div>
+    <% } else { %>
+      <a class="hp-stat tone-purple" href="<%= qs({ type: 'DEBT' }) %>"><span class="hp-stat-label"><i class="bi bi-arrow-down-left"></i>Sisa Hutang</span><strong><%= rp(summary.DEBT.remaining) %></strong><small><%= summary.DEBT.total %> kewajiban aktif</small></a>
+      <a class="hp-stat tone-green" href="<%= qs({ type: 'RECEIVABLE' }) %>"><span class="hp-stat-label"><i class="bi bi-arrow-up-right"></i>Sisa Piutang</span><strong><%= rp(summary.RECEIVABLE.remaining) %></strong><small><%= summary.RECEIVABLE.total %> tagihan aktif (termasuk teknisi)</small></a>
+      <a class="hp-stat tone-orange" href="<%= qs({ scope: 'INTERNAL', type: '' }) %>"><span class="hp-stat-label"><i class="bi bi-person-badge"></i>Hutang Teknisi</span><strong><%= rp(I.RECEIVABLE.remaining) %></strong><small><%= owingTechs %> teknisi masih berhutang</small></a>
+      <div class="hp-stat <%= totalOverdue > 0 ? 'tone-red' : '' %>"><span class="hp-stat-label"><i class="bi bi-exclamation-triangle"></i>Lewat Jatuh Tempo</span><strong><%= rp(totalOverdue) %></strong><small><%= totalOverdue > 0 ? 'Perlu segera ditindaklanjuti' : 'Semua pembayaran terkendali' %></small></div>
+    <% } %>
+  </section>
+
+  <% if (scope !== 'EXTERNAL' && techRows.length) { %>
+  <section class="hp-section">
+    <div class="hp-section-head"><h2>Teknisi</h2><% if (filters.employee) { %><a href="<%= qs({ employee: '' }) %>">Tampilkan semua</a><% } %></div>
+    <div class="hp-people">
+      <% techRows.forEach((t) => { const owed = Number(t.owed_to_office || 0), talangan = Number(t.owed_by_office || 0); const active = Number(filters.employee) === Number(t.employee_id); %>
+      <a class="hp-person <%= active ? 'active' : '' %> <%= owed > 0 ? 'has-debt' : '' %>" href="<%= t.employee_id ? qs({ scope: 'INTERNAL', employee: active ? '' : t.employee_id }) : qs({ scope: 'INTERNAL', q: t.name }) %>">
+        <span class="hp-avatar tone-orange"><%= initials(t.name) %></span>
+        <span class="hp-person-name"><%= t.name %></span>
+        <span class="hp-person-meta"><%= [t.employee_code, t.position_name].filter(Boolean).join(' · ') || 'Karyawan' %></span>
+        <strong class="hp-person-amount"><%= rp(owed) %></strong>
+        <span class="hp-person-sub"><%= talangan > 0 ? `Talangan ${rp(talangan)}` : `${t.total} catatan aktif` %></span>
+      </a>
+      <% }) %>
+    </div>
+  </section>
+  <% } %>
+
+  <form class="hp-toolbar debt-filter" method="get" action="/debts" data-auto-filter>
+    <% if (scope) { %><input type="hidden" name="scope" value="<%= scope %>"><% } %>
+    <% if (filters.employee) { %><input type="hidden" name="employee" value="<%= filters.employee %>"><% } %>
+    <label class="hp-search"><i class="bi bi-search"></i><input name="q" value="<%= filters.query %>" maxlength="100" autocomplete="off" placeholder="Cari nama, keperluan, kode teknisi…" aria-label="Cari"></label>
+    <div class="hp-pills">
+      <label class="hp-pill"><select name="type" aria-label="Jenis"><option value="">Semua jenis</option><% if (scope === 'INTERNAL') { %><option value="RECEIVABLE" <%= filters.type==='RECEIVABLE'?'selected':'' %>>Hutang teknisi</option><option value="DEBT" <%= filters.type==='DEBT'?'selected':'' %>>Talangan teknisi</option><% } else { %><option value="DEBT" <%= filters.type==='DEBT'?'selected':'' %>>Hutang</option><option value="RECEIVABLE" <%= filters.type==='RECEIVABLE'?'selected':'' %>>Piutang</option><% } %></select><i class="bi bi-chevron-down"></i></label>
+      <label class="hp-pill"><select name="status" aria-label="Status"><option value="ACTIVE" <%= filters.status==='ACTIVE'?'selected':'' %>>Aktif</option><option value="PAID" <%= filters.status==='PAID'?'selected':'' %>>Lunas</option><option value="ARCHIVED" <%= filters.status==='ARCHIVED'?'selected':'' %>>Arsip</option></select><i class="bi bi-chevron-down"></i></label>
+      <label class="hp-pill"><select name="site" aria-label="Lokasi"><option value="">Semua lokasi</option><option value="GLOBAL" <%= filters.site==='GLOBAL'?'selected':'' %>>Global</option><option value="CDS" <%= filters.site==='CDS'?'selected':'' %>>CDS</option><option value="KBG" <%= filters.site==='KBG'?'selected':'' %>>KBG</option></select><i class="bi bi-chevron-down"></i></label>
+      <label class="hp-pill"><select name="period" aria-label="Periode"><option value="">Semua waktu</option><option value="today" <%= filters.period==='today'?'selected':'' %>>Hari ini</option><option value="month" <%= filters.period==='month'?'selected':'' %>>Bulan ini</option><option value="custom" <%= filters.period==='custom'?'selected':'' %>>Custom</option></select><i class="bi bi-chevron-down"></i></label>
+      <% if (filters.period === 'custom') { %><span class="hp-range"><input type="date" name="from" value="<%= filters.from %>" aria-label="Dari"><span>–</span><input type="date" name="to" value="<%= filters.to %>" aria-label="Sampai"></span><% } %>
+      <% if (hasFilter) { %><a class="hp-pill hp-pill-reset debt-filter-reset" href="<%= scope ? `/debts?scope=${scope}` : '/debts' %>" title="Reset filter"><i class="bi bi-x-circle-fill"></i>Reset</a><% } %>
     </div>
   </form>
 
-  <!-- v1.28 -- daftar dipindah dari kartu bertumpuk ke tabel (app-table, sama seperti Rekonsiliasi/
-       Pelanggan) supaya banyak baris lebih gampang dipindai/dimonitor sekaligus. Rincian pembelian,
-       jadwal cicilan, dan riwayat transaksi -- yang tadinya dropdown/`<details>` inline -- sekarang
-       digabung jadi satu modal "Detail" per baris (data-bs-toggle="modal", sama seperti modal Catat
-       Cicilan yang sudah ada) supaya tetap aman dipakai di dalam tabel yang bisa discroll horizontal;
-       dropdown biasa berisiko terpotong oleh overflow tabel, modal Bootstrap tidak. -->
-  <div class="data-card debt-list-card">
-    <div class="data-card-head"><div><h3>Daftar Hutang & Piutang</h3><small><%= records.length %> data ditemukan <% if(filters.status!=='ACTIVE'){ %>&middot; status: <%= filters.status==='PAID'?'Lunas':'Arsip' %><% } %></small></div></div>
-    <% if (!records.length) { %><div class="empty-state"><i class="bi bi-journal-check"></i><strong>Belum ada data</strong><small>Catat hutang atau piutang menggunakan tombol "Catat Baru" di atas.</small></div><% } %>
-    <% if (records.length) { %>
-    <div class="inset-list debt-inset-list">
-        <% records.forEach((row,index) => { const remaining=Number(row.remaining_amount||0); const paid=Number(row.paid_amount||0); const principal=Number(row.principal_amount||0); const progress=principal>0?Math.min(100,Math.round(paid/principal*100)):0; const statusKey=row.payment_status.toLowerCase().replace(/\s+/g,'-'); const typeClass=row.record_type==='DEBT'?'type-debt':'type-receivable'; const statusIcon=statusKey==='lunas'?'bi-check-circle-fill':statusKey==='dicicil'?'bi-arrow-repeat':statusKey==='terlambat'?'bi-exclamation-circle-fill':'bi-hourglass-split'; const partyInitial=String(row.party_name||'?').trim().charAt(0).toUpperCase()||'?'; %>
-        <div class="inset-row debt-item <%= typeClass %> <%= row.is_overdue ? 'is-overdue' : '' %>" data-debt-search="<%= [row.party_name,row.purpose,row.responsible_name,row.site_code].filter(Boolean).join(' ') %>">
-          <span class="inset-row-lead debt-avatar <%= typeClass %>"><%= partyInitial %></span>
-          <div class="inset-row-main">
-            <span class="inset-row-title"><%= row.party_name %> <span class="debt-site">&middot; <%= row.site_code %></span></span>
-            <span class="inset-row-sub"><%= row.purpose %> &middot; <%= row.responsible_name || 'Belum ditentukan' %></span>
-            <div class="inset-row-chips">
-              <span class="status-badge <%= row.record_type==='DEBT'?'purple':'green' %>"><%= row.record_type==='DEBT'?'Hutang':'Piutang' %></span>
-              <span class="debt-status-badge status-<%= statusKey %>"><i class="bi <%= statusIcon %>"></i><%= row.payment_status %></span>
-              <span class="debt-due-state <%= row.is_overdue?'danger':'safe' %>"><i class="bi <%= row.is_overdue?'bi-exclamation-circle-fill':'bi-calendar2-check' %>"></i><% if(row.is_overdue){ %>Terlambat<% } else if(row.days_to_due!==null && row.days_to_due>=0){ %><%= row.days_to_due %> hari lagi<% }else{ %>Tanpa jatuh tempo<% } %></span>
-            </div>
-          </div>
-          <div class="inset-row-trail">
-            <div class="debt-nominal-cell">
-              <span class="inset-row-value money">Rp <%= remaining.toLocaleString('id-ID') %></span>
-              <span class="cell-sub">dari Rp <%= principal.toLocaleString('id-ID') %></span>
-              <div class="debt-progress <%= progress>=100?'is-complete':'' %>" title="<%= progress %>% terbayar"><span style="width:<%= progress %>%"></span></div>
-            </div>
-            <button type="button" class="inset-row-chevron" data-bs-toggle="modal" data-bs-target="#debtDetailModal<%= row.id %>" aria-label="Detail <%= row.party_name %>"><i class="bi bi-chevron-right"></i></button>
-            <button type="button" class="action-menu" data-action-popover-target="debtAction<%= row.id %>" aria-label="Tindakan <%= row.party_name %>"><i class="bi bi-three-dots"></i></button>
-            <div class="ink-action-popover" id="debtAction<%= row.id %>" hidden>
-              <div class="ink-action-popover-head"><div><small><%= row.record_type==='DEBT'?'HUTANG':'PIUTANG' %> &middot; <%= row.site_code %></small><strong><%= row.party_name %></strong><span><%= row.purpose %></span></div></div>
-              <div class="ink-action-popover-body">
-                <button type="button" class="ink-action-item compact" data-action-close data-bs-toggle="modal" data-bs-target="#debtDetailModal<%= row.id %>"><i class="bi bi-clock-history"></i><span><b>Detail</b><small>Rincian, jadwal &amp; riwayat</small></span></button>
-                <% if (row.status==='ACTIVE') { %><button type="button" class="ink-action-item compact" data-action-close data-bs-toggle="modal" data-bs-target="#debtPayModal" data-debt-id="<%= row.id %>" data-debt-type-label="<%= row.record_type==='DEBT'?'Hutang':'Piutang' %>" data-debt-party="<%= row.party_name %>" data-debt-purpose="<%= row.purpose %>" data-debt-site="<%= row.site_code %>" data-debt-principal="<%= principal %>" data-debt-paid="<%= paid %>" data-debt-remaining="<%= Math.floor(remaining) %>"><i class="bi bi-cash-coin"></i><span><b>Catat Cicilan</b><small>Catat pembayaran baru</small></span></button><% } %>
-                <% if (row.status!=='ARCHIVED') { %><div class="ink-action-separator"></div><form method="post" action="/debts/<%= row.id %>/archive" onsubmit="return confirm('Arsipkan data ini? Riwayat pembayaran tetap tersimpan.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="ink-action-item compact" type="submit"><i class="bi bi-archive"></i><span><b>Arsipkan</b><small>Pindahkan ke arsip</small></span></button></form><% } %>
-              </div>
-            </div>
-          </div>
-        </div>
-        <% }) %>
+  <section class="hp-section">
+    <div class="hp-section-head">
+      <h2><%= selectedPerson ? `Catatan ${selectedPerson.name}` : (scope === 'INTERNAL' ? 'Catatan Internal' : scope === 'EXTERNAL' ? 'Catatan Eksternal' : 'Semua Catatan') %></h2>
+      <span class="hp-count"><%= records.length %> data<% if (filters.status !== 'ACTIVE') { %> · <%= filters.status === 'PAID' ? 'Lunas' : 'Arsip' %><% } %></span>
+    </div>
+    <% if (!records.length) { %>
+      <div class="hp-empty"><span><i class="bi bi-journal-check"></i></span><strong>Belum ada data</strong><small>Tekan “Catat Baru” untuk mencatat hutang teknisi atau hutang/piutang eksternal.</small></div>
+    <% } else { %>
+    <div class="hp-list">
+      <% records.forEach((row) => {
+        const remaining = Number(row.remaining_amount || 0), paid = Number(row.paid_amount || 0), principal = Number(row.principal_amount || 0);
+        const progress = principal > 0 ? Math.min(100, Math.round(paid / principal * 100)) : 0;
+        const statusKey = row.payment_status.toLowerCase().replace(/\s+/g, '-');
+        const name = row.employee_name || row.party_name; %>
+      <div class="hp-row <%= row.is_overdue ? 'is-overdue' : '' %>" data-debt-search="<%= [name, row.party_name, row.employee_code, row.purpose, row.responsible_name, row.site_code].filter(Boolean).join(' ') %>">
+        <button type="button" class="hp-row-main" data-bs-toggle="modal" data-bs-target="#debtDetailModal<%= row.id %>" aria-label="Detail <%= name %>">
+          <span class="hp-avatar tone-<%= kindClass(row) %>"><% if (row.scope === 'INTERNAL') { %><%= initials(name) %><% } else { %><i class="bi <%= row.record_type === 'DEBT' ? 'bi-building' : 'bi-person' %>"></i><% } %></span>
+          <span class="hp-row-text">
+            <span class="hp-row-title"><%= name %><% if (row.employee_code) { %><em><%= row.employee_code %></em><% } %></span>
+            <span class="hp-row-sub"><%= row.purpose %></span>
+            <span class="hp-chips">
+              <span class="hp-chip tone-<%= kindClass(row) %>"><%= kindLabel(row) %></span>
+              <span class="hp-chip status-<%= statusKey %>"><%= row.payment_status %></span>
+              <span class="hp-chip plain"><%= row.site_code %></span>
+              <% if (!row.is_overdue && row.days_to_due !== null && row.days_to_due >= 0 && row.status === 'ACTIVE') { %><span class="hp-chip plain"><i class="bi bi-calendar2"></i><%= row.days_to_due === 0 ? 'Jatuh tempo hari ini' : `${row.days_to_due} hari lagi` %></span><% } %>
+            </span>
+          </span>
+          <span class="hp-row-amount">
+            <strong><%= rp(remaining) %></strong>
+            <small>dari <%= rp(principal) %></small>
+            <span class="hp-progress <%= progress >= 100 ? 'done' : '' %>"><span style="width:<%= progress %>%"></span></span>
+          </span>
+        </button>
+        <% if (row.status === 'ACTIVE') { %>
+        <button type="button" class="hp-icon-btn" title="Catat pembayaran" aria-label="Catat pembayaran <%= name %>" data-bs-toggle="modal" data-bs-target="#debtPayModal" data-debt-id="<%= row.id %>" data-debt-type-label="<%= kindLabel(row) %>" data-debt-party="<%= name %>" data-debt-purpose="<%= row.purpose %>" data-debt-site="<%= row.site_code %>" data-debt-principal="<%= principal %>" data-debt-paid="<%= paid %>" data-debt-remaining="<%= Math.floor(remaining) %>"><i class="bi bi-plus-circle-fill"></i></button>
+        <% } %>
+        <i class="bi bi-chevron-right hp-chevron" aria-hidden="true"></i>
+      </div>
+      <% }) %>
     </div>
     <% } %>
-  </div>
+  </section>
 
-  <div class="debt-note"><i class="bi bi-info-circle"></i><span>Modul ini tidak otomatis masuk ke Closing. Hanya pembayaran pada periode tersebut yang Anda input sebagai pengeluaran Closing agar tidak dihitung dua kali.</span></div>
+  <div class="hp-footnote"><i class="bi bi-info-circle"></i><span>Nominal di modul ini tidak otomatis masuk ke Closing sebagai pendapatan/pengeluaran (supaya tidak dihitung dua kali). Hutang internal teknisi ditampilkan di Closing &amp; PDF Closing sebagai rincian informasi.</span></div>
 </div>
 
-<!-- v1.28 -- satu modal "Detail" per baris: rincian pembelian, jadwal cicilan, dan riwayat transaksi
-     yang dulu tersebar di <details> inline + dropdown Riwayat, sekarang jadi satu tempat. -->
-<% records.forEach(row => { const remaining=Number(row.remaining_amount||0); const paid=Number(row.paid_amount||0); const principal=Number(row.principal_amount||0); const progress=principal>0?Math.min(100,Math.round(paid/principal*100)):0; %>
-<div class="modal fade" id="debtDetailModal<%= row.id %>" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-scrollable modal-lg">
-    <div class="modal-content nms-modal">
-      <div class="modal-header">
-        <div><div class="module-kicker"><%= row.record_type==='DEBT'?'HUTANG':'PIUTANG' %> · <%= row.site_code %></div><h5 class="modal-title"><%= row.party_name %></h5><small class="text-secondary"><%= row.purpose %></small></div>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+<%# ---------- Sheet detail per catatan ---------- %>
+<% records.forEach((row) => {
+  const remaining = Number(row.remaining_amount || 0), paid = Number(row.paid_amount || 0), principal = Number(row.principal_amount || 0);
+  const progress = principal > 0 ? Math.min(100, Math.round(paid / principal * 100)) : 0;
+  const name = row.employee_name || row.party_name; %>
+<div class="modal fade hp-modal" id="debtDetailModal<%= row.id %>" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-dialog-centered modal-lg">
+    <div class="modal-content hp-sheet">
+      <div class="hp-sheet-head">
+        <span class="hp-avatar lg tone-<%= kindClass(row) %>"><% if (row.scope === 'INTERNAL') { %><%= initials(name) %><% } else { %><i class="bi <%= row.record_type === 'DEBT' ? 'bi-building' : 'bi-person' %>"></i><% } %></span>
+        <div class="hp-sheet-title">
+          <span class="hp-eyebrow"><%= row.scope === 'INTERNAL' ? 'Internal' : 'Eksternal' %> · <%= kindLabel(row) %> · <%= row.site_code %></span>
+          <h5><%= name %></h5>
+          <small><%= row.purpose %></small>
+        </div>
+        <button type="button" class="hp-close" data-bs-dismiss="modal" aria-label="Tutup"><i class="bi bi-x-lg"></i></button>
       </div>
-      <div class="modal-body debt-detail-body">
-        <div class="debt-money-grid"><div><span>Total</span><strong class="money">Rp <%= principal.toLocaleString('id-ID') %></strong></div><div><span>Terbayar</span><strong class="money paid">Rp <%= paid.toLocaleString('id-ID') %></strong></div><div class="remaining"><span>Sisa</span><strong class="money">Rp <%= remaining.toLocaleString('id-ID') %></strong></div></div>
-        <div class="debt-progress-wrap debt-progress-wrap-ring">
-          <div class="progress-ring lg <%= progress>=100?'is-complete':'' %>" style="--p:<%= progress %>"><span><%= progress %>%</span></div>
-          <div class="debt-progress-wrap-copy"><span>Progres pembayaran</span><small>Rp <%= paid.toLocaleString('id-ID') %> dari Rp <%= principal.toLocaleString('id-ID') %></small></div>
+      <div class="modal-body hp-sheet-body">
+        <div class="debt-money-grid hp-money">
+          <div><span>Total</span><strong><%= rp(principal) %></strong></div>
+          <div><span>Terbayar</span><strong class="pos"><%= rp(paid) %></strong></div>
+          <div><span>Sisa</span><strong class="<%= remaining > 0 ? 'neg' : 'pos' %>"><%= rp(remaining) %></strong></div>
+        </div>
+        <div class="hp-progress-block"><div class="hp-progress lg <%= progress >= 100 ? 'done' : '' %>"><span style="width:<%= progress %>%"></span></div><small><%= progress %>% terbayar</small></div>
+
+        <div class="hp-group">
+          <% if (row.scope === 'INTERNAL') { %>
+          <div class="hp-group-row"><span>Teknisi / karyawan</span><strong><%= name %><% if (row.employee_code) { %> · <%= row.employee_code %><% } %></strong></div>
+          <% if (row.employee_position) { %><div class="hp-group-row"><span>Jabatan</span><strong><%= row.employee_position %></strong></div><% } %>
+          <div class="hp-group-row"><span>Akun user</span><strong><%= row.linked_username ? '@' + row.linked_username : 'Belum punya akun' %></strong></div>
+          <div class="hp-group-row"><span>Arah</span><strong><%= row.record_type === 'RECEIVABLE' ? 'Teknisi berhutang ke kantor' : 'Kantor berhutang ke teknisi (talangan)' %></strong></div>
+          <% } %>
+          <div class="hp-group-row"><span>Tanggal dicatat</span><strong><%= formatDate(row.issue_date) %></strong></div>
+          <div class="hp-group-row"><span>Jatuh tempo</span><strong><%= row.due_date ? formatDate(row.due_date) : 'Tanpa jatuh tempo' %></strong></div>
+          <div class="hp-group-row"><span>Metode</span><strong><%= row.payment_method === 'INSTALLMENT' ? `Cicilan ${row.installment_months} bulan` : 'Sekali bayar' %></strong></div>
+          <% if (row.responsible_name) { %><div class="hp-group-row"><span>Penanggung jawab</span><strong><%= row.responsible_name %></strong></div><% } %>
+          <% if (row.notes) { %><div class="hp-group-row"><span>Catatan</span><strong><%= row.notes %></strong></div><% } %>
         </div>
 
-        <div class="debt-tab-nav" role="tablist">
-          <button class="debt-tab-btn active" type="button" data-bs-toggle="pill" data-bs-target="#debtTabItems<%= row.id %>"><i class="bi bi-receipt"></i>Rincian<% if((row.items||[]).length){ %><b><%= row.items.length %></b><% } %></button>
-          <button class="debt-tab-btn" type="button" data-bs-toggle="pill" data-bs-target="#debtTabSchedule<%= row.id %>"><i class="bi bi-list-check"></i>Jadwal<% if((row.installments||[]).length){ %><b><%= row.installments.length %></b><% } %></button>
-          <button class="debt-tab-btn" type="button" data-bs-toggle="pill" data-bs-target="#debtTabHistory<%= row.id %>"><i class="bi bi-clock-history"></i>Riwayat<b><%= row.timeline.length %></b></button>
+        <div class="hp-tabs" role="tablist">
+          <button class="active" type="button" data-bs-toggle="pill" data-bs-target="#debtTabItems<%= row.id %>">Rincian<% if ((row.items || []).length) { %><b><%= row.items.length %></b><% } %></button>
+          <button type="button" data-bs-toggle="pill" data-bs-target="#debtTabSchedule<%= row.id %>">Jadwal<% if ((row.installments || []).length) { %><b><%= row.installments.length %></b><% } %></button>
+          <button type="button" data-bs-toggle="pill" data-bs-target="#debtTabHistory<%= row.id %>">Riwayat<b><%= row.timeline.length %></b></button>
         </div>
-
-        <div class="tab-content debt-tab-content">
+        <div class="tab-content">
           <div class="tab-pane fade show active" id="debtTabItems<%= row.id %>">
-          <% if(!(row.items||[]).length){ %><small class="text-muted">Data lama belum memiliki rincian item.</small><% } %>
-          <% (row.items||[]).forEach(item=>{ %><div class="debt-breakdown-line"><span><%= item.item_name %><small><%= Number(item.quantity).toLocaleString('id-ID') %> × Rp <%= Number(item.unit_price).toLocaleString('id-ID') %></small></span><strong>Rp <%= Math.round(Number(item.quantity)*Number(item.unit_price)).toLocaleString('id-ID') %></strong></div><% }) %>
+            <div class="hp-group">
+              <% if (!(row.items || []).length) { %><div class="hp-group-row muted">Data lama belum memiliki rincian item.</div><% } %>
+              <% (row.items || []).forEach((item) => { %><div class="hp-group-row"><span><%= item.item_name %><small><%= Number(item.quantity).toLocaleString('id-ID') %> × <%= rp(item.unit_price) %><%= item.notes ? ` · ${item.notes}` : '' %></small></span><strong><%= rp(Math.round(Number(item.quantity) * Number(item.unit_price))) %></strong></div><% }) %>
+              <% if ((row.items || []).length) { %><div class="hp-group-row total"><span>Total</span><strong><%= rp(principal) %></strong></div><% } %>
+            </div>
           </div>
-
           <div class="tab-pane fade" id="debtTabSchedule<%= row.id %>">
-            <div class="debt-tab-subhead">Jadwal <%= row.payment_method==='INSTALLMENT'?`${row.installment_months} bulan`:'Pembayaran' %></div>
-            <% if(!(row.installments||[]).length){ %><small class="text-muted">Tidak ada jadwal cicilan.</small><% } %>
-          <% (row.installments||[]).forEach(item=>{ %><div class="debt-installment-line status-<%= item.status.toLowerCase() %>"><span><b><%= item.number %></b><%= item.dueDate %></span><strong>Rp <%= item.target.toLocaleString('id-ID') %><small><%= item.status==='PAID'?'Lunas':item.status==='PARTIAL'?`Sisa Rp ${item.remaining.toLocaleString('id-ID')}`:item.status==='OVERDUE'?'Terlambat':'Akan datang' %></small></strong></div><% }) %>
+            <div class="hp-group">
+              <% if (!(row.installments || []).length) { %><div class="hp-group-row muted">Tidak ada jadwal cicilan.</div><% } %>
+              <% (row.installments || []).forEach((item) => { const s = item.status.toLowerCase(); %><div class="hp-group-row sched-<%= s %>"><span><b class="hp-num"><%= item.number %></b><%= formatDate(item.dueDate) %></span><strong><%= rp(item.target) %><small><%= item.status === 'PAID' ? 'Lunas' : item.status === 'PARTIAL' ? `Sisa ${rp(item.remaining)}` : item.status === 'OVERDUE' ? 'Terlambat' : 'Akan datang' %></small></strong></div><% }) %>
+            </div>
           </div>
-
           <div class="tab-pane fade" id="debtTabHistory<%= row.id %>">
-          <div class="debt-timeline">
-            <% row.timeline.forEach(entry => { const entryKey=entry.entryStatus.toLowerCase(); %>
-            <div class="debt-timeline-item status-<%= entryKey %>">
-              <span class="debt-timeline-dot"></span>
-              <div class="debt-timeline-body">
-                <div class="debt-timeline-top">
-                  <div class="debt-timeline-when"><strong><%= formatDate(entry.date) %></strong><% if(entry.time){ %><small><%= formatTime(entry.time) %> WIB</small><% } %></div>
-                  <span class="debt-timeline-status <%= entryKey %>"><%= entry.kind==='created' ? (row.record_type==='DEBT'?'Hutang Dicatat':'Piutang Dicatat') : (entry.entryStatus==='LUNAS'?'Lunas':'Dicicil') %></span>
-                </div>
-                <div class="debt-timeline-mid">
-                  <strong class="debt-timeline-amount"><%= entry.kind==='created'?'':'+ ' %>Rp <%= entry.amount.toLocaleString('id-ID') %></strong>
-                  <% if(entry.method){ %><span class="debt-timeline-method"><i class="bi bi-credit-card-2-front"></i><%= statusLabel(entry.method) %></span><% } %>
-                </div>
-                <div class="debt-timeline-foot">
-                  <span>Sisa saldo: <b>Rp <%= entry.remainingAfter.toLocaleString('id-ID') %></b></span>
-                  <% if(entry.notes){ %><span class="debt-timeline-note"><%= entry.notes %></span><% } %>
-                </div>
-                <div class="debt-timeline-actions">
-                  <% if(entry.hasProof){ %><a href="/debts/<%= row.id %>/payments/<%= entry.id %>/proof" target="_blank" rel="noopener"><i class="bi bi-paperclip"></i>Lihat bukti</a><% } %>
-                  <% if(entry.kind==='payment' && row.status!=='ARCHIVED'){ %><form method="post" action="/debts/<%= row.id %>/payments/<%= entry.id %>/delete" onsubmit="return confirm('Hapus pembayaran ini? Sisa akan dihitung ulang.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn btn-link btn-sm text-danger" type="submit" title="Hapus pembayaran"><i class="bi bi-trash"></i> Hapus</button></form><% } %>
+            <div class="hp-timeline">
+              <% row.timeline.forEach((entry) => { const k = entry.entryStatus.toLowerCase(); %>
+              <div class="hp-tl-item tl-<%= k %>">
+                <span class="hp-tl-dot"></span>
+                <div class="hp-tl-body">
+                  <div class="hp-tl-top"><strong><%= entry.kind === 'created' ? 'Dicatat' : (entry.entryStatus === 'LUNAS' ? 'Pembayaran · Lunas' : 'Pembayaran') %></strong><span><%= formatDate(entry.date) %><% if (entry.time) { %> · <%= formatTime(entry.time) %><% } %></span></div>
+                  <div class="hp-tl-amount"><%= entry.kind === 'created' ? '' : '− ' %><%= rp(entry.amount) %><% if (entry.method) { %><em><%= statusLabel(entry.method) %></em><% } %></div>
+                  <small>Sisa <%= rp(entry.remainingAfter) %><%= entry.notes ? ` · ${entry.notes}` : '' %></small>
+                  <div class="hp-tl-actions">
+                    <% if (entry.hasProof) { %><a href="/debts/<%= row.id %>/payments/<%= entry.id %>/proof" target="_blank" rel="noopener"><i class="bi bi-paperclip"></i>Bukti</a><% } %>
+                    <% if (entry.kind === 'payment' && row.status !== 'ARCHIVED') { %><form method="post" action="/debts/<%= row.id %>/payments/<%= entry.id %>/delete" onsubmit="return confirm('Hapus pembayaran ini? Sisa akan dihitung ulang.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button type="submit" class="danger"><i class="bi bi-trash"></i>Hapus</button></form><% } %>
+                  </div>
                 </div>
               </div>
+              <% }) %>
             </div>
-            <% }) %>
           </div>
         </div>
-        </div>
       </div>
-      <div class="modal-footer">
-        <button type="button" class="btn-tech" data-bs-dismiss="modal">Tutup</button>
+      <div class="hp-sheet-foot">
+        <% if (row.status !== 'ARCHIVED') { %><form method="post" action="/debts/<%= row.id %>/archive" onsubmit="return confirm('Arsipkan data ini? Riwayat pembayaran tetap tersimpan.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="hp-btn hp-btn-plain danger" type="submit"><i class="bi bi-archive"></i>Arsipkan</button></form><% } else { %><span></span><% } %>
+        <div class="hp-sheet-foot-actions">
+          <button type="button" class="hp-btn hp-btn-secondary" data-bs-dismiss="modal">Tutup</button>
+          <% if (row.status === 'ACTIVE') { %><button type="button" class="hp-btn hp-btn-primary" data-bs-toggle="modal" data-bs-target="#debtPayModal" data-debt-id="<%= row.id %>" data-debt-type-label="<%= kindLabel(row) %>" data-debt-party="<%= name %>" data-debt-purpose="<%= row.purpose %>" data-debt-site="<%= row.site_code %>" data-debt-principal="<%= principal %>" data-debt-paid="<%= paid %>" data-debt-remaining="<%= Math.floor(remaining) %>"><i class="bi bi-cash-coin"></i>Catat Pembayaran</button><% } %>
+        </div>
       </div>
     </div>
   </div>
 </div>
 <% }) %>
 
-<template id="debtItemTemplate"><div class="debt-item-input"><input class="form-control form-control-sm" name="item_name[]" placeholder="Nama barang / keperluan" required><input class="form-control form-control-sm debt-item-qty" type="number" min="0.01" step="0.01" name="item_quantity[]" value="1" aria-label="Jumlah" required><input class="form-control form-control-sm debt-item-price" type="number" min="1" step="1" name="item_unit_price[]" placeholder="Harga satuan" required><input class="form-control form-control-sm" name="item_notes[]" placeholder="Catatan item"><button class="btn btn-link text-danger debt-remove-item" type="button" title="Hapus"><i class="bi bi-trash"></i></button><strong class="debt-item-subtotal">Rp 0</strong></div></template>
-
-<!-- v1.26 -- shared "Catat Cicilan / Pembayaran" modal, reused by every debt-item row's "Catat Cicilan"
-     button via its [data-debt-*] attributes (same reuse pattern as the shared delete modals in
-     views/partials/layout.ejs). Laid out in the 5 logical steps requested: debtor, what is being paid,
-     amount (with live remaining-balance feedback), method + date, then an optional proof attachment. -->
-<div class="modal fade" id="debtPayModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-    <form class="modal-content nms-modal" method="post" id="debtPayForm" enctype="multipart/form-data" action="/debts">
+<%# ---------- Sheet: catat baru ---------- %>
+<div class="modal fade hp-modal" id="debtCreateModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-dialog-centered modal-lg">
+    <form class="modal-content hp-sheet" method="post" action="/debts" id="debtCreateForm">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-      <div class="modal-header">
-        <div><div class="module-kicker">CATAT CICILAN / PEMBAYARAN</div><h5 class="modal-title">Catat Pembayaran</h5><small class="text-secondary">Ikuti langkah berikut agar sisa piutang selalu akurat.</small></div>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      <div class="hp-sheet-head">
+        <div class="hp-sheet-title"><span class="hp-eyebrow">Catat baru</span><h5>Hutang &amp; Piutang</h5><small>Pilih dulu internal (teknisi) atau eksternal.</small></div>
+        <button type="button" class="hp-close" data-bs-dismiss="modal" aria-label="Tutup"><i class="bi bi-x-lg"></i></button>
       </div>
-      <div class="modal-body debt-pay-steps">
-        <section class="debt-pay-step">
-          <div class="debt-pay-step-label"><span>1</span>Pelanggan / Debitur</div>
-          <div class="debt-pay-summary">
-            <div><small>Nama pihak</small><strong id="debtPaySummaryParty">-</strong></div>
-            <div><small>Jenis</small><strong id="debtPaySummaryType">-</strong></div>
-            <div><small>Lokasi</small><strong id="debtPaySummarySite">-</strong></div>
+      <div class="modal-body hp-sheet-body">
+        <div class="hp-seg-radio" role="radiogroup" aria-label="Jenis catatan">
+          <label><input type="radio" name="scope" value="INTERNAL" checked><span><i class="bi bi-person-badge"></i>Internal · Teknisi</span></label>
+          <label><input type="radio" name="scope" value="EXTERNAL"><span><i class="bi bi-building"></i>Eksternal</span></label>
+        </div>
+
+        <div data-scope-section="INTERNAL">
+          <div class="hp-form-label">Teknisi / karyawan</div>
+          <div class="hp-group">
+            <label class="hp-field"><span>Nama</span>
+              <select name="employee_id" id="debtEmployeeSelect" required>
+                <option value="">Pilih teknisi…</option>
+                <% if (technicians.length) { %><optgroup label="Teknisi"><% technicians.forEach((p) => { %><option value="<%= p.id %>" data-user="<%= p.username || '' %>" data-position="<%= p.position_name || '' %>"><%= p.name %><%= p.employee_code ? ` · ${p.employee_code}` : '' %></option><% }) %></optgroup><% } %>
+                <% if (otherPeople.length) { %><optgroup label="Karyawan lain"><% otherPeople.forEach((p) => { %><option value="<%= p.id %>" data-user="<%= p.username || '' %>" data-position="<%= p.position_name || '' %>"><%= p.name %><%= p.employee_code ? ` · ${p.employee_code}` : '' %></option><% }) %></optgroup><% } %>
+              </select>
+            </label>
+            <div class="hp-field-hint" id="debtEmployeeHint"><% if (!people.length) { %>Belum ada karyawan aktif. Tambahkan dulu di Pengaturan → Karyawan.<% } else { %>Terhubung ke data karyawan &amp; akun user teknisi.<% } %></div>
           </div>
-        </section>
-        <section class="debt-pay-step">
-          <div class="debt-pay-step-label"><span>2</span>Detail Piutang / Hutang yang Dibayar</div>
-          <p class="debt-pay-purpose" id="debtPaySummaryPurpose">-</p>
-          <div class="debt-pay-money-row">
-            <div><small>Total</small><strong id="debtPaySummaryPrincipal">Rp 0</strong></div>
-            <div><small>Terbayar</small><strong class="paid" id="debtPaySummaryPaid">Rp 0</strong></div>
-            <div><small>Sisa saat ini</small><strong class="remaining" id="debtPaySummaryRemaining">Rp 0</strong></div>
+          <div class="hp-form-label">Arah</div>
+          <div class="hp-choice">
+            <label><input type="radio" name="record_type" value="RECEIVABLE" checked><span><i class="bi bi-person-down"></i><b>Teknisi berhutang ke kantor</b><small>Kasbon, ambil barang/material, pinjam uang</small></span></label>
+            <label><input type="radio" name="record_type" value="DEBT"><span><i class="bi bi-person-up"></i><b>Kantor berhutang ke teknisi</b><small>Talangan — teknisi pakai uang pribadi dulu</small></span></label>
           </div>
-        </section>
-        <section class="debt-pay-step">
-          <div class="debt-pay-step-label"><span>3</span>Nominal Cicilan</div>
-          <input class="form-control" type="number" min="1" step="1" name="amount" id="debtPayAmount" placeholder="Masukkan nominal pembayaran" required>
-          <div class="debt-pay-live" id="debtPayLive"><span>Sisa piutang setelah pembayaran</span><strong id="debtPayLiveRemaining">Rp 0</strong></div>
-          <div class="debt-pay-warning" id="debtPayWarning" hidden><i class="bi bi-exclamation-triangle-fill"></i>Nominal melebihi sisa. Maksimal <b id="debtPayMaxHint">Rp 0</b>.</div>
-        </section>
-        <section class="debt-pay-step">
-          <div class="debt-pay-step-label"><span>4</span>Metode Pembayaran & Tanggal</div>
-          <div class="debt-pay-method-picker">
-            <label><input type="radio" name="payment_method" value="cash" checked><span><i class="bi bi-cash-stack"></i>Tunai</span></label>
-            <label><input type="radio" name="payment_method" value="transfer"><span><i class="bi bi-bank2"></i>Transfer</span></label>
-            <label><input type="radio" name="payment_method" value="qris"><span><i class="bi bi-qr-code"></i>QRIS</span></label>
-            <label><input type="radio" name="payment_method" value="other"><span><i class="bi bi-three-dots"></i>Lainnya</span></label>
+        </div>
+
+        <div data-scope-section="EXTERNAL" hidden>
+          <div class="hp-form-label">Pihak luar</div>
+          <div class="hp-choice">
+            <label><input type="radio" name="record_type" value="DEBT" disabled><span><i class="bi bi-arrow-down-left"></i><b>Hutang INKAMNET</b><small>Kita berhutang ke vendor / pihak luar</small></span></label>
+            <label><input type="radio" name="record_type" value="RECEIVABLE" disabled><span><i class="bi bi-arrow-up-right"></i><b>Piutang</b><small>Pihak luar berhutang ke kita</small></span></label>
           </div>
-          <input class="form-control mt-2" type="date" name="payment_date" id="debtPayDate" required>
-        </section>
-        <section class="debt-pay-step">
-          <div class="debt-pay-step-label"><span>5</span>Lampiran Bukti <em>(Opsional)</em></div>
-          <input class="form-control" type="file" name="proof_file" accept="image/jpeg,image/png,image/webp,application/pdf">
-          <small class="text-secondary">JPG, PNG, WEBP, atau PDF · maksimal 6 MB.</small>
-        </section>
-        <section class="debt-pay-step">
-          <label class="form-label">Catatan (opsional)</label>
-          <input class="form-control" name="notes" maxlength="500" placeholder="Contoh: cicilan bulan ke-2">
-        </section>
+          <div class="hp-group">
+            <label class="hp-field"><span>Nama pihak</span><input name="party_name" maxlength="160" placeholder="Vendor / pemberi hutang / peminjam" required disabled></label>
+          </div>
+        </div>
+
+        <div class="hp-form-label">Keterangan</div>
+        <div class="hp-group">
+          <label class="hp-field"><span>Keperluan</span><input name="purpose" maxlength="255" placeholder="Contoh: ambil kabel dropcore 2 roll" required></label>
+          <label class="hp-field"><span>Lokasi</span><select name="site_code" required><option value="GLOBAL">Global</option><option value="CDS">CDS</option><option value="KBG">KBG</option></select></label>
+          <label class="hp-field"><span>Tanggal dicatat</span><input type="date" name="issue_date" value="<%= today %>" required></label>
+          <label class="hp-field"><span>Jatuh tempo</span><input type="date" name="due_date"></label>
+          <label class="hp-field"><span>Pembayaran</span><select name="payment_method" id="debtPaymentMethod"><option value="ONCE">Sekali bayar</option><option value="INSTALLMENT">Cicilan / potong gaji bertahap</option></select></label>
+          <label class="hp-field" id="debtInstallmentMonths" hidden><span>Durasi cicilan</span><select name="installment_months"><option value="2">2 bulan</option><option value="3">3 bulan</option><option value="6">6 bulan</option><option value="12">12 bulan</option><option value="18">18 bulan</option><option value="24">24 bulan</option></select></label>
+          <label class="hp-field"><span>Penanggung jawab</span><input name="responsible_name" maxlength="160" placeholder="Opsional · Edwin / Jon / Bopung"></label>
+          <label class="hp-field"><span>Catatan</span><input name="notes" maxlength="2000" placeholder="Opsional"></label>
+        </div>
+
+        <div class="hp-form-label hp-form-label-row"><span>Rincian</span><button class="hp-link-btn" type="button" id="addDebtItem"><i class="bi bi-plus-circle-fill"></i>Tambah item</button></div>
+        <div class="hp-group hp-items">
+          <div id="debtItemRows">
+            <div class="hp-item">
+              <input class="hp-item-name" name="item_name[]" placeholder="Nama barang / keperluan" required>
+              <input class="debt-item-qty" type="number" min="0.01" step="0.01" name="item_quantity[]" value="1" aria-label="Jumlah" required>
+              <input class="debt-item-price" type="number" min="1" step="1" name="item_unit_price[]" placeholder="Harga satuan" inputmode="numeric" required>
+              <input class="hp-item-note" name="item_notes[]" placeholder="Catatan item (opsional)">
+              <strong class="debt-item-subtotal">Rp 0</strong>
+              <button class="debt-remove-item" type="button" title="Hapus item" aria-label="Hapus item"><i class="bi bi-dash-circle-fill"></i></button>
+            </div>
+          </div>
+          <div class="hp-group-row total"><span>Total otomatis</span><strong id="debtItemsTotal">Rp 0</strong></div>
+        </div>
       </div>
-      <div class="modal-footer">
-        <button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button>
-        <button type="submit" class="btn-tech primary" id="debtPaySubmit"><i class="bi bi-save2 me-1"></i>Simpan Pembayaran</button>
+      <div class="hp-sheet-foot">
+        <span></span>
+        <div class="hp-sheet-foot-actions"><button type="button" class="hp-btn hp-btn-secondary" data-bs-dismiss="modal">Batal</button><button class="hp-btn hp-btn-primary" type="submit"><i class="bi bi-check-lg"></i>Simpan</button></div>
       </div>
     </form>
   </div>
 </div>
 
-<script>(()=>{const method=document.getElementById('debtPaymentMethod'),months=document.getElementById('debtInstallmentMonths'),rows=document.getElementById('debtItemRows'),template=document.getElementById('debtItemTemplate'),total=document.getElementById('debtItemsTotal');if(!rows)return;const rupiah=value=>`Rp ${Math.round(value||0).toLocaleString('id-ID')}`;const calculate=()=>{let sum=0;rows.querySelectorAll('.debt-item-input').forEach(row=>{const subtotal=(Number(row.querySelector('.debt-item-qty')?.value)||0)*(Number(row.querySelector('.debt-item-price')?.value)||0);row.querySelector('.debt-item-subtotal').textContent=rupiah(subtotal);sum+=subtotal;});total.textContent=rupiah(sum);};const bind=row=>{row.querySelectorAll('input').forEach(input=>input.addEventListener('input',calculate));row.querySelector('.debt-remove-item')?.addEventListener('click',()=>{if(rows.children.length>1)row.remove();else row.querySelectorAll('input').forEach((input,index)=>input.value=index===1?'1':'');calculate();});};rows.querySelectorAll('.debt-item-input').forEach(bind);document.getElementById('addDebtItem')?.addEventListener('click',()=>{const row=template.content.firstElementChild.cloneNode(true);rows.appendChild(row);bind(row);row.querySelector('input')?.focus();});const toggleMethod=()=>{months.hidden=method.value!=='INSTALLMENT';};method?.addEventListener('change',toggleMethod);toggleMethod();calculate();const search=document.querySelector('.debt-filter input[name="q"]'),cards=[...document.querySelectorAll('.debt-item[data-debt-search]')];search?.addEventListener('input',()=>{const words=search.value.toLocaleLowerCase('id-ID').trim().split(/\s+/).filter(Boolean);cards.forEach(card=>{const haystack=card.dataset.debtSearch.toLocaleLowerCase('id-ID');card.hidden=words.length>0&&!words.every(word=>haystack.includes(word));});});
+<template id="debtItemTemplate"><div class="hp-item"><input class="hp-item-name" name="item_name[]" placeholder="Nama barang / keperluan" required><input class="debt-item-qty" type="number" min="0.01" step="0.01" name="item_quantity[]" value="1" aria-label="Jumlah" required><input class="debt-item-price" type="number" min="1" step="1" name="item_unit_price[]" placeholder="Harga satuan" inputmode="numeric" required><input class="hp-item-note" name="item_notes[]" placeholder="Catatan item (opsional)"><strong class="debt-item-subtotal">Rp 0</strong><button class="debt-remove-item" type="button" title="Hapus item" aria-label="Hapus item"><i class="bi bi-dash-circle-fill"></i></button></div></template>
 
-// v1.26 -- Catat Cicilan modal: populate context from the triggering row's [data-debt-*]
-// attributes, then keep "sisa piutang setelah pembayaran" live as the user types the nominal,
-// blocking submit the moment it would exceed the current remaining balance.
+<%# ---------- Sheet: catat pembayaran (dipakai bersama semua baris) ---------- %>
+<div class="modal fade hp-modal" id="debtPayModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <form class="modal-content hp-sheet" method="post" id="debtPayForm" enctype="multipart/form-data" action="/debts">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <div class="hp-sheet-head">
+        <div class="hp-sheet-title"><span class="hp-eyebrow" id="debtPaySummaryType">-</span><h5 id="debtPaySummaryParty">-</h5><small id="debtPaySummaryPurpose">-</small></div>
+        <button type="button" class="hp-close" data-bs-dismiss="modal" aria-label="Tutup"><i class="bi bi-x-lg"></i></button>
+      </div>
+      <div class="modal-body hp-sheet-body">
+        <div class="debt-money-grid hp-money">
+          <div><span>Total</span><strong id="debtPaySummaryPrincipal">Rp 0</strong></div>
+          <div><span>Terbayar</span><strong class="pos" id="debtPaySummaryPaid">Rp 0</strong></div>
+          <div><span>Sisa</span><strong class="neg" id="debtPaySummaryRemaining">Rp 0</strong></div>
+        </div>
+        <span class="d-none" id="debtPaySummarySite"></span>
+
+        <div class="hp-amount-input">
+          <span>Rp</span>
+          <input type="number" min="1" step="1" name="amount" id="debtPayAmount" placeholder="0" inputmode="numeric" required>
+        </div>
+        <div class="hp-quick" id="debtPayQuick"><button type="button" data-fill="all">Lunasi semua</button><button type="button" data-fill="half">Setengah</button></div>
+        <div class="hp-live" id="debtPayLive"><span>Sisa setelah pembayaran</span><strong id="debtPayLiveRemaining">Rp 0</strong></div>
+        <div class="hp-warning" id="debtPayWarning" hidden><i class="bi bi-exclamation-triangle-fill"></i>Nominal melebihi sisa. Maksimal <b id="debtPayMaxHint">Rp 0</b>.</div>
+
+        <div class="hp-form-label">Metode</div>
+        <div class="hp-seg-radio four">
+          <label><input type="radio" name="payment_method" value="cash" checked><span>Tunai</span></label>
+          <label><input type="radio" name="payment_method" value="transfer"><span>Transfer</span></label>
+          <label><input type="radio" name="payment_method" value="qris"><span>QRIS</span></label>
+          <label><input type="radio" name="payment_method" value="other"><span>Lainnya</span></label>
+        </div>
+        <div class="hp-group hp-group-gap">
+          <label class="hp-field"><span>Tanggal</span><input type="date" name="payment_date" id="debtPayDate" required></label>
+          <label class="hp-field"><span>Catatan</span><input name="notes" maxlength="500" placeholder="Contoh: potong gaji Oktober"></label>
+          <label class="hp-field"><span>Bukti</span><input type="file" name="proof_file" accept="image/jpeg,image/png,image/webp,application/pdf"></label>
+        </div>
+        <small class="hp-hint">Bukti opsional · JPG, PNG, WEBP, atau PDF · maks 6 MB.</small>
+      </div>
+      <div class="hp-sheet-foot">
+        <span></span>
+        <div class="hp-sheet-foot-actions"><button type="button" class="hp-btn hp-btn-secondary" data-bs-dismiss="modal">Batal</button><button type="submit" class="hp-btn hp-btn-primary" id="debtPaySubmit"><i class="bi bi-check-lg"></i>Simpan Pembayaran</button></div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>(()=>{
+const rupiah=value=>`Rp ${Math.round(value||0).toLocaleString('id-ID')}`;
+// ---- Form catat baru: rincian item + total otomatis ----
+const method=document.getElementById('debtPaymentMethod'),months=document.getElementById('debtInstallmentMonths'),rows=document.getElementById('debtItemRows'),template=document.getElementById('debtItemTemplate'),total=document.getElementById('debtItemsTotal');
+if(rows){
+  const calculate=()=>{let sum=0;rows.querySelectorAll('.hp-item').forEach(row=>{const subtotal=(Number(row.querySelector('.debt-item-qty')?.value)||0)*(Number(row.querySelector('.debt-item-price')?.value)||0);row.querySelector('.debt-item-subtotal').textContent=rupiah(subtotal);sum+=subtotal;});total.textContent=rupiah(sum);};
+  const bind=row=>{row.querySelectorAll('input').forEach(input=>input.addEventListener('input',calculate));row.querySelector('.debt-remove-item')?.addEventListener('click',()=>{if(rows.children.length>1)row.remove();else row.querySelectorAll('input').forEach((input,index)=>input.value=index===1?'1':'');calculate();});};
+  rows.querySelectorAll('.hp-item').forEach(bind);
+  document.getElementById('addDebtItem')?.addEventListener('click',()=>{const row=template.content.firstElementChild.cloneNode(true);rows.appendChild(row);bind(row);row.querySelector('input')?.focus();});
+  const toggleMethod=()=>{months.hidden=method.value!=='INSTALLMENT';};method?.addEventListener('change',toggleMethod);toggleMethod();calculate();
+}
+// ---- Internal / Eksternal: hanya input di section yang terlihat yang ikut terkirim ----
+const createForm=document.getElementById('debtCreateForm');
+if(createForm){
+  const sections=[...createForm.querySelectorAll('[data-scope-section]')];
+  const applyScope=value=>{sections.forEach(sec=>{const on=sec.dataset.scopeSection===value;sec.hidden=!on;sec.querySelectorAll('input,select').forEach(el=>{el.disabled=!on;});if(on){const radios=[...sec.querySelectorAll('input[name="record_type"]')];if(radios.length&&!radios.some(r=>r.checked))radios[0].checked=true;}});};
+  createForm.querySelectorAll('input[name="scope"]').forEach(r=>r.addEventListener('change',()=>applyScope(r.value)));
+  applyScope(createForm.querySelector('input[name="scope"]:checked').value);
+  const empSel=document.getElementById('debtEmployeeSelect'),hint=document.getElementById('debtEmployeeHint');
+  const showHint=()=>{const opt=empSel?.selectedOptions[0];if(!opt||!opt.value||!hint)return;const bits=[opt.dataset.position,opt.dataset.user?`akun @${opt.dataset.user}`:'belum punya akun user'].filter(Boolean);hint.textContent=bits.join(' · ');};
+  empSel?.addEventListener('change',showHint);
+  document.getElementById('debtCreateModal')?.addEventListener('show.bs.modal',event=>{
+    const d=event.relatedTarget?.dataset||{};
+    if(d.createScope){const radio=createForm.querySelector(`input[name="scope"][value="${d.createScope}"]`);if(radio){radio.checked=true;applyScope(d.createScope);}}
+    if(d.createEmployee&&empSel){empSel.value=d.createEmployee;showHint();}
+  });
+}
+// ---- Pencarian instan di daftar ----
+const search=document.querySelector('.debt-filter input[name="q"]'),cards=[...document.querySelectorAll('.hp-row[data-debt-search]')];
+search?.addEventListener('input',()=>{const words=search.value.toLocaleLowerCase('id-ID').trim().split(/\s+/).filter(Boolean);cards.forEach(card=>{const haystack=card.dataset.debtSearch.toLocaleLowerCase('id-ID');card.hidden=words.length>0&&!words.every(word=>haystack.includes(word));});});
+// ---- Sheet catat pembayaran ----
 const payModal=document.getElementById('debtPayModal');
 if(payModal){
-  const form=document.getElementById('debtPayForm');
-  const amountInput=document.getElementById('debtPayAmount');
-  const dateInput=document.getElementById('debtPayDate');
-  const liveBox=document.getElementById('debtPayLive');
-  const liveRemaining=document.getElementById('debtPayLiveRemaining');
-  const warning=document.getElementById('debtPayWarning');
-  const maxHint=document.getElementById('debtPayMaxHint');
-  const submitBtn=document.getElementById('debtPaySubmit');
+  const form=document.getElementById('debtPayForm'),amountInput=document.getElementById('debtPayAmount'),dateInput=document.getElementById('debtPayDate'),liveBox=document.getElementById('debtPayLive'),liveRemaining=document.getElementById('debtPayLiveRemaining'),warning=document.getElementById('debtPayWarning'),maxHint=document.getElementById('debtPayMaxHint'),submitBtn=document.getElementById('debtPaySubmit');
   let currentRemaining=0;
   const money=value=>rupiah(Math.max(0,Math.round(Number(value)||0)));
-  const recalc=()=>{
-    const value=Number(amountInput.value)||0;
-    const after=currentRemaining-value;
-    liveRemaining.textContent=money(after);
-    const overLimit=value>currentRemaining;
-    warning.hidden=!overLimit;
-    liveBox.classList.toggle('is-over',after<0);
-    submitBtn.disabled=value<=0||overLimit;
-  };
+  const recalc=()=>{const value=Number(amountInput.value)||0;const after=currentRemaining-value;liveRemaining.textContent=money(after);const overLimit=value>currentRemaining;warning.hidden=!overLimit;liveBox.classList.toggle('is-over',after<0);liveBox.classList.toggle('is-done',value>0&&after===0);submitBtn.disabled=value<=0||overLimit;};
   amountInput.addEventListener('input',recalc);
+  document.getElementById('debtPayQuick')?.addEventListener('click',e=>{const b=e.target.closest('button[data-fill]');if(!b)return;amountInput.value=b.dataset.fill==='all'?currentRemaining:Math.floor(currentRemaining/2);recalc();});
   payModal.addEventListener('show.bs.modal',event=>{
-    const btn=event.relatedTarget;if(!btn||!btn.dataset)return;
-    const d=btn.dataset;
+    const btn=event.relatedTarget;if(!btn||!btn.dataset||!btn.dataset.debtId)return;const d=btn.dataset;
     form.action=`/debts/${d.debtId}/payments`;
     document.getElementById('debtPaySummaryParty').textContent=d.debtParty||'-';
-    document.getElementById('debtPaySummaryType').textContent=d.debtTypeLabel||'-';
+    document.getElementById('debtPaySummaryType').textContent=`${d.debtTypeLabel||'-'} · ${d.debtSite||''}`;
     document.getElementById('debtPaySummarySite').textContent=d.debtSite||'-';
     document.getElementById('debtPaySummaryPurpose').textContent=d.debtPurpose||'-';
     document.getElementById('debtPaySummaryPrincipal').textContent=money(d.debtPrincipal);
@@ -279,17 +412,13 @@ if(payModal){
     currentRemaining=Number(d.debtRemaining)||0;
     document.getElementById('debtPaySummaryRemaining').textContent=money(currentRemaining);
     maxHint.textContent=money(currentRemaining);
-    amountInput.value='';
-    amountInput.max=String(currentRemaining);
-    dateInput.value='<%= today %>';
+    amountInput.value='';amountInput.max=String(currentRemaining);dateInput.value='<%= today %>';
     const notesInput=form.querySelector('input[name="notes"]');if(notesInput)notesInput.value='';
     form.querySelectorAll('input[name="payment_method"]').forEach((radio,index)=>radio.checked=index===0);
     const fileInput=form.querySelector('input[name="proof_file"]');if(fileInput)fileInput.value='';
     recalc();
   });
-  form.addEventListener('submit',event=>{
-    const value=Number(amountInput.value)||0;
-    if(value<=0||value>currentRemaining){event.preventDefault();recalc();}
-  });
+  payModal.addEventListener('shown.bs.modal',()=>amountInput.focus());
+  form.addEventListener('submit',event=>{const value=Number(amountInput.value)||0;if(value<=0||value>currentRemaining){event.preventDefault();recalc();}});
 }
 })();</script>

@@ -146,6 +146,15 @@
     </div>
   </div>
   <% } %>
+  <% if (typeof internalDebt !== 'undefined' && internalDebt && internalDebt.summary.people > 0) { %>
+  <div class="closing-unmapped-alert closing-unpaid-note">
+    <i class="bi bi-person-badge-fill"></i>
+    <div>
+      <strong><%= internalDebt.summary.people %> teknisi punya hutang internal (sisa Rp <%= money(internalDebt.summary.receivableBalance).toLocaleString('id-ID') %>)</strong>
+      <span>Informasi saja — tidak mengubah pembagian. Rincian per teknisi ada di bagian bawah halaman &amp; ikut dicetak di PDF.</span>
+    </div>
+  </div>
+  <% } %>
 
   <nav class="closing-steps" aria-label="Tahapan closing">
     <a href="#closing-step-periode"><b>1</b><small>Periode</small></a><a href="#closing-step-input"><b>2</b><small>Pendapatan &amp; pengeluaran</small></a><a href="#closing-step-adjustments"><b>3</b><small>Potongan tim</small></a><a href="#closing-step-hasil"><b>4</b><small>Hasil &amp; PDF</small></a>
@@ -389,6 +398,46 @@
       </tbody></table></div>
       <% } %>
     </div></section>
+
+    <% if (typeof internalDebt !== 'undefined' && internalDebt) { const ids = internalDebt.summary; %>
+    <section class="card closing-card closing-internal-debt"><div class="card-body"><div class="closing-section-head"><div><span class="closing-card-kicker">INFORMASI · TIDAK MEMENGARUHI PERHITUNGAN</span><h2>Hutang internal teknisi</h2><small class="text-muted">Saldo per <%= end %> dari menu Hutang &amp; Piutang (Internal). Ikut dicetak rinci di PDF Closing.</small></div><span class="closing-count"><%= ids.people %> orang</span></div>
+      <% if (!internalDebt.people.length) { %>
+        <div class="closing-locked-note"><i class="bi bi-check-circle"></i>Tidak ada hutang internal teknisi yang aktif pada periode ini.</div>
+      <% } else { %>
+      <div class="closing-idebt-stats">
+        <div><span>Sisa hutang teknisi</span><strong class="text-danger">Rp <%= money(ids.receivableBalance).toLocaleString('id-ID') %></strong></div>
+        <div><span>Pinjaman baru periode ini</span><strong>Rp <%= money(ids.newInPeriod).toLocaleString('id-ID') %></strong></div>
+        <div><span>Dibayar periode ini</span><strong class="text-success">Rp <%= money(ids.paidInPeriod).toLocaleString('id-ID') %></strong></div>
+        <div><span>Talangan (kantor hutang)</span><strong class="text-info">Rp <%= money(ids.debtBalance).toLocaleString('id-ID') %></strong></div>
+      </div>
+      <div class="closing-idebt-list">
+        <% internalDebt.people.forEach(p => { %>
+        <details class="closing-idebt-person">
+          <summary>
+            <span class="closing-idebt-avatar"><%= String(p.name||'?').trim().split(/\s+/).slice(0,2).map(w=>w.charAt(0).toUpperCase()).join('') %></span>
+            <span class="closing-idebt-name"><b><%= p.name %></b><small><%= [p.code, p.position].filter(Boolean).join(' · ') || 'Karyawan' %> · <%= p.records.length %> catatan</small></span>
+            <span class="closing-idebt-amount"><b class="<%= p.owedToOffice ? 'text-danger' : 'text-success' %>">Rp <%= money(p.owedToOffice).toLocaleString('id-ID') %></b><small><% if (p.owedByOffice) { %>Talangan Rp <%= money(p.owedByOffice).toLocaleString('id-ID') %> · <% } %>dibayar Rp <%= money(p.paidInPeriod).toLocaleString('id-ID') %></small></span>
+            <i class="bi bi-chevron-down"></i>
+          </summary>
+          <div class="table-responsive"><table class="table table-sm align-middle closing-table mb-0"><thead><tr><th>Tanggal</th><th>Keperluan &amp; rincian</th><th class="text-end">Saldo awal</th><th class="text-end">Baru</th><th class="text-end">Dibayar</th><th class="text-end">Sisa</th></tr></thead><tbody>
+            <% p.records.forEach(r => { %><tr>
+              <td class="text-nowrap"><%= r.issueDate %></td>
+              <td><b><%= r.purpose %></b><br><small class="<%= r.overdue ? 'text-danger' : 'text-muted' %>"><%= r.direction === 'TO_OFFICE' ? 'Hutang ke kantor' : 'Talangan (kantor hutang)' %> · <%= r.site %><%= r.method === 'INSTALLMENT' ? ` · cicilan ${r.months} bln` : '' %><%= r.dueDate ? ` · jatuh tempo ${r.dueDate}` : '' %><%= r.overdue ? ' · TERLAMBAT' : '' %></small>
+                <% r.items.forEach(it => { %><br><small class="text-muted">• <%= it.name %> — <%= Number(it.qty).toLocaleString('id-ID') %> × Rp <%= money(it.price).toLocaleString('id-ID') %> = Rp <%= money(it.subtotal).toLocaleString('id-ID') %></small><% }) %>
+                <% r.payments.forEach(py => { %><br><small class="text-success">↳ Bayar <%= py.date %> · <%= statusLabel(py.method) %> · Rp <%= money(py.amount).toLocaleString('id-ID') %><%= py.notes ? ` · ${py.notes}` : '' %></small><% }) %></td>
+              <td class="text-end"><%= r.opening ? 'Rp ' + money(r.opening).toLocaleString('id-ID') : '-' %></td>
+              <td class="text-end"><%= r.newAmount ? 'Rp ' + money(r.newAmount).toLocaleString('id-ID') : '-' %></td>
+              <td class="text-end text-success"><%= r.paidInPeriod ? 'Rp ' + money(r.paidInPeriod).toLocaleString('id-ID') : '-' %></td>
+              <td class="text-end fw-semibold <%= r.direction === 'TO_OFFICE' ? 'text-danger' : 'text-info' %>">Rp <%= money(r.balance).toLocaleString('id-ID') %></td>
+            </tr><% }) %>
+          </tbody></table></div>
+          <% if (p.employeeId) { %><a class="closing-idebt-link" href="/debts?scope=INTERNAL&employee=<%= p.employeeId %>">Buka di Hutang &amp; Piutang <i class="bi bi-arrow-up-right"></i></a><% } %>
+        </details>
+        <% }) %>
+      </div>
+      <% } %>
+    </div></section>
+    <% } %>
   </div>
 
   <div class="modal fade" id="closingLockPreviewModal" tabindex="-1" aria-hidden="true">

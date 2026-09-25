@@ -10,15 +10,27 @@ const amount = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.round(parsed) : 0;
 };
-const localDate = () => {
-  const date = new Date();
-  const shifted = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return shifted.toISOString().slice(0, 10);
+const localDate = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+const SCOPES = new Set(['INTERNAL', 'EXTERNAL']);
+// Kembali ke tampilan/filter yang sama setelah catat bayar/arsip (mis. tetap di tab Internal).
+const backTo = (req) => {
+  try { const u = new URL(String(req.get('referer') || ''), 'http://x'); if (u.pathname === '/debts') return `/debts${u.search}`; } catch { /* ignore */ }
+  return '/debts';
 };
+
+// v1.30 -- daftar karyawan aktif untuk dropdown Hutang Internal. Teknisi (kategori jabatan
+// 'technical') ditaruh paling atas karena merekalah yang paling sering berhutang.
+async function internalPeople() {
+  const [rows] = await db.query(`SELECT e.id,e.employee_code,e.name,e.user_id,e.phone,p.name position_name,p.category,u.username
+    FROM employees e LEFT JOIN positions p ON p.id=e.position_id LEFT JOIN users u ON u.id=e.user_id
+    WHERE e.is_active=1 ORDER BY (p.category='technical') DESC,e.name`);
+  return rows;
+}
+const JKT_DATE = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' });
 const dateKey = (value) => {
   if (typeof value === 'string') return value.slice(0, 10);
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
+  return Number.isNaN(date.getTime()) ? '' : JKT_DATE.format(date);
 };
 const addMonths = (dateValue, months) => {
   const [year, month, day] = dateKey(dateValue).split('-').map(Number);
@@ -90,6 +102,8 @@ async function refreshStatus(conn, id) {
 router.get('/', async (req, res, next) => {
   try {
     const type = ['DEBT', 'RECEIVABLE'].includes(String(req.query.type || '').toUpperCase()) ? String(req.query.type).toUpperCase() : '';
+    const scope = SCOPES.has(String(req.query.scope || '').toUpperCase()) ? String(req.query.scope).toUpperCase() : '';
+    const employeeFilter = Number.parseInt(req.query.employee, 10) > 0 ? Number.parseInt(req.query.employee, 10) : 0;
     const status = ['ACTIVE', 'PAID', 'ARCHIVED'].includes(String(req.query.status || '').toUpperCase()) ? String(req.query.status).toUpperCase() : 'ACTIVE';
     const site = ['GLOBAL', 'CDS', 'KBG'].includes(String(req.query.site || '').toUpperCase()) ? String(req.query.site).toUpperCase() : '';
     const query = String(req.query.q || '').trim().slice(0, 100);
@@ -101,17 +115,20 @@ router.get('/', async (req, res, next) => {
     const conditions = ['d.status=?'];
     const params = [status];
     if (type) { conditions.push('d.record_type=?'); params.push(type); }
+    if (scope) { conditions.push('d.scope=?'); params.push(scope); }
+    if (employeeFilter) { conditions.push('d.employee_id=?'); params.push(employeeFilter); }
     if (site) { conditions.push('d.site_code=?'); params.push(site); }
-    if (query) { conditions.push('(d.party_name LIKE ? OR d.purpose LIKE ? OR d.responsible_name LIKE ?)'); params.push(`%${query}%`, `%${query}%`, `%${query}%`); }
+    if (query) { conditions.push('(d.party_name LIKE ? OR d.purpose LIKE ? OR d.responsible_name LIKE ? OR e.name LIKE ? OR e.employee_code LIKE ?)'); params.push(`%${query}%`, `%${query}%`, `%${query}%`, `%${query}%`, `%${query}%`); }
     if (period === 'today') { conditions.push('d.issue_date = CURDATE()'); }
     else if (period === 'month') { conditions.push('MONTH(d.issue_date)=MONTH(CURDATE()) AND YEAR(d.issue_date)=YEAR(CURDATE())'); }
     else if (period === 'custom' && periodFrom && periodTo) { conditions.push('d.issue_date BETWEEN ? AND ?'); params.push(periodFrom, periodTo); }
-    const [records] = await db.execute(`SELECT d.*,
+    const [records] = await db.execute(`SELECT d.*,e.employee_code,e.name employee_name,pos.name employee_position,u.username linked_username,
       COALESCE(SUM(p.amount),0) paid_amount,
       GREATEST(d.principal_amount-COALESCE(SUM(p.amount),0),0) remaining_amount,
       CASE WHEN d.status='ACTIVE' AND d.due_date IS NOT NULL AND d.due_date<CURDATE() THEN 1 ELSE 0 END is_overdue,
       DATEDIFF(d.due_date,CURDATE()) days_to_due
       FROM finance_debts d LEFT JOIN finance_debt_payments p ON p.debt_id=d.id
+      LEFT JOIN employees e ON e.id=d.employee_id LEFT JOIN positions pos ON pos.id=e.position_id LEFT JOIN users u ON u.id=d.user_id
       WHERE ${conditions.join(' AND ')} GROUP BY d.id ORDER BY is_overdue DESC,d.due_date IS NULL,d.due_date,d.id DESC`, params);
     if (records.length) {
       const ids = records.map((row) => Number(row.id));
@@ -182,15 +199,31 @@ router.get('/', async (req, res, next) => {
           : (record.is_overdue ? 'TERLAMBAT' : (paidAmount > 0 ? 'DICICIL' : 'BELUM DIBAYAR'));
       });
     }
-    const [summaryRows] = await db.query(`SELECT d.record_type,
+    const [summaryRows] = await db.query(`SELECT d.scope,d.record_type,
       SUM(GREATEST(d.principal_amount-COALESCE(x.paid,0),0)) remaining,
       SUM(CASE WHEN d.due_date<CURDATE() THEN GREATEST(d.principal_amount-COALESCE(x.paid,0),0) ELSE 0 END) overdue,
       COUNT(*) total
       FROM finance_debts d LEFT JOIN (SELECT debt_id,SUM(amount) paid FROM finance_debt_payments GROUP BY debt_id) x ON x.debt_id=d.id
-      WHERE d.status='ACTIVE' GROUP BY d.record_type`);
-    const summary = { DEBT: { remaining: 0, overdue: 0, total: 0 }, RECEIVABLE: { remaining: 0, overdue: 0, total: 0 } };
-    summaryRows.forEach((row) => { summary[row.record_type] = { remaining: Number(row.remaining || 0), overdue: Number(row.overdue || 0), total: Number(row.total || 0) }; });
-    res.render('debts/index', { title: 'Hutang & Piutang', pageTitle: 'Hutang & Piutang', records, summary, filters: { type, status, site, query, period, from: periodFrom, to: periodTo }, today: localDate() });
+      WHERE d.status='ACTIVE' GROUP BY d.scope,d.record_type`);
+    const blank = () => ({ remaining: 0, overdue: 0, total: 0 });
+    const summary = { DEBT: blank(), RECEIVABLE: blank(), INTERNAL: { DEBT: blank(), RECEIVABLE: blank() }, EXTERNAL: { DEBT: blank(), RECEIVABLE: blank() } };
+    summaryRows.forEach((row) => {
+      const v = { remaining: Number(row.remaining || 0), overdue: Number(row.overdue || 0), total: Number(row.total || 0) };
+      const agg = summary[row.record_type];
+      agg.remaining += v.remaining; agg.overdue += v.overdue; agg.total += v.total;
+      if (summary[row.scope]) summary[row.scope][row.record_type] = v;
+    });
+    // v1.30 -- ringkasan per teknisi: siapa saja yang masih punya hutang ke kantor.
+    const [techRows] = await db.query(`SELECT d.employee_id,COALESCE(e.name,d.party_name) name,e.employee_code,pos.name position_name,
+      SUM(CASE WHEN d.record_type='RECEIVABLE' THEN GREATEST(d.principal_amount-COALESCE(x.paid,0),0) ELSE 0 END) owed_to_office,
+      SUM(CASE WHEN d.record_type='DEBT' THEN GREATEST(d.principal_amount-COALESCE(x.paid,0),0) ELSE 0 END) owed_by_office,
+      COUNT(*) total
+      FROM finance_debts d LEFT JOIN (SELECT debt_id,SUM(amount) paid FROM finance_debt_payments GROUP BY debt_id) x ON x.debt_id=d.id
+      LEFT JOIN employees e ON e.id=d.employee_id LEFT JOIN positions pos ON pos.id=e.position_id
+      WHERE d.status='ACTIVE' AND d.scope='INTERNAL'
+      GROUP BY d.employee_id,COALESCE(e.name,d.party_name),e.employee_code,pos.name ORDER BY owed_to_office DESC,name`);
+    const people = await internalPeople();
+    res.render('debts/index', { title: 'Hutang & Piutang', pageTitle: 'Hutang & Piutang', records, summary, techRows, people, filters: { type, scope, employee: employeeFilter, status, site, query, period, from: periodFrom, to: periodTo }, today: localDate() });
   } catch (err) { next(err); }
 });
 
@@ -198,9 +231,19 @@ router.post('/', async (req, res, next) => {
   let conn;
   try {
     const type = String(req.body.record_type || '').toUpperCase();
+    const scope = SCOPES.has(String(req.body.scope || '').toUpperCase()) ? String(req.body.scope).toUpperCase() : 'EXTERNAL';
     const site = String(req.body.site_code || '').toUpperCase();
     const method = String(req.body.payment_method || '').toUpperCase();
-    const party = String(req.body.party_name || '').trim().slice(0, 160);
+    let party = String(req.body.party_name || '').trim().slice(0, 160);
+    let employeeId = null;
+    let userId = null;
+    if (scope === 'INTERNAL') {
+      // Hutang internal wajib ditautkan ke karyawan/teknisi, nama pihak diambil dari data karyawan
+      // (bukan diketik) supaya rekap per teknisi di Closing tidak pecah karena beda ejaan.
+      const [[employee]] = await db.execute('SELECT id,name,user_id FROM employees WHERE id=? AND is_active=1 LIMIT 1', [Number(req.body.employee_id) || 0]);
+      if (!employee) return res.status(400).send('Pilih teknisi / karyawan untuk hutang internal.');
+      employeeId = employee.id; userId = employee.user_id || null; party = String(employee.name).slice(0, 160);
+    }
     const purpose = String(req.body.purpose || '').trim().slice(0, 255);
     const itemNames = Array.isArray(req.body.item_name) ? req.body.item_name : [req.body.item_name];
     const quantities = Array.isArray(req.body.item_quantity) ? req.body.item_quantity : [req.body.item_quantity];
@@ -223,12 +266,14 @@ router.post('/', async (req, res, next) => {
     if (dueDate && dueDate < issueDate) return res.status(400).send('Jatuh tempo tidak boleh sebelum tanggal pencatatan.');
     conn = await db.getConnection();
     await conn.beginTransaction();
-    const [created] = await conn.execute(`INSERT INTO finance_debts(record_type,party_name,purpose,site_code,principal_amount,issue_date,due_date,payment_method,installment_months,responsible_name,notes,created_by)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, [type, party, purpose, site, principal, issueDate, dueDate, method, installmentMonths, responsible, notes, req.session.user.id]);
+    const [created] = await conn.execute(`INSERT INTO finance_debts(record_type,scope,party_name,employee_id,user_id,purpose,site_code,principal_amount,issue_date,due_date,payment_method,installment_months,responsible_name,notes,created_by)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [type, scope, party, employeeId, userId, purpose, site, principal, issueDate, dueDate, method, installmentMonths, responsible, notes, req.session.user.id]);
     for (const item of items) await conn.execute('INSERT INTO finance_debt_items(debt_id,item_name,quantity,unit_price,notes) VALUES(?,?,?,?,?)', [created.insertId, item.name, item.quantity, item.unitPrice, item.notes]);
     await conn.commit();
-    req.session.flash = { type: 'success', message: `${type === 'DEBT' ? 'Hutang' : 'Piutang'} berhasil dicatat.` };
-    res.redirect('/debts');
+    req.session.flash = { type: 'success', message: scope === 'INTERNAL'
+      ? `${type === 'RECEIVABLE' ? 'Hutang' : 'Talangan'} ${party} berhasil dicatat.`
+      : `${type === 'DEBT' ? 'Hutang' : 'Piutang'} berhasil dicatat.` };
+    res.redirect(scope === 'INTERNAL' ? '/debts?scope=INTERNAL' : '/debts');
   } catch (err) { if (conn) await conn.rollback(); next(err); } finally { if (conn) conn.release(); }
 });
 
@@ -258,7 +303,7 @@ router.post('/:id/payments', async (req, res, next) => {
     await refreshStatus(conn, id);
     await conn.commit();
     req.session.flash = { type: 'success', message: 'Pembayaran berhasil dicatat dan sisa diperbarui.' };
-    res.redirect('/debts');
+    res.redirect(backTo(req));
   } catch (err) {
     if (conn) await conn.rollback();
     if (saved) await removeDebtProof(saved.filename);
@@ -289,7 +334,7 @@ router.post('/:id/archive', async (req, res, next) => {
     const [result] = await db.execute("UPDATE finance_debts SET status='ARCHIVED' WHERE id=? AND status<>'ARCHIVED'", [id]);
     if (!result.affectedRows) return res.status(404).send('Data tidak ditemukan atau sudah diarsipkan.');
     req.session.flash = { type: 'success', message: 'Data dipindahkan ke arsip.' };
-    res.redirect('/debts');
+    res.redirect(backTo(req));
   } catch (err) { next(err); }
 });
 
@@ -313,7 +358,7 @@ router.post('/:id/payments/:paymentId/delete', async (req, res, next) => {
     removedProof = paymentRow?.proof_path || null;
     if (removedProof) await removeDebtProof(removedProof);
     req.session.flash = { type: 'success', message: 'Pembayaran dihapus dan sisa dihitung ulang.' };
-    res.redirect('/debts');
+    res.redirect(backTo(req));
   } catch (err) { if (conn) await conn.rollback(); next(err); } finally { if (conn) conn.release(); }
 });
 

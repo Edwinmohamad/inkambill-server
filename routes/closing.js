@@ -7,6 +7,7 @@ const { money, personKey, siteBlock, locationText, normalizeSiteCluster, isPsbRe
 const { syncCashDataIntoClosing, countPendingCashData, selectUnsyncedCashRows, planSyncedReconciliation } = require('../services/closingSyncService');
 const { requireMasterAdmin } = require('../middleware/auth');
 const { financialAudit } = require('../services/financialControlService');
+const { loadInternalDebtSummary, buildInternalDebtPdfRows } = require('../services/internalDebtService');
 
 const router = express.Router();
 router.use(requireMasterAdmin);
@@ -284,6 +285,8 @@ router.get('/', async (req, res, next) => {
     const data = await loadClosing(start, end);
     const unpaid = await loadUnpaidCustomers(end);
     const customerActivity = await loadCustomerActivitySummary(start, end);
+    // v1.30 -- hutang internal teknisi: informasi saja, tidak ikut perhitungan bagi hasil.
+    const internalDebt = await loadInternalDebtSummary({ start, end });
     // v2.1 — mode Otomatis + masih DRAFT: hitung berapa transaksi Data Kas yang
     // masih menunggu approval, dan berapa yang sudah APPROVED tapi belum ditarik,
     // supaya kelihatan di banner sebelum Master Admin sempat lupa sync.
@@ -364,7 +367,7 @@ router.get('/', async (req, res, next) => {
         prevLabel: `${prevPeriod.start} s/d ${prevPeriod.end}`
       };
     }
-    res.render('closing/index', { title: 'Closing', pageTitle: 'Closing', pageSubtitle: `${start} s/d ${end}`, start, end, hideEdwin, money, locationText, pending, estimate, prevPeriod, nextPeriod, trend, customerActivity, autoSyncInfo, dateKey: (value) => (value ? localDateKey(value) : ''), ...data, ...unpaid });
+    res.render('closing/index', { title: 'Closing', pageTitle: 'Closing', pageSubtitle: `${start} s/d ${end}`, start, end, hideEdwin, money, locationText, pending, estimate, prevPeriod, nextPeriod, trend, customerActivity, internalDebt, autoSyncInfo, dateKey: (value) => (value ? localDateKey(value) : ''), ...data, ...unpaid });
   } catch (err) { next(err); }
 });
 
@@ -922,6 +925,9 @@ router.get('/pdf', async (req, res, next) => {
     const adjustmentRows = buildAdjustmentRows(data, recipient, allowedBlocks);
     const transactionRows = buildTransactionRows(data, allowedBlocks);
     const customerActivityRows = buildCustomerActivityRows(customerActivity, allowedBlocks);
+    // v1.30 -- rincian hutang internal teknisi. PDF Mang Ali (KBG saja) hanya melihat catatan KBG.
+    const internalDebt = await loadInternalDebtSummary({ start, end, sites: recipient.key === 'mang ali' ? ['KBG'] : null });
+    const internalDebtRows = buildInternalDebtPdfRows(internalDebt);
     const adjustmentTotal = netTotal - grossTotal;
     const hiddenNote = hideEdwin && recipient.key !== 'edwin' ? ' · bagian Edwin disembunyikan sesuai opsi' : '';
     createClosingReportPdf(res, {
@@ -934,7 +940,9 @@ router.get('/pdf', async (req, res, next) => {
       blocks,
       adjustmentRows,
       transactionRows,
-      customerActivityRows
+      customerActivityRows,
+      internalDebtRows,
+      internalDebtSummary: internalDebt.summary
     });
   } catch (err) { next(err); }
 });

@@ -1226,4 +1226,14 @@ async function ensureV57Schema() {
   }
 }
 
-module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema };
+async function ensureV58Schema() {
+  // v1.30 -- Hutang Internal vs Eksternal. INTERNAL = hutang/piutang antara kantor dan
+  // karyawan/teknisi (ditautkan ke employees + users), EXTERNAL = vendor/pihak luar
+  // (perilaku lama). Data lama otomatis EXTERNAL lewat DEFAULT, jadi tidak ada yang berubah.
+  await db.query(`ALTER TABLE finance_debts ADD COLUMN IF NOT EXISTS scope ENUM('EXTERNAL','INTERNAL') NOT NULL DEFAULT 'EXTERNAL' AFTER record_type`);
+  await db.query(`ALTER TABLE finance_debts ADD COLUMN IF NOT EXISTS employee_id BIGINT UNSIGNED NULL AFTER party_name`);
+  await db.query(`ALTER TABLE finance_debts ADD COLUMN IF NOT EXISTS user_id BIGINT UNSIGNED NULL AFTER employee_id`);
+  await db.query(`ALTER TABLE finance_debts ADD INDEX IF NOT EXISTS idx_finance_debt_scope(scope,status,employee_id)`).catch((err) => console.error('Index scope hutang gagal:', err.message));
+}
+
+module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema, ensureV58Schema };
