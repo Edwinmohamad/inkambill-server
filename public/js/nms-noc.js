@@ -142,7 +142,7 @@
   }
   $('nmsAlerts').addEventListener('click', async e => {
     const id = e.target.closest('[data-ack]')?.dataset.ack; if (!id) return;
-    try { await api(`/nms/api/alerts/${id}/ack`, { method: 'POST', body: {} }); alerts = alerts.map(a => String(a.id) === id ? { ...a, acknowledged_by: 1 } : a); renderAlerts(); }
+    try { await api(`/nms/api/alerts/${id}/ack`, { method: 'POST', body: {} }); alerts = alerts.map(a => String(a.id) === id ? { ...a, acknowledged_by: 1 } : a); renderAlerts(); renderHero(); }
     catch (err) { toast(err.message, 'err'); }
   });
 
@@ -177,6 +177,7 @@
   });
 
   function renderAll() { renderTraffic(); renderRouters(); renderSync(); renderAlerts(); renderLog(); renderFlapping(); N.markUpdated(data.generatedAt); }
+  const afterData = () => { renderTotal(); renderHero(); };
   async function refresh() {
     const res = await api(`/nms/api/dashboard${N.withSite()}`);
     data = res.data;
@@ -184,35 +185,215 @@
     alerts = data.alerts || [];
     const lastId = Math.max(0, ...events.filter(e => e.id).map(e => e.id));
     (data.events || []).slice().reverse().filter(e => e.id > lastId).forEach(pushEvent);
-    renderTraffic(); renderRouters(); renderSync(); renderAlerts(); renderFlapping(); N.markUpdated(data.generatedAt);
+    renderTraffic(); renderRouters(); renderSync(); renderAlerts(); renderFlapping(); afterData(); N.markUpdated(data.generatedAt);
   }
 
   renderAll();
   let frame = null, resizeT = null;
   window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(renderTraffic, 150); });
   N.stream({
-    telemetry: r => { if (N.site && Number(r.siteId) !== Number(N.site)) return; routers.set(r.routerId, r); if (!frame) frame = requestAnimationFrame(() => { frame = null; renderTraffic(); renderRouters(); }); N.markUpdated(new Date().toISOString()); },
-    router_state: s => { const r = routers.get(s.routerId); if (r) { r.status = s.status; r.lastError = s.error; renderRouters(); renderTraffic(); } if (s.status === 'offline') toast(`Router ${r?.name || s.routerId} tidak terjangkau`, 'err'); },
+    telemetry: r => { if (N.site && Number(r.siteId) !== Number(N.site)) return; routers.set(r.routerId, r); if (!frame) frame = requestAnimationFrame(() => { frame = null; renderTraffic(); renderRouters(); afterData(); }); N.markUpdated(new Date().toISOString()); },
+    router_state: s => { const r = routers.get(s.routerId); if (r) { r.status = s.status; r.lastError = s.error; renderRouters(); renderTraffic(); afterData(); } if (s.status === 'offline') toast(`Router ${r?.name || s.routerId} tidak terjangkau`, 'err'); },
     ppp: e => pushEvent(e),
-    alert: a => { alerts = [{ ...a, opened_at: a.openedAt }, ...alerts.filter(x => x.id !== a.id)]; renderAlerts(); toast(a.title, 'err'); },
+    alert: a => { alerts = [{ ...a, opened_at: a.openedAt }, ...alerts.filter(x => x.id !== a.id)]; renderAlerts(); afterData(); toast(a.title, 'err'); },
     alert_resolved: () => refresh().catch(() => {}),
     sync: () => refresh().catch(() => {})
   }, { fallback: refresh, fallbackMs: 20000 });
   document.addEventListener('nx:changed', () => refresh().catch(() => {}));
   setInterval(() => { if (!document.hidden) refresh().catch(() => N.setLive('down')); }, 30000);
-  // ---------- Mode NOC: layar penuh untuk TV/monitor; Esc atau tombol keluar mengembalikan tampilan ----------
-  const nocBtn = $('nmsNocMode'), nocExit = $('nmsNocExit');
-  const setNoc = on => {
-    app.classList.toggle('noc-tv', on); nocExit.hidden = !on;
-    if (nocBtn) nocBtn.innerHTML = on ? '<i class="bi bi-fullscreen-exit"></i><span>Keluar NOC</span>' : '<i class="bi bi-arrows-fullscreen"></i><span>Mode NOC</span>';
-    setTimeout(renderTraffic, 60);
-  };
-  const toggleNoc = async on => {
-    setNoc(on);
+  // ---------- Hero: skor kesehatan, kalimat status, dan maskot ----------
+  const mascot = window.NXMascot?.mount($('nxMascot'));
+  function heroState() {
+    const list = sorted(), up = list.filter(r => r.status === 'online').length, off = list.filter(r => r.status === 'offline');
+    const openAlerts = alerts.filter(a => !a.acknowledged_by);
+    const critical = openAlerts.filter(a => a.severity === 'critical');
+    const flaps = (data.flapping || []).length;
+    const score = Number(data.healthScore) || 0;
+    const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jakarta', hour: 'numeric', hour12: false }).format(new Date()));
+    let mood = 'ok';
+    if (list.length && up === 0) mood = 'dizzy';
+    else if (critical.length || off.length) mood = 'panic';
+    else if (data.freshness?.stale) mood = 'dizzy';
+    else if (openAlerts.length || score < 60 || flaps >= 3) mood = 'worried';
+    else if (hour >= 0 && hour < 5) mood = 'sleepy';
+    else if (score >= 85) mood = 'happy';
+    const affected = off.reduce((a, r) => a + (r.impact?.linked || 0), 0);
+    const title = { happy: 'Jaringan sehat', ok: 'Jaringan normal', worried: 'Perlu perhatian', panic: 'Ada gangguan', dizzy: list.length && up === 0 ? 'Semua router tidak terjangkau' : 'Data router belum terbaru', sleepy: 'Malam yang tenang' }[mood];
+    const parts = [];
+    if (off.length) parts.push(`${off.map(r => r.name).slice(0, 2).join(', ')}${off.length > 2 ? ` +${off.length - 2}` : ''} tidak terjangkau · ±${affected} pelanggan terdampak`);
+    else if (critical.length) parts.push(critical[0].title);
+    else if (openAlerts.length) parts.push(openAlerts[0].title);
+    else if (data.freshness?.stale) parts.push('Mirror secret lebih dari 10 menit. Cek koneksi API router.');
+    if (!parts.length) parts.push(`${up}/${list.length} router online, ${data.customers?.online ?? 0} pelanggan terhubung.`);
+    if (flaps && mood !== 'panic') parts.push(`${flaps} pelanggan putus-sambung`);
+    return { mood, score, title, text: parts.join(' · '), up, total: list.length, openAlerts: openAlerts.length };
+  }
+  function gauge(score, color) {
+    const r = 52, len = Math.PI * r, p = Math.max(0, Math.min(100, score)) / 100;
+    return `<svg viewBox="0 0 128 76" aria-hidden="true"><path d="M12 68 A52 52 0 0 1 116 68" fill="none" stroke="var(--x-card3)" stroke-width="11" stroke-linecap="round"/><path d="M12 68 A52 52 0 0 1 116 68" fill="none" stroke="${color}" stroke-width="11" stroke-linecap="round" stroke-dasharray="${len}" stroke-dashoffset="${len * (1 - p)}" style="transition:stroke-dashoffset .9s var(--x-ease),stroke .4s"/></svg><div class="v"><b>${Math.round(score)}</b><small>skor</small></div>`;
+  }
+  function renderHero() {
+    const h = heroState(), c = COLORS();
+    const color = { happy: c.green, ok: c.green, worried: c.orange, panic: c.red, dizzy: c.gray, sleepy: c.blue }[h.mood];
+    $('nxHero').dataset.state = h.mood;
+    $('nxGauge').innerHTML = gauge(h.score, color);
+    $('nxHeroTitle').textContent = h.title;
+    $('nxHeroText').textContent = h.text;
+    const w = widgetData;
+    const chips = [
+      `<span class="nx-pill ${h.up === h.total ? 'green' : 'red'}"><i class="bi bi-router"></i>${h.up}/${h.total} router</span>`,
+      `<span class="nx-pill blue"><i class="bi bi-people"></i>${data.customers?.online ?? 0} online</span>`,
+      h.openAlerts ? `<span class="nx-pill orange"><i class="bi bi-bell"></i>${h.openAlerts} alert</span>` : '',
+      w?.leak?.overdue?.online ? `<span class="nx-pill red"><i class="bi bi-cash-coin"></i>${w.leak.overdue.online} nunggak masih online</span>` : ''
+    ];
+    $('nxHeroChips').innerHTML = chips.join('');
+    mascot?.setMood(h.mood, `${h.title}. ${h.text}`);
+  }
+
+  // ---------- Widget tambahan (/nms/api/widgets) ----------
+  let widgetData = null;
+  const errBox = e => `<div class="nx-empty"><i class="bi bi-exclamation-circle"></i>${esc(e)}</div>`;
+  function renderActivity() {
+    const el = $('nxActivity'), rows = widgetData?.activity;
+    if (!rows) return;
+    if (rows.error) { el.innerHTML = errBox(rows.error); return; }
+    const c = COLORS();
+    $('nxActivityLegend').innerHTML = `<span><i style="background:${c.green}"></i>Login <b>${rows.reduce((a, r) => a + r.login, 0)}</b></span><span><i style="background:${c.gray}"></i>Putus <b>${rows.reduce((a, r) => a + r.logout, 0)}</b></span><span><i style="background:${c.red}"></i>Ditolak <b>${rows.reduce((a, r) => a + r.failed, 0)}</b></span>`;
+    const max = Math.max(1, ...rows.map(r => Math.max(r.login, r.logout + r.failed)));
+    const hh = iso => new Date(iso).toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', hour12: false });
+    el.innerHTML = `<div class="nx-bars-plot">${rows.map((r, i) => `<div class="nx-bar-col" title="${esc(hh(r.at))}.00 · login ${r.login} · putus ${r.logout} · ditolak ${r.failed}" style="--d:${i * 18}ms"><div class="nx-bar-pair"><i class="b-in" style="height:${(r.login / max * 100).toFixed(1)}%"></i><i class="b-out" style="height:${(r.logout / max * 100).toFixed(1)}%"><em style="height:${r.logout + r.failed ? (r.failed / (r.logout + r.failed) * 100).toFixed(1) : 0}%"></em></i></div><small>${i % 3 === 0 || i === rows.length - 1 ? esc(hh(r.at)) : ''}</small></div>`).join('')}</div>`;
+  }
+  function renderLeak() {
+    const el = $('nxLeak'), l = widgetData?.leak;
+    if (!l) return;
+    if (l.error) { el.innerHTML = errBox(l.error); return; }
+    const o = l.overdue || {}, u = l.unlinked || {};
+    el.innerHTML = `<div class="nx-leak-amount"><small>Tunggakan pelanggan yang layanannya masih jalan</small><b>${N.rupiah(o.amount)}</b><span>${o.count || 0} pelanggan · ${o.online || 0} sedang online${o.held ? ` · ${o.held} ditunda` : ''}</span></div>
+      <ul class="nx-list nx-list-flush">
+        <li class="clickable" data-go="overdue_active"><span class="li-icon red"><i class="bi bi-cash-coin"></i></span><div class="li-main"><b>Lewat jatuh tempo, masih aktif</b><small>${o.error ? esc(o.error) : 'Isolir atau tunda dari daftar'}</small></div><b class="num">${o.count || 0}</b><i class="bi bi-chevron-right dim"></i></li>
+        <li class="clickable" data-go="secret_no_customer"><span class="li-icon purple"><i class="bi bi-question-circle"></i></span><div class="li-main"><b>Secret tanpa pelanggan</b><small>${u.error ? esc(u.error) : `${u.online || 0} sedang online, tidak tertagih`}</small></div><b class="num">${u.count || 0}</b><i class="bi bi-chevron-right dim"></i></li>
+      </ul>`;
+  }
+  $('nxLeak').addEventListener('click', e => { const li = e.target.closest('[data-go]'); if (li) location.assign(`/nms/insights${N.qs({ site: N.site || undefined, kind: li.dataset.go })}`); });
+  function renderOutages() {
+    const el = $('nxOutages'), o = widgetData?.outages;
+    if (!o) return;
+    if (o.error) { el.innerHTML = `<li><div class="li-main"><small>${esc(o.error)}</small></div></li>`; return; }
+    const rows = [...(o.suspect || []).map(c => ({ ...c, bad: true })), ...(o.watch || [])];
+    el.innerHTML = rows.length ? rows.map(c => `<li class="clickable" data-cl="${c.id}"><span class="li-icon ${c.bad ? 'red' : 'orange'}"><i class="bi bi-diagram-3"></i></span><div class="li-main"><b>${esc(c.name)}</b><small>${esc(c.site_code)} · ${Number(c.offline) || 0} dari ${c.customers} offline${c.last_drop ? ` · putus ${esc(N.ago(c.last_drop))}` : ''}</small></div><b class="num" style="color:var(--x-${c.bad ? 'red' : 'orange'})">${c.offlinePct}%</b></li>`).join('')
+      : '<li><span class="li-icon green"><i class="bi bi-check-lg"></i></span><div class="li-main"><b>Tidak ada ODP bermasalah</b><small>Offline tersebar normal di semua cluster.</small></div></li>';
+  }
+  $('nxOutages').addEventListener('click', e => { if (e.target.closest('[data-cl]')) location.assign(`/nms/insights${N.withSite()}`); });
+  const ACT = { isolate: 'Isolir', unisolate: 'Buka isolir', kick: 'Kick sesi', profile: 'Ganti profile', package: 'Ganti paket' };
+  function renderAgenda() {
+    const el = $('nxAgenda'), a = widgetData?.agenda;
+    if (!a) return;
+    if (a.error) { el.innerHTML = `<li><div class="li-main"><small>${esc(a.error)}</small></div></li>`; return; }
+    const items = [
+      ...(a.approvals || []).map(x => `<li class="clickable" data-go="1"><span class="li-icon orange"><i class="bi bi-person-check"></i></span><div class="li-main"><b>${esc(x.summary)}</b><small>Menunggu persetujuan · diminta ${esc(x.requested_by_name || 'sistem')} · ${esc(N.ago(x.created_at))}</small></div><span class="nx-pill orange">Persetujuan</span></li>`),
+      ...(a.schedules || []).map(x => `<li class="clickable" data-go="1"><span class="li-icon blue"><i class="bi bi-calendar-event"></i></span><div class="li-main"><b>${esc(ACT[x.action] || x.action)}${x.package_name ? ` → ${esc(x.package_name)}` : x.profile ? ` → ${esc(x.profile)}` : ''} · ${x.count} secret</b><small>${esc(N.dateTime(x.run_at))} · ${esc((x.targets || []).slice(0, 3).join(', '))}${x.note ? ` · ${esc(x.note)}` : ''}</small></div><span class="nx-pill blue">${esc(countdown(x.run_at))}</span></li>`)
+    ];
+    el.innerHTML = items.length ? items.join('') : '<li><span class="li-icon gray"><i class="bi bi-calendar"></i></span><div class="li-main"><b>Tidak ada agenda</b><small>Jadwal isolir, ganti paket, dan persetujuan muncul di sini.</small></div></li>';
+  }
+  const countdown = iso => { const m = Math.round((new Date(iso) - Date.now()) / 60000); if (m <= 0) return 'sekarang'; if (m < 60) return `${m} mnt lagi`; if (m < 1440) return `${Math.round(m / 60)} jam lagi`; return `${Math.round(m / 1440)} hari lagi`; };
+  $('nxAgenda').addEventListener('click', e => { if (e.target.closest('[data-go]')) location.assign(`/nms/automation${N.withSite()}`); });
+  function renderTotal() {
+    const list = sorted().filter(r => r.status === 'online');
+    const rx = list.reduce((a, r) => a + (Number(r.wan?.rxBps) || 0), 0), tx = list.reduce((a, r) => a + (Number(r.wan?.txBps) || 0), 0);
+    const [rv, ru] = splitBps(rx), [tv, tu] = splitBps(tx), c = COLORS();
+    $('nxTrafficTotal').innerHTML = list.length ? `<div><small><i style="background:${c.blue}"></i>Total download</small><strong>${rv}<span>${ru}</span></strong></div><div><small><i style="background:${c.green}"></i>Total upload</small><strong>${tv}<span>${tu}</span></strong></div>` : '';
+  }
+  async function loadWidgets() {
+    try { widgetData = (await api(`/nms/api/widgets${N.withSite()}`)).data; }
+    catch (err) { widgetData = { activity: { error: err.message }, leak: { error: err.message }, outages: { error: err.message }, agenda: { error: err.message } }; }
+    renderActivity(); renderLeak(); renderOutages(); renderAgenda(); renderHero();
+  }
+
+  // ---------- Atur dashboard: tampil/sembunyi & urutan widget (per browser) ----------
+  const LKEY = 'nx-dash-layout-v1';
+  const widgetEls = () => [...document.querySelectorAll('#nxWidgets > .nx-w')];
+  const defaultOrder = widgetEls().map(w => w.dataset.w);
+  let layout = { order: defaultOrder, hidden: [], mascot: true, rotate: 20 };
+  try { layout = { ...layout, ...JSON.parse(localStorage.getItem(LKEY) || '{}') }; } catch (_) {}
+  layout.order = [...layout.order.filter(k => defaultOrder.includes(k)), ...defaultOrder.filter(k => !layout.order.includes(k))];
+  const saveLayout = () => { try { localStorage.setItem(LKEY, JSON.stringify(layout)); } catch (_) {} };
+  function applyLayout() {
+    widgetEls().forEach(w => { w.style.order = layout.order.indexOf(w.dataset.w); w.hidden = layout.hidden.includes(w.dataset.w); });
+    $('nxMascot').hidden = !layout.mascot; $('nxHero').classList.toggle('no-mascot', !layout.mascot);
+    setTimeout(renderTraffic, 30);
+  }
+  function openCustomize() {
+    const title = k => document.querySelector(`#nxWidgets [data-w="${k}"]`)?.dataset.title || k;
+    const s = N.sheet({ title: 'Atur dashboard', subtitle: 'Pilih widget yang tampil dan urutannya. Tersimpan di browser ini.', size: 'sm',
+      body: `<ul class="nx-list nx-group nx-sortlist" data-list></ul>
+        <div class="nx-group-title">Lainnya</div>
+        <ul class="nx-list nx-group"><li><div class="li-main"><b>Maskot Nexi</b><small>Karakter di kartu status, ekspresinya mengikuti kesehatan jaringan.</small></div><label class="nx-switch"><input type="checkbox" data-mascot ${layout.mascot ? 'checked' : ''}><span></span></label></li>
+        <li><div class="li-main"><b>Ganti panel layar penuh</b><small>Detik per panel di mode layar penuh.</small></div><select data-rotate style="width:auto">${[0, 15, 20, 30, 60].map(v => `<option value="${v}" ${Number(layout.rotate) === v ? 'selected' : ''}>${v ? `${v} detik` : 'Tidak berganti'}</option>`).join('')}</select></li></ul>`,
+      foot: '<button type="button" class="nx-btn ghost" data-reset>Kembalikan default</button><span class="grow"></span><button type="button" class="nx-btn primary" data-close>Selesai</button>' });
+    const paint = () => {
+      s.$('[data-list]').innerHTML = layout.order.map((k, i) => `<li data-k="${k}"><label class="nx-check grow"><input type="checkbox" data-vis ${layout.hidden.includes(k) ? '' : 'checked'}><span>${esc(title(k))}</span></label><button type="button" class="nx-btn sm icon ghost" data-up ${i === 0 ? 'disabled' : ''} aria-label="Naik"><i class="bi bi-chevron-up"></i></button><button type="button" class="nx-btn sm icon ghost" data-down ${i === layout.order.length - 1 ? 'disabled' : ''} aria-label="Turun"><i class="bi bi-chevron-down"></i></button></li>`).join('');
+    };
+    paint();
+    s.$('[data-list]').addEventListener('click', e => {
+      const li = e.target.closest('[data-k]'); if (!li) return; const k = li.dataset.k, i = layout.order.indexOf(k);
+      const mv = e.target.closest('[data-up]') ? -1 : e.target.closest('[data-down]') ? 1 : 0; if (!mv) return;
+      layout.order.splice(i, 1); layout.order.splice(i + mv, 0, k); saveLayout(); applyLayout(); paint();
+    });
+    s.$('[data-list]').addEventListener('change', e => { const li = e.target.closest('[data-k]'); if (!li) return; const k = li.dataset.k; layout.hidden = e.target.checked ? layout.hidden.filter(x => x !== k) : [...layout.hidden, k]; saveLayout(); applyLayout(); });
+    s.$('[data-mascot]').addEventListener('change', e => { layout.mascot = e.target.checked; saveLayout(); applyLayout(); });
+    s.$('[data-rotate]').addEventListener('change', e => { layout.rotate = Number(e.target.value); saveLayout(); });
+    s.$('[data-reset]').addEventListener('click', () => { layout = { order: [...defaultOrder], hidden: [], mascot: true, rotate: 20 }; saveLayout(); applyLayout(); s.close(); toast('Tata letak dikembalikan.', 'ok'); });
+  }
+  $('nxCustomize')?.addEventListener('click', openCustomize);
+
+  // ---------- Layar penuh (mode TV NOC): panel berganti otomatis, jam besar, layar tetap menyala ----------
+  const TV_GROUPS = [['overview', 'Ringkasan'], ['traffic', 'Traffic'], ['routers', 'Router'], ['problems', 'Masalah']];
+  const tv = { on: false, idx: 0, timer: null, paused: false, lock: null, cursorT: null, clockT: null };
+  const tvGroups = () => TV_GROUPS.filter(([g]) => widgetEls().some(w => w.dataset.tv === g && !layout.hidden.includes(w.dataset.w)));
+  function tvShow(i) {
+    const groups = tvGroups(); if (!groups.length) return;
+    tv.idx = (i + groups.length) % groups.length;
+    const g = groups[tv.idx][0];
+    widgetEls().forEach(w => w.classList.toggle('tv-off', w.dataset.tv !== g));
+    $('nxTvDots').innerHTML = groups.map(([k, l], j) => `<button type="button" class="${j === tv.idx ? 'on' : ''}" data-tv-go="${j}">${esc(l)}</button>`).join('');
+    const wrap = $('nxWidgets'); wrap.classList.remove('tv-enter'); void wrap.offsetWidth; wrap.classList.add('tv-enter');
+    setTimeout(renderTraffic, 40);
+  }
+  function tvSchedule() { clearInterval(tv.timer); tv.timer = null; if (tv.on && !tv.paused && Number(layout.rotate) > 0) tv.timer = setInterval(() => tvShow(tv.idx + 1), Number(layout.rotate) * 1000); }
+  async function wake(on) { try { if (on && 'wakeLock' in navigator) tv.lock = await navigator.wakeLock.request('screen'); else { await tv.lock?.release(); tv.lock = null; } } catch (_) {} }
+  const tvClock = () => { $('nxTvClock').textContent = new Date().toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit', hour12: false }); };
+  const cursorIdle = () => { app.classList.remove('tv-cursor-off'); clearTimeout(tv.cursorT); tv.cursorT = setTimeout(() => { if (tv.on) app.classList.add('tv-cursor-off'); }, 3000); };
+  function setTv(on) {
+    tv.on = on; app.classList.toggle('noc-tv', on); $('nxTvBar').hidden = !on;
+    const btn = $('nmsNocMode'); if (btn) btn.innerHTML = on ? '<i class="bi bi-fullscreen-exit"></i><span class="nx-hide-sm">Keluar</span>' : '<i class="bi bi-arrows-fullscreen"></i><span class="nx-hide-sm">Layar penuh</span>';
+    if (on) { tvShow(0); tvSchedule(); wake(true); tvClock(); tv.clockT = setInterval(tvClock, 10000); cursorIdle(); }
+    else { widgetEls().forEach(w => w.classList.remove('tv-off')); clearInterval(tv.timer); clearInterval(tv.clockT); wake(false); app.classList.remove('tv-cursor-off'); setTimeout(renderTraffic, 60); }
+  }
+  async function toggleTv(on) {
+    setTv(on);
     try { if (on && !document.fullscreenElement) await app.requestFullscreen?.(); else if (!on && document.fullscreenElement) await document.exitFullscreen?.(); } catch (_) {}
-  };
-  nocBtn?.addEventListener('click', () => toggleNoc(!app.classList.contains('noc-tv')));
-  nocExit?.addEventListener('click', () => toggleNoc(false));
-  document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && app.classList.contains('noc-tv')) setNoc(false); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && app.classList.contains('noc-tv') && !document.fullscreenElement) setNoc(false); });
+  }
+  $('nmsNocMode')?.addEventListener('click', () => toggleTv(!tv.on));
+  $('nxTvExit').addEventListener('click', () => toggleTv(false));
+  $('nxTvPause').addEventListener('click', e => { tv.paused = !tv.paused; e.currentTarget.innerHTML = tv.paused ? '<i class="bi bi-play-fill"></i>' : '<i class="bi bi-pause-fill"></i>'; tvSchedule(); });
+  $('nxTvDots').addEventListener('click', e => { const b = e.target.closest('[data-tv-go]'); if (b) { tvShow(Number(b.dataset.tvGo)); tvSchedule(); } });
+  app.addEventListener('mousemove', () => { if (tv.on) cursorIdle(); });
+  document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && tv.on) setTv(false); });
+  document.addEventListener('visibilitychange', () => { if (tv.on && !document.hidden) wake(true); });
+  document.addEventListener('keydown', e => {
+    const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '');
+    if (typing || e.ctrlKey || e.metaKey || e.altKey || N.drawerOpen()) return;
+    if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleTv(!tv.on); }
+    if (!tv.on) return;
+    if (e.key === 'Escape' && !document.fullscreenElement) setTv(false);
+    if (e.key === 'ArrowRight') { tvShow(tv.idx + 1); tvSchedule(); }
+    if (e.key === 'ArrowLeft') { tvShow(tv.idx - 1); tvSchedule(); }
+    if (e.key === ' ') { e.preventDefault(); $('nxTvPause').click(); }
+  });
+
+  applyLayout();
+  renderHero(); renderTotal();
+  loadWidgets();
+  setInterval(() => { if (!document.hidden) loadWidgets(); }, 60000);
+  document.addEventListener('nx:changed', () => setTimeout(loadWidgets, 800));
 })();

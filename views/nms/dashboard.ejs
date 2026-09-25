@@ -1,9 +1,31 @@
 <link rel="stylesheet" href="/css/nms-noc.css?v=<%= assetVersion %>">
-<% const sq = siteId ? `&site=${siteId}` : ''; const sOnly = siteId ? `?site=${siteId}` : ''; %>
+<% const sq = siteId ? `&site=${siteId}` : ''; const sOnly = siteId ? `?site=${siteId}` : ''; const siteObj = (sites || []).find(s => Number(s.id) === Number(siteId)); %>
 <section class="nx" id="nmsDashboard" data-site="<%= siteId || '' %>" data-csrf="<%= csrfToken %>" data-can-control="<%= canControl ? '1' : '0' %>" data-is-admin="<%= isAdmin ? '1' : '0' %>">
   <%- include('_bar') %>
 
+  <header class="nx-tvbar" id="nxTvBar" hidden>
+    <div class="nx-tvbar-brand"><span class="nx-live-dot"></span><b>INKAMNET NOC</b><span class="dim"><%= siteObj ? `${siteObj.code} · ${siteObj.name}` : 'Semua site' %></span></div>
+    <div class="nx-tv-dots" id="nxTvDots" aria-label="Panel"></div>
+    <span class="grow"></span>
+    <time class="nx-tv-clock" id="nxTvClock">--:--</time>
+    <button type="button" class="nx-btn sm ghost" id="nxTvPause" title="Jeda rotasi panel (Spasi)"><i class="bi bi-pause-fill"></i></button>
+    <button type="button" class="nx-btn sm ghost" id="nxTvExit" title="Keluar layar penuh (Esc)"><i class="bi bi-fullscreen-exit"></i><span>Keluar</span></button>
+  </header>
+
   <div class="nx-alerts" id="nmsAlerts" aria-live="assertive"></div>
+
+  <article class="nx-hero" id="nxHero" data-state="ok">
+    <div class="nx-hero-main">
+      <div class="nx-gauge" id="nxGauge"></div>
+      <div class="nx-hero-text">
+        <small class="nx-hero-eyebrow">Status jaringan<%= siteObj ? ` · ${siteObj.code}` : '' %></small>
+        <h2 id="nxHeroTitle">Memeriksa jaringan…</h2>
+        <p id="nxHeroText">Mengumpulkan data router dan sesi PPPoE.</p>
+        <div class="nx-hero-chips" id="nxHeroChips"></div>
+      </div>
+    </div>
+    <div class="nx-hero-lane" id="nxMascot" aria-label="Maskot"></div>
+  </article>
 
   <div class="nx-stats">
     <a class="nx-stat green" href="/nms/secrets?tab=synced<%= sq %>&status=online"><small><i></i>Online</small><strong id="kpiOnline"><%= data.customers.online %></strong><em>sesi PPPoE aktif</em></a>
@@ -14,30 +36,53 @@
     <div class="nx-stat"><small><i></i>Kualitas data</small><strong id="kpiHealth"><%= data.healthScore %></strong><em id="kpiFreshness"><%= data.freshness.newest ? 'mirror ' + new Date(data.freshness.newest).toLocaleString('id-ID') : 'belum ada mirror' %></em></div>
   </div>
 
-  <div class="nx-section"><h2>Router</h2><p id="nxRouterSub">CPU, RAM, disk, dan pelanggan per router. Klik kartu untuk detail.</p></div>
-  <div class="nx-routers" id="nmsRouters"></div>
+  <div class="nx-widgets" id="nxWidgets">
+    <section class="nx-w c-12" data-w="routers" data-tv="routers" data-title="Router">
+      <div class="nx-section"><h2>Router</h2><p>CPU, RAM, disk, dan pelanggan per router. Klik kartu untuk detail.</p></div>
+      <div class="nx-routers" id="nmsRouters"></div>
+    </section>
 
-  <div class="nx-section"><h2>Traffic WAN</h2><p id="nxTrafficSub"><%= siteId ? 'Router di site ini' : 'Semua router' %></p></div>
-  <div class="nx-traffic-grid" id="nxTraffic"></div>
+    <section class="nx-w c-12" data-w="traffic" data-tv="traffic" data-title="Traffic WAN">
+      <div class="nx-section nx-section-row"><div><h2>Traffic WAN</h2><p id="nxTrafficSub"><%= siteId ? 'Router di site ini' : 'Semua router' %></p></div><div class="nx-total" id="nxTrafficTotal"></div></div>
+      <div class="nx-traffic-grid" id="nxTraffic"></div>
+    </section>
 
-  <div class="nx-grid nx-grid-eq" style="margin-top:26px">
-    <article class="nx-card c-4">
-      <div class="nx-card-head"><h3>Sinkronisasi</h3><span class="grow"></span><% if (canControl) { %><a class="nx-btn sm tint" href="/nms/secrets?tab=unsynced&sync=1<%= sq %>"><i class="bi bi-magic"></i>Smart Sync</a><% } %></div>
-      <div class="nx-card-body">
-        <div class="nx-donut" id="nxSyncRing"></div>
-        <div class="nx-legend" id="nxSyncLegend"></div>
-      </div>
+    <article class="nx-w nx-card c-8" data-w="activity" data-tv="overview" data-title="Aktivitas PPP 24 jam">
+      <div class="nx-card-head"><h3>Aktivitas PPP · 24 jam</h3><span class="grow"></span><div class="nx-legend" id="nxActivityLegend"></div></div>
+      <div class="nx-card-body"><div class="nx-bars" id="nxActivity"><div class="nx-empty">Memuat…</div></div></div>
     </article>
-    <article class="nx-card c-4">
-      <div class="nx-card-head"><h3>Perlu perhatian</h3><span class="grow"></span><a class="nx-btn sm plain" href="/nms/insights<%= sOnly %>">Rekonsiliasi</a></div>
+
+    <article class="nx-w nx-card c-4" data-w="leak" data-tv="overview" data-title="Potensi kebocoran">
+      <div class="nx-card-head"><h3>Potensi kebocoran</h3><span class="grow"></span><a class="nx-btn sm plain" href="/nms/insights<%= sOnly %>">Rekonsiliasi</a></div>
+      <div class="nx-card-body" id="nxLeak"><div class="nx-empty">Menghitung…</div></div>
+    </article>
+
+    <article class="nx-w nx-card c-4" data-w="attention" data-tv="problems" data-title="Perlu perhatian">
+      <div class="nx-card-head"><h3>Perlu perhatian</h3><span class="grow"></span><a class="nx-btn sm plain" href="/nms/insights<%= sOnly %>">Semua</a></div>
       <ul class="nx-list" id="nxAttention"><li><div class="li-main"><small>Menghitung…</small></div></li></ul>
     </article>
-    <article class="nx-card c-4" id="nmsFlapCard">
+
+    <article class="nx-w nx-card c-4" data-w="flapping" data-tv="problems" data-title="Putus-sambung">
       <div class="nx-card-head"><h3>Putus-sambung</h3><span class="grow"></span><small>1 jam · &gt;5 reconnect</small></div>
       <ul class="nx-list" id="nmsFlapping"></ul>
     </article>
 
-    <article class="nx-card c-12" id="nmsLiveLogCard">
+    <article class="nx-w nx-card c-4" data-w="outages" data-tv="problems" data-title="ODP dicurigai gangguan">
+      <div class="nx-card-head"><h3>ODP gangguan</h3><span class="grow"></span><a class="nx-btn sm plain" href="/nms/insights<%= sOnly %>">Kesehatan site</a></div>
+      <ul class="nx-list" id="nxOutages"><li><div class="li-main"><small>Memuat…</small></div></li></ul>
+    </article>
+
+    <article class="nx-w nx-card c-4" data-w="sync" data-tv="overview" data-title="Sinkronisasi">
+      <div class="nx-card-head"><h3>Sinkronisasi</h3><span class="grow"></span><% if (canControl) { %><a class="nx-btn sm tint" href="/nms/secrets?tab=unsynced&sync=1<%= sq %>"><i class="bi bi-magic"></i>Smart Sync</a><% } %></div>
+      <div class="nx-card-body"><div class="nx-donut" id="nxSyncRing"></div><div class="nx-legend" id="nxSyncLegend"></div></div>
+    </article>
+
+    <article class="nx-w nx-card c-8" data-w="agenda" data-tv="overview" data-title="Agenda otomasi">
+      <div class="nx-card-head"><h3>Agenda otomasi</h3><span class="grow"></span><a class="nx-btn sm plain" href="/nms/automation<%= sOnly %>">Otomasi</a></div>
+      <ul class="nx-list" id="nxAgenda"><li><div class="li-main"><small>Memuat…</small></div></li></ul>
+    </article>
+
+    <article class="nx-w nx-card c-12" data-w="log" data-title="Log PPP" id="nmsLiveLogCard">
       <div class="nx-card-head nx-wrap"><h3>Log PPP</h3><span class="nx-live-dot" aria-hidden="true"></span><span class="grow"></span>
         <div class="nx-seg sm" id="nmsLogFilter"><button type="button" class="active" data-f="all">Semua</button><button type="button" data-f="login">Login</button><button type="button" data-f="logout">Putus</button><button type="button" data-f="auth_failed">Ditolak</button><button type="button" data-f="action">Aksi</button></div>
         <button type="button" class="nx-btn sm icon ghost" id="nmsLogPause" title="Jeda auto-scroll" aria-label="Jeda auto-scroll" aria-pressed="false"><i class="bi bi-pause-fill"></i></button>
@@ -45,9 +90,9 @@
       <div class="nx-log" id="nmsConsole" role="log" aria-live="polite"></div>
     </article>
   </div>
-  <button type="button" class="nx-noc-exit" id="nmsNocExit" hidden><i class="bi bi-fullscreen-exit"></i>Keluar Mode NOC</button>
   <div class="nx-toasts"></div>
   <script type="application/json" id="nmsBoot"><%- JSON.stringify(data).replace(/</g, '\\u003c') %></script>
 </section>
 <script src="/js/nms-common.js?v=<%= assetVersion %>" defer></script>
+<script src="/js/nms-mascot.js?v=<%= assetVersion %>" defer></script>
 <script src="/js/nms-noc.js?v=<%= assetVersion %>" defer></script>
