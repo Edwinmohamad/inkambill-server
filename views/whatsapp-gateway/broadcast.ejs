@@ -1,0 +1,75 @@
+<link rel="stylesheet" href="/css/wa-inbox.css?v=<%= assetVersion %>">
+<%
+  const pad2=v=>String(v).padStart(2,'0');
+  const statusTone={scheduled:'purple',running:'orange',paused:'gray',completed:'green',cancelled:'red'};
+  const statusLabel={scheduled:'Terjadwal',running:'Berjalan',paused:'Dijeda',completed:'Selesai',cancelled:'Dibatalkan'};
+%>
+<section class="wa-gateway-page wa-v2 wab" id="waBroadcast" data-templates='<%- JSON.stringify(templates.map(t=>({key:t.template_key,title:t.title,body:t.body}))).replace(/'/g,"&#39;") %>'>
+  <div class="module-head">
+    <div><div class="module-kicker">WHATSAPP CRM</div><h1>Broadcast Selektif</h1><p>Kirim pesan ke pelanggan terpilih atau berdasarkan kategori, langsung maupun terjadwal — seluruhnya melalui engine anti-ban.</p></div>
+    <div class="d-flex gap-2 flex-wrap"><a class="btn-tech" href="/wa-gateway#antiban"><i class="bi bi-shield-lock"></i>Anti-Ban</a><a class="btn-tech" href="/wa-inbox"><i class="bi bi-chat-dots"></i>Web Inbox</a></div>
+  </div>
+
+  <% if(!blastEnabled){ %><div class="wa-callout"><i class="bi bi-lock"></i><div><strong>Fitur broadcast/blast massal sedang nonaktif.</strong><small>Master Admin dapat mengaktifkannya di WA Gateway → Pesan Otomatis → WA Blast Massal.</small></div></div><% } %>
+  <% if(pause.paused){ %><div class="wa-callout"><i class="bi bi-pause-circle-fill"></i><div><strong>Antrean dijeda — <%= pause.label||pause.kind %></strong><small><%= pause.reason||'' %></small></div><a class="btn-tech primary" href="/wa-gateway#antiban">Kelola</a></div><% } %>
+  <div class="wa-callout neutral"><i class="bi bi-shield-check"></i><div><strong>Perlindungan anti-ban aktif</strong><small>Jeda acak <%= antiban.minDelaySec %>–<%= antiban.maxDelaySec %> dtk · long pause <%= antiban.longPauseMinSec %>–<%= antiban.longPauseMaxSec %> dtk tiap <%= antiban.longPauseEvery %> pesan · jam <%= pad2(antiban.workStartHour) %>.00–<%= pad2(antiban.workEndHour) %>.00 WIB · maks <%= antiban.hourlyLimit %> pesan/jam · Spintax · nomor opt-out dilewati. Broadcast di luar jam operasional otomatis menunggu jam kerja berikutnya.</small></div></div>
+
+  <div class="data-card">
+    <div class="data-card-head"><div><h3>1. Target Penerima</h3><small>Saring berdasarkan status tagihan, segmen teknis, atau paket — lalu pilih manual bila perlu.</small></div></div>
+    <form class="wab-filter" id="wabFilter">
+      <label>Status tagihan<select class="form-select" name="billing"><% Object.entries(billingFilters).forEach(([k,v])=>{ %><option value="<%= k %>"><%= v %></option><% }) %></select></label>
+      <label>Site<select class="form-select" name="site_id"><option value="">Semua</option><% options.sites.forEach(o=>{ %><option value="<%= o.id %>"><%= o.code %> · <%= o.name %></option><% }) %></select></label>
+      <label>Cluster / Node<select class="form-select" name="cluster_id"><option value="">Semua</option><% options.clusters.forEach(o=>{ %><option value="<%= o.id %>"><%= o.name %></option><% }) %></select></label>
+      <label>Router POP<select class="form-select" name="router_id"><option value="">Semua</option><% options.routers.forEach(o=>{ %><option value="<%= o.id %>"><%= o.name %></option><% }) %></select></label>
+      <label>OLT<select class="form-select" name="olt_id"><option value="">Semua</option><% options.olts.forEach(o=>{ %><option value="<%= o.id %>"><%= o.name %></option><% }) %></select></label>
+      <label>VLAN<select class="form-select" name="vlan"><option value="">Semua</option><% options.vlans.forEach(v=>{ %><option value="<%= v %>"><%= v %></option><% }) %></select></label>
+      <label>Paket<select class="form-select" name="package_id"><option value="">Semua</option><% options.packages.forEach(o=>{ %><option value="<%= o.id %>"><%= o.name %><%= o.speed_label?` · ${o.speed_label}`:'' %></option><% }) %></select></label>
+      <label>Cari<input class="form-control" name="q" placeholder="Nama, ID, no. HP, alamat"></label>
+    </form>
+    <div class="wab-toolbar">
+      <div class="wab-count" id="wabCount">Memuat…</div>
+      <div class="d-flex gap-2 flex-wrap"><button type="button" class="btn-tech" id="wabSelectAll">Pilih semua hasil</button><button type="button" class="btn-tech" id="wabDeselectAll">Batalkan pilihan</button></div>
+    </div>
+    <div class="table-responsive wab-table-wrap"><table class="app-table"><thead><tr><th style="width:36px"><input type="checkbox" id="wabCheckAll" aria-label="Pilih semua"></th><th>Pelanggan</th><th>No. WhatsApp</th><th>Paket</th><th>Cluster / Router</th><th>Tagihan</th><th>Status</th></tr></thead><tbody id="wabRows"></tbody></table></div>
+    <div class="wab-target-mode">
+      <label class="form-check"><input class="form-check-input" type="radio" name="target_mode" value="filter" checked> Kirim ke <b>semua hasil filter</b> (<span id="wabTotalLabel">0</span>, maks <%= maxRecipients %>)</label>
+      <label class="form-check"><input class="form-check-input" type="radio" name="target_mode" value="selected"> Kirim <b>hanya ke yang dipilih</b> (<span id="wabSelectedLabel">0</span>)</label>
+    </div>
+  </div>
+
+  <div class="data-card">
+    <div class="data-card-head"><div><h3>2. Naskah Pesan</h3><small>Variabel diisi otomatis per pelanggan. Gunakan Spintax <code>{Yth.|Kepada Yth.}</code> agar tiap pesan bervariasi.</small></div></div>
+    <div class="wa-field-grid">
+      <label>Nama broadcast<input class="form-control" id="wabName" maxlength="160" placeholder="mis. Info gangguan Cluster A"></label>
+      <label>Template<select class="form-select" id="wabTemplate"><option value="">— tulis manual —</option><% templates.forEach(t=>{ %><option value="<%= t.template_key %>"><%= t.title %></option><% }) %></select></label>
+    </div>
+    <div class="wa-field-grid wab-outage d-none" id="wabOutage">
+      <label>Detail gangguan {detail_gangguan}<input class="form-control" id="wabDetail" maxlength="500" placeholder="mis. Putus kabel fiber optik di jalur utama"></label>
+      <label>Estimasi selesai {estimasi_selesai}<input class="form-control" id="wabEta" maxlength="120" placeholder="mis. Hari ini pukul 17.00 WIB"></label>
+    </div>
+    <div class="wa-chip-row my-2"><% variables.forEach(([k,label])=>{ %><button type="button" class="wa-chip mono" data-insert="{<%= k %>}" title="<%= label %>">{<%= k %>}</button><% }) %></div>
+    <textarea class="form-control" id="wabMessage" rows="10" maxlength="4000" placeholder="Tulis pesan…"></textarea>
+    <div class="wa-form-actions"><button type="button" class="btn-tech" id="wabPreviewBtn"><i class="bi bi-eye"></i>Pratinjau variasi</button></div>
+    <div class="wab-previews" id="wabPreviews"></div>
+  </div>
+
+  <div class="data-card">
+    <div class="data-card-head"><div><h3>3. Mode Pengiriman</h3><small>Direct Send langsung masuk antrean; Scheduled dijalankan background worker pada waktu yang ditentukan (WIB).</small></div></div>
+    <div class="wab-mode">
+      <label class="form-check"><input class="form-check-input" type="radio" name="wab_mode" value="direct" checked> Direct Send</label>
+      <label class="form-check"><input class="form-check-input" type="radio" name="wab_mode" value="scheduled"> Scheduled Broadcast</label>
+      <input type="datetime-local" class="form-control" id="wabSchedule" disabled style="max-width:260px">
+    </div>
+    <div class="wa-form-actions"><button type="button" class="btn-tech primary" id="wabSubmit" <%= blastEnabled?'':'disabled' %>><i class="bi bi-send"></i>Buat Broadcast</button></div>
+    <div class="wai-verify-result d-none" id="wabResult"></div>
+  </div>
+
+  <div class="data-card">
+    <div class="data-card-head"><div><h3>Riwayat Broadcast</h3><small>Progres diperbarui otomatis.</small></div></div>
+    <div class="table-responsive"><table class="app-table"><thead><tr><th>Broadcast</th><th>Jadwal</th><th>Status</th><th>Progres</th><th>Aksi</th></tr></thead><tbody id="wabList">
+      <% broadcasts.forEach(b=>{ %><tr data-id="<%= b.id %>"><td><strong><%= b.name %></strong><span class="cell-sub"><%= b.created_by_name||'-' %> · <%= new Date(b.created_at).toLocaleString('id-ID',{timeZone:'Asia/Jakarta'}) %></span></td><td><%= b.scheduled_at?new Date(b.scheduled_at).toLocaleString('id-ID',{timeZone:'Asia/Jakarta'}):'Langsung' %></td><td><span class="status-badge <%= statusTone[b.status]||'gray' %>"><%= statusLabel[b.status]||b.status %></span></td><td><%= b.sent %>/<%= b.total_recipients %> terkirim<%= b.failed?` · ${b.failed} gagal`:'' %><%= b.pending?` · ${b.pending} antre`:'' %></td><td></td></tr><% }) %>
+      <% if(!broadcasts.length){ %><tr><td colspan="5" class="cell-sub">Belum ada broadcast.</td></tr><% } %>
+    </tbody></table></div>
+  </div>
+</section>
+<script src="/js/wa-broadcast.js?v=<%= assetVersion %>"></script>

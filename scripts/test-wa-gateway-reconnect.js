@@ -20,7 +20,7 @@ const fakeDb = {
   async query(sql) { if (/wa_blast_enabled/.test(sql)) return [[{ wa_blast_enabled: 0 }]]; return [[]]; },
   async execute(sql, params) {
     if (/SELECT \* FROM wa_messages/.test(sql)) return [[queue.find(r => r.status === 'queued' && !r.hold)]];
-    if (/UPDATE wa_messages SET status='queued',attempts=/.test(sql)) { const r = queue.find(x => x.id === params[3]); Object.assign(r, { attempts: params[0], hold: true, error: params[2] }); }
+    if (/UPDATE wa_messages SET status='queued',attempts=/.test(sql)) { const id = params[params.length - 1]; const r = queue.find(x => x.id === id); Object.assign(r, { status: 'queued', attempts: params[0], hold: true, error: params[params.length - 2] }); }
     if (/UPDATE wa_messages SET status='failed'/.test(sql)) { const r = queue.find(x => x.id === params[2]); Object.assign(r, { status: 'failed' }); }
     return [{ affectedRows: 1 }];
   },
@@ -55,10 +55,15 @@ const gw = require(path.join(root, 'services/whatsappGatewayService'));
   await gw.ensureGatewayAlive();
   assert.equal(gw.getGatewayStatus().state, 'connected');
 
-  // 5. Error sementara saat kirim → pesan dijadwalkan ulang, bukan 'failed' permanen.
+  // 5. Sesi belum siap saat kirim → pesan kembali ke antrean (bukan 'failed' permanen) dan antrean
+  //    auto-pause 'disconnected' (lanjut otomatis saat gateway terhubung lagi).
   queue.push({ id: 1, phone: '6281', message: 'x', status: 'queued', attempts: 0 });
   await gw.processQueue();
+  for (let i = 0; i < 100 && queue[0].attempts !== 1; i++) await new Promise(r => setTimeout(r, 20)); // worker lain mungkin sedang berjalan
   assert.equal(queue[0].status, 'queued'); assert.equal(queue[0].attempts, 1);
+  const antiBan = require(path.join(root, 'services/waAntiBanService'));
+  assert.equal(antiBan.getPauseState().kind, 'disconnected');
+  await antiBan.resumeQueue('test');
 
   // 6. Logout sengaja → watchdog TIDAK auto-reconnect.
   await gw.logoutGateway();
