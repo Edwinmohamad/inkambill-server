@@ -87,14 +87,7 @@ async function runAutoIsolation() {
       AND c.customer_status='active' AND c.router_id IS NOT NULL AND c.pppoe_username IS NOT NULL
       AND CURDATE() > DATE_ADD(i.due_date, INTERVAL COALESCE(c.grace_days,s.default_grace_days,st.default_grace_days,2) DAY)
       AND (c.network_status <> 'isolated' OR c.isolation_reason IS NULL)
-      AND (c.isolate_hold_until IS NULL OR c.isolate_hold_until < CURDATE())
-  `).catch(async err => {
-    // Kolom isolate_hold_until ditambahkan NMS v2.1; instalasi yang belum migrasi memakai query lama.
-    if (err.code !== 'ER_BAD_FIELD_ERROR') throw err;
-    return db.query(`SELECT DISTINCT c.id,c.customer_code,c.router_id FROM invoices i JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id CROSS JOIN settings st
-      WHERE i.status IN ('unpaid','partial','overdue') AND i.outstanding>0 AND c.customer_status='active' AND c.router_id IS NOT NULL AND c.pppoe_username IS NOT NULL
-        AND CURDATE() > DATE_ADD(i.due_date, INTERVAL COALESCE(c.grace_days,s.default_grace_days,st.default_grace_days,2) DAY) AND (c.network_status <> 'isolated' OR c.isolation_reason IS NULL)`);
-  });
+  `);
   let isolated=0,failed=0;
   for(const row of rows){
     try { await isolateCustomer(row.id,'billing'); isolated++; queueIsolationNotice(row.id).catch(()=>{}); await db.execute(`INSERT IGNORE INTO nms_auto_isolate_logs(customer_id,router_id,action,idempotency_key,reason) VALUES(?,?,?,?,?)`,[row.id,row.router_id,'isolate',`billing:${row.id}:${new Date().toISOString().slice(0,10)}`,'invoice overdue + grace period']); }

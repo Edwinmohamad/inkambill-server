@@ -1,18 +1,30 @@
-<div class="nms-bar" id="nmsBar">
-  <div class="nms-bar-title"><small>MikroTik NMS · NOC</small><b>INKAMNET Network Operations</b></div>
-  <nav class="nms-tabs">
-    <a href="/nms<%= siteId ? `?site=${siteId}` : '' %>" class="<%= nmsPage==='dashboard'?'active':'' %>"><i class="bi bi-speedometer2"></i> Dashboard</a>
-    <a href="/nms/secrets<%= siteId ? `?site=${siteId}` : '' %>" class="<%= nmsPage==='secrets'?'active':'' %>"><i class="bi bi-person-lines-fill"></i> PPP Secrets</a>
-  </nav>
-  <div class="nms-bar-spacer"></div>
-  <span class="nms-pill red nms-offline-badge" id="nmsOfflineBadge"><i class="bi bi-exclamation-octagon-fill"></i><span>ROUTER UNREACHABLE / OFFLINE (SHOWING CACHED DATA)</span></span>
-  <span class="nms-pill gray" id="nmsUpdated" title="Waktu data terakhir">Last Updated: —</span>
-  <span class="nms-pill yellow" id="nmsLive" title="Status koneksi real-time (SSE)"><i class="dot"></i><span>CONNECTING</span></span>
-  <label class="nms-site-select">Site
-    <select id="nmsSiteSelect" aria-label="Select Site">
-      <option value="">Semua Site</option>
-      <% sites.forEach(s=>{ %><option value="<%= s.id %>" <%= Number(siteId)===Number(s.id)?'selected':'' %>><%= s.code %> · <%= s.name %></option><% }) %>
+<%
+  const q = siteId ? `?site=${siteId}` : '';
+  const titles = { dashboard: 'Ringkasan Jaringan', secrets: 'PPP Secrets', insights: 'Rekonsiliasi', automation: 'Otomasi' };
+  const siteObj = (sites || []).find(s => Number(s.id) === Number(siteId));
+%>
+<header class="nx-head">
+  <div class="nx-title">
+    <div class="nx-eyebrow"><span class="nx-live connecting" id="nmsLive" title="Status koneksi real-time"><i></i><span>Menghubungkan</span></span><span>·</span><span id="nmsUpdated">Memuat…</span></div>
+    <h1><%= titles[nmsPage] || 'MikroTik NMS' %><% if (siteObj) { %> <span class="dim" style="font-weight:600">· <%= siteObj.code %></span><% } %></h1>
+  </div>
+  <div class="nx-head-tools">
+    <button type="button" class="nx-search-btn" id="nxOpenPalette" aria-label="Cari pelanggan"><i class="bi bi-search"></i><span>Cari pelanggan, username, IP</span><kbd class="nx-kbd-mod">Ctrl K</kbd></button>
+    <select id="nmsSiteSelect" class="nx-select" aria-label="Pilih site">
+      <option value="">Semua site</option>
+      <% (sites || []).forEach(s => { %><option value="<%= s.id %>" <%= Number(siteId) === Number(s.id) ? 'selected' : '' %>><%= s.code %> · <%= s.name %></option><% }) %>
     </select>
-  </label>
-  <time class="nms-clock" data-nms-clock>--:--:--</time>
-</div>
+    <time class="nx-clock" data-nms-clock>--:--:--</time>
+  </div>
+</header>
+<nav class="nx-nav" aria-label="Menu NMS">
+  <div class="nx-seg">
+    <a href="/nms<%= q %>" class="<%= nmsPage === 'dashboard' ? 'active' : '' %>"><i class="bi bi-speedometer2"></i>Ringkasan</a>
+    <a href="/nms/secrets<%= q %>" class="<%= nmsPage === 'secrets' ? 'active' : '' %>"><i class="bi bi-person-lines-fill"></i>PPP Secrets</a>
+    <a href="/nms/insights<%= q %>" class="<%= nmsPage === 'insights' ? 'active' : '' %>"><i class="bi bi-arrow-left-right"></i>Rekonsiliasi<span class="count" id="nxReconCount" hidden></span></a>
+    <a href="/nms/automation<%= q %>" class="<%= nmsPage === 'automation' ? 'active' : '' %>"><i class="bi bi-clock-history"></i>Otomasi<span class="count" id="nxApprovalCount" hidden></span></a>
+  </div>
+  <span class="grow"></span>
+  <button type="button" class="nx-btn ghost sm" id="nxShortcuts" title="Pintasan keyboard"><i class="bi bi-keyboard"></i></button>
+</nav>
+<div class="nx-banner" id="nmsOfflineBadge" role="status"><i class="bi bi-exclamation-triangle-fill"></i><span>Sebagian router tidak terjangkau. Data yang tampil berasal dari cache terakhir.</span></div>

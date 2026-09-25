@@ -113,7 +113,6 @@ async function lockMac(secretId, ctx = {}, { unlock = false } = {}) {
   const secret = await store.secretById(secretId);
   const router = await store.routerById(secret.router_id);
   const live = await freshRosSecret(router, secret);
-  const previousMac = live['caller-id'] || null;
   let mac = '';
   if (!unlock) {
     const [session] = await ros.active(router, secret.username);
@@ -123,7 +122,7 @@ async function lockMac(secretId, ctx = {}, { unlock = false } = {}) {
   await ros.patchSecret(router, live['.id'], { 'caller-id': mac });
   await db.execute(`UPDATE ppp_secrets SET caller_id=? WHERE id=?`, [mac || null, secret.id]);
   await recordEvent(secret, 'lock_mac', unlock ? 'MAC lock dilepas' : `MAC dikunci ke ${mac}`, { callerId: mac || null });
-  await audited(ctx, unlock ? 'unlock_mac' : 'lock_mac', secret, { previous: previousMac, callerId: mac || null });
+  await audited(ctx, unlock ? 'unlock_mac' : 'lock_mac', secret, { previous: live['caller-id'] || null, callerId: mac || null });
   return { secretId: secret.id, username: secret.username, callerId: mac || null };
 }
 
@@ -132,7 +131,6 @@ async function changeProfile(secretId, profile, ctx = {}) {
   const router = await store.routerById(secret.router_id);
   if (!(await routerHasProfile(router, profile))) throw new Error(`Profile ${profile} tidak ada di router ${router.name}.`);
   const live = await freshRosSecret(router, secret);
-  const fromProfile = live.profile || null;
   if (secret.is_isolated) {
     // Pelanggan terisolir: ganti "paket asal" saja, isolir tetap berlaku.
     await db.execute(`UPDATE ppp_secrets SET original_profile=? WHERE id=?`, [profile, secret.id]);
@@ -142,9 +140,8 @@ async function changeProfile(secretId, profile, ctx = {}) {
     await db.execute(`UPDATE ppp_secrets SET profile=? WHERE id=?`, [profile, secret.id]);
     await ros.dropActive(router, secret.username); // rate-limit baru berlaku setelah redial
   }
-  await recordEvent(secret, 'profile', secret.is_isolated ? `Paket asal → ${profile} (berlaku saat buka isolir)` : `Profile ${fromProfile || '-'} → ${profile}`);
-  await audited(ctx, 'profile_change', secret, { from: secret.is_isolated ? (secret.original_profile || fromProfile) : fromProfile, to: profile, deferredUntilUnisolate: !!secret.is_isolated });
-  return { secretId: secret.id, username: secret.username, from: fromProfile, to: profile };
+  await audited(ctx, 'profile_change', secret, { from: live.profile, to: profile, deferredUntilUnisolate: !!secret.is_isolated });
+  return { secretId: secret.id, username: secret.username, from: live.profile, to: profile };
 }
 
 const BULK_ACTIONS = { isolate: (id, ctx) => isolate(id, ctx), unisolate: (id, ctx) => unisolate(id, ctx), profile: (id, ctx, o) => changeProfile(id, o.profile, ctx), kick: (id, ctx) => kick(id, ctx) };
@@ -168,7 +165,7 @@ async function bulk({ action, secretIds, filter, profile, dryRun = false }, ctx 
   if (action === 'profile' && !profile) throw new Error('Profile tujuan wajib dipilih.');
   const ids = await resolveBulkTargets({ secretIds, filter });
   if (ids.length > 500) throw new Error('Maksimal 500 secret per aksi masal.');
-  if (dryRun) return { dryRun: true, action, count: ids.length, secretIds: ids, targets: await describeTargets(ids, action) };
+  if (dryRun) return { dryRun: true, action, count: ids.length, secretIds: ids };
   const bulkId = `bulk-${Date.now().toString(36)}`;
   const results = [];
   const queue = [...ids];
@@ -185,39 +182,9 @@ async function bulk({ action, secretIds, filter, profile, dryRun = false }, ctx 
   return { summary, results };
 }
 
-/** Simulasi aksi masal: siapa saja yang kena + peringatan (sudah bayar, exempt, offline, sudah isolir). */
-async function describeTargets(ids, action) {
-  if (!ids.length) return [];
-  const [rows] = await db.query(`SELECT p.id, p.username, p.is_isolated, p.is_online, p.is_exempt, p.exempt_type, p.profile, s.code site_code, c.id customer_id, c.name customer_name, c.customer_code,
-      (SELECT COALESCE(SUM(i.outstanding),0) FROM invoices i WHERE i.customer_id=c.id AND i.status IN ('unpaid','partial','overdue')) outstanding,
-      (SELECT MAX(py.paid_at) FROM payments py JOIN invoices i2 ON i2.id=py.invoice_id WHERE i2.customer_id=c.id AND py.status='confirmed') last_paid_at,
-      DATE_FORMAT(c.isolate_hold_until, '%Y-%m-%d') isolate_hold_until
-    FROM ppp_secrets p JOIN sites s ON s.id=p.site_id LEFT JOIN customers c ON c.id=p.customer_id WHERE p.id IN (?) ORDER BY s.code, COALESCE(c.name, p.username)`, [ids]).catch(async () => {
-    const [fallback] = await db.query(`SELECT p.id, p.username, p.is_isolated, p.is_online, p.is_exempt, p.exempt_type, p.profile, s.code site_code, c.id customer_id, c.name customer_name, c.customer_code, 0 outstanding, NULL last_paid_at, NULL isolate_hold_until
-      FROM ppp_secrets p JOIN sites s ON s.id=p.site_id LEFT JOIN customers c ON c.id=p.customer_id WHERE p.id IN (?)`, [ids]);
-    return [fallback];
-  });
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' }).format(new Date());
-  return rows.map(r => {
-    const warnings = [];
-    if (action === 'isolate') {
-      if (r.customer_id && Number(r.outstanding) <= 0) warnings.push('Tidak ada tunggakan');
-      if (r.last_paid_at && Date.now() - new Date(r.last_paid_at).getTime() < 3 * 86400000) warnings.push('Baru bayar ≤3 hari');
-      if (r.is_exempt) warnings.push(`Exempt ${r.exempt_type || ''}`.trim());
-      if (r.is_isolated) warnings.push('Sudah diisolir');
-      if (r.isolate_hold_until && String(r.isolate_hold_until) >= today) warnings.push('Ditunda (janji bayar)');
-      if (!r.customer_id) warnings.push('Belum terikat pelanggan');
-    }
-    if (action === 'unisolate' && !r.is_isolated) warnings.push('Tidak sedang diisolir');
-    if (action === 'unisolate' && Number(r.outstanding) > 0) warnings.push('Masih ada tunggakan');
-    if (action === 'kick' && !r.is_online) warnings.push('Sedang offline');
-    return { id: r.id, username: r.username, customerName: r.customer_name, customerCode: r.customer_code, siteCode: r.site_code, profile: r.profile, outstanding: Number(r.outstanding) || 0, warnings };
-  });
-}
-
 async function secretForCustomer(customerId) {
   const [[row]] = await db.query(`SELECT id FROM ppp_secrets WHERE customer_id=? AND removed_on_router_at IS NULL LIMIT 1`, [customerId]);
   return row?.id || null;
 }
 
-module.exports = { isolate, unisolate, kick, ping, lockMac, changeProfile, bulk, resolveBulkTargets, describeTargets, secretForCustomer, recordEvent, routerHasProfile, ISOLIR_MODE, DEFAULT_PROFILE };
+module.exports = { isolate, unisolate, kick, ping, lockMac, changeProfile, bulk, resolveBulkTargets, secretForCustomer, ISOLIR_MODE };

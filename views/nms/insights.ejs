@@ -1,0 +1,31 @@
+<link rel="stylesheet" href="/css/nms-noc.css?v=<%= assetVersion %>">
+<section class="nx" id="nmsInsights" data-site="<%= siteId || '' %>" data-csrf="<%= csrfToken %>" data-can-control="<%= canControl ? '1' : '0' %>" data-is-admin="<%= isAdmin ? '1' : '0' %>">
+  <%- include('_bar') %>
+
+  <div class="nx-section"><h2>Billing ↔ Router</h2><p>Hal yang tidak cocok antara data tagihan dan kondisi di router. Klik untuk melihat daftar dan memperbaikinya.</p></div>
+  <div class="nx-recon" id="nxRecon"><div class="nx-card"><div class="nx-empty">Menghitung…</div></div></div>
+
+  <div class="nx-section"><h2>Kesehatan site</h2><p>Kalau banyak pelanggan di satu ODP offline bersamaan, kemungkinan gangguan jaringan, bukan di rumah pelanggan.</p></div>
+  <div class="nx-sites" id="nxSites"></div>
+  <article class="nx-card flush" style="margin-top:12px">
+    <div class="nx-card-head"><h3>ODP / Cluster</h3><span class="grow"></span><label class="nx-check dim" style="font-size:12.5px"><input type="checkbox" id="nxOnlyOutage"> Hanya yang dicurigai gangguan</label></div>
+    <div class="nx-table-wrap" style="max-height:420px"><table class="nx-table"><thead><tr><th>ODP / Cluster</th><th>Site</th><th>Pelanggan</th><th>Online</th><th>Offline</th><th>Putus terakhir</th><th></th></tr></thead><tbody id="nxClusters"><tr><td colspan="7" class="nx-empty">Memuat…</td></tr></tbody></table></div>
+  </article>
+
+  <div class="nx-grid" style="margin-top:26px">
+    <article class="nx-card c-6">
+      <div class="nx-card-head"><h3>Akun dipakai bersama</h3><span class="grow"></span><small id="nxSharedHint">24 jam terakhir</small></div>
+      <div class="nx-card-body" style="padding-top:4px">
+        <div class="nx-seg sm" id="nxSharedTabs" style="margin-bottom:8px"><button type="button" class="active" data-k="mac">Banyak MAC per akun</button><button type="button" data-k="user">1 MAC banyak akun</button></div>
+      </div>
+      <ul class="nx-list" id="nxShared"></ul>
+    </article>
+    <article class="nx-card c-6">
+      <div class="nx-card-head"><h3>Putus-sambung · 1 jam</h3><span class="grow"></span><small>kandidat tiket gangguan</small></div>
+      <ul class="nx-list" id="nxFlap"></ul>
+    </article>
+  </div>
+  <div class="nx-toasts"></div>
+</section>
+<script src="/js/nms-common.js?v=<%= assetVersion %>" defer></script>
+<script src="/js/nms-insights.js?v=<%= assetVersion %>" defer></script>

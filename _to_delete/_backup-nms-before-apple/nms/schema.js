@@ -98,72 +98,6 @@ async function ensureNmsV2Schema() {
     INDEX idx_nms_alert_open (resolved_at, alert_type)
   )`);
 
-  // ---- NMS v2.1 (Apple UI + otomasi) ----
-  await tryQuery(`ALTER TABLE nms_ppp_events MODIFY event_type ENUM('login','logout','auth_failed','kick','isolate','unisolate','lock_mac','profile','map','unmap','create','schedule') NOT NULL`, 'events enum v2.1');
-  await tryQuery(`ALTER TABLE nms_alerts MODIFY alert_type ENUM('mass_disconnect','flapping','router_down','shared_account') NOT NULL`, 'alerts enum v2.1');
-  await tryQuery(`ALTER TABLE ppp_secrets MODIFY match_method ENUM('pppoe_username','customer_code','customer_name','manual','phone','comment','fuzzy','created') NULL`, 'match_method v2.1');
-  await db.query(`CREATE TABLE IF NOT EXISTS nms_settings (
-    k VARCHAR(64) PRIMARY KEY,
-    v TEXT NULL,
-    updated_by BIGINT UNSIGNED NULL,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-  )`);
-  await db.query(`CREATE TABLE IF NOT EXISTS nms_sync_batches (
-    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    plan_id VARCHAR(64) NULL,
-    site_id BIGINT UNSIGNED NULL,
-    source ENUM('manual','auto') NOT NULL DEFAULT 'manual',
-    linked_count INT NOT NULL DEFAULT 0,
-    pairs_json LONGTEXT NULL COMMENT '[{secretId, customerId, username, customerName, method}]',
-    created_by BIGINT UNSIGNED NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    undone_at DATETIME NULL,
-    undone_by BIGINT UNSIGNED NULL,
-    INDEX idx_sync_batch_time (created_at)
-  )`);
-  await db.query(`CREATE TABLE IF NOT EXISTS nms_scheduled_actions (
-    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    action ENUM('isolate','unisolate','kick','profile','package') NOT NULL,
-    secret_ids LONGTEXT NOT NULL,
-    profile VARCHAR(64) NULL,
-    package_id BIGINT UNSIGNED NULL,
-    run_at DATETIME NOT NULL,
-    note VARCHAR(255) NULL,
-    status ENUM('pending','running','done','failed','cancelled') NOT NULL DEFAULT 'pending',
-    result_json LONGTEXT NULL,
-    site_id BIGINT UNSIGNED NULL,
-    created_by BIGINT UNSIGNED NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    finished_at DATETIME NULL,
-    INDEX idx_nms_sched_due (status, run_at)
-  )`);
-  await db.query(`CREATE TABLE IF NOT EXISTS nms_approvals (
-    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    action VARCHAR(20) NOT NULL,
-    payload_json LONGTEXT NOT NULL,
-    target_count INT NOT NULL DEFAULT 0,
-    summary VARCHAR(255) NULL,
-    status ENUM('pending','approved','rejected','expired','failed') NOT NULL DEFAULT 'pending',
-    requested_by BIGINT UNSIGNED NULL,
-    decided_by BIGINT UNSIGNED NULL,
-    result_json LONGTEXT NULL,
-    site_id BIGINT UNSIGNED NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    decided_at DATETIME NULL,
-    INDEX idx_nms_approval_status (status, created_at)
-  )`);
-  await db.query(`CREATE TABLE IF NOT EXISTS nms_secret_snapshots (
-    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    router_id BIGINT UNSIGNED NOT NULL,
-    snap_date DATE NOT NULL,
-    secrets_json LONGTEXT NOT NULL,
-    secret_count INT NOT NULL DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uq_nms_snap (router_id, snap_date)
-  )`);
-  await tryQuery(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS isolate_hold_until DATE NULL`, 'customers.isolate_hold_until');
-  await tryQuery(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS isolate_hold_note VARCHAR(255) NULL`, 'customers.isolate_hold_note');
-
   await db.query(`ALTER TABLE routers ADD COLUMN IF NOT EXISTS wan_interface VARCHAR(64) NULL`);
   await db.query(`ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS details LONGTEXT NULL`);
   await db.query(`ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS site_id BIGINT UNSIGNED NULL`);
@@ -185,8 +119,6 @@ async function ensureNmsV2Schema() {
 async function purgeNmsHistory() {
   await db.query(`DELETE FROM nms_ppp_events WHERE occurred_at < DATE_SUB(NOW(), INTERVAL 30 DAY)`);
   await db.query(`DELETE FROM nms_alerts WHERE resolved_at IS NOT NULL AND resolved_at < DATE_SUB(NOW(), INTERVAL 30 DAY)`);
-  await db.query(`DELETE FROM nms_secret_snapshots WHERE snap_date < DATE_SUB(CURDATE(), INTERVAL 60 DAY)`).catch(() => {});
-  await db.query(`DELETE FROM nms_scheduled_actions WHERE status IN ('done','cancelled','failed') AND created_at < DATE_SUB(NOW(), INTERVAL 90 DAY)`).catch(() => {});
 }
 
 module.exports = { ensureNmsV2Schema, purgeNmsHistory };

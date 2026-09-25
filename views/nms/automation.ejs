@@ -1,0 +1,73 @@
+<link rel="stylesheet" href="/css/nms-noc.css?v=<%= assetVersion %>">
+<section class="nx" id="nmsAutomation" data-site="<%= siteId || '' %>" data-csrf="<%= csrfToken %>" data-can-control="<%= canControl ? '1' : '0' %>" data-is-admin="<%= isAdmin ? '1' : '0' %>" data-me="<%= typeof user !== 'undefined' && user ? user.id : '' %>">
+  <%- include('_bar') %>
+
+  <div class="nx-grid">
+    <div class="c-7" style="display:flex;flex-direction:column;gap:16px;min-width:0">
+      <article class="nx-card">
+        <div class="nx-card-head"><h3>Menunggu persetujuan</h3><span class="grow"></span><small>aksi masal besar butuh admin kedua</small></div>
+        <ul class="nx-list" id="nxApprovals"><li><div class="li-main"><small>Memuat…</small></div></li></ul>
+      </article>
+
+      <article class="nx-card">
+        <div class="nx-card-head"><h3>Aksi terjadwal</h3><span class="grow"></span>
+          <div class="nx-seg sm" id="nxSchedTabs"><button type="button" class="active" data-k="pending">Akan datang</button><button type="button" data-k="">Riwayat</button></div>
+          <% if (canControl) { %><button type="button" class="nx-btn sm primary" id="nxNewSchedule"><i class="bi bi-plus-lg"></i>Jadwal baru</button><% } %>
+        </div>
+        <ul class="nx-list" id="nxSchedules"></ul>
+      </article>
+
+      <article class="nx-card" id="sync">
+        <div class="nx-card-head"><h3>Riwayat Smart Sync</h3><span class="grow"></span><small>bisa di-undo dalam 24 jam</small></div>
+        <ul class="nx-list" id="nxBatches"></ul>
+      </article>
+
+      <article class="nx-card">
+        <div class="nx-card-head"><h3>Perubahan konfigurasi PPP</h3><span class="grow"></span>
+          <select id="nxDiffRouter" class="nx-select" style="height:30px;font-size:12.5px"><% routers.forEach(r => { %><option value="<%= r.id %>"><%= r.site_code %> · <%= r.name %></option><% }) %></select>
+          <% if (canControl) { %><button type="button" class="nx-btn sm" id="nxSnap"><i class="bi bi-camera"></i>Ambil snapshot</button><% } %>
+        </div>
+        <div class="nx-card-body" id="nxDiff"><div class="nx-empty">Memuat…</div></div>
+      </article>
+    </div>
+
+    <div class="c-5" style="display:flex;flex-direction:column;gap:16px;min-width:0">
+      <form class="nx-card" id="nxSettings" autocomplete="off">
+        <div class="nx-card-head"><h3>Pengaturan otomasi</h3><span class="grow"></span><% if (!isAdmin) { %><small>hanya Admin yang bisa mengubah</small><% } %></div>
+        <div class="nx-group-title" style="margin:10px 18px 6px">Smart Sync otomatis</div>
+        <ul class="nx-list">
+          <li><div class="li-main"><b>Jalankan tiap jam</b><small>Mencocokkan secret baru dengan data pelanggan</small></div><label class="nx-switch"><input type="checkbox" name="auto_sync_enabled" <%= settings.auto_sync_enabled === '1' ? 'checked' : '' %>><span></span></label></li>
+          <li><div class="li-main"><b>Langsung hubungkan yang cocok persis</b><small>Hanya Customer ID / nama yang sama persis. Saran & konflik tetap manual.</small></div><label class="nx-switch"><input type="checkbox" name="auto_sync_commit" <%= settings.auto_sync_commit === '1' ? 'checked' : '' %>><span></span></label></li>
+          <li><div class="li-main"><b>Kabari lewat WA</b><small>Saat ada secret baru yang belum terhubung</small></div><label class="nx-switch"><input type="checkbox" name="auto_sync_notify" <%= settings.auto_sync_notify === '1' ? 'checked' : '' %>><span></span></label></li>
+        </ul>
+        <div class="nx-group-title" style="margin:14px 18px 6px">Ringkasan pagi via WA</div>
+        <ul class="nx-list">
+          <li><div class="li-main"><b>Kirim ringkasan harian</b><small>Online, offline &gt;24 jam, isolir, pembayaran, router bermasalah</small></div><label class="nx-switch"><input type="checkbox" name="summary_enabled" <%= settings.summary_enabled === '1' ? 'checked' : '' %>><span></span></label></li>
+          <li><div class="li-main"><b>Jam kirim</b><small>WIB</small></div><input type="number" name="summary_hour" min="0" max="23" value="<%= settings.summary_hour %>" style="width:80px"></li>
+          <li style="flex-wrap:wrap"><div class="li-main" style="flex-basis:100%"><b>Nomor tujuan</b><small>Pisahkan dengan koma. Kosong = pakai nomor Alert Jaringan di Pengaturan.</small></div><input type="text" name="summary_numbers" value="<%= settings.summary_numbers %>" placeholder="0812…, 0813…"></li>
+          <li><div class="li-main"><button type="button" class="nx-btn sm" id="nxPreviewSummary"><i class="bi bi-eye"></i>Lihat contoh</button></div><% if (canControl) { %><button type="button" class="nx-btn sm tint" id="nxSendSummary"><i class="bi bi-send"></i>Kirim sekarang</button><% } %></li>
+        </ul>
+        <div class="nx-group-title" style="margin:14px 18px 6px">Isolir & keamanan</div>
+        <ul class="nx-list">
+          <li><div class="li-main"><b>Jam isolir otomatis</b><small>Isolir pelanggan lewat masa tenggang, sekali sehari (WIB). Aktif/nonaktif di Pengaturan billing.</small></div><input type="number" name="isolate_hour" min="0" max="23" value="<%= settings.isolate_hour %>" style="width:80px"></li>
+          <li><div class="li-main"><b>Persetujuan admin kedua</b><small>Aksi masal di atas jumlah ini butuh persetujuan. 0 = nonaktif.</small></div><input type="number" name="approval_threshold" min="0" max="500" value="<%= settings.approval_threshold %>" style="width:80px"></li>
+          <li><div class="li-main"><b>Ambang akun dipakai bersama</b><small>Jumlah MAC berbeda per akun dalam 24 jam</small></div><input type="number" name="shared_mac_threshold" min="2" max="50" value="<%= settings.shared_mac_threshold %>" style="width:80px"></li>
+        </ul>
+        <% if (isAdmin) { %><div class="nx-sheet-foot" style="padding:14px 18px 18px"><span class="left" id="nxSettingsState"></span><button type="submit" class="nx-btn primary">Simpan</button></div><% } else { %><div style="height:12px"></div><% } %>
+      </form>
+
+      <article class="nx-card">
+        <div class="nx-card-head"><h3>Sudah berjalan otomatis</h3></div>
+        <ul class="nx-list">
+          <li><span class="li-icon green"><i class="bi bi-unlock"></i></span><div class="li-main"><b>Buka isolir setelah bayar</b><small>Saat tagihan lunas / bukti transfer disetujui, secret kembali ke profile semula dan sesi di-reset.</small></div></li>
+          <li><span class="li-icon blue"><i class="bi bi-chat-dots"></i></span><div class="li-main"><b>Pengingat tagihan WA</b><small>Diatur di <a href="/wa-gateway" style="color:var(--x-accent)">WA Gateway</a> (auto-reminder).</small></div></li>
+          <li><span class="li-icon orange"><i class="bi bi-hourglass-split"></i></span><div class="li-main"><b>Tunda isolir (janji bayar)</b><small>Dari menu ··· di PPP Secrets atau daftar Rekonsiliasi.</small></div></li>
+          <li><span class="li-icon purple"><i class="bi bi-camera"></i></span><div class="li-main"><b>Snapshot konfigurasi PPP</b><small>Diambil tiap malam pukul 23.50, disimpan 60 hari.</small></div></li>
+        </ul>
+      </article>
+    </div>
+  </div>
+  <div class="nx-toasts"></div>
+</section>
+<script src="/js/nms-common.js?v=<%= assetVersion %>" defer></script>
+<script src="/js/nms-automation.js?v=<%= assetVersion %>" defer></script>

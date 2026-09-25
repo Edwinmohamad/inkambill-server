@@ -344,6 +344,7 @@ const BATCH_LABELS = {
   n8n_reminder: 'Reminder Tagihan (n8n)',
   n8n_ticket: 'Notifikasi Tiket ke Pelanggan (n8n)',
   isolation_notice: 'Pemberitahuan Isolir Layanan',
+  outage_notice: 'Info Gangguan Area (NMS)',
 };
 function localDateKey(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

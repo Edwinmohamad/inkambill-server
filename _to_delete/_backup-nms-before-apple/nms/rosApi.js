@@ -83,13 +83,6 @@ module.exports = {
   },
   async profiles(router) { return list(await call(router, 'GET', '/ppp/profile?.proplist=.id,name,rate-limit')); },
   async patchSecret(router, rosId, patch) { return call(router, 'PATCH', `/ppp/secret/${enc(rosId)}`, patch); },
-  async createSecret(router, body) { return call(router, 'PUT', '/ppp/secret', body, 12000); },
-  /** 1 sampel rx/tx bps untuk interface dinamis PPPoE (<pppoe-username>). */
-  async monitorTraffic(router, iface) {
-    const rows = list(await call(router, 'POST', '/interface/monitor-traffic', { interface: iface, once: '' }, 8000));
-    const r = rows[0] || {};
-    return { rxBps: Number(r['rx-bits-per-second']) || 0, txBps: Number(r['tx-bits-per-second']) || 0, rxPps: Number(r['rx-packets-per-second']) || 0, txPps: Number(r['tx-packets-per-second']) || 0 };
-  },
   async dropActive(router, username) {
     const sessions = await module.exports.active(router, username);
     for (const s of sessions) await call(router, 'DELETE', `/ppp/active/${enc(s['.id'])}`);

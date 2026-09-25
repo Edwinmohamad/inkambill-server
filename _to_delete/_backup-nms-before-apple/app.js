@@ -44,7 +44,7 @@ const { initGatewayOnBoot, ensureGatewayAlive, reconcileGatewayStatus, processQu
 const { requireWahaWebhookToken } = require('./middleware/waha');
 
 const app = express();
-const assetVersion = ['public/css/app.css','public/css/mobile-app.css','public/css/monitoring.css','public/js/app.js','public/js/mobile-app.js','public/js/nms-common.js','public/js/nms-noc.js','public/js/nms-secrets.js','public/js/nms-insights.js','public/js/nms-automation.js','public/css/nms-noc.css','public/js/performance.js','public/js/monitoring.js']
+const assetVersion = ['public/css/app.css','public/css/mobile-app.css','public/css/monitoring.css','public/js/app.js','public/js/mobile-app.js','public/js/nms-common.js','public/js/nms-noc.js','public/js/nms-secrets.js','public/css/nms-noc.css','public/js/performance.js','public/js/monitoring.js']
   .map(file => Math.floor(fs.statSync(path.join(__dirname,file)).mtimeMs).toString(36))
   .join('-');
 app.set('view engine', 'ejs');
@@ -342,8 +342,7 @@ async function bootstrap() {
   cron.schedule('10 0 * * *', async () => {
     try {
       console.log('Cron invoice:', await generateMonthlyInvoices(new Date(), false, null));
-      // Isolir otomatis kini dijalankan oleh NMS automation di jam yang diatur (Otomasi → Isolir harian,
-      // default jam 00 = perilaku lama). Lihat cron nmsAutomation di bawah.
+      console.log('Cron isolasi:', await runAutoIsolation());
     } catch (err) { console.error('Cron billing/network gagal:', err.message); }
   }, { timezone: 'Asia/Jakarta' });
 
@@ -434,19 +433,6 @@ async function bootstrap() {
 
   // NMS v2 poller (telemetry, PPP active diff, secret mirror, FO-cut detection) + retensi event.
   nmsPoller.start();
-  const nmsAutomation = require('./services/nms/automation');
-  cron.schedule('* * * * *', async () => {
-    try { const done = await nmsAutomation.runDue(); if (done.length) console.log('NMS jadwal:', done); }
-    catch (err) { console.error('NMS jadwal gagal:', err.message); }
-  }, { timezone: 'Asia/Jakarta' });
-  cron.schedule('*/5 * * * *', async () => {
-    try { const r = await nmsAutomation.maybeRunDailyIsolation(); if (r.ran) console.log('Cron isolasi:', r); } catch (err) { console.error('Cron isolasi gagal:', err.message); }
-    try { const r = await nmsAutomation.maybeAutoSync(); if (r.ran) console.log('NMS auto Smart Sync:', r); } catch (err) { console.error('NMS auto sync gagal:', err.message); }
-    try { const r = await nmsAutomation.maybeSendSummary(); if (r.ran) console.log('NMS ringkasan pagi terkirim ke', r.sent, 'nomor'); } catch (err) { console.error('NMS ringkasan gagal:', err.message); }
-  }, { timezone: 'Asia/Jakarta' });
-  cron.schedule('50 23 * * *', async () => {
-    try { console.log('NMS snapshot PPP:', await nmsAutomation.takeSnapshots()); } catch (err) { console.error('NMS snapshot gagal:', err.message); }
-  }, { timezone: 'Asia/Jakarta' });
   cron.schedule('45 2 * * *', async () => {
     try { await purgeNmsHistory(); } catch (err) { console.error('NMS purge gagal:', err.message); }
   }, { timezone: 'Asia/Jakarta' });

@@ -14,6 +14,9 @@ const poller = require('../services/nms/poller');
 const ros = require('../services/nms/rosApi');
 const cache = require('../services/nms/cache');
 const bus = require('../services/nms/eventBus');
+const insights = require('../services/nms/insights');
+const automation = require('../services/nms/automation');
+const nmsSettings = require('../services/nms/settings');
 
 const router = express.Router();
 
@@ -21,6 +24,10 @@ const canControl = req => isAdminRole(req.session.user?.role) || (req.permission
 function requireNetworkControl(req, res, next) {
   if (canControl(req)) return next();
   return res.status(403).json({ ok: false, error: 'Aksi ini membutuhkan role Admin atau permission "Kontrol Jaringan".' });
+}
+function requireAdmin(req, res, next) {
+  if (isAdminRole(req.session.user?.role)) return next();
+  return res.status(403).json({ ok: false, error: 'Hanya Admin yang dapat melakukan aksi ini.' });
 }
 const ctxOf = req => ({ userId: req.session.user?.id || null, ip: req.ip, source: 'manual' });
 const siteParam = req => { const n = Number(req.query.site || req.body?.site_id || 0); return Number.isFinite(n) && n > 0 ? n : null; };
@@ -38,7 +45,7 @@ router.get('/', async (req, res, next) => {
     const siteId = siteParam(req);
     const [sites, data] = await Promise.all([dashboard.sites(), dashboard.getDashboard(siteId)]);
     res.set('Cache-Control', 'no-store');
-    res.render('nms/dashboard', { title: 'NOC Dashboard', sites, siteId, data, canControl: canControl(req), nmsPage: 'dashboard' });
+    res.render('nms/dashboard', { title: 'NOC Dashboard', sites, siteId, data, canControl: canControl(req), isAdmin: isAdminRole(req.session.user?.role), nmsPage: 'dashboard' });
   } catch (err) { next(err); }
 });
 
@@ -48,7 +55,31 @@ router.get('/secrets', async (req, res, next) => {
     const [sites, counts] = await Promise.all([dashboard.sites(), store.counts(siteId)]);
     const [[offline]] = await db.query(`SELECT COUNT(*) n FROM routers r WHERE r.is_active=1 AND r.last_status='offline' ${siteId ? 'AND r.site_id=?' : ''}`, siteId ? [siteId] : []);
     res.set('Cache-Control', 'no-store');
-    res.render('nms/secrets', { title: 'MikroTik NMS · PPP Secrets', sites, siteId, counts, routersOffline: Number(offline.n || 0), tab: req.query.tab === 'unsynced' ? 'unsynced' : 'synced', canControl: canControl(req), nmsPage: 'secrets', isolirProfile: store.ISOLIR_PROFILE, isolirMode: control.ISOLIR_MODE });
+    const packages = await packagesFor(siteId);
+    res.render('nms/secrets', { title: 'MikroTik NMS · PPP Secrets', sites, siteId, counts, routersOffline: Number(offline.n || 0), tab: req.query.tab === 'unsynced' ? 'unsynced' : 'synced', canControl: canControl(req), isAdmin: isAdminRole(req.session.user?.role), nmsPage: 'secrets', isolirProfile: store.ISOLIR_PROFILE, isolirMode: control.ISOLIR_MODE, packages, focus: Number(req.query.focus) || null });
+  } catch (err) { next(err); }
+});
+
+async function packagesFor(siteId) {
+  const [rows] = await db.query(`SELECT p.id, p.name, p.site_id, p.price, p.mikrotik_profile, s.code site_code FROM packages p LEFT JOIN sites s ON s.id=p.site_id WHERE p.is_active=1 AND p.archived_at IS NULL ${siteId ? 'AND (p.site_id=? OR p.site_id IS NULL)' : ''} ORDER BY s.code, p.price`, siteId ? [siteId] : []).catch(() => [[]]);
+  return rows;
+}
+
+router.get('/insights', async (req, res, next) => {
+  try {
+    const siteId = siteParam(req);
+    const sites = await dashboard.sites();
+    res.set('Cache-Control', 'no-store');
+    res.render('nms/insights', { title: 'MikroTik NMS · Rekonsiliasi', sites, siteId, canControl: canControl(req), isAdmin: isAdminRole(req.session.user?.role), nmsPage: 'insights', packages: await packagesFor(siteId) });
+  } catch (err) { next(err); }
+});
+
+router.get('/automation', async (req, res, next) => {
+  try {
+    const siteId = siteParam(req);
+    const [sites, routers] = await Promise.all([dashboard.sites(), store.activeRouters(siteId)]);
+    res.set('Cache-Control', 'no-store');
+    res.render('nms/automation', { title: 'MikroTik NMS · Otomasi', sites, siteId, canControl: canControl(req), isAdmin: isAdminRole(req.session.user?.role), nmsPage: 'automation', routers: routers.map(r => ({ id: r.id, name: r.name, site_code: r.site_code })), settings: await nmsSettings.all(), packages: await packagesFor(siteId) });
   } catch (err) { next(err); }
 });
 
@@ -66,7 +97,7 @@ router.get('/api/stream', (req, res) => {
     if (siteId && payload && payload.siteId != null && Number(payload.siteId) !== siteId) return;
     res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
   };
-  const handlers = ['telemetry', 'ppp', 'alert', 'alert_resolved', 'router_state', 'sync'].map(evt => [evt, payload => send(evt, payload)]);
+  const handlers = ['telemetry', 'ppp', 'alert', 'alert_resolved', 'router_state', 'sync', 'approval'].map(evt => [evt, payload => send(evt, payload)]);
   handlers.forEach(([e, h]) => bus.on(e, h));
   const beat = setInterval(() => res.write(`: hb ${Date.now()}\n\n`), 25000);
   req.on('close', () => { clearInterval(beat); handlers.forEach(([e, h]) => bus.off(e, h)); });
@@ -111,7 +142,7 @@ router.post('/api/secrets/refresh', requireNetworkControl, api(async req => {
 // Smart Sync (dry-run preview → confirm & commit)
 router.get('/api/sync/preview', requireNetworkControl, api(async req => ({ plan: await smartSync.preview({ siteId: siteParam(req), refresh: req.query.refresh === '1' }) })));
 router.post('/api/sync/commit', requireNetworkControl, api(async req => {
-  const out = await smartSync.commit({ planId: String(req.body.planId || ''), secretIds: req.body.secretIds, pairs: Array.isArray(req.body.pairs) ? req.body.pairs.slice(0, 5000) : null, siteId: siteParam(req) });
+  const out = await smartSync.commit({ planId: String(req.body.planId || ''), secretIds: req.body.secretIds, pairs: Array.isArray(req.body.pairs) ? req.body.pairs.slice(0, 5000) : null, manual: Array.isArray(req.body.manual) ? req.body.manual.slice(0, 2000) : null, siteId: siteParam(req), userId: req.session.user.id });
   await audit({ userId: req.session.user.id, action: 'nms_smart_sync', entityType: 'ppp_secret', ip: req.ip, siteId: out.siteId, description: `Smart Sync: ${out.summary.linked}/${out.summary.planned} di-link`, details: { planId: out.planId, summary: out.summary, linked: out.results.filter(r => r.ok).map(r => ({ secretId: r.secretId, username: r.username, customerId: r.customerId })), failed: out.results.filter(r => !r.ok) } });
   return out;
 }));
@@ -138,7 +169,91 @@ router.post('/api/secrets/:id/lock-mac', requireNetworkControl, api(async req =>
 router.post('/api/bulk', requireNetworkControl, api(async req => {
   const b = req.body || {};
   const filter = b.filter ? { siteId: Number(b.filter.siteId) || null, overdueOnly: !!b.filter.overdueOnly, state: b.filter.state || null } : null;
-  return await control.bulk({ action: String(b.action || ''), secretIds: b.secretIds, filter, profile: b.profile ? String(b.profile).slice(0, 64) : null, dryRun: !!b.dryRun }, ctxOf(req));
+  const payload = { action: String(b.action || ''), secretIds: Array.isArray(b.secretIds) ? b.secretIds.map(Number).filter(Boolean) : null, filter, profile: b.profile ? String(b.profile).slice(0, 64) : null };
+  if (!b.dryRun && payload.action !== 'kick') {
+    const ids = await control.resolveBulkTargets(payload);
+    const threshold = await automation.needsApproval(ids.length);
+    if (threshold) {
+      const label = { isolate: 'Isolir', unisolate: 'Buka isolir', profile: `Ganti profile → ${payload.profile}` }[payload.action] || payload.action;
+      const { id } = await automation.requestApproval({ action: payload.action, payload: { ...payload, secretIds: ids, filter: null }, count: ids.length, summary: `${label} ${ids.length} secret`, siteId: filter?.siteId || siteParam(req) }, ctxOf(req));
+      return { pendingApproval: true, approvalId: id, count: ids.length, threshold };
+    }
+  }
+  return await control.bulk({ ...payload, dryRun: !!b.dryRun }, ctxOf(req));
 }));
+
+// ---------- Detail, diagnosa, timeline, traffic ----------
+const sid = req => Number(req.params.id);
+router.get('/api/secrets/:id/detail', api(async req => insights.detail(sid(req))));
+router.post('/api/secrets/:id/diagnose', api(async req => ({ result: await insights.diagnose(sid(req)) })));
+router.get('/api/secrets/:id/timeline', api(async req => insights.timeline(sid(req))));
+router.get('/api/secrets/:id/traffic', api(async req => ({ sample: await automation.liveTraffic(sid(req)) })));
+router.post('/api/audit/:id/revert', requireNetworkControl, api(async req => {
+  const out = await insights.revert(Number(req.params.id), ctxOf(req));
+  await audit({ userId: req.session.user.id, action: 'nms_revert', entityType: 'audit_log', entityId: Number(req.params.id), ip: req.ip, description: `Kembalikan aksi #${req.params.id} → ${out.action}` });
+  return out;
+}));
+router.post('/api/secrets/:id/hold', requireNetworkControl, api(async req => ({ hold: await automation.setHold({ secretId: sid(req), until: req.body.until || null, note: req.body.note }, ctxOf(req)) })));
+router.post('/api/secrets/:id/ticket', requireNetworkControl, api(async req => ({ ticket: await insights.createFlapTicket({ secretId: sid(req), userId: req.session.user.id }) })));
+router.post('/api/secrets/:id/package', requireNetworkControl, api(async req => ({ result: await automation.changePackage(sid(req), Number(req.body.packageId), ctxOf(req)) })));
+router.post('/api/secrets/:id/create-customer', requireNetworkControl, api(async req => ({ result: await automation.createCustomerFromSecret({ secretId: sid(req), name: req.body.name, phone: req.body.phone, packageId: Number(req.body.packageId), dueDay: req.body.dueDay, address: req.body.address }, ctxOf(req)) })));
+router.post('/api/customers/:id/create-secret', requireNetworkControl, api(async req => ({ result: await automation.createSecretForCustomer({ customerId: Number(req.params.id), routerId: Number(req.body.routerId) || null, username: req.body.username, password: req.body.password, profile: req.body.profile, notifyPhone: req.body.notifyPhone || null }, ctxOf(req)) })));
+
+// ---------- Palette (Cmd/Ctrl+K di halaman NMS) ----------
+router.get('/api/palette', api(async req => {
+  const q = String(req.query.q || '').trim().slice(0, 60);
+  if (q.length < 2) return { rows: [] };
+  const like = `%${q}%`, site = siteParam(req);
+  const [rows] = await db.query(`SELECT p.id, p.username, p.is_online, p.is_isolated, p.active_address, s.code site_code, c.name customer_name, c.customer_code
+    FROM ppp_secrets p JOIN sites s ON s.id=p.site_id LEFT JOIN customers c ON c.id=p.customer_id
+    WHERE p.removed_on_router_at IS NULL ${site ? 'AND p.site_id=?' : ''} AND (p.username LIKE ? OR c.name LIKE ? OR c.customer_code LIKE ? OR p.active_address LIKE ? OR c.phone LIKE ?)
+    ORDER BY (c.name LIKE ?) DESC, p.is_online DESC LIMIT 12`, [...(site ? [site] : []), like, like, like, like, like, `${q}%`]);
+  return { rows: rows.map(r => ({ ...r, state: r.is_isolated ? 'isolated' : r.is_online ? 'online' : 'offline' })) };
+}));
+
+// ---------- Rekonsiliasi, kesehatan, akun bersama, ekspor ----------
+router.get('/api/reconcile', api(async req => ({ groups: await insights.reconcile(siteParam(req), req.query.kind ? String(req.query.kind) : null) })));
+router.get('/api/health', api(async () => insights.siteHealth()));
+router.get('/api/shared', api(async req => insights.sharedAccounts(siteParam(req))));
+router.get('/api/flapping', api(async req => ({ rows: await dashboard.flapping(siteParam(req)) })));
+router.post('/api/clusters/:id/notify', requireNetworkControl, api(async req => {
+  const out = await insights.notifyArea({ clusterId: Number(req.params.id), message: req.body.message, userId: req.session.user.id });
+  await audit({ userId: req.session.user.id, action: 'nms_outage_notice', entityType: 'cluster', entityId: Number(req.params.id), ip: req.ip, description: `Info gangguan ke ${out.queued} pelanggan (menunggu persetujuan WA)` });
+  return out;
+}));
+router.get('/api/export', async (req, res) => {
+  try {
+    const { name, csv } = await insights.exportCsv({ kind: String(req.query.kind || 'synced'), siteId: siteParam(req) });
+    res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${name}-${automation.jakartaDate()}.csv"`, 'Cache-Control': 'no-store' });
+    res.send(csv);
+  } catch (err) { res.status(400).json({ ok: false, error: err.message }); }
+});
+router.get('/api/packages', api(async req => ({ rows: await packagesFor(siteParam(req)) })));
+router.get('/api/routers', api(async req => ({ rows: (await store.activeRouters(siteParam(req))).map(r => ({ id: r.id, name: r.name, site_id: r.site_id, site_code: r.site_code })) })));
+
+// ---------- Otomasi ----------
+router.get('/api/schedules', api(async req => ({ rows: await automation.listScheduled({ status: req.query.status || null }) })));
+router.post('/api/schedules', requireNetworkControl, api(async req => ({ schedule: await automation.schedule({ action: String(req.body.action || ''), secretIds: req.body.secretIds, runAt: req.body.runAt, profile: req.body.profile || null, packageId: Number(req.body.packageId) || null, note: req.body.note, siteId: siteParam(req) }, ctxOf(req)) })));
+router.post('/api/schedules/:id/cancel', requireNetworkControl, api(async req => automation.cancelScheduled(Number(req.params.id), ctxOf(req))));
+router.get('/api/approvals', api(async () => ({ rows: await automation.listApprovals() })));
+router.post('/api/approvals/:id/approve', requireAdmin, api(async req => automation.decideApproval(Number(req.params.id), true, ctxOf(req))));
+router.post('/api/approvals/:id/reject', requireAdmin, api(async req => automation.decideApproval(Number(req.params.id), false, ctxOf(req))));
+router.get('/api/sync/batches', api(async () => ({ rows: await smartSync.batches() })));
+router.post('/api/sync/batches/:id/undo', requireNetworkControl, api(async req => {
+  const out = await smartSync.undoBatch(Number(req.params.id), req.session.user.id);
+  await audit({ userId: req.session.user.id, action: 'nms_smart_sync_undo', entityType: 'nms_sync_batch', entityId: out.batchId, siteId: out.siteId, ip: req.ip, description: `Undo Smart Sync #${out.batchId}: ${out.released} dilepas` });
+  return out;
+}));
+router.get('/api/settings', api(async () => ({ settings: await nmsSettings.all() })));
+router.post('/api/settings', requireAdmin, api(async req => {
+  const values = nmsSettings.sanitize(req.body || {});
+  const saved = await nmsSettings.set(values, req.session.user.id);
+  await audit({ userId: req.session.user.id, action: 'nms_settings', entityType: 'nms_settings', ip: req.ip, description: 'Ubah pengaturan otomasi NMS', details: values });
+  return { settings: saved };
+}));
+router.get('/api/summary/preview', api(async () => ({ text: await insights.morningSummaryText() })));
+router.post('/api/summary/send', requireNetworkControl, api(async req => insights.sendSummary({ userId: req.session.user.id })));
+router.post('/api/snapshots/take', requireNetworkControl, api(async () => automation.takeSnapshots()));
+router.get('/api/routers/:id/diff', api(async req => ({ diff: await automation.configDiff({ routerId: Number(req.params.id), date: req.query.date || null }) })));
 
 module.exports = router;

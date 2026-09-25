@@ -1,184 +1,182 @@
-// NOC Dashboard controller: render widget dari boot JSON, lalu update real-time via SSE.
+// Ringkasan Jaringan: widget traffic WAN per router (mengikuti filter site), router health,
+// sinkronisasi, perlu perhatian, live log, dan putus-sambung. Real-time via SSE.
 (() => {
-  const N = window.NMS;
+  const N = window.NX;
   const app = document.getElementById('nmsDashboard');
   if (!N || !app) return;
-  const { esc, fmtBps, fmtBytes, fmtUptime, hhmmss, tone, api, toast } = N;
+  const { esc, fmtBps, splitBps, fmtBytes, fmtUptime, hhmmss, api, toast, ring, areaChart, COLORS } = N;
   let data = JSON.parse(document.getElementById('nmsBoot').textContent || '{}');
   const routers = new Map((data.routers || []).map(r => [r.routerId, r]));
-  let events = (data.events || []).slice().reverse(); // oldest → newest
+  let events = (data.events || []).slice().reverse();
   let alerts = data.alerts || [];
   let logFilter = 'all', paused = false;
-  let bwChart = null, syncChart = null;
-  const bwSelect = document.getElementById('nmsBwRouter');
-  let bwRouterId = null;
-  try { bwRouterId = Number(localStorage.getItem('nms-bw-router')) || null; } catch (_) {}
+  const $ = id => document.getElementById(id);
+  const sorted = () => [...routers.values()].sort((a, b) => String(a.siteCode).localeCompare(String(b.siteCode)) || String(a.name).localeCompare(String(b.name)));
 
-  // ---------- Router health cards ----------
-  function gauge(pct) {
-    const p = Math.max(0, Math.min(100, Number(pct) || 0));
-    const color = { green: '#10B981', yellow: '#F59E0B', red: '#EF4444', gray: '#6B7280' }[tone(pct)];
-    const len = Math.PI * 38, off = len * (1 - p / 100);
-    return `<div class="nms-gauge"><svg viewBox="0 0 92 56" aria-hidden="true"><path d="M8 50 A38 38 0 0 1 84 50" fill="none" stroke="#0B0F19" stroke-width="9" stroke-linecap="round"/><path d="M8 50 A38 38 0 0 1 84 50" fill="none" stroke="${color}" stroke-width="9" stroke-linecap="round" stroke-dasharray="${len}" stroke-dashoffset="${off}"/></svg><span class="val" style="color:${color}">${pct == null ? '—' : Math.round(p) + '%'}</span><span class="lbl">CPU</span></div>`;
+  // ---------- Traffic WAN: 1 widget per router di scope ----------
+  const trafficEl = $('nxTraffic');
+  function trafficShell(r) {
+    const el = document.createElement('article');
+    el.className = 'nx-card nx-traffic';
+    el.dataset.router = r.routerId;
+    el.innerHTML = `<div class="nx-traffic-head"><span class="nx-state" data-st></span><b data-name></b><span class="nx-pill" data-site></span><span class="grow"></span><span class="nx-pill mono" data-if></span>${N.canControl ? `<button type="button" class="nx-btn sm icon ghost" data-wan title="Atur interface WAN" aria-label="Atur interface WAN"><i class="bi bi-sliders"></i></button>` : ''}</div>
+      <div class="nx-traffic-read"><div><small><i data-c="rx"></i>Download</small><strong data-rx>—</strong></div><div><small><i data-c="tx"></i>Upload</small><strong data-tx>—</strong></div><div class="peak"><small>Puncak 30 mnt</small><strong data-peak>—</strong></div></div>
+      <div class="nx-chart" data-chart></div>
+      <div class="nx-traffic-foot"><span data-foot></span><span class="grow"></span><span data-sess></span></div>`;
+    el.querySelector('[data-wan]')?.addEventListener('click', () => editWan(r.routerId));
+    return el;
   }
-  const meter = (label, pct, text, cls) => `<div class="nms-meter-row"><span>${label}</span><div class="nms-meter"><i class="${cls || tone(pct)}" style="width:${Math.max(0, Math.min(100, Number(pct) || 0))}%"></i></div><span class="num">${text}</span></div>`;
+  function renderTraffic() {
+    const list = sorted();
+    const c = COLORS();
+    $('nxTrafficSub').textContent = list.length ? `${list.length} router${N.site ? ' di site ini' : ' di semua site'} · 30 menit terakhir` : '';
+    if (!list.length) { trafficEl.innerHTML = '<div class="nx-card"><div class="nx-empty"><i class="bi bi-router"></i>Belum ada router aktif di scope ini.</div></div>'; return; }
+    const ids = new Set(list.map(r => String(r.routerId)));
+    [...trafficEl.children].forEach(ch => { if (!ids.has(ch.dataset.router)) ch.remove(); });
+    list.forEach((r, i) => {
+      let el = trafficEl.querySelector(`[data-router="${r.routerId}"]`);
+      if (!el) { el = trafficShell(r); trafficEl.appendChild(el); }
+      if (trafficEl.children[i] !== el) trafficEl.insertBefore(el, trafficEl.children[i]);
+      const w = r.wan || { history: [] };
+      const online = r.status === 'online', down = r.status === 'offline';
+      el.classList.toggle('offline', down);
+      const st = el.querySelector('[data-st]'); st.className = `nx-state ${online ? 'online' : down ? 'isolated' : 'offline'}`; st.textContent = '';
+      el.querySelector('[data-name]').textContent = r.name;
+      el.querySelector('[data-site]').textContent = r.siteCode || '';
+      el.querySelector('[data-if]').textContent = w.interface || 'auto';
+      el.querySelector('[data-c="rx"]').style.background = c.blue;
+      el.querySelector('[data-c="tx"]').style.background = c.green;
+      const [rv, ru] = splitBps(w.rxBps), [tv, tu] = splitBps(w.txBps);
+      el.querySelector('[data-rx]').innerHTML = online ? `${rv}<span>${ru}</span>` : '—';
+      el.querySelector('[data-tx]').innerHTML = online ? `${tv}<span>${tu}</span>` : '—';
+      el.querySelector('[data-peak]').textContent = `↓ ${fmtBps(w.peakRxBps)} · ↑ ${fmtBps(w.peakTxBps)}`;
+      el.querySelector('[data-foot]').textContent = online ? (w.running === false ? 'Interface WAN down' : 'Live') : down ? `Tidak terjangkau · data terakhir ${r.lastOkAt ? N.ago(r.lastOkAt) : 'belum ada'}` : 'Menunggu polling pertama · menampilkan data tersimpan';
+      el.querySelector('[data-sess]').textContent = r.activeSessions != null ? `${r.activeSessions} sesi aktif` : '';
+      const h = (w.history || []);
+      areaChart(el.querySelector('[data-chart]'), { times: h.map(p => p.t), series: [{ name: 'Download', color: c.blue, values: h.map(p => p.rx) }, { name: 'Upload', color: c.green, values: h.map(p => p.tx) }], empty: down ? 'Router tidak terjangkau' : 'Mengumpulkan sampel…' });
+    });
+  }
+  async function editWan(routerId) {
+    try {
+      const { rows } = await api(`/nms/api/routers/${routerId}/interfaces`);
+      const current = routers.get(routerId)?.wan?.interface || '';
+      const s = N.sheet({ title: 'Interface WAN', subtitle: `${esc(routers.get(routerId)?.name || '')} · dipakai untuk grafik traffic`, size: 'sm',
+        body: `<div class="nx-field"><label>Interface</label><select data-if><option value="">Deteksi otomatis</option>${rows.map(i => `<option value="${esc(i.name)}" ${i.name === current ? 'selected' : ''}>${esc(i.name)} · ${esc(i.type)}${i.comment ? ' · ' + esc(i.comment) : ''}${i.running ? '' : ' (down)'}</option>`).join('')}</select></div>`,
+        foot: '<button type="button" class="nx-btn" data-close>Batal</button><button type="button" class="nx-btn primary" data-save>Simpan</button>' });
+      s.$('[data-save]').addEventListener('click', async () => {
+        try { await api(`/nms/api/routers/${routerId}/wan-interface`, { method: 'POST', body: { interface: s.$('[data-if]').value } }); toast('Interface WAN disimpan. Grafik mulai ulang di polling berikutnya.', 'ok'); s.close(); }
+        catch (err) { toast(err.message, 'err'); }
+      });
+    } catch (err) { toast(err.message, 'err'); }
+  }
+
+  // ---------- Router health ----------
   function routerCard(r) {
-    const t = r.telemetry || {};
-    const mem = t.memory || {}, disk = t.disk || {}, h = t.health || {};
-    const stale = r.status !== 'online';
-    const tempTone = h.temperature == null ? 'gray' : h.temperature >= 70 ? 'red' : h.temperature >= 55 ? 'yellow' : 'green';
-    const voltTone = h.voltage == null ? 'gray' : (h.voltage < 10 || h.voltage > 30) ? 'yellow' : 'green';
-    return `<div class="nms-router ${stale ? 'offline stale' : ''}" data-router="${r.routerId}">
-      <div class="nms-router-top"><span class="nms-status-dot ${esc(r.status)}"></span><div><b>${esc(r.name)}</b><small> · ${esc(r.siteCode)} ${t.board ? '· ' + esc(t.board) : ''} ${t.version ? 'v' + esc(t.version) : ''}</small></div></div>
-      <div class="nms-router-body">${gauge(stale ? null : t.cpuPct)}<div class="nms-meters">
-        ${meter('RAM', mem.pct, mem.total ? `${fmtBytes(mem.used)}/${fmtBytes(mem.total)} · ${mem.pct}%` : '—')}
-        ${meter('DISK', disk.freePct == null ? 0 : 100 - disk.freePct, disk.freePct == null ? '—' : `${disk.freePct}% free`)}
-        <div class="nms-meter-row"><span>UP</span><span class="num" style="grid-column:span 2">${t.uptimeSeconds ? fmtUptime(t.uptimeSeconds) : '—'}</span></div>
-      </div></div>
-      <div class="nms-router-foot">
-        <span class="nms-pill ${stale ? 'red' : 'green'}">${stale ? 'UNREACHABLE' : 'ONLINE'}</span>
-        ${h.temperature != null ? `<span class="nms-pill ${tempTone}"><i class="bi bi-thermometer-half"></i>${h.temperature}°C</span>` : ''}
-        ${h.voltage != null ? `<span class="nms-pill ${voltTone}"><i class="bi bi-lightning-charge"></i>${h.voltage}V</span>` : ''}
-        ${r.activeSessions != null ? `<span class="nms-pill blue">${r.activeSessions} sesi</span>` : ''}
-        ${stale ? `<span class="nms-pill gray" title="${esc(r.lastError || '')}">cache · ${r.lastOkAt ? N.ago(r.lastOkAt) : "belum pernah online"}</span>` : ''}
+    const t = r.telemetry || {}, mem = t.memory || {}, disk = t.disk || {}, h = t.health || {};
+    const stale = r.status === 'offline', waiting = r.status !== 'online' && !stale;
+    const diskUsed = disk.freePct == null ? null : 100 - disk.freePct;
+    const tempTone = h.temperature == null ? '' : h.temperature >= 70 ? 'red' : h.temperature >= 55 ? 'orange' : 'green';
+    return `<div class="nx-router ${stale ? 'offline' : ''}">
+      <div class="nx-router-top"><span class="nx-state ${stale ? 'isolated' : waiting ? 'offline' : 'online'}"></span><div class="grow" style="min-width:0"><b>${esc(r.name)}</b><small> · ${esc(r.siteCode)}${t.board ? ' · ' + esc(t.board) : ''}${t.version ? ' · v' + esc(t.version) : ''}</small></div></div>
+      <div class="nx-rings">${ring(stale ? null : t.cpuPct, { label: 'CPU' })}${ring(mem.pct, { label: 'RAM' })}${ring(diskUsed, { label: 'DISK' })}
+        <div style="min-width:0;font-size:12.5px;line-height:1.6"><div class="muted">Uptime</div><b>${t.uptimeSeconds ? fmtUptime(t.uptimeSeconds) : '—'}</b><div class="muted" style="margin-top:2px">RAM</div><span class="num" style="font-size:12px">${mem.total ? `${fmtBytes(mem.used)} / ${fmtBytes(mem.total)}` : '—'}</span></div></div>
+      <div class="nx-router-meta">
+        ${stale ? `<span class="nx-pill red" title="${esc(r.lastError || '')}">Tidak terjangkau · ${r.lastOkAt ? N.ago(r.lastOkAt) : 'belum pernah online'}</span>` : waiting ? '<span class="nx-pill">Menunggu polling</span>' : '<span class="nx-pill green">Online</span>'}
+        ${h.temperature != null ? `<span class="nx-pill ${tempTone}"><i class="bi bi-thermometer-half"></i>${h.temperature}°C</span>` : ''}
+        ${h.voltage != null ? `<span class="nx-pill"><i class="bi bi-lightning-charge"></i>${h.voltage} V</span>` : ''}
+        ${r.activeSessions != null ? `<span class="nx-pill blue">${r.activeSessions} sesi</span>` : ''}
       </div></div>`;
   }
   function renderRouters() {
-    const list = [...routers.values()].sort((a, b) => String(a.siteCode).localeCompare(String(b.siteCode)) || String(a.name).localeCompare(String(b.name)));
-    const el = document.getElementById('nmsRouters');
-    el.innerHTML = list.length ? list.map(routerCard).join('') : '<div class="nms-empty">Belum ada router aktif. Tambahkan di menu Router MikroTik.</div>';
+    const list = sorted();
+    $('nmsRouters').innerHTML = list.length ? list.map(routerCard).join('') : '<div class="nx-empty">Belum ada router aktif. Tambahkan di menu Router.</div>';
     const up = list.filter(r => r.status === 'online').length;
-    document.getElementById('kpiRouters').textContent = `${up}/${list.length}`;
-    N.setOffline(list.length && up < list.length);
-    const opts = list.map(r => `<option value="${r.routerId}">${esc(r.siteCode)} · ${esc(r.name)}</option>`).join('');
-    if (bwSelect.dataset.opts !== opts) { bwSelect.innerHTML = opts; bwSelect.dataset.opts = opts; }
-    if (!routers.has(bwRouterId)) bwRouterId = list[0]?.routerId || null;
-    if (bwRouterId) bwSelect.value = String(bwRouterId);
+    $('kpiRouters').textContent = `${up}/${list.length}`;
+    N.setOffline(list.some(r => r.status === 'offline'));
   }
 
-  // ---------- Bandwidth ----------
-  function renderBandwidth() {
-    const r = routers.get(bwRouterId);
-    const w = r?.wan || { history: [] };
-    document.getElementById('bwRx').textContent = fmtBps(w.rxBps);
-    document.getElementById('bwTx').textContent = fmtBps(w.txBps);
-    document.getElementById('bwPeakRx').textContent = fmtBps(w.peakRxBps);
-    document.getElementById('bwPeakTx').textContent = fmtBps(w.peakTxBps);
-    document.getElementById('bwIface').textContent = w.interface || 'auto';
-    if (!window.Chart) return;
-    const labels = (w.history || []).map(p => hhmmss(p.t));
-    const rx = (w.history || []).map(p => +(p.rx / 1e6).toFixed(2));
-    const tx = (w.history || []).map(p => +(p.tx / 1e6).toFixed(2));
-    if (!bwChart) {
-      bwChart = new Chart(document.getElementById('nmsBwChart'), {
-        type: 'line',
-        data: { labels, datasets: [
-          { label: 'RX Mbps', data: rx, borderColor: '#10B981', backgroundColor: 'rgba(16,185,129,.12)', fill: true, tension: .3, pointRadius: 0, borderWidth: 1.6 },
-          { label: 'TX Mbps', data: tx, borderColor: '#3B82F6', backgroundColor: 'rgba(59,130,246,.08)', fill: true, tension: .3, pointRadius: 0, borderWidth: 1.6 }] },
-        options: { responsive: true, maintainAspectRatio: false, animation: false, interaction: { mode: 'index', intersect: false },
-          plugins: { legend: { labels: { color: '#9CA3AF', boxWidth: 10, font: { size: 11 } } }, tooltip: { callbacks: { label: c => `${c.dataset.label}: ${c.parsed.y} Mbps` } } },
-          scales: { x: { ticks: { color: '#6B7280', maxTicksLimit: 8, font: { size: 10 } }, grid: { color: 'rgba(55,67,87,.35)' } }, y: { beginAtZero: true, ticks: { color: '#6B7280', font: { size: 10 } }, grid: { color: 'rgba(55,67,87,.35)' } } } }
-      });
-    } else {
-      bwChart.data.labels = labels; bwChart.data.datasets[0].data = rx; bwChart.data.datasets[1].data = tx; bwChart.update('none');
-    }
-  }
-  bwSelect.addEventListener('change', () => { bwRouterId = Number(bwSelect.value); try { localStorage.setItem('nms-bw-router', bwRouterId); } catch (_) {} renderBandwidth(); });
-
-  document.getElementById('nmsWanEdit')?.addEventListener('click', async () => {
-    if (!bwRouterId) return;
-    try {
-      const { rows } = await api(`/nms/api/routers/${bwRouterId}/interfaces`);
-      const current = routers.get(bwRouterId)?.wan?.interface || '';
-      const ok = await N.confirmBox({ title: 'Interface WAN / Uplink', okText: 'Simpan', message: `<div class="nms-field"><label>Interface</label><select id="nmsWanPick"><option value="">Auto-detect</option>${rows.map(i => `<option value="${esc(i.name)}" ${i.name === current ? 'selected' : ''}>${esc(i.name)} · ${esc(i.type)}${i.comment ? ' · ' + esc(i.comment) : ''}${i.running ? '' : ' (down)'}</option>`).join('')}</select></div>` });
-      if (!ok) return;
-      const val = document.getElementById('nmsWanPick').value;
-      await api(`/nms/api/routers/${bwRouterId}/wan-interface`, { method: 'POST', body: { interface: val } });
-      toast('Interface WAN disimpan. Grafik mulai ulang pada polling berikutnya.', 'ok');
-    } catch (err) { toast(err.message, 'err'); }
-  });
-
-  // ---------- Sync donut & KPI ----------
+  // ---------- Sync ring + KPI ----------
   function renderSync() {
-    const s = data.sync || {};
-    document.getElementById('syncPct').textContent = `${s.syncedPct ?? 0}%`;
-    document.getElementById('syncSynced').textContent = s.synced ?? 0;
-    document.getElementById('syncUnsynced').textContent = s.unsynced ?? 0;
-    document.getElementById('syncExempt').textContent = s.exempt ?? 0;
-    const c = data.customers || {};
-    document.getElementById('kpiOnline').textContent = c.online ?? 0;
-    document.getElementById('kpiOffline').textContent = c.offline ?? 0;
-    document.getElementById('kpiIsolated').textContent = c.isolated ?? 0;
-    document.getElementById('kpiUnsynced').textContent = s.unsynced ?? 0;
-    if (!window.Chart) return;
-    const values = [s.synced || 0, s.unsynced || 0, s.exempt || 0];
-    if (!syncChart) {
-      syncChart = new Chart(document.getElementById('nmsSyncChart'), { type: 'doughnut', data: { labels: ['Synced', 'Unsynced', 'Exempt'], datasets: [{ data: values, backgroundColor: ['#10B981', '#EF4444', '#374357'], borderColor: '#1F2937', borderWidth: 2 }] }, options: { cutout: '72%', responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { display: false } } } });
-    } else { syncChart.data.datasets[0].data = values; syncChart.update('none'); }
+    const s = data.sync || {}, c = data.customers || {}, col = COLORS();
+    $('kpiOnline').textContent = c.online ?? 0; $('kpiOffline').textContent = c.offline ?? 0; $('kpiIsolated').textContent = c.isolated ?? 0; $('kpiUnsynced').textContent = s.unsynced ?? 0;
+    const total = (s.synced || 0) + (s.unsynced || 0) + (s.exempt || 0);
+    const seg = [[s.synced || 0, col.green], [s.unsynced || 0, col.purple], [s.exempt || 0, col.gray]];
+    const R = 70, len = 2 * Math.PI * R; let off = 0;
+    const arcs = total ? seg.filter(([v]) => v > 0).map(([v, color]) => { const l = v / total * len; const gap = seg.filter(([x]) => x > 0).length > 1 ? 3 : 0; const a = `<circle cx="85" cy="85" r="${R}" fill="none" stroke="${color}" stroke-width="16" stroke-dasharray="${Math.max(0, l - gap)} ${len}" stroke-dashoffset="${-off}" stroke-linecap="butt"/>`; off += l; return a; }).join('') : '';
+    $('nxSyncRing').innerHTML = `<svg viewBox="0 0 170 170"><circle cx="85" cy="85" r="${R}" fill="none" stroke="${col.track}" stroke-width="16"/>${arcs}</svg><div class="c"><b>${s.syncedPct ?? 0}%</b><small>ter-link</small></div>`;
+    $('nxSyncLegend').innerHTML = `<span><i style="background:${col.green}"></i>Ter-link <b>${s.synced ?? 0}</b></span><span><i style="background:${col.purple}"></i>Belum <b>${s.unsynced ?? 0}</b></span><span><i style="background:${col.gray}"></i>Exempt <b>${s.exempt ?? 0}</b></span>`;
   }
+
+  // ---------- Perlu perhatian (dari rekonsiliasi) ----------
+  const ATT_ICON = { overdue_active: ['red', 'bi-cash-coin'], paid_isolated: ['orange', 'bi-emoji-frown'], inactive_online: ['red', 'bi-person-x'], secret_no_customer: ['purple', 'bi-question-circle'], customer_no_secret: ['blue', 'bi-person-plus'], removed_on_router: ['gray', 'bi-trash'] };
+  document.addEventListener('nx:recon', e => {
+    const groups = Object.values(e.detail || {}).filter(g => g.count > 0);
+    $('nxAttention').innerHTML = groups.length ? groups.map(g => { const [cls, ic] = ATT_ICON[g.key] || ['gray', 'bi-dot']; return `<li class="clickable" data-k="${g.key}"><span class="li-icon ${cls}"><i class="bi ${ic}"></i></span><div class="li-main"><b>${esc(g.title)}</b></div><b class="num">${g.count}</b><i class="bi bi-chevron-right dim"></i></li>`; }).join('') : '<li><span class="li-icon green"><i class="bi bi-check-lg"></i></span><div class="li-main"><b>Semua cocok</b><small>Billing dan router selaras.</small></div></li>';
+  });
+  $('nxAttention').addEventListener('click', e => { const li = e.target.closest('[data-k]'); if (li) location.assign(`/nms/insights${N.qs({ site: N.site || undefined, kind: li.dataset.k })}`); });
 
   // ---------- Alerts ----------
   function renderAlerts() {
-    const box = document.getElementById('nmsAlerts');
-    box.innerHTML = alerts.map(a => `<div class="nms-alert ${a.severity === 'critical' && !a.acknowledged_by ? 'critical' : 'warning'}" data-alert="${a.id}"><i class="bi bi-exclamation-triangle-fill"></i><span class="grow">${esc(a.title)}${a.details?.stillOffline != null ? ` <small>· masih offline: ${a.details.stillOffline}</small>` : ''} <small>· sejak ${esc(hhmmss(a.opened_at))}</small></span>${N.canControl && !a.acknowledged_by ? `<button type="button" data-ack="${a.id}">ACK</button>` : ''}</div>`).join('');
+    $('nmsAlerts').innerHTML = alerts.map(a => `<div class="nx-alert ${a.severity === 'critical' ? 'critical' : ''} ${a.acknowledged_by ? 'acked' : ''}"><span class="ic"><i class="bi bi-exclamation-lg"></i></span><div class="grow"><b>${esc(a.title)}</b><div class="muted" style="font-size:12.5px">Sejak ${esc(hhmmss(a.opened_at))}${a.details?.stillOffline != null ? ` · masih offline ${a.details.stillOffline}` : ''}</div></div>${N.canControl && !a.acknowledged_by ? `<button type="button" class="nx-btn sm" data-ack="${a.id}">Tandai sudah dilihat</button>` : ''}</div>`).join('');
   }
-  document.getElementById('nmsAlerts').addEventListener('click', async e => {
+  $('nmsAlerts').addEventListener('click', async e => {
     const id = e.target.closest('[data-ack]')?.dataset.ack; if (!id) return;
     try { await api(`/nms/api/alerts/${id}/ack`, { method: 'POST', body: {} }); alerts = alerts.map(a => String(a.id) === id ? { ...a, acknowledged_by: 1 } : a); renderAlerts(); }
     catch (err) { toast(err.message, 'err'); }
   });
 
   // ---------- Live log ----------
-  const labels = { login: 'LOGIN', logout: 'DISCONNECT', auth_failed: 'AUTH FAIL', kick: 'KICK', isolate: 'ISOLIR', unisolate: 'UNISOLIR', lock_mac: 'LOCK MAC' };
-  const matchesFilter = e => logFilter === 'all' || (logFilter === 'action' ? ['kick', 'isolate', 'unisolate', 'lock_mac'].includes(e.type) : e.type === logFilter);
-  const line = (e, fresh) => `<div class="ln ${fresh ? 'fresh' : ''}"><span class="t">${esc(hhmmss(e.at))}</span><span class="${esc(e.type)}">${labels[e.type] || esc(e.type)}</span><span title="${esc(e.username || '')}">${esc(e.username || '-')}</span><span class="dim">${esc(e.site_code || e.siteCode || siteCodeOf(e.siteId ?? e.site_id))} ${esc(e.address || '')} ${esc(e.message && !/^PPP (Login|Disconnect)/.test(e.message) ? e.message : '')}</span></div>`;
+  const TAG = { login: ['green', 'Login'], logout: ['', 'Putus'], auth_failed: ['red', 'Ditolak'], kick: ['orange', 'Kick'], isolate: ['red', 'Isolir'], unisolate: ['green', 'Buka isolir'], lock_mac: ['blue', 'Lock MAC'], profile: ['purple', 'Profile'], create: ['blue', 'Dibuat'] };
+  const ACTIONS = ['kick', 'isolate', 'unisolate', 'lock_mac', 'profile', 'create'];
+  const matches = e => logFilter === 'all' || (logFilter === 'action' ? ACTIONS.includes(e.type) : e.type === logFilter);
   const siteCodeOf = id => [...routers.values()].find(r => Number(r.siteId) === Number(id))?.siteCode || '';
-  const consoleEl = document.getElementById('nmsConsole');
-  function renderLog() { consoleEl.innerHTML = events.filter(matchesFilter).slice(-300).map(e => line(e)).join('') || '<div class="dim">Menunggu event PPP…</div>'; if (!paused) consoleEl.scrollTop = consoleEl.scrollHeight; }
+  const line = (e, fresh) => { const [cls, label] = TAG[e.type] || ['', e.type]; return `<div class="ln ${fresh ? 'fresh' : ''}"><span class="t">${esc(hhmmss(e.at))}</span><span><span class="nx-pill ${cls}">${esc(label)}</span></span><span class="u" title="${esc(e.message || '')}">${esc(e.username || '—')}<small>${esc(e.site_code || e.siteCode || siteCodeOf(e.siteId ?? e.site_id))}${e.address ? ' · ' + esc(e.address) : ''}${e.message && !/^PPP (Login|Disconnect)/.test(e.message) ? ' · ' + esc(e.message) : ''}</small></span></div>`; };
+  const consoleEl = $('nmsConsole');
+  function renderLog() { consoleEl.innerHTML = events.filter(matches).slice(-300).map(e => line(e)).join('') || '<div class="nx-empty">Menunggu event PPP…</div>'; if (!paused) consoleEl.scrollTop = consoleEl.scrollHeight; }
   function pushEvent(e) {
     events.push(e); if (events.length > 500) events.splice(0, events.length - 500);
-    if (!matchesFilter(e)) return;
-    if (consoleEl.firstElementChild?.classList.contains('dim')) consoleEl.innerHTML = '';
+    if (!matches(e)) return;
+    if (consoleEl.querySelector('.nx-empty')) consoleEl.innerHTML = '';
     consoleEl.insertAdjacentHTML('beforeend', line(e, true));
     while (consoleEl.childElementCount > 300) consoleEl.firstElementChild.remove();
     if (!paused) consoleEl.scrollTop = consoleEl.scrollHeight;
   }
-  document.getElementById('nmsLogFilter').addEventListener('click', e => {
-    const b = e.target.closest('[data-f]'); if (!b) return;
-    logFilter = b.dataset.f; document.querySelectorAll('#nmsLogFilter button').forEach(x => x.classList.toggle('on', x === b)); renderLog();
-  });
-  document.getElementById('nmsLogPause').addEventListener('click', e => { paused = !paused; e.currentTarget.innerHTML = paused ? '<i class="bi bi-play-fill"></i>' : '<i class="bi bi-pause-fill"></i>'; });
+  $('nmsLogFilter').addEventListener('click', e => { const b = e.target.closest('[data-f]'); if (!b) return; logFilter = b.dataset.f; document.querySelectorAll('#nmsLogFilter button').forEach(x => x.classList.toggle('active', x === b)); renderLog(); });
+  $('nmsLogPause').addEventListener('click', e => { paused = !paused; e.currentTarget.innerHTML = paused ? '<i class="bi bi-play-fill"></i>' : '<i class="bi bi-pause-fill"></i>'; });
 
-  // ---------- Flapping ----------
+  // ---------- Putus-sambung ----------
   function renderFlapping() {
     const rows = data.flapping || [];
-    document.getElementById('nmsFlapping').innerHTML = rows.length ? rows.map(f => `<tr><td>${esc(f.customer_name || f.username)}<span class="sub mono">${esc(f.username)}</span></td><td>${esc(f.site_code)}</td><td><span class="nms-pill ${f.reconnects > 10 ? 'red' : 'yellow'}">${f.reconnects}×</span></td></tr>`).join('') : '<tr><td colspan="3" class="nms-empty">Tidak ada pelanggan flapping.</td></tr>';
+    $('nmsFlapping').innerHTML = rows.length ? rows.map(f => `<li class="${f.secret_id ? 'clickable' : ''}" data-sid="${f.secret_id || ''}"><span class="li-icon ${f.reconnects > 10 ? 'red' : 'orange'}"><i class="bi bi-arrow-repeat"></i></span><div class="li-main"><b>${esc(f.customer_name || f.username)}</b><small class="mono">${esc(f.username)} · ${esc(f.site_code)}</small></div><b class="num">${f.reconnects}×</b>${N.canControl && f.secret_id ? `<button type="button" class="nx-btn sm tint" data-ticket="${f.secret_id}">Tiket</button>` : ''}</li>`).join('') : '<li><span class="li-icon green"><i class="bi bi-check-lg"></i></span><div class="li-main"><b>Semua stabil</b><small>Tidak ada pelanggan putus-sambung dalam 1 jam.</small></div></li>';
   }
+  $('nmsFlapping').addEventListener('click', async e => {
+    const t = e.target.closest('[data-ticket]');
+    if (t) { e.stopPropagation(); t.classList.add('busy'); try { const { ticket } = await api(`/nms/api/secrets/${t.dataset.ticket}/ticket`, { method: 'POST', body: {} }); toast(ticket.existing ? `Tiket ${ticket.code} sudah ada.` : `Tiket ${ticket.code} dibuat.`, 'ok'); } catch (err) { toast(err.message, 'err'); } t.classList.remove('busy'); return; }
+    const li = e.target.closest('[data-sid]'); if (li?.dataset.sid) N.drawer(Number(li.dataset.sid));
+  });
 
-  function renderAll() { renderRouters(); renderBandwidth(); renderSync(); renderAlerts(); renderLog(); renderFlapping(); N.markUpdated(data.generatedAt); }
+  function renderAll() { renderTraffic(); renderRouters(); renderSync(); renderAlerts(); renderLog(); renderFlapping(); N.markUpdated(data.generatedAt); }
   async function refresh() {
-    const res = await api(`/nms/api/dashboard${N.site ? `?site=${N.site}` : ''}`);
+    const res = await api(`/nms/api/dashboard${N.withSite()}`);
     data = res.data;
     (data.routers || []).forEach(r => routers.set(r.routerId, r));
     alerts = data.alerts || [];
     const lastId = Math.max(0, ...events.filter(e => e.id).map(e => e.id));
     (data.events || []).slice().reverse().filter(e => e.id > lastId).forEach(pushEvent);
-    renderRouters(); renderBandwidth(); renderSync(); renderAlerts(); renderFlapping(); N.markUpdated(data.generatedAt);
+    renderTraffic(); renderRouters(); renderSync(); renderAlerts(); renderFlapping(); N.markUpdated(data.generatedAt);
   }
 
-  // Chart.js dimuat defer — render awal setelah semua script siap.
-  const boot = () => { renderAll(); };
-  if (window.Chart) boot(); else window.addEventListener('load', boot, { once: true });
-
-  let bwFrame = null;
+  renderAll();
+  let frame = null, resizeT = null;
+  window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(renderTraffic, 150); });
   N.stream({
-    telemetry: r => { routers.set(r.routerId, r); if (!bwFrame) bwFrame = requestAnimationFrame(() => { bwFrame = null; renderRouters(); renderBandwidth(); }); N.markUpdated(new Date().toISOString()); },
-    router_state: s => { const r = routers.get(s.routerId); if (r) { r.status = s.status; r.lastError = s.error; renderRouters(); } if (s.status === 'offline') toast(`Router ${r?.name || s.routerId} UNREACHABLE`, 'err'); },
+    telemetry: r => { if (N.site && Number(r.siteId) !== Number(N.site)) return; routers.set(r.routerId, r); if (!frame) frame = requestAnimationFrame(() => { frame = null; renderTraffic(); renderRouters(); }); N.markUpdated(new Date().toISOString()); },
+    router_state: s => { const r = routers.get(s.routerId); if (r) { r.status = s.status; r.lastError = s.error; renderRouters(); renderTraffic(); } if (s.status === 'offline') toast(`Router ${r?.name || s.routerId} tidak terjangkau`, 'err'); },
     ppp: e => pushEvent(e),
     alert: a => { alerts = [{ ...a, opened_at: a.openedAt }, ...alerts.filter(x => x.id !== a.id)]; renderAlerts(); toast(a.title, 'err'); },
     alert_resolved: () => refresh().catch(() => {}),
     sync: () => refresh().catch(() => {})
   }, { fallback: refresh, fallbackMs: 20000 });
-  // Counter pelanggan & flapping berasal dari DB → segarkan ringan tiap 30 detik.
+  document.addEventListener('nx:changed', () => refresh().catch(() => {}));
   setInterval(() => { if (!document.hidden) refresh().catch(() => N.setLive('down')); }, 30000);
 })();
