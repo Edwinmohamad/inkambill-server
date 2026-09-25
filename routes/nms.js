@@ -111,7 +111,7 @@ router.post('/api/secrets/refresh', requireNetworkControl, api(async req => {
 // Smart Sync (dry-run preview → confirm & commit)
 router.get('/api/sync/preview', requireNetworkControl, api(async req => ({ plan: await smartSync.preview({ siteId: siteParam(req), refresh: req.query.refresh === '1' }) })));
 router.post('/api/sync/commit', requireNetworkControl, api(async req => {
-  const out = await smartSync.commit({ planId: String(req.body.planId || ''), secretIds: req.body.secretIds });
+  const out = await smartSync.commit({ planId: String(req.body.planId || ''), secretIds: req.body.secretIds, pairs: Array.isArray(req.body.pairs) ? req.body.pairs.slice(0, 5000) : null, siteId: siteParam(req) });
   await audit({ userId: req.session.user.id, action: 'nms_smart_sync', entityType: 'ppp_secret', ip: req.ip, siteId: out.siteId, description: `Smart Sync: ${out.summary.linked}/${out.summary.planned} di-link`, details: { planId: out.planId, summary: out.summary, linked: out.results.filter(r => r.ok).map(r => ({ secretId: r.secretId, username: r.username, customerId: r.customerId })), failed: out.results.filter(r => !r.ok) } });
   return out;
 }));

@@ -237,8 +237,12 @@
     if (!ids.length) return toast('Tidak ada pasangan yang dipilih.', 'err');
     $('mSyncCommit').classList.add('busy');
     try {
-      const out = await api('/nms/api/sync/commit', { method: 'POST', body: { planId: plan.planId, secretIds: ids } });
-      toast(`Smart Sync: ${out.summary.linked} di-link${out.summary.failed ? `, ${out.summary.failed} gagal` : ''}.`, out.summary.failed ? 'err' : 'ok');
+      const idSet = new Set(ids);
+      const pairs = plan.pairs.filter(p => idSet.has(Number(p.secretId))).map(p => ({ secretId: p.secretId, customerId: p.customerId }));
+      const out = await api('/nms/api/sync/commit', { method: 'POST', body: { planId: plan.planId, secretIds: ids, pairs, site_id: plan.siteId || N.site || null } });
+      toast(`Smart Sync: ${out.summary.linked} di-link${out.summary.failed ? `, ${out.summary.failed} gagal` : ''}${out.summary.skipped ? `, ${out.summary.skipped} dilewati (data berubah sejak preview)` : ''}.`, out.summary.failed ? 'err' : 'ok');
+      const bad = out.results.filter(r => !r.ok).slice(0, 5);
+      if (bad.length) toast(bad.map(f => `${f.username}: ${f.error}`).join(' | '), 'err');
       mSync.close(); selected.clear(); await Promise.all([load(), loadCounts()]);
     } catch (err) { toast(err.message, 'err'); }
     finally { $('mSyncCommit').classList.remove('busy'); }

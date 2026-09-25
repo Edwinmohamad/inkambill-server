@@ -6,7 +6,7 @@ const { buildSmartSyncPlan } = require('./matching');
 const store = require('./secretStore');
 const bus = require('./eventBus');
 
-const PLAN_TTL_MS = 10 * 60 * 1000;
+const PLAN_TTL_MS = 30 * 60 * 1000;
 
 async function loadInputs(siteId) {
   const sp = siteId ? [Number(siteId)] : [];
@@ -17,7 +17,7 @@ async function loadInputs(siteId) {
   return { secrets, customers };
 }
 
-/** Dry-run: tidak menulis DB. Rencana disimpan 10 menit dengan planId untuk di-commit. */
+/** Dry-run: tidak menulis DB. Rencana disimpan 30 menit dengan planId untuk di-commit. */
 async function preview({ siteId = null, refresh = false } = {}) {
   if (refresh) {
     for (const router of await store.activeRouters(siteId)) { try { await store.syncRouterSecrets(router); } catch (_) { /* router offline → pakai cache DB */ } }
@@ -49,9 +49,24 @@ async function linkSecret(conn, secretId, customerId, method) {
   return { secret, customer };
 }
 
-async function commit({ planId, secretIds = null }) {
-  const plan = cache.get(`nms:plan:${planId}`);
-  if (!plan) throw Object.assign(new Error('Preview kedaluwarsa atau tidak ditemukan. Jalankan Smart Sync Preview lagi.'), { status: 410 });
+async function commit({ planId, secretIds = null, pairs: clientPairs = null, siteId = null }) {
+  let plan = cache.get(`nms:plan:${planId}`);
+  let revalidated = false;
+  if (!plan) {
+    // Plan di memori hilang (proses Node restart / redeploy / request mendarat di instance lain /
+    // modal dibiarkan terbuka > TTL). Jangan gagal total: bangun ulang rencana dari data DB
+    // terkini dan hanya commit pasangan yang dikirim browser DAN masih identik di rencana baru.
+    const wanted = Array.isArray(clientPairs) ? clientPairs.filter(p => p && Number(p.secretId) && Number(p.customerId)) : [];
+    if (!wanted.length) throw Object.assign(new Error('Preview kedaluwarsa atau tidak ditemukan. Jalankan Smart Sync Preview lagi.'), { status: 410 });
+    const { secrets, customers } = await loadInputs(siteId);
+    const fresh = buildSmartSyncPlan(secrets, customers);
+    plan = { planId, siteId: siteId ? Number(siteId) : null, pairs: fresh.pairs };
+    const key = p => `${Number(p.secretId)}:${Number(p.customerId)}`;
+    const wantedKeys = new Set(wanted.map(key));
+    plan.pairs = fresh.pairs.filter(p => wantedKeys.has(key(p)));
+    plan.skipped = wanted.length - plan.pairs.length;
+    revalidated = true;
+  }
   const allow = Array.isArray(secretIds) && secretIds.length ? new Set(secretIds.map(Number)) : null;
   const pairs = plan.pairs.filter(p => !allow || allow.has(Number(p.secretId)));
   const results = [];
@@ -69,7 +84,7 @@ async function commit({ planId, secretIds = null }) {
   }
   cache.del(`nms:plan:${planId}`);
   cache.del('nms:dash');
-  const summary = { planned: pairs.length, linked: results.filter(r => r.ok).length, failed: results.filter(r => !r.ok).length };
+  const summary = { planned: pairs.length, linked: results.filter(r => r.ok).length, failed: results.filter(r => !r.ok).length, revalidated, skipped: plan.skipped || 0 };
   bus.emit('sync', { siteId: plan.siteId, ...summary });
   return { planId, siteId: plan.siteId, summary, results };
 }
