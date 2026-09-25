@@ -380,9 +380,50 @@ function jakartaToday(){return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/J
 function validDateParam(value){const v=String(value||'').trim();return /^\d{4}-\d{2}-\d{2}$/.test(v)&&!Number.isNaN(new Date(`${v}T00:00:00Z`).getTime())?v:'';}
 let reconciliationHistorySchemaReady=null;
 async function ensureReconciliationHistorySchema(){
-  if(!reconciliationHistorySchemaReady){
-    reconciliationHistorySchemaReady=ensureV53Schema().catch(err=>{reconciliationHistorySchemaReady=null;throw err;});
-  }
+  if(reconciliationHistorySchemaReady)return reconciliationHistorySchemaReady;
+  reconciliationHistorySchemaReady=(async()=>{
+    // Jangan jalankan migration v1.28 penuh ketika user membuka Histori.
+    // Sebagian instalasi memakai MariaDB/MySQL yang tidak menerima syntax
+    // `ALTER TABLE ... ADD INDEX IF NOT EXISTS`, sehingga route sebelumnya 500.
+    // Histori hanya memastikan schema minimum yang benar-benar dibutuhkan.
+    await db.query(`CREATE TABLE IF NOT EXISTS cash_settlements (
+      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      code VARCHAR(40) NOT NULL,
+      settlement_date DATE NOT NULL,
+      collector_user_id BIGINT UNSIGNED NULL,
+      mode ENUM('selected','partial') NOT NULL DEFAULT 'selected',
+      payment_count INT UNSIGNED NOT NULL DEFAULT 0,
+      total_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+      handed_amount DECIMAL(14,2) NULL,
+      difference_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+      notes VARCHAR(500) NULL,
+      status ENUM('active','cancelled') NOT NULL DEFAULT 'active',
+      created_by BIGINT UNSIGNED NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_cash_settlement_code (code),
+      INDEX idx_cash_settlement_date (settlement_date),
+      INDEX idx_cash_settlement_collector (collector_user_id,settlement_date)
+    )`);
+
+    const [paymentCols]=await db.query(`SHOW COLUMNS FROM payments`);
+    const paymentColNames=new Set(paymentCols.map(c=>String(c.Field)));
+    const addPaymentColumn=async(name,ddl)=>{
+      if(paymentColNames.has(name))return;
+      await db.query(`ALTER TABLE payments ADD COLUMN ${ddl}`);
+      paymentColNames.add(name);
+    };
+    await addPaymentColumn('settlement_id','settlement_id BIGINT UNSIGNED NULL AFTER settlement_status');
+    await addPaymentColumn('settled_by','settled_by BIGINT UNSIGNED NULL AFTER settlement_id');
+    await addPaymentColumn('settled_at','settled_at DATETIME NULL AFTER settled_by');
+
+    // Index dibuat dengan pemeriksaan SHOW INDEX agar kompatibel lintas MySQL/MariaDB.
+    const [idx]=await db.query(`SHOW INDEX FROM payments WHERE Key_name='idx_payments_settlement'`);
+    if(!idx.length){
+      try{await db.query(`ALTER TABLE payments ADD INDEX idx_payments_settlement (settlement_id)`);}
+      catch(err){if(!/duplicate|exists/i.test(String(err.message||'')))throw err;}
+    }
+  })().catch(err=>{reconciliationHistorySchemaReady=null;throw err;});
   return reconciliationHistorySchemaReady;
 }
 async function loadReconciliationHistory(req){
@@ -423,34 +464,39 @@ async function loadReconciliationHistory(req){
       COALESCE(cu.name,'Beberapa collector') collector_name,au.name created_by_name
     FROM cash_settlements cs LEFT JOIN users cu ON cu.id=cs.collector_user_id LEFT JOIN users au ON au.id=cs.created_by
     WHERE cs.settlement_date BETWEEN ? AND ? ORDER BY cs.id DESC LIMIT 200`,[dateFrom,dateTo]);
-  // v1.29 — data grafik analisis tab Histori. Tren memakai tanggal bayar (uang diterima tim) dan
-  // tanggal setor (uang masuk kas) pada rentang yang sama; rentang panjang dikelompokkan per bulan.
-  const spanDays=Math.round((new Date(`${dateTo}T00:00:00Z`)-new Date(`${dateFrom}T00:00:00Z`))/86400000)+1;
-  const monthly=spanDays>62;
-  const bucketExpr=col=>monthly?`DATE_FORMAT(${col},'%Y-%m')`:`DATE_FORMAT(${col},'%Y-%m-%d')`;
-  const settledWhere=`WHERE p.method='cash' AND ${settledCond} AND DATE(p.settled_at) BETWEEN ? AND ?${filterSql}`;
-  const settledParams=[dateFrom,dateTo,...filterParams];
-  const [[collectedRows],[settledRows],[siteRows],[[speed]]]=await Promise.all([
-    db.execute(`SELECT ${bucketExpr('p.paid_at')} bucket,COALESCE(SUM(p.amount),0) amount ${from} ${where} GROUP BY bucket ORDER BY bucket`,params),
-    db.execute(`SELECT ${bucketExpr('p.settled_at')} bucket,COALESCE(SUM(p.amount),0) amount ${from} ${settledWhere} GROUP BY bucket ORDER BY bucket`,settledParams),
-    db.execute(`SELECT s.code site_code,COALESCE(SUM(CASE WHEN ${settledCond} THEN p.amount ELSE 0 END),0) settled_amount,
-      COALESCE(SUM(CASE WHEN ${heldCond} THEN p.amount ELSE 0 END),0) held_amount ${from} ${where} GROUP BY s.code ORDER BY settled_amount+held_amount DESC LIMIT 12`,params),
-    db.execute(`SELECT COUNT(*) settled_count,COALESCE(AVG(TIMESTAMPDIFF(HOUR,p.paid_at,p.settled_at)),0) avg_hours,
-      COALESCE(SUM(TIMESTAMPDIFF(HOUR,p.paid_at,p.settled_at)<=24),0) within_day,COALESCE(SUM(TIMESTAMPDIFF(HOUR,p.paid_at,p.settled_at)>72),0) over_three_days
-      ${from} ${settledWhere}`,settledParams)
-  ]);
-  const labels=[];
-  if(monthly){const d=new Date(`${dateFrom.slice(0,7)}-01T00:00:00Z`);const end=dateTo.slice(0,7);while(labels.length<60){const key=d.toISOString().slice(0,7);labels.push(key);if(key>=end)break;d.setUTCMonth(d.getUTCMonth()+1);}}
-  else{const d=new Date(`${dateFrom}T00:00:00Z`);while(labels.length<62){const key=d.toISOString().slice(0,10);labels.push(key);if(key>=dateTo)break;d.setUTCDate(d.getUTCDate()+1);}}
-  const toMap=rows=>new Map(rows.map(r=>[String(r.bucket),Number(r.amount||0)]));
-  const collectedMap=toMap(collectedRows),settledMap=toMap(settledRows);
-  const historyCharts={
-    monthly,
-    trend:{labels,collected:labels.map(k=>collectedMap.get(k)||0),settled:labels.map(k=>settledMap.get(k)||0)},
-    sites:siteRows.map(r=>({label:r.site_code,settled:Number(r.settled_amount||0),held:Number(r.held_amount||0)})),
-    collectors:collectorSummary.slice(0,10).map(c=>({label:c.collector_name,settled:Number(c.settled_amount||0),held:Number(c.held_amount||0)})),
-    speed:{count:Number(speed?.settled_count||0),avgHours:Number(speed?.avg_hours||0),withinDay:Number(speed?.within_day||0),overThreeDays:Number(speed?.over_three_days||0)}
-  };
+  // v1.29 — grafik analisis bersifat opsional. Kegagalan query chart tidak boleh
+  // menjatuhkan halaman Histori utama; data transaksi dan setoran tetap ditampilkan.
+  let historyCharts=null;
+  try{
+    const spanDays=Math.round((new Date(`${dateTo}T00:00:00Z`)-new Date(`${dateFrom}T00:00:00Z`))/86400000)+1;
+    const monthly=spanDays>62;
+    const bucketExpr=col=>monthly?`DATE_FORMAT(${col},'%Y-%m')`:`DATE_FORMAT(${col},'%Y-%m-%d')`;
+    const settledWhere=`WHERE p.method='cash' AND ${settledCond} AND DATE(p.settled_at) BETWEEN ? AND ?${filterSql}`;
+    const settledParams=[dateFrom,dateTo,...filterParams];
+    const [[collectedRows],[settledRows],[siteRows],[[speed]]]=await Promise.all([
+      db.execute(`SELECT ${bucketExpr('p.paid_at')} bucket,COALESCE(SUM(p.amount),0) amount ${from} ${where} GROUP BY bucket ORDER BY bucket`,params),
+      db.execute(`SELECT ${bucketExpr('p.settled_at')} bucket,COALESCE(SUM(p.amount),0) amount ${from} ${settledWhere} GROUP BY bucket ORDER BY bucket`,settledParams),
+      db.execute(`SELECT s.code site_code,COALESCE(SUM(CASE WHEN ${settledCond} THEN p.amount ELSE 0 END),0) settled_amount,
+        COALESCE(SUM(CASE WHEN ${heldCond} THEN p.amount ELSE 0 END),0) held_amount ${from} ${where} GROUP BY s.code ORDER BY settled_amount+held_amount DESC LIMIT 12`,params),
+      db.execute(`SELECT COUNT(*) settled_count,COALESCE(AVG(TIMESTAMPDIFF(HOUR,p.paid_at,p.settled_at)),0) avg_hours,
+        COALESCE(SUM(TIMESTAMPDIFF(HOUR,p.paid_at,p.settled_at)<=24),0) within_day,COALESCE(SUM(TIMESTAMPDIFF(HOUR,p.paid_at,p.settled_at)>72),0) over_three_days
+        ${from} ${settledWhere}`,settledParams)
+    ]);
+    const labels=[];
+    if(monthly){const d=new Date(`${dateFrom.slice(0,7)}-01T00:00:00Z`);const end=dateTo.slice(0,7);while(labels.length<60){const key=d.toISOString().slice(0,7);labels.push(key);if(key>=end)break;d.setUTCMonth(d.getUTCMonth()+1);}}
+    else{const d=new Date(`${dateFrom}T00:00:00Z`);while(labels.length<62){const key=d.toISOString().slice(0,10);labels.push(key);if(key>=dateTo)break;d.setUTCDate(d.getUTCDate()+1);}}
+    const toMap=rows=>new Map(rows.map(r=>[String(r.bucket),Number(r.amount||0)]));
+    const collectedMap=toMap(collectedRows),settledMap=toMap(settledRows);
+    historyCharts={
+      monthly,
+      trend:{labels,collected:labels.map(k=>collectedMap.get(k)||0),settled:labels.map(k=>settledMap.get(k)||0)},
+      sites:siteRows.map(r=>({label:r.site_code,settled:Number(r.settled_amount||0),held:Number(r.held_amount||0)})),
+      collectors:collectorSummary.slice(0,10).map(c=>({label:c.collector_name,settled:Number(c.settled_amount||0),held:Number(c.held_amount||0)})),
+      speed:{count:Number(speed?.settled_count||0),avgHours:Number(speed?.avg_hours||0),withinDay:Number(speed?.within_day||0),overThreeDays:Number(speed?.over_three_days||0)}
+    };
+  }catch(err){
+    console.error('[Rekonsiliasi Histori] Grafik analisis gagal, halaman tetap dilanjutkan:',err.message);
+  }
   return {history,historySummary:historySummary||{},collectorSummary,settlements,historyCharts,historyLimit:RECON_HISTORY_LIMIT,dateFrom,dateTo,status,q,site,cluster};
 }
 
