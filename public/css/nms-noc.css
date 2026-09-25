@@ -698,3 +698,59 @@ section.nx-w>.nx-section{margin:10px 2px 8px}.nx-section h2{font-size:17px}.nx-s
 
 @media (max-width:1350px){.nx-routers,.nx-traffic-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.nx-site-grid{grid-template-columns:repeat(3,minmax(220px,1fr));overflow-x:auto;padding-bottom:2px}}
 @media (max-width:900px){.nx-site-grid,.nx-routers,.nx-traffic-grid{grid-template-columns:1fr}.nx-site-grid{overflow:visible}.nx-site-foot{flex-direction:column}.nx-site-foot span:last-child{max-width:100%;text-align:left}}
+
+/* =====================================================================
+   Nexi Rover v1 — robot patroli antar-widget. Ringan, GPU-friendly.
+   ===================================================================== */
+.mx.mx-rover{
+  position:fixed;left:24px;top:88px;bottom:auto;width:82px;height:96px;z-index:90;
+  pointer-events:auto;transform:none!important;
+  transition:left var(--mx-travel-ms,1400ms) cubic-bezier(.22,.78,.28,1),top var(--mx-travel-ms,1400ms) cubic-bezier(.22,.78,.28,1),filter .25s,opacity .2s;
+  filter:drop-shadow(0 12px 20px rgba(0,0,0,.18));
+}
+.mx.mx-rover .mx-shadow{bottom:-4px;transition:transform .3s,opacity .3s,filter .3s}
+.mx.mx-rover.mx-walking .mx-leg.l{animation:mxLeg .38s ease-in-out infinite}
+.mx.mx-rover.mx-walking .mx-leg.r{animation:mxLeg .38s ease-in-out infinite reverse}
+.mx.mx-rover.mx-walking .mx-arm.l{animation:mxArm .38s ease-in-out infinite reverse}
+.mx.mx-rover.mx-walking .mx-arm.r{animation:mxArm .38s ease-in-out infinite}
+.mx.mx-rover.mx-walking .mx-actor{animation:mxBob .19s ease-in-out infinite alternate}
+.mx.mx-rover.mx-flying{filter:drop-shadow(0 22px 24px rgba(0,0,0,.22))}
+.mx.mx-rover.mx-flying .mx-actor{animation:mxRoverFly .7s ease-in-out infinite alternate}
+.mx.mx-rover.mx-flying .mx-leg{transform:rotate(-14deg)}
+.mx.mx-rover.mx-flying .mx-arm.l{transform:rotate(22deg)}
+.mx.mx-rover.mx-flying .mx-arm.r{transform:rotate(-22deg)}
+.mx.mx-rover.mx-flying .mx-shadow{opacity:.15;transform:scale(.62);filter:blur(6px)}
+.mx.mx-rover.mx-flying::before,.mx.mx-rover.mx-flying::after{
+  content:"";position:absolute;z-index:-1;left:37px;bottom:2px;width:9px;height:23px;border-radius:50% 50% 70% 70%;
+  background:linear-gradient(180deg,rgba(96,205,255,.95),rgba(87,112,255,.35) 55%,transparent);filter:blur(.4px);transform-origin:50% 0;
+  animation:mxThruster .28s ease-in-out infinite alternate;pointer-events:none
+}
+.mx.mx-rover.mx-flying::after{left:51px;animation-delay:.12s}
+.mx.mx-rover.mx-landed .mx-actor{animation:mxRoverLand .45s var(--x-ease) 1}
+.mx.mx-rover.mx-working .mx-arm.r{animation:mxRoverWork .42s ease-in-out infinite alternate}
+.mx.mx-rover.mx-working .mx-ports circle{animation-duration:.55s}
+.mx.mx-rover.mx-working::after{
+  content:"";position:absolute;left:50%;top:51%;width:92px;height:92px;border:1px solid color-mix(in srgb,var(--x-accent) 55%,transparent);border-radius:50%;
+  transform:translate(-50%,-50%);animation:mxScan 1.35s ease-out infinite;pointer-events:none
+}
+.mx.mx-rover .mx-bubble{max-width:190px;font-size:11.5px;padding:6px 9px;bottom:calc(100% + 1px)}
+.nx-w,.nx-site-card,.nx-stat{position:relative}
+.nx-inspecting{z-index:2}
+.nx-inspecting::after{
+  content:"";position:absolute;inset:-2px;border:1px solid color-mix(in srgb,var(--x-accent) 52%,transparent);border-radius:inherit;pointer-events:none;
+  box-shadow:0 0 0 4px color-mix(in srgb,var(--x-accent) 7%,transparent),0 12px 38px color-mix(in srgb,var(--x-accent) 10%,transparent);
+  animation:nxInspectPulse 1.8s ease-in-out infinite
+}
+.nx-inspecting::before{
+  content:"NEXI · SCANNING";position:absolute;right:12px;top:10px;z-index:4;padding:4px 7px;border-radius:999px;
+  background:color-mix(in srgb,var(--x-card) 88%,transparent);border:1px solid var(--x-line);backdrop-filter:blur(14px);
+  color:var(--x-accent);font-size:8.5px;font-weight:750;letter-spacing:.08em;pointer-events:none
+}
+@keyframes mxRoverFly{from{transform:translateY(-2px) rotate(-2deg)}to{transform:translateY(-9px) rotate(2deg)}}
+@keyframes mxThruster{from{height:14px;opacity:.55;transform:scaleX(.72)}to{height:29px;opacity:1;transform:scaleX(1)}}
+@keyframes mxRoverLand{0%{transform:translateY(-9px) scale(.96,1.04)}65%{transform:translateY(2px) scale(1.04,.94)}100%{transform:none}}
+@keyframes mxRoverWork{from{transform:rotate(-14deg)}to{transform:rotate(26deg)}}
+@keyframes mxScan{0%{opacity:.8;transform:translate(-50%,-50%) scale(.5)}100%{opacity:0;transform:translate(-50%,-50%) scale(1.42)}}
+@keyframes nxInspectPulse{0%,100%{opacity:.58}50%{opacity:1}}
+@media(max-width:820px){.mx.mx-rover{display:none!important}.nx-inspecting::before,.nx-inspecting::after{display:none!important}}
+@media(prefers-reduced-motion:reduce){.mx.mx-rover{display:none!important}.nx-inspecting::before,.nx-inspecting::after{display:none!important}}
