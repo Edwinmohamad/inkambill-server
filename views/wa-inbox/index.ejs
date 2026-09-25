@@ -92,8 +92,7 @@
     <label class="form-label small fw-semibold mt-3">Bukti transfer dari chat</label>
     <div id="waiVerifyProofs" class="wai-proof-pick"></div>
     <div class="row g-2 mt-2">
-      <div class="col-md-6"><label class="form-label small fw-semibold">Bank tujuan</label><select class="form-select" id="waiVerifyBank"><% banks.forEach(b=>{ %><option value="<%= b.id %>"><%= b.bank_name %> · <%= b.account_number %> · <%= b.account_name %></option><% }) %></select></div>
-      <div class="col-md-6"><label class="form-label small fw-semibold">Alasan override hasil scan bukti (bila diminta)</label><input class="form-control" id="waiVerifyReason" maxlength="500" placeholder="Opsional"></div>
+      <div class="col-12"><label class="form-label small fw-semibold">Bank tujuan</label><select class="form-select" id="waiVerifyBank"><% banks.forEach(b=>{ %><option value="<%= b.id %>"><%= b.bank_name %> · <%= b.account_number %> · <%= b.account_name %></option><% }) %></select></div>
     </div>
     <div class="wai-verify-result d-none mt-3" id="waiVerifyResult"></div>
   </div>

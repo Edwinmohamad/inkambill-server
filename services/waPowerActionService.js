@@ -24,7 +24,7 @@ async function proofFileFromChat(chatMessageId, conversationId) {
   return { buffer, mimetype: m.media_mime, originalname: m.media_name || `bukti-wa-${m.id}`, size: buffer.length };
 }
 
-async function verifyAndReactivate({ conversationId, invoiceIds = [], bankId = null, proofChatMessageId = null, scanOverrideReason = '', user, ip = null }) {
+async function verifyAndReactivate({ conversationId, invoiceIds = [], bankId = null, proofChatMessageId = null, user, ip = null }) {
   const conv = await inbox.loadConversation(conversationId);
   if (!conv) throw new Error('Percakapan tidak ditemukan.');
   if (!conv.customer_id) throw new Error('Percakapan belum ditautkan ke data pelanggan.');
@@ -61,7 +61,7 @@ async function verifyAndReactivate({ conversationId, invoiceIds = [], bankId = n
   let verified = 0; const errors = [];
   for (const id of paymentIds) {
     try {
-      const { payment } = await pay.verifyPendingPayment(id, { userId: user.id, ip, bookDateMode: 'payment_date', scanOverrideReason, skipReceipt: true });
+      const { payment } = await pay.verifyPendingPayment(id, { userId: user.id, ip, bookDateMode: 'payment_date', skipReceipt: true });
       verified++;
       await audit({ userId: user.id, action: 'approve', entityType: 'payment', entityId: payment.id, description: `Approval Master Admin via Web Inbox WA untuk pembayaran ${payment.reference || payment.id}`, ip });
     } catch (e) { errors.push(e.message); }

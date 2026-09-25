@@ -6,7 +6,7 @@
 <header class="nx-head">
   <div class="nx-title">
     <div class="nx-eyebrow"><span class="nx-live connecting" id="nmsLive" title="Status koneksi real-time"><i></i><span>Menghubungkan</span></span><span>·</span><span id="nmsUpdated">Memuat…</span></div>
-    <h1><%= titles[nmsPage] || 'MikroTik NMS' %><% if (siteObj) { %> <span class="dim" style="font-weight:600">· <%= siteObj.code %></span><% } %></h1>
+    <h1><%= titles[nmsPage] || 'MikroTik NMS' %><% if (siteObj) { %> <span class="nx-h1-site">· <%= siteObj.code %></span><% } %></h1>
   </div>
   <div class="nx-head-tools">
     <button type="button" class="nx-search-btn" id="nxOpenPalette" aria-label="Cari pelanggan"><i class="bi bi-search"></i><span>Cari pelanggan, username, IP</span><kbd class="nx-kbd-mod">Ctrl K</kbd></button>
@@ -14,7 +14,6 @@
       <option value="">Semua site</option>
       <% (sites || []).forEach(s => { %><option value="<%= s.id %>" <%= Number(siteId) === Number(s.id) ? 'selected' : '' %>><%= s.code %> · <%= s.name %></option><% }) %>
     </select>
-    <time class="nx-clock" data-nms-clock>--:--:--</time>
   </div>
 </header>
 <nav class="nx-nav" aria-label="Menu NMS">
@@ -25,6 +24,7 @@
     <a href="/nms/automation<%= q %>" class="<%= nmsPage === 'automation' ? 'active' : '' %>"><i class="bi bi-clock-history"></i>Otomasi<span class="count" id="nxApprovalCount" hidden></span></a>
   </div>
   <span class="grow"></span>
-  <button type="button" class="nx-btn ghost sm" id="nxShortcuts" title="Pintasan keyboard"><i class="bi bi-keyboard"></i></button>
+  <% if (nmsPage === 'dashboard') { %><button type="button" class="nx-btn ghost sm" id="nmsNocMode" title="Tampilan layar penuh untuk layar NOC"><i class="bi bi-arrows-fullscreen"></i><span>Mode NOC</span></button><% } %>
+  <button type="button" class="nx-btn ghost sm icon nx-hide-sm" id="nxShortcuts" title="Pintasan keyboard" aria-label="Pintasan keyboard"><i class="bi bi-keyboard"></i></button>
 </nav>
 <div class="nx-banner" id="nmsOfflineBadge" role="status"><i class="bi bi-exclamation-triangle-fill"></i><span>Sebagian router tidak terjangkau. Data yang tampil berasal dari cache terakhir.</span></div>

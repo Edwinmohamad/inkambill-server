@@ -309,7 +309,7 @@
   function openMap(r, { onDone } = {}) {
     const s = sheet({ title: 'Hubungkan ke pelanggan', subtitle: `<span class="mono">${esc(r.username)}</span> · ${esc(r.site_code || '')}${r.router_name ? ' / ' + esc(r.router_name) : ''}`, size: 'sm',
       body: `<div class="nx-field"><label>Site</label><select data-site>${sitesList.map(o => `<option value="${o.id}" ${Number(o.id) === Number(r.site_id) ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></div>
-        <div class="nx-field nx-ac"><label>Pelanggan</label><input type="search" data-q placeholder="Ketik nama, Customer ID, atau HP" autocomplete="off" autofocus><div class="nx-ac-list" data-list hidden></div></div><div class="nx-note" data-picked>Belum memilih pelanggan.</div><div class="nx-field"><label>Alasan mapping manual</label><input type="text" data-reason minlength="5" maxlength="255" placeholder="Contoh: verifikasi pelanggan oleh teknisi"></div>`,
+        <div class="nx-field nx-ac"><label>Pelanggan</label><input type="search" data-q placeholder="Ketik nama, Customer ID, atau HP" autocomplete="off" autofocus><div class="nx-ac-list" data-list hidden></div></div><div class="nx-note" data-picked>Belum memilih pelanggan. Pencarian dibatasi ke site yang dipilih.</div><div class="nx-field" style="margin-top:14px"><label>Catatan <span class="dim" style="font-weight:500">(opsional)</span></label><input type="text" data-reason maxlength="255" placeholder="Contoh: dicek teknisi di lokasi"></div>`,
       foot: `<button type="button" class="nx-btn" data-close>Batal</button><button type="button" class="nx-btn primary" data-save disabled>Hubungkan</button>` });
     let rows = [], pick = null, idx = -1, timer = null;
     const list = s.$('[data-list]');
@@ -317,18 +317,18 @@
       const q = s.$('[data-q]').value.trim(); if (q.length < 2) { list.hidden = true; return; }
       try {
         ({ rows } = await api(`/nms/api/customers/search${qs({ q, site: s.$('[data-site]').value })}`)); idx = -1;
-        list.innerHTML = rows.length ? rows.map((c, i) => `<button type="button" data-i="${i}" ${c.linked_username ? 'disabled' : ''}><b class="mono">${esc(c.customer_code)}</b><span class="grow">${esc(c.name)}</span><small class="dim">${c.linked_username ? 'sudah: ' + esc(c.linked_username) : esc(c.site_code)}</small></button>`).join('') : '<div class="nx-empty">Tidak ditemukan.</div>';
+        list.innerHTML = rows.length ? rows.map((c, i) => { const self = c.linked_username && String(c.linked_username).toLowerCase() === String(r.username).toLowerCase(); const off = self || !['active', 'suspended'].includes(String(c.customer_status || 'active')); return `<button type="button" data-i="${i}" ${off ? 'disabled' : ''}><b class="mono">${esc(c.customer_code)}</b><span class="grow">${esc(c.name)}</span><small class="dim">${self ? 'sudah terhubung' : off ? esc(c.customer_status) : c.linked_username ? 'terhubung ke ' + esc(c.linked_username) : esc(c.site_code)}</small></button>`; }).join('') : '<div class="nx-empty">Tidak ditemukan di site ini.</div>';
         list.hidden = false;
       } catch (err) { toast(err.message, 'err'); }
     };
-    const choose = i => { const c = rows[i]; if (!c || c.linked_username) return; pick = c; s.$('[data-q]').value = `${c.customer_code} · ${c.name}`; list.hidden = true; s.$('[data-picked]').innerHTML = `Terpilih <b>${esc(c.name)}</b> · ${esc(c.customer_code)}`; s.$('[data-save]').disabled = false; };
+    const choose = i => { const c = rows[i]; if (!c) return; pick = c; s.$('[data-q]').value = `${c.customer_code} · ${c.name}`; list.hidden = true; s.$('[data-picked]').innerHTML = `Terpilih <b>${esc(c.name)}</b> · ${esc(c.customer_code)}${c.linked_username ? `<br><span style="color:var(--x-orange)">Pelanggan ini masih terhubung ke <span class="mono">${esc(c.linked_username)}</span>. Link lama akan dipindahkan ke <span class="mono">${esc(r.username)}</span>.</span>` : ''}`; s.$('[data-save]').disabled = false; };
     s.$('[data-q]').addEventListener('input', () => { clearTimeout(timer); pick = null; s.$('[data-save]').disabled = true; timer = setTimeout(search, 200); });
     s.$('[data-q]').addEventListener('keydown', e => { const items = [...list.querySelectorAll('button:not(:disabled)')]; if (['ArrowDown', 'ArrowUp'].includes(e.key)) { e.preventDefault(); idx = Math.max(0, Math.min(items.length - 1, idx + (e.key === 'ArrowDown' ? 1 : -1))); items.forEach((b, i) => b.classList.toggle('on', i === idx)); } if (e.key === 'Enter') { e.preventDefault(); if (items[idx]) choose(Number(items[idx].dataset.i)); } });
     list.addEventListener('click', e => { const b = e.target.closest('[data-i]'); if (b) choose(Number(b.dataset.i)); });
     s.$('[data-site]').addEventListener('change', search);
     s.$('[data-save]').addEventListener('click', async e => {
       const btn = e.currentTarget; btn.classList.add('busy');
-      try { await api(`/nms/api/secrets/${r.id}/map`, { method: 'POST', body: { customerId: pick.id, reason: s.$('[data-reason]').value } }); toast(`${r.username} → ${pick.name}`, 'ok'); s.close(); onDone?.(); changed(); }
+      try { const out = await api(`/nms/api/secrets/${r.id}/map`, { method: 'POST', body: { customerId: pick.id, reason: s.$('[data-reason]').value } }); toast(`${r.username} → ${pick.name}${out.released?.length ? ` (dipindah dari ${out.released.join(', ')})` : ''}`, 'ok'); s.close(); onDone?.(); changed(); }
       catch (err) { toast(err.message, 'err'); btn.classList.remove('busy'); }
     });
   }

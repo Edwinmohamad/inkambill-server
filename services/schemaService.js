@@ -1215,4 +1215,15 @@ async function ensureV56Schema() {
   )`);
 }
 
-module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema };
+
+async function ensureV57Schema() {
+  // Fitur "Scan Bukti" (v1.29, AI vision) dihapus total: buang tabel hasil scan,
+  // daftar pengirim dikenal, dan kolom pengaturan (termasuk API key terenkripsi).
+  await db.query(`DROP TABLE IF EXISTS payment_proof_scans`);
+  await db.query(`DROP TABLE IF EXISTS customer_payer_aliases`);
+  for (const col of ['proof_scan_enabled', 'proof_scan_model', 'proof_scan_api_key_enc', 'proof_scan_amount_tolerance', 'proof_scan_recipient_names', 'proof_scan_max_date_diff_days']) {
+    await db.query(`ALTER TABLE settings DROP COLUMN IF EXISTS ${col}`).catch(err => console.error('Drop kolom', col, 'gagal:', err.message));
+  }
+}
+
+module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema };

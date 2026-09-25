@@ -11,7 +11,10 @@
   let alerts = data.alerts || [];
   let logFilter = 'all', paused = false;
   const $ = id => document.getElementById(id);
-  const sorted = () => [...routers.values()].sort((a, b) => String(a.siteCode).localeCompare(String(b.siteCode)) || String(a.name).localeCompare(String(b.name)));
+  // Router terjangkau di depan, lalu urut site & nama, supaya kartu yang offline tidak mendominasi baris pertama.
+  const rank = r => r.status === 'online' ? 0 : r.status === 'offline' ? 2 : 1;
+  const sorted = () => [...routers.values()].sort((a, b) => rank(a) - rank(b) || String(a.siteCode).localeCompare(String(b.siteCode)) || String(a.name).localeCompare(String(b.name)));
+  const stateCls = r => r.status === 'online' ? 'online' : r.status === 'offline' ? 'isolated' : 'offline';
 
   // ---------- Traffic WAN: 1 widget per router di scope ----------
   const trafficEl = $('nxTraffic');
@@ -33,14 +36,18 @@
     if (!list.length) { trafficEl.innerHTML = '<div class="nx-card"><div class="nx-empty"><i class="bi bi-router"></i>Belum ada router aktif di scope ini.</div></div>'; return; }
     const ids = new Set(list.map(r => String(r.routerId)));
     [...trafficEl.children].forEach(ch => { if (!ids.has(ch.dataset.router)) ch.remove(); });
+    // Pasang semua kartu dulu agar lebar grid final sebelum grafik diukur (grafik pertama tidak mengecil).
     list.forEach((r, i) => {
       let el = trafficEl.querySelector(`[data-router="${r.routerId}"]`);
       if (!el) { el = trafficShell(r); trafficEl.appendChild(el); }
       if (trafficEl.children[i] !== el) trafficEl.insertBefore(el, trafficEl.children[i]);
+    });
+    list.forEach(r => {
+      const el = trafficEl.querySelector(`[data-router="${r.routerId}"]`);
       const w = r.wan || { history: [] };
       const online = r.status === 'online', down = r.status === 'offline';
       el.classList.toggle('offline', down);
-      const st = el.querySelector('[data-st]'); st.className = `nx-state ${online ? 'online' : down ? 'isolated' : 'offline'}`; st.textContent = '';
+      const st = el.querySelector('[data-st]'); st.className = `nx-state ${stateCls(r)}`; st.textContent = '';
       el.querySelector('[data-name]').textContent = r.name;
       el.querySelector('[data-site]').textContent = r.siteCode || '';
       el.querySelector('[data-if]').textContent = w.interface || 'auto';
@@ -70,53 +77,42 @@
     } catch (err) { toast(err.message, 'err'); }
   }
 
-  // ---------- Router health ----------
+  // ---------- Router: kesehatan + dampak pelanggan (klik untuk detail) ----------
   function routerCard(r) {
-    const t = r.telemetry || {}, mem = t.memory || {}, disk = t.disk || {}, h = t.health || {};
-    const stale = r.status === 'offline', waiting = r.status !== 'online' && !stale;
-    const diskUsed = disk.freePct == null ? null : 100 - disk.freePct;
-    const tempTone = h.temperature == null ? '' : h.temperature >= 70 ? 'red' : h.temperature >= 55 ? 'orange' : 'green';
-    return `<div class="nx-router ${stale ? 'offline' : ''}">
-      <div class="nx-router-top"><span class="nx-state ${stale ? 'isolated' : waiting ? 'offline' : 'online'}"></span><div class="grow" style="min-width:0"><b>${esc(r.name)}</b><small> · ${esc(r.siteCode)}${t.board ? ' · ' + esc(t.board) : ''}${t.version ? ' · v' + esc(t.version) : ''}</small></div></div>
-      <div class="nx-rings">${ring(stale ? null : t.cpuPct, { label: 'CPU' })}${ring(mem.pct, { label: 'RAM' })}${ring(diskUsed, { label: 'DISK' })}
-        <div style="min-width:0;font-size:12.5px;line-height:1.6"><div class="muted">Uptime</div><b>${t.uptimeSeconds ? fmtUptime(t.uptimeSeconds) : '—'}</b><div class="muted" style="margin-top:2px">RAM</div><span class="num" style="font-size:12px">${mem.total ? `${fmtBytes(mem.used)} / ${fmtBytes(mem.total)}` : '—'}</span></div></div>
-      <div class="nx-router-meta">
-        ${stale ? `<span class="nx-pill red" title="${esc(r.lastError || '')}">Tidak terjangkau · ${r.lastOkAt ? N.ago(r.lastOkAt) : 'belum pernah online'}</span>` : waiting ? '<span class="nx-pill">Menunggu polling</span>' : '<span class="nx-pill green">Online</span>'}
-        ${h.temperature != null ? `<span class="nx-pill ${tempTone}"><i class="bi bi-thermometer-half"></i>${h.temperature}°C</span>` : ''}
-        ${h.voltage != null ? `<span class="nx-pill"><i class="bi bi-lightning-charge"></i>${h.voltage} V</span>` : ''}
-        ${r.activeSessions != null ? `<span class="nx-pill blue">${r.activeSessions} sesi</span>` : ''}
-      </div></div>`;
+    const t = r.telemetry || {}, mem = t.memory || {}, disk = t.disk || {}, h = t.health || {}, impact = r.impact || {};
+    const down = r.status === 'offline', waiting = r.status !== 'online' && !down;
+    const diskUsed = disk.freePct == null ? null : Math.round((100 - disk.freePct) * 10) / 10;
+    const tempTone = h.temperature == null ? '' : h.temperature >= 70 ? 'red' : h.temperature >= 55 ? 'orange' : '';
+    const status = down ? `<span class="nx-pill red" title="${esc(r.lastError || '')}">Tidak terjangkau</span>` : waiting ? '<span class="nx-pill">Menunggu polling</span>' : '<span class="nx-pill green">Online</span>';
+    const sub = [t.board, t.version ? `RouterOS ${t.version}` : null, t.uptimeSeconds && !down ? `uptime ${fmtUptime(t.uptimeSeconds)}` : null].filter(Boolean).map(esc).join(' · ');
+    return `<button type="button" class="nx-router ${down ? 'offline' : ''}" data-router-detail="${r.routerId}">
+      <div class="nx-router-top"><span class="nx-state ${stateCls(r)}"></span><b>${esc(r.name)}</b><span class="nx-pill">${esc(r.siteCode || '')}</span><span class="grow"></span>${status}</div>
+      <div class="nx-router-sub">${down ? `Data terakhir ${r.lastOkAt ? esc(N.ago(r.lastOkAt)) : 'belum ada'}` : sub || '&nbsp;'}</div>
+      <div class="nx-rings ${down ? 'stale' : ''}">${ring(down ? null : t.cpuPct, { label: 'CPU' })}${ring(down ? null : mem.pct, { label: 'RAM' })}${ring(diskUsed, { label: 'Disk' })}</div>
+      <div class="nx-router-foot">
+        <span><b class="num">${impact.linked || 0}</b> pelanggan</span><span><b class="num">${impact.online || 0}</b> online</span>
+        ${h.temperature != null && !down ? `<span class="${tempTone ? 'tone-' + tempTone : ''}"><i class="bi bi-thermometer-half"></i>${h.temperature}°C</span>` : ''}
+        ${r.activeSessions != null && !down ? `<span><b class="num">${r.activeSessions}</b> sesi</span>` : ''}
+      </div></button>`;
   }
   function renderRouters() {
     const list = sorted();
-    $('nmsRouters').innerHTML = list.length ? list.map(routerCard).join('') : '<div class="nx-empty">Belum ada router aktif. Tambahkan di menu Router.</div>';
+    $('nmsRouters').innerHTML = list.length ? list.map(routerCard).join('') : '<div class="nx-card nx-span-all"><div class="nx-empty"><i class="bi bi-router"></i>Belum ada router aktif. Tambahkan di menu Router.</div></div>';
     const up = list.filter(r => r.status === 'online').length;
     $('kpiRouters').textContent = `${up}/${list.length}`;
-    N.setOffline(list.some(r => r.status === 'offline'));
-  }
-
-  // ---------- Site topology + operator-friendly router detail ----------
-  function renderTopology() {
-    const groups = new Map();
-    sorted().forEach(r => { const k = `${r.siteId}|${r.siteCode}`; if (!groups.has(k)) groups.set(k, { code: r.siteCode, rows: [] }); groups.get(k).rows.push(r); });
-    $('nmsTopology').innerHTML = groups.size ? [...groups.values()].map(g => `<section class="nx-topology-site"><b><i class="bi bi-diagram-3"></i>${esc(g.code || 'SITE')}</b><div>${g.rows.map(r => `<button type="button" class="nx-topology-router ${r.status === 'offline' ? 'offline' : ''}" data-router-detail="${r.routerId}"><span class="nx-state ${r.status === 'online' ? 'online' : r.status === 'offline' ? 'isolated' : 'offline'}"></span><strong>${esc(r.name)}</strong><small>${r.impact?.linked || 0} pelanggan · ${r.impact?.online || 0} online</small></button>`).join('')}</div></section>`).join('') : '<div class="nx-empty">Belum ada router aktif.</div>';
+    $('kpiRoutersSub').textContent = list.length && up < list.length ? `${list.length - up} tidak terjangkau` : 'polling tiap 15 detik';
   }
   function routerDetail(id) {
     const r = routers.get(Number(id)); if (!r) return;
-    const t = r.telemetry || {}, impact = r.impact || {};
+    const t = r.telemetry || {}, impact = r.impact || {}, h = t.health || {};
+    const kv = (k, v) => `<dt>${k}</dt><dd>${v}</dd>`;
     N.sheet({ title: r.name, subtitle: `${esc(r.siteCode || '')} · ${r.status === 'online' ? 'Online' : r.status === 'offline' ? 'Tidak terjangkau' : 'Menunggu polling'}`, size: 'sm',
-      body: `<div class="nx-mini-stats"><div><small>Pelanggan ter-link</small><b>${impact.linked || 0}</b></div><div><small>Sesi online</small><b>${impact.online || 0}</b></div><div><small>CPU</small><b>${t.cpuPct ?? '—'}%</b></div><div><small>Uptime</small><b>${t.uptimeSeconds ? fmtUptime(t.uptimeSeconds) : '—'}</b></div></div><div class="nx-kv"><span>WAN</span><b>${esc(r.wan?.interface || 'auto')} · ↓ ${fmtBps(r.wan?.rxBps)} · ↑ ${fmtBps(r.wan?.txBps)}</b><span>RAM</span><b>${t.memory?.pct ?? '—'}%</b><span>Disk</span><b>${t.disk?.freePct == null ? '—' : 100 - t.disk.freePct}% terpakai</b><span>Terakhir online</span><b>${r.lastOkAt ? esc(N.ago(r.lastOkAt)) : '—'}</b></div>`, foot: '<button type="button" class="nx-btn" data-close>Tutup</button>' });
+      body: `<div class="nx-mini-stats"><div><small>Pelanggan</small><b>${impact.linked || 0}</b></div><div><small>Online</small><b>${impact.online || 0}</b></div><div><small>Diisolir</small><b>${impact.isolated || 0}</b></div><div><small>Sesi aktif</small><b>${r.activeSessions ?? '—'}</b></div></div>
+        ${r.status === 'offline' && r.lastError ? `<div class="nx-verdict bad" style="font-size:13px">${esc(r.lastError)}</div>` : ''}
+        <dl class="nx-kv">${kv('Board', esc(t.board || '—'))}${kv('RouterOS', esc(t.version || '—'))}${kv('Uptime', t.uptimeSeconds ? fmtUptime(t.uptimeSeconds) : '—')}${kv('CPU', t.cpuPct == null ? '—' : `${t.cpuPct}%`)}${kv('RAM', t.memory?.total ? `${fmtBytes(t.memory.used)} / ${fmtBytes(t.memory.total)} (${t.memory.pct}%)` : '—')}${kv('Disk', t.disk?.freePct == null ? '—' : `${Math.round(100 - t.disk.freePct)}% terpakai`)}${h.temperature != null ? kv('Suhu', `${h.temperature}°C`) : ''}${h.voltage != null ? kv('Tegangan', `${h.voltage} V`) : ''}${kv('WAN', `<span class="mono">${esc(r.wan?.interface || 'auto')}</span> · ↓ ${fmtBps(r.wan?.rxBps)} · ↑ ${fmtBps(r.wan?.txBps)}`)}${kv('Terakhir online', r.lastOkAt ? esc(N.ago(r.lastOkAt)) : '—')}</dl>`,
+      foot: `<a class="nx-btn ghost" href="/nms/secrets${N.qs({ site: r.siteId || undefined })}">PPP Secrets</a><span class="grow"></span><button type="button" class="nx-btn" data-close>Tutup</button>` });
   }
-  $('nmsTopology').addEventListener('click', e => { const id = e.target.closest('[data-router-detail]')?.dataset.routerDetail; if (id) routerDetail(id); });
-
-  function renderTopIssues() {
-    const items = [
-      ...alerts.filter(a => !a.acknowledged_by).map(a => ({ tone: a.severity === 'critical' ? 'red' : 'orange', icon: 'bi-exclamation-triangle', title: a.title, sub: `${a.site_code || 'Semua site'} · sejak ${hhmmss(a.opened_at)}` })),
-      ...sorted().filter(r => r.status === 'offline').map(r => ({ tone: 'red', icon: 'bi-router', title: `${r.name} tidak terjangkau`, sub: `${r.siteCode || ''} · sekitar ${r.impact?.linked || 0} pelanggan ter-link` })),
-      ...((data.flapping || []).slice(0, 3).map(f => ({ tone: 'orange', icon: 'bi-arrow-repeat', title: `${f.customer_name || f.username} putus-sambung`, sub: `${f.reconnects} reconnect · ${f.site_code}` })))
-    ].slice(0, 6);
-    $('nmsTopIssues').innerHTML = items.length ? items.map(x => `<li><span class="li-icon ${x.tone}"><i class="bi ${x.icon}"></i></span><div class="li-main"><b>${esc(x.title)}</b><small>${esc(x.sub)}</small></div></li>`).join('') : '<li><span class="li-icon green"><i class="bi bi-check-lg"></i></span><div class="li-main"><b>Semua stabil</b><small>Tidak ada masalah prioritas.</small></div></li>';
-  }
+  $('nmsRouters').addEventListener('click', e => { const id = e.target.closest('[data-router-detail]')?.dataset.routerDetail; if (id) routerDetail(id); });
 
   // ---------- Sync ring + KPI ----------
   function renderSync() {
@@ -143,13 +139,6 @@
   // ---------- Alerts ----------
   function renderAlerts() {
     $('nmsAlerts').innerHTML = alerts.map(a => `<div class="nx-alert ${a.severity === 'critical' ? 'critical' : ''} ${a.acknowledged_by ? 'acked' : ''}"><span class="ic"><i class="bi bi-exclamation-lg"></i></span><div class="grow"><b>${esc(a.title)}</b><div class="muted" style="font-size:12.5px">Sejak ${esc(hhmmss(a.opened_at))}${a.details?.stillOffline != null ? ` · masih offline ${a.details.stillOffline}` : ''}</div></div>${N.canControl && !a.acknowledged_by ? `<button type="button" class="nx-btn sm" data-ack="${a.id}">Tandai sudah dilihat</button>` : ''}</div>`).join('');
-    const guardian = $('nmsGuardian'), guardianText = $('nmsGuardianText');
-    if (guardian && guardianText) {
-      const critical = alerts.some(a => a.severity === 'critical' && !a.acknowledged_by);
-      const stale = !!data.freshness?.stale;
-      guardian.classList.toggle('alert', critical || stale);
-      guardianText.textContent = critical ? 'Ada alarm penting! Yuk cek panel perhatian.' : stale ? 'Data router sudah lama. Tarik ulang dulu, ya!' : 'Semua terlihat baik. Aku jaga router ya!';
-    }
   }
   $('nmsAlerts').addEventListener('click', async e => {
     const id = e.target.closest('[data-ack]')?.dataset.ack; if (!id) return;
@@ -174,7 +163,7 @@
     if (!paused) consoleEl.scrollTop = consoleEl.scrollHeight;
   }
   $('nmsLogFilter').addEventListener('click', e => { const b = e.target.closest('[data-f]'); if (!b) return; logFilter = b.dataset.f; document.querySelectorAll('#nmsLogFilter button').forEach(x => x.classList.toggle('active', x === b)); renderLog(); });
-  $('nmsLogPause').addEventListener('click', e => { paused = !paused; e.currentTarget.innerHTML = paused ? '<i class="bi bi-play-fill"></i>' : '<i class="bi bi-pause-fill"></i>'; });
+  $('nmsLogPause').addEventListener('click', e => { paused = !paused; const b = e.currentTarget; b.setAttribute('aria-pressed', String(paused)); b.title = paused ? 'Lanjutkan auto-scroll' : 'Jeda auto-scroll'; b.innerHTML = paused ? '<i class="bi bi-play-fill"></i>' : '<i class="bi bi-pause-fill"></i>'; if (!paused) consoleEl.scrollTop = consoleEl.scrollHeight; });
 
   // ---------- Putus-sambung ----------
   function renderFlapping() {
@@ -187,7 +176,7 @@
     const li = e.target.closest('[data-sid]'); if (li?.dataset.sid) N.drawer(Number(li.dataset.sid));
   });
 
-  function renderAll() { renderTraffic(); renderRouters(); renderTopology(); renderSync(); renderAlerts(); renderTopIssues(); renderLog(); renderFlapping(); N.markUpdated(data.generatedAt); }
+  function renderAll() { renderTraffic(); renderRouters(); renderSync(); renderAlerts(); renderLog(); renderFlapping(); N.markUpdated(data.generatedAt); }
   async function refresh() {
     const res = await api(`/nms/api/dashboard${N.withSite()}`);
     data = res.data;
@@ -195,7 +184,7 @@
     alerts = data.alerts || [];
     const lastId = Math.max(0, ...events.filter(e => e.id).map(e => e.id));
     (data.events || []).slice().reverse().filter(e => e.id > lastId).forEach(pushEvent);
-    renderTraffic(); renderRouters(); renderTopology(); renderSync(); renderAlerts(); renderTopIssues(); renderFlapping(); N.markUpdated(data.generatedAt);
+    renderTraffic(); renderRouters(); renderSync(); renderAlerts(); renderFlapping(); N.markUpdated(data.generatedAt);
   }
 
   renderAll();
@@ -203,13 +192,27 @@
   window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(renderTraffic, 150); });
   N.stream({
     telemetry: r => { if (N.site && Number(r.siteId) !== Number(N.site)) return; routers.set(r.routerId, r); if (!frame) frame = requestAnimationFrame(() => { frame = null; renderTraffic(); renderRouters(); }); N.markUpdated(new Date().toISOString()); },
-    router_state: s => { const r = routers.get(s.routerId); if (r) { r.status = s.status; r.lastError = s.error; renderRouters(); renderTopology(); renderTopIssues(); renderTraffic(); } if (s.status === 'offline') toast(`Router ${r?.name || s.routerId} tidak terjangkau`, 'err'); },
+    router_state: s => { const r = routers.get(s.routerId); if (r) { r.status = s.status; r.lastError = s.error; renderRouters(); renderTraffic(); } if (s.status === 'offline') toast(`Router ${r?.name || s.routerId} tidak terjangkau`, 'err'); },
     ppp: e => pushEvent(e),
-    alert: a => { alerts = [{ ...a, opened_at: a.openedAt }, ...alerts.filter(x => x.id !== a.id)]; renderAlerts(); renderTopIssues(); toast(a.title, 'err'); },
+    alert: a => { alerts = [{ ...a, opened_at: a.openedAt }, ...alerts.filter(x => x.id !== a.id)]; renderAlerts(); toast(a.title, 'err'); },
     alert_resolved: () => refresh().catch(() => {}),
     sync: () => refresh().catch(() => {})
   }, { fallback: refresh, fallbackMs: 20000 });
   document.addEventListener('nx:changed', () => refresh().catch(() => {}));
   setInterval(() => { if (!document.hidden) refresh().catch(() => N.setLive('down')); }, 30000);
-  $('nmsNocMode')?.addEventListener('click', async () => { const on = app.classList.toggle('noc-tv'); $('nmsNocMode').innerHTML = on ? '<i class="bi bi-fullscreen-exit"></i>Keluar NOC' : '<i class="bi bi-arrows-fullscreen"></i>Mode NOC'; try { if (on && !document.fullscreenElement) await app.requestFullscreen?.(); else if (!on && document.fullscreenElement) await document.exitFullscreen?.(); } catch (_) {} });
+  // ---------- Mode NOC: layar penuh untuk TV/monitor; Esc atau tombol keluar mengembalikan tampilan ----------
+  const nocBtn = $('nmsNocMode'), nocExit = $('nmsNocExit');
+  const setNoc = on => {
+    app.classList.toggle('noc-tv', on); nocExit.hidden = !on;
+    if (nocBtn) nocBtn.innerHTML = on ? '<i class="bi bi-fullscreen-exit"></i><span>Keluar NOC</span>' : '<i class="bi bi-arrows-fullscreen"></i><span>Mode NOC</span>';
+    setTimeout(renderTraffic, 60);
+  };
+  const toggleNoc = async on => {
+    setNoc(on);
+    try { if (on && !document.fullscreenElement) await app.requestFullscreen?.(); else if (!on && document.fullscreenElement) await document.exitFullscreen?.(); } catch (_) {}
+  };
+  nocBtn?.addEventListener('click', () => toggleNoc(!app.classList.contains('noc-tv')));
+  nocExit?.addEventListener('click', () => toggleNoc(false));
+  document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && app.classList.contains('noc-tv')) setNoc(false); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && app.classList.contains('noc-tv') && !document.fullscreenElement) setNoc(false); });
 })();

@@ -1,7 +1,7 @@
 // Logika inti pembayaran yang dipakai bersama oleh routes/payments.js DAN Web Inbox WhatsApp
 // (tombol "Verifikasi Pembayaran & Buka Isolir"). Dipindahkan apa adanya dari routes/payments.js
 // (v1.30) agar kedua jalur memakai guard keuangan yang identik: kunci baris FOR UPDATE, cek sisa
-// tagihan, gate hasil scan bukti, jurnal kas, audit keuangan, auto-buka isolir, tanda terima WA.
+// tagihan, jurnal kas, audit keuangan, auto-buka isolir, tanda terima WA.
 const fs=require('fs');
 const path=require('path');
 const crypto=require('crypto');
@@ -10,7 +10,6 @@ const { refreshInvoiceStatus }=require('./invoiceService');
 const { unisolateCustomer }=require('./networkService');
 const { assignCashTransactionCode }=require('./cashService');
 const { resolveBookDate, financialAudit }=require('./financialControlService');
-const { approvalGate, saveCustomerPayerAlias, reevaluateCustomerPending, queueProofScan, SCANNABLE_METHODS }=require('./proofScanService');
 
 const PROOF_DIR=path.join(__dirname,'..','storage','payment-proofs');
 fs.mkdirSync(PROOF_DIR,{recursive:true});
@@ -72,10 +71,10 @@ async function maybeAutoUnisolate(invoiceId){
 
 
 // Approval Master Admin untuk satu pembayaran 'pending' (sama persis dengan POST /payments/:id/verify).
-// Mengembalikan { payment, scanGate, aliasSaved }. Efek setelah commit (re-evaluasi alias, auto-buka
-// isolir billing, antre tanda terima) dijalankan di sini juga kecuali skipReceipt=true.
-async function verifyPendingPayment(paymentId,{userId,ip=null,bookDateMode,manualBookDate,scanOverrideReason,savePayerAlias=false,skipReceipt=false}={}){
-  const conn=await db.getConnection();let aliasSaved=null;let p=null;let scanGate=null;
+// Mengembalikan { payment }. Efek setelah commit (auto-buka isolir billing, antre tanda terima)
+// dijalankan di sini juga kecuali skipReceipt=true.
+async function verifyPendingPayment(paymentId,{userId,ip=null,bookDateMode,manualBookDate,skipReceipt=false}={}){
+  const conn=await db.getConnection();let p=null;
   try{
     await conn.beginTransaction();
     const [rows]=await conn.execute(`SELECT * FROM payments WHERE id=? FOR UPDATE`,[paymentId]);
@@ -88,22 +87,15 @@ async function verifyPendingPayment(paymentId,{userId,ip=null,bookDateMode,manua
       WHERE i.id=? AND c.customer_status='active' AND c.archived_at IS NULL FOR UPDATE`,[p.invoice_id]);
     if(!invoiceRows.length)throw new Error('Faktur pembayaran tidak ditemukan.');
     if(Number(p.amount)>Number(invoiceRows[0].outstanding))throw new Error('Nominal transfer melebihi sisa tagihan saat ini. Periksa pembayaran lain sebelum verifikasi.');
-    // v1.29 — hasil scan bukti bermasalah (nominal/penerima/pengirim/duplikat) wajib disertai alasan.
-    scanGate=await approvalGate(conn,p,{reason:scanOverrideReason,actorUserId:userId});
-    if(savePayerAlias&&SCANNABLE_METHODS.has(p.method)){
-      const [aliasRows]=await conn.execute(`SELECT ps.sender_name,i.customer_id FROM payment_proof_scans ps JOIN invoices i ON i.id=? WHERE ps.payment_id=? LIMIT 1`,[p.invoice_id,p.id]);
-      if(aliasRows[0]?.sender_name)aliasSaved=await saveCustomerPayerAlias(conn,{customerId:aliasRows[0].customer_id,payerName:aliasRows[0].sender_name,userId})?aliasRows[0]:null;
-    }
     await conn.execute(`UPDATE payments SET status='confirmed',settlement_status=?,booked_at=?,booked_date_mode=?,verified_by=?,verified_at=NOW() WHERE id=?`,[p.method==='cash'?'held_by_staff':'not_applicable',booking.date,booking.mode,userId,p.id]);
     await refreshInvoiceStatus(conn,p.invoice_id);
     if(p.method!=='cash')await postCashTransaction(conn,{paymentId:p.id,invoiceId:p.invoice_id,amount:p.amount,reference:p.reference,bookDate:booking.date,actorUserId:userId});
-    await financialAudit({conn,userId,action:'approve',entityType:'payment',entityId:p.id,before:p,after:{status:'confirmed',booked_at:booking.date,booked_date_mode:booking.mode,proof_scan:scanGate.status||null},reason:`Approval pembayaran (${booking.mode})${scanGate.overridden?` · hasil scan bukti ${scanGate.status}, alasan: ${scanGate.reason}`:''}`,ip});
+    await financialAudit({conn,userId,action:'approve',entityType:'payment',entityId:p.id,before:p,after:{status:'confirmed',booked_at:booking.date,booked_date_mode:booking.mode},reason:`Approval pembayaran (${booking.mode})`,ip});
     await conn.commit();
   }catch(e){await conn.rollback();throw e;}finally{conn.release();}
-  if(aliasSaved)reevaluateCustomerPending(aliasSaved.customer_id).catch(err=>console.error('Re-evaluasi pengirim dikenal gagal:',err.message));
   await maybeAutoUnisolate(p.invoice_id);
   if(!skipReceipt){const { queuePaymentReceipts }=require('./cashSettlementService');await queuePaymentReceipts([p.id],userId);}
-  return {payment:p,scanGate,aliasSaved};
+  return {payment:p};
 }
 
 // Pengajuan pembayaran transfer (status 'pending') untuk satu/lebih faktur dengan satu file bukti —
@@ -140,7 +132,6 @@ async function createPendingTransferPayments({invoiceIds,bankId,file,userId,note
     }
     await conn.commit();
   }catch(e){await conn.rollback();for(const f of savedFiles)await removeProofFile(f);throw e;}finally{conn.release();}
-  if(file){for(const [index,c] of created.entries()){try{await queueProofScan(c.paymentId,{kick:index===created.length-1});}catch(err){console.error('Antre scan bukti gagal:',err.message);}}}
   return created;
 }
 

@@ -148,11 +148,13 @@ router.post('/api/sync/commit', requireNetworkControl, api(async req => {
 }));
 router.get('/api/customers/search', api(async req => ({ rows: await smartSync.searchCustomers({ q: String(req.query.q || '').trim().slice(0, 80), siteId: siteParam(req) }) })));
 router.post('/api/secrets/:id/map', requireNetworkControl, api(async req => {
-  const reason = String(req.body.reason || '').trim().slice(0, 255);
-  if (reason.length < 5) throw Object.assign(new Error('Alasan mapping manual minimal 5 karakter.'), { status: 400 });
-  const { secret, customer } = await smartSync.manualMap(Number(req.params.id), Number(req.body.customerId));
-  await audit({ userId: req.session.user.id, action: 'nms_manual_map', entityType: 'ppp_secret', entityId: secret.id, siteId: secret.site_id, ip: req.ip, description: `Map ${secret.username} → ${customer.customer_code} ${customer.name}`, details: { username: secret.username, customerId: customer.id, reason } });
-  return { secretId: secret.id, customerId: customer.id, customerName: customer.name };
+  // Catatan opsional: mapping manual tidak boleh gagal hanya karena catatan kosong.
+  const customerId = Number(req.body.customerId);
+  if (!Number.isInteger(customerId) || customerId <= 0) throw Object.assign(new Error('Pilih pelanggan terlebih dahulu.'), { status: 400 });
+  const reason = String(req.body.reason || '').trim().slice(0, 255) || 'Mapping manual dari NMS';
+  const { secret, customer, released } = await smartSync.manualMap(Number(req.params.id), customerId);
+  await audit({ userId: req.session.user.id, action: 'nms_manual_map', entityType: 'ppp_secret', entityId: secret.id, siteId: secret.site_id, ip: req.ip, description: `Map ${secret.username} → ${customer.customer_code} ${customer.name}${released?.length ? ` (dipindah dari ${released.join(', ')})` : ''}`, details: { username: secret.username, customerId: customer.id, reason, released } });
+  return { secretId: secret.id, customerId: customer.id, customerName: customer.name, released: released || [] };
 }));
 router.post('/api/secrets/:id/unmap', requireNetworkControl, api(async req => {
   const { secret, customerId } = await smartSync.unmap(Number(req.params.id));

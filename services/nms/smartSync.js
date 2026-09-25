@@ -52,19 +52,25 @@ async function preview({ siteId = null, refresh = false } = {}) {
 }
 
 /** Link 1 secret ↔ 1 customer di dalam transaksi (dipakai commit & manual map). */
-async function linkSecret(conn, secretId, customerId, method) {
+// opts.manual = operator memilih pasangan secara eksplisit (tombol Hubungkan / pilihan konflik):
+// secret exempt boleh dihubungkan, dan bila pelanggan masih terikat ke secret lain, link lama
+// dipindahkan ke secret ini (bukan gagal). Secret lama yang sudah hilang dari router selalu dilepas.
+async function linkSecret(conn, secretId, customerId, method, { manual = false } = {}) {
   const [[secret]] = await conn.execute(`SELECT id, site_id, router_id, username, customer_id, removed_on_router_at, is_exempt FROM ppp_secrets WHERE id=? FOR UPDATE`, [secretId]);
   if (!secret) throw new Error('PPP Secret tidak ditemukan.');
   if (secret.removed_on_router_at) throw new Error(`PPP Secret ${secret.username} sudah tidak ada di router.`);
-  if (Number(secret.is_exempt)) throw new Error(`PPP Secret ${secret.username} dikecualikan dari Smart Sync.`);
+  if (Number(secret.is_exempt) && !manual) throw new Error(`PPP Secret ${secret.username} dikecualikan dari Smart Sync. Hubungkan manual bila memang milik pelanggan.`);
   if (secret.customer_id && Number(secret.customer_id) !== Number(customerId)) throw new Error(`Secret ${secret.username} sudah terikat ke pelanggan lain.`);
   const [[customer]] = await conn.execute(`SELECT id, site_id, name, customer_code, customer_status, router_id, pppoe_username FROM customers WHERE id=? AND archived_at IS NULL FOR UPDATE`, [customerId]);
   if (!customer) throw new Error('Pelanggan tidak ditemukan / diarsipkan.');
   if (!['active', 'suspended'].includes(String(customer.customer_status))) throw new Error(`Pelanggan ${customer.name} tidak aktif sehingga tidak dapat dihubungkan.`);
   if (Number(customer.site_id) !== Number(secret.site_id)) throw new Error(`Site pelanggan ${customer.name} berbeda dengan site router secret ${secret.username}.`);
-  const [[taken]] = await conn.execute(`SELECT id, username FROM ppp_secrets WHERE customer_id=? AND id<>? LIMIT 1`, [customerId, secretId]);
-  if (taken) throw new Error(`${customer.name} sudah terikat ke secret ${taken.username}.`);
-  await conn.execute(`UPDATE ppp_secrets SET customer_id=?, sync_status='synced', match_method=?, last_synced_at=NOW() WHERE id=?`, [customerId, METHODS.has(method) ? method : 'manual', secretId]);
+  const [takenRows] = await conn.execute(`SELECT id, username, removed_on_router_at FROM ppp_secrets WHERE customer_id=? AND id<>? FOR UPDATE`, [customerId, secretId]);
+  const blocking = takenRows.filter(t => !t.removed_on_router_at);
+  if (blocking.length && !manual) throw new Error(`${customer.name} sudah terikat ke secret ${blocking[0].username}. Gunakan Hubungkan manual untuk memindahkan link.`);
+  const released = takenRows.map(t => t.username);
+  if (takenRows.length) await conn.execute(`UPDATE ppp_secrets SET customer_id=NULL, sync_status='unsynced', match_method=NULL, last_synced_at=NOW() WHERE id IN (${takenRows.map(() => '?').join(',')})`, takenRows.map(t => t.id));
+  await conn.execute(`UPDATE ppp_secrets SET customer_id=?, sync_status='synced', match_method=?, last_synced_at=NOW()${manual ? ', is_exempt=0' : ''} WHERE id=?`, [customerId, METHODS.has(method) ? method : 'manual', secretId]);
   // Jaga kompatibilitas modul billing/auto-isolir yang masih membaca customers.pppoe_username.
   const source = method === 'manual' ? 'manual' : 'smart';
   await conn.execute(`UPDATE customers SET router_id=?, pppoe_username=?, pppoe_synced_at=NOW(), pppoe_sync_source=? WHERE id=?`, [secret.router_id, secret.username, source, customerId]);
@@ -73,7 +79,7 @@ async function linkSecret(conn, secretId, customerId, method) {
   // can never be reported as successful.
   await conn.execute(`INSERT INTO pppoe_sync_logs (customer_id, router_id, secret_id, secret_name, previous_router_id, previous_username, sync_source, match_score, status)
     VALUES (?,?,?,?,?,?,?,?,'success')`, [customer.id, secret.router_id, String(secret.id), secret.username, customer.router_id || null, customer.pppoe_username || null, source, method === 'customer_code' ? 100 : method === 'customer_name' ? 95 : null]);
-  return { secret, customer, previous: { routerId: customer.router_id || null, username: customer.pppoe_username || null } };
+  return { secret, customer, released, previous: { routerId: customer.router_id || null, username: customer.pppoe_username || null } };
 }
 
 async function linkMany(pairs) {
@@ -82,7 +88,7 @@ async function linkMany(pairs) {
     const conn = await db.getConnection();
     try {
       await conn.beginTransaction();
-      const out = await linkSecret(conn, pair.secretId, pair.customerId, pair.matchedOn || pair.method);
+      const out = await linkSecret(conn, pair.secretId, pair.customerId, pair.matchedOn || pair.method, { manual: !pair.matchedOn && pair.method === 'manual' });
       const { secret, customer } = out;
       await conn.commit();
       results.push({ ok: true, secretId: secret.id, username: secret.username, customerId: customer.id, customerName: customer.name, siteId: secret.site_id, method: pair.matchedOn || pair.method || 'manual', previous: out.previous });
@@ -154,7 +160,7 @@ async function manualMap(secretId, customerId, method = 'manual') {
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
-    const out = await linkSecret(conn, secretId, customerId, method);
+    const out = await linkSecret(conn, secretId, customerId, method, { manual: true });
     await conn.commit();
     cache.del('nms:dash');
     return out;

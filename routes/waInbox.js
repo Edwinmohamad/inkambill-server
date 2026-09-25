@@ -95,7 +95,7 @@ router.post('/api/conversations/:id/verify-payment', api(async (req, res) => {
   const perms = req.permissions || [];
   if (!perms.includes('billing') && !perms.includes('finance')) throw new Error('Butuh izin Billing/Finance untuk verifikasi pembayaran.');
   const b = req.body || {};
-  const result = await power.verifyAndReactivate({ conversationId: convId(req), invoiceIds: b.invoice_ids, bankId: Number(b.bank_id) || null, proofChatMessageId: Number(b.proof_message_id) || null, scanOverrideReason: b.scan_override_reason, user: req.session.user, ip: req.ip });
+  const result = await power.verifyAndReactivate({ conversationId: convId(req), invoiceIds: b.invoice_ids, bankId: Number(b.bank_id) || null, proofChatMessageId: Number(b.proof_message_id) || null, user: req.session.user, ip: req.ip });
   res.json({ ok: true, ...result });
 }));
 

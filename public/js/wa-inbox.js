@@ -312,7 +312,7 @@
     const btn = $('#waiVerifySubmit'); btn.disabled = true;
     const out = $('#waiVerifyResult'); out.className = 'wai-verify-result mt-3'; out.textContent = 'Memproses…';
     try {
-      const r = await api(`/wa-inbox/api/conversations/${state.activeId}/verify-payment`, { method: 'POST', body: { invoice_ids: ids, bank_id: $('#waiVerifyBank').value, proof_message_id: $('input[name="waiProof"]:checked')?.value || null, scan_override_reason: $('#waiVerifyReason').value } });
+      const r = await api(`/wa-inbox/api/conversations/${state.activeId}/verify-payment`, { method: 'POST', body: { invoice_ids: ids, bank_id: $('#waiVerifyBank').value, proof_message_id: $('input[name="waiProof"]:checked')?.value || null } });
       out.replaceChildren(); out.classList.add('ok');
       (r.steps || []).forEach(s => out.appendChild(el('div', null, `✓ ${s}`)));
       (r.errors || []).forEach(s => out.appendChild(el('div', 'text-danger', `✗ ${s}`)));

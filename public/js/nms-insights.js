@@ -88,12 +88,14 @@
   }
 
   // ---------------------------------------------------------------- Kesehatan site + ODP
+  // Ring online%: makin tinggi makin baik (kebalikan ring CPU/RAM), jadi warnanya ditentukan di sini.
+  const onlineColor = s => { const c = N.COLORS(), p = Number(s.onlinePct) || 0; return !Number(s.secrets) ? c.gray : Number(s.routers_up) === 0 && Number(s.routers) > 0 ? c.red : p >= 80 ? c.green : p >= 50 ? c.orange : c.red; };
   let clusters = [];
   async function loadHealth() {
     try {
       const h = await api('/nms/api/health');
       const scoped = N.site ? h.sites.filter(s => String(s.id) === String(N.site)) : h.sites;
-      $('nxSites').innerHTML = scoped.map(s => `<div class="nx-site">${N.ring(s.onlinePct, { size: 58, stroke: 6, color: s.onlinePct >= 80 ? null : undefined })}<div style="min-width:0"><b>${esc(s.code)} · ${esc(s.name)}</b><small>${Number(s.online) || 0} online · ${Number(s.offline) || 0} offline · ${Number(s.isolated) || 0} isolir</small><small>Router ${s.routers_up}/${s.routers}${Number(s.open_alerts) ? ` · <span style="color:var(--x-red)">${s.open_alerts} alert</span>` : ''}</small></div></div>`).join('') || '<div class="nx-card"><div class="nx-empty">Belum ada site aktif.</div></div>';
+      $('nxSites').innerHTML = scoped.map(s => `<div class="nx-site">${N.ring(Number(s.secrets) ? s.onlinePct : null, { size: 58, stroke: 6, color: onlineColor(s) })}<div style="min-width:0"><b>${esc(s.code)} · ${esc(s.name)}</b><small>${Number(s.online) || 0} online · ${Number(s.offline) || 0} offline · ${Number(s.isolated) || 0} isolir</small><small>Router ${s.routers_up}/${s.routers}${Number(s.open_alerts) ? ` · <span style="color:var(--x-red)">${s.open_alerts} alert</span>` : ''}</small></div></div>`).join('') || '<div class="nx-card"><div class="nx-empty">Belum ada site aktif.</div></div>';
       clusters = N.site ? h.clusters.filter(c => String(c.site_id) === String(N.site)) : h.clusters;
       renderClusters();
     } catch (err) { $('nxSites').innerHTML = `<div class="nx-card"><div class="nx-empty">${esc(err.message)}</div></div>`; }
