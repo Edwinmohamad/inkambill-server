@@ -459,7 +459,7 @@ async function loadReconciliationHistory(req){
   const [collectorSummary]=await db.execute(`SELECT COALESCE(u.name,'Tidak diketahui') collector_name,COUNT(*) transactions,
     COALESCE(SUM(CASE WHEN ${settledCond} THEN p.amount ELSE 0 END),0) settled_amount,COALESCE(SUM(CASE WHEN ${settledCond} THEN 1 ELSE 0 END),0) settled_count,
     COALESCE(SUM(CASE WHEN ${heldCond} THEN p.amount ELSE 0 END),0) held_amount,COALESCE(SUM(CASE WHEN ${heldCond} THEN 1 ELSE 0 END),0) held_count
-    ${from} ${where} GROUP BY COALESCE(u.id,0),u.name ORDER BY settled_amount+held_amount DESC`,params);
+    ${from} ${where} GROUP BY COALESCE(u.id,0),u.name ORDER BY SUM(p.amount) DESC`,params);
   const [settlements]=await db.execute(`SELECT cs.id,cs.code,cs.settlement_date,cs.mode,cs.payment_count,cs.total_amount,cs.handed_amount,cs.difference_amount,cs.status,cs.notes,
       COALESCE(cu.name,'Beberapa collector') collector_name,au.name created_by_name
     FROM cash_settlements cs LEFT JOIN users cu ON cu.id=cs.collector_user_id LEFT JOIN users au ON au.id=cs.created_by
@@ -477,7 +477,7 @@ async function loadReconciliationHistory(req){
       db.execute(`SELECT ${bucketExpr('p.paid_at')} bucket,COALESCE(SUM(p.amount),0) amount ${from} ${where} GROUP BY bucket ORDER BY bucket`,params),
       db.execute(`SELECT ${bucketExpr('p.settled_at')} bucket,COALESCE(SUM(p.amount),0) amount ${from} ${settledWhere} GROUP BY bucket ORDER BY bucket`,settledParams),
       db.execute(`SELECT s.code site_code,COALESCE(SUM(CASE WHEN ${settledCond} THEN p.amount ELSE 0 END),0) settled_amount,
-        COALESCE(SUM(CASE WHEN ${heldCond} THEN p.amount ELSE 0 END),0) held_amount ${from} ${where} GROUP BY s.code ORDER BY settled_amount+held_amount DESC LIMIT 12`,params),
+        COALESCE(SUM(CASE WHEN ${heldCond} THEN p.amount ELSE 0 END),0) held_amount ${from} ${where} GROUP BY s.code ORDER BY SUM(p.amount) DESC LIMIT 12`,params),
       db.execute(`SELECT COUNT(*) settled_count,COALESCE(AVG(TIMESTAMPDIFF(HOUR,p.paid_at,p.settled_at)),0) avg_hours,
         COALESCE(SUM(TIMESTAMPDIFF(HOUR,p.paid_at,p.settled_at)<=24),0) within_day,COALESCE(SUM(TIMESTAMPDIFF(HOUR,p.paid_at,p.settled_at)>72),0) over_three_days
         ${from} ${settledWhere}`,settledParams)
