@@ -1117,20 +1117,102 @@ async function ensureV54Schema() {
 }
 
 async function ensureV55Schema() {
-  // WA Gateway: blast massal kini opsional (default nonaktif), dan setiap pesan otomatis ke pelanggan
-  // (auto-reminder, tanda terima, reminder/notifikasi dari n8n) dibuat sebagai draf per batch yang
-  // wajib dikonfirmasi Admin sebelum masuk antrean kirim.
-  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS wa_blast_enabled TINYINT(1) NOT NULL DEFAULT 0`);
-  const [statusCol] = await db.query(`SHOW COLUMNS FROM wa_messages LIKE 'status'`);
-  if (statusCol.length && !/'pending_approval'/.test(statusCol[0].Type)) {
-    const current = (statusCol[0].Type.match(/'([^']+)'/g) || []).map(v => v.slice(1, -1));
-    const values = [...new Set(['pending_approval', ...current, 'queued', 'sent', 'failed', 'rejected'])];
-    await db.query(`ALTER TABLE wa_messages MODIFY COLUMN status ENUM(${values.map(v => `'${v.replace(/'/g, '')}'`).join(',')}) NOT NULL DEFAULT 'queued'`);
-  }
-  await db.query(`ALTER TABLE wa_messages ADD COLUMN IF NOT EXISTS approval_batch VARCHAR(60) NULL`);
-  await db.query(`ALTER TABLE wa_messages ADD COLUMN IF NOT EXISTS approved_by BIGINT UNSIGNED NULL`);
-  await db.query(`ALTER TABLE wa_messages ADD COLUMN IF NOT EXISTS approved_at DATETIME NULL`);
-  await db.query(`ALTER TABLE wa_messages ADD INDEX IF NOT EXISTS idx_wa_messages_batch(approval_batch,status)`);
+  // WhatsApp Operations Center: two-way inbox, acknowledgements, templates,
+  // quiet-hours, retry policy, multi-session routing and payment attribution.
+  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS wa_quiet_hours_enabled TINYINT(1) NOT NULL DEFAULT 1`);
+  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS wa_quiet_start TIME NOT NULL DEFAULT '21:00:00'`);
+  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS wa_quiet_end TIME NOT NULL DEFAULT '07:00:00'`);
+  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS wa_retry_max TINYINT UNSIGNED NOT NULL DEFAULT 3`);
+  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS wa_queue_alert_threshold INT UNSIGNED NOT NULL DEFAULT 25`);
+  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS wa_last_health_alert_at DATETIME NULL`);
+  await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS wa_last_webhook_at DATETIME NULL`);
+  await db.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS whatsapp_opt_out TINYINT(1) NOT NULL DEFAULT 0`);
+  await db.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS whatsapp_opt_out_at DATETIME NULL`);
+  await db.query(`ALTER TABLE wa_messages ADD COLUMN IF NOT EXISTS session_name VARCHAR(120) NULL`);
+  await db.query(`ALTER TABLE wa_messages ADD COLUMN IF NOT EXISTS template_key VARCHAR(80) NULL`);
+  await db.query(`ALTER TABLE wa_messages ADD COLUMN IF NOT EXISTS provider_status ENUM('accepted','server','device','read','played','error') NULL`);
+  await db.query(`ALTER TABLE wa_messages ADD COLUMN IF NOT EXISTS delivered_at DATETIME NULL`);
+  await db.query(`ALTER TABLE wa_messages ADD COLUMN IF NOT EXISTS read_at DATETIME NULL`);
+  await db.query(`ALTER TABLE wa_messages ADD COLUMN IF NOT EXISTS media_url VARCHAR(1000) NULL`);
+  await db.query(`ALTER TABLE wa_messages ADD COLUMN IF NOT EXISTS media_type VARCHAR(100) NULL`);
+  await db.query(`ALTER TABLE wa_messages ADD COLUMN IF NOT EXISTS attributed_payment_at DATETIME NULL`);
+  await db.query(`CREATE TABLE IF NOT EXISTS wa_inbound_messages (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    external_message_id VARCHAR(255) NOT NULL,
+    session_name VARCHAR(120) NULL,
+    chat_id VARCHAR(255) NOT NULL,
+    sender_phone VARCHAR(50) NULL,
+    customer_id BIGINT UNSIGNED NULL,
+    message_text TEXT NULL,
+    media_url VARCHAR(1000) NULL,
+    media_type VARCHAR(100) NULL,
+    reply_to VARCHAR(255) NULL,
+    status ENUM('received','handled','ignored') NOT NULL DEFAULT 'received',
+    received_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    handled_by BIGINT UNSIGNED NULL,
+    handled_at DATETIME NULL,
+    UNIQUE KEY uq_wa_inbound_external(external_message_id),
+    INDEX idx_wa_inbound_customer_time(customer_id,received_at),
+    INDEX idx_wa_inbound_status_time(status,received_at),
+    INDEX idx_wa_inbound_chat_time(chat_id,received_at)
+  )`);
+  await db.query(`CREATE TABLE IF NOT EXISTS wa_message_templates (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    template_key VARCHAR(80) NOT NULL,
+    name VARCHAR(150) NOT NULL,
+    category ENUM('billing','support','network','general') NOT NULL DEFAULT 'general',
+    message_text TEXT NOT NULL,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    created_by BIGINT UNSIGNED NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_wa_template_key(template_key)
+  )`);
+  await db.query(`CREATE TABLE IF NOT EXISTS wa_session_routes (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    route_key ENUM('billing','support','network','general') NOT NULL,
+    session_name VARCHAR(120) NOT NULL,
+    fallback_session_name VARCHAR(120) NULL,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    updated_by BIGINT UNSIGNED NULL,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_wa_session_route(route_key)
+  )`);
+  await db.query(`INSERT IGNORE INTO wa_session_routes(route_key,session_name) VALUES ('billing','default'),('support','default'),('network','default'),('general','default')`);
+  await db.query(`INSERT IGNORE INTO wa_message_templates(template_key,name,category,message_text) VALUES
+    ('billing_h3','Pengingat H-3','billing','Halo {nama}, tagihan INKAMNET {periode} sebesar {nominal} akan jatuh tempo pada {jatuh_tempo}. Terima kasih.'),
+    ('billing_due','Jatuh Tempo','billing','Halo {nama}, tagihan INKAMNET {periode} sebesar {nominal} telah jatuh tempo. Mohon segera melakukan pembayaran.'),
+    ('isolation_warning','Peringatan Isolir','billing','Halo {nama}, tagihan sebesar {nominal} belum lunas. Layanan dapat diisolir setelah masa peringatan berakhir.'),
+    ('isolated','Layanan Diisolir','network','Halo {nama}, layanan internet Anda sementara diisolir. Hubungi admin untuk informasi lebih lanjut.'),
+    ('restored','Layanan Dibuka','network','Halo {nama}, layanan internet Anda telah diaktifkan kembali. Terima kasih.'),
+    ('payment_received','Pembayaran Diterima','billing','Halo {nama}, pembayaran {nominal} untuk faktur {no_faktur} telah kami terima. Terima kasih.'),
+    ('maintenance','Maintenance','network','Halo {nama}, akan ada pemeliharaan jaringan pada {jadwal}. Mohon maaf atas ketidaknyamanannya.'),
+    ('outage','Gangguan Jaringan','network','Halo {nama}, saat ini terdapat gangguan jaringan di area Anda. Tim kami sedang melakukan penanganan.')`);
 }
 
-module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema };
+async function ensureV56Schema() {
+  // PPPoE Smart Sync reliability: keep a durable timestamp/source on the
+  // customer and an append-only reconciliation log for every attempt.
+  await db.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS pppoe_synced_at DATETIME NULL AFTER pppoe_username`);
+  await db.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS pppoe_sync_source ENUM('manual','smart','secret_form','status_refresh') NULL AFTER pppoe_synced_at`);
+  await db.query(`CREATE TABLE IF NOT EXISTS pppoe_sync_logs (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    customer_id BIGINT UNSIGNED NOT NULL,
+    router_id BIGINT UNSIGNED NULL,
+    secret_id VARCHAR(120) NULL,
+    secret_name VARCHAR(180) NULL,
+    previous_router_id BIGINT UNSIGNED NULL,
+    previous_username VARCHAR(180) NULL,
+    sync_source ENUM('manual','smart','secret_form','status_refresh') NOT NULL DEFAULT 'manual',
+    match_score TINYINT UNSIGNED NULL,
+    status ENUM('success','failed') NOT NULL,
+    error_message VARCHAR(1000) NULL,
+    created_by BIGINT UNSIGNED NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_pppoe_sync_customer_time (customer_id,created_at),
+    INDEX idx_pppoe_sync_router_time (router_id,created_at),
+    INDEX idx_pppoe_sync_status_time (status,created_at)
+  )`);
+}
+
+module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema };

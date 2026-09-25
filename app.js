@@ -33,18 +33,13 @@ const { scanLowStock } = require('./services/inventoryService');
 const { deliverMobilePushes } = require('./services/mobilePushService');
 const { runCashAgingAlert } = require('./services/cashSettlementService');
 const { purgeOldLogs } = require('./services/logRetentionService');
-const { ensureV56Schema } = require('./services/waCrmSchema');
-const { ensureNmsV2Schema, purgeNmsHistory } = require('./services/nms/schema');
-const nmsPoller = require('./services/nms/poller');
-const { refreshBroadcastStatuses } = require('./services/waBroadcastService');
-const waRealtime = require('./services/waRealtime');
-const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema } = require('./services/schemaService');
+const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema } = require('./services/schemaService');
 const { requireN8nToken } = require('./middleware/n8n');
-const { initGatewayOnBoot, ensureGatewayAlive, reconcileGatewayStatus, processQueue, runAutoReminderSweep } = require('./services/whatsappGatewayService');
+const { initGatewayOnBoot, reconcileGatewayStatus, processQueue, runAutoReminderSweep } = require('./services/whatsappGatewayService');
 const { requireWahaWebhookToken } = require('./middleware/waha');
 
 const app = express();
-const assetVersion = ['public/css/app.css','public/css/mobile-app.css','public/css/monitoring.css','public/js/app.js','public/js/mobile-app.js','public/js/nms-common.js','public/js/nms-noc.js','public/js/nms-secrets.js','public/js/nms-insights.js','public/js/nms-automation.js','public/css/nms-noc.css','public/js/performance.js','public/js/monitoring.js']
+const assetVersion = ['public/css/app.css','public/css/mobile-app.css','public/css/monitoring.css','public/js/app.js','public/js/mobile-app.js','public/js/nms.js','public/js/performance.js','public/js/monitoring.js']
   .map(file => Math.floor(fs.statSync(path.join(__dirname,file)).mtimeMs).toString(36))
   .join('-');
 app.set('view engine', 'ejs');
@@ -76,16 +71,14 @@ const sessionStore = new MySQLStore({
   createDatabaseTable: true
 });
 
-// Disimpan ke variabel agar bisa dipakai ulang untuk autentikasi WebSocket Web Inbox (waRealtime).
-const sessionMiddleware = session({
+app.use(session({
   name: 'inkamnet.sid',
   secret: process.env.SESSION_SECRET || 'change-this-secret-now',
   store: sessionStore,
   resave: false,
   saveUninitialized: false,
   cookie: { httpOnly: true, sameSite: 'lax', secure: process.env.COOKIE_SECURE === 'true', maxAge: 1000*60*60*12 }
-});
-app.use(sessionMiddleware);
+}));
 app.use(loadPermissions);
 app.use(commonLocals);
 // Parse multipart payment-proof forms before CSRF validation so the hidden token is available.
@@ -248,7 +241,7 @@ app.use('/debts', requireAuth, requirePermission('finance'), require('./routes/d
 app.use('/closing', requireAuth, requireMasterAdmin, require('./routes/closing'));
 app.use('/routers', requireAuth, requirePermission('network'), require('./routes/routers'));
 app.use('/network', requireAuth, requirePermission('network'), require('./routes/network'));
-app.use('/nms', requireAuth, requirePermission('network'), require('./routes/nms'));
+app.use('/noc', requireAuth, requirePermission('network'), require('./routes/noc'));
 app.use('/acs', requireAuth, requirePermission('network'), require('./routes/acs'));
 app.use('/olt', requireAuth, requirePermission('network'), require('./routes/olt'));
 app.use('/monitoring', requireAuth, requirePermission('network'), require('./routes/monitoring'));
@@ -265,8 +258,6 @@ app.use('/sites', requireAuth, requirePermission('network'), require('./routes/s
 app.use('/custom-invoices', requireAuth, requirePermission('billing'), require('./routes/customInvoices'));
 app.use('/logs', requireAuth, requirePermission('logs'), require('./routes/logs'));
 app.use('/', requireAuth, require('./routes/finance'));
-app.use('/wa-inbox', requireAuth, require('./routes/waInbox'));
-app.use('/wa-gateway', requireAuth, require('./routes/waCrm'));
 app.use('/wa-gateway', requireAuth, require('./routes/whatsappGateway'));
 
 app.use((err, req, res, next) => {
@@ -328,7 +319,6 @@ async function bootstrap() {
   await ensureV54Schema();
   await ensureV55Schema();
   await ensureV56Schema();
-  await ensureNmsV2Schema();
   const [rows] = await db.query('SELECT COUNT(*) total FROM users');
   if (Number(rows[0].total) === 0) {
     const username = process.env.DEFAULT_ADMIN_USERNAME || 'admin';
@@ -342,8 +332,7 @@ async function bootstrap() {
   cron.schedule('10 0 * * *', async () => {
     try {
       console.log('Cron invoice:', await generateMonthlyInvoices(new Date(), false, null));
-      // Isolir otomatis kini dijalankan oleh NMS automation di jam yang diatur (Otomasi → Isolir harian,
-      // default jam 00 = perilaku lama). Lihat cron nmsAutomation di bawah.
+      console.log('Cron isolasi:', await runAutoIsolation());
     } catch (err) { console.error('Cron billing/network gagal:', err.message); }
   }, { timezone: 'Asia/Jakarta' });
 
@@ -365,14 +354,6 @@ async function bootstrap() {
       const result = await runAutoReminderSweep();
       if (result.ran) console.log('WA Gateway auto-reminder sweep:', result);
     } catch (err) { console.error('WA Gateway auto-reminder sweep gagal:', err.message); }
-  }, { timezone: 'Asia/Jakarta' });
-
-  // WA Gateway auto-reconnect watchdog — tiap menit: bila sesi WAHA STOPPED/FAILED/macet STARTING
-  // (WAHA restart, container update, crash), sesi dinyalakan ulang otomatis dengan backoff, lalu
-  // antrean dilanjutkan. Tidak menyentuh sesi yang WORKING atau yang sengaja di-logout Admin.
-  cron.schedule('* * * * *', async () => {
-    try { await refreshBroadcastStatuses(); } catch (err) { console.error('WA broadcast status gagal:', err.message); }
-    try { await ensureGatewayAlive(); } catch (err) { console.error('WA Gateway watchdog gagal:', err.message); }
   }, { timezone: 'Asia/Jakarta' });
 
   cron.schedule('*/5 * * * *', async () => {
@@ -432,28 +413,8 @@ async function bootstrap() {
   // whatever WAHA currently reports — no QR re-scan needed unless nothing was ever linked there.
   initGatewayOnBoot().catch(err => console.error('WA Gateway: gagal sinkronisasi awal saat startup:', err.message));
 
-  // NMS v2 poller (telemetry, PPP active diff, secret mirror, FO-cut detection) + retensi event.
-  nmsPoller.start();
-  const nmsAutomation = require('./services/nms/automation');
-  cron.schedule('* * * * *', async () => {
-    try { const done = await nmsAutomation.runDue(); if (done.length) console.log('NMS jadwal:', done); }
-    catch (err) { console.error('NMS jadwal gagal:', err.message); }
-  }, { timezone: 'Asia/Jakarta' });
-  cron.schedule('*/5 * * * *', async () => {
-    try { const r = await nmsAutomation.maybeRunDailyIsolation(); if (r.ran) console.log('Cron isolasi:', r); } catch (err) { console.error('Cron isolasi gagal:', err.message); }
-    try { const r = await nmsAutomation.maybeAutoSync(); if (r.ran) console.log('NMS auto Smart Sync:', r); } catch (err) { console.error('NMS auto sync gagal:', err.message); }
-    try { const r = await nmsAutomation.maybeSendSummary(); if (r.ran) console.log('NMS ringkasan pagi terkirim ke', r.sent, 'nomor'); } catch (err) { console.error('NMS ringkasan gagal:', err.message); }
-  }, { timezone: 'Asia/Jakarta' });
-  cron.schedule('50 23 * * *', async () => {
-    try { console.log('NMS snapshot PPP:', await nmsAutomation.takeSnapshots()); } catch (err) { console.error('NMS snapshot gagal:', err.message); }
-  }, { timezone: 'Asia/Jakarta' });
-  cron.schedule('45 2 * * *', async () => {
-    try { await purgeNmsHistory(); } catch (err) { console.error('NMS purge gagal:', err.message); }
-  }, { timezone: 'Asia/Jakarta' });
-
   const port = Number(process.env.PORT || 3000);
-  const server = app.listen(port, '0.0.0.0', () => console.log(`INKAMNET Billing berjalan di port ${port}`));
-  waRealtime.attach(server, sessionMiddleware, loadPermissions);
+  app.listen(port, '0.0.0.0', () => console.log(`INKAMNET Billing berjalan di port ${port}`));
 }
 
 bootstrap().catch(err => { console.error('Startup gagal:', err); process.exit(1); });
