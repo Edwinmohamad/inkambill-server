@@ -5,6 +5,7 @@ const { enqueueWaMessage, runAutoReminderSweep, approvalBatchKey } = require('..
 const { syncStockAlert } = require('../services/inventoryService');
 const { handleWaTicketMessage } = require('../services/waTicketCommandService');
 const { notifyTicketEventAsync } = require('../services/ticketWaNotifyService');
+const { sendBillingFollowUp, sendSpvBriefing, dispatchNocAlert } = require('../services/operationalWaService');
 const router = express.Router();
 
 async function beginEvent(eventType, req, keyOverride = null) {
@@ -119,6 +120,31 @@ router.post('/auto-isolate', async (req, res) => {
   if (req.body?.apply !== true && String(req.body?.apply || '') !== '1') return res.json({ ok: true, eventKey: event.key, dryRun: true, message: 'Preview saja. Kirim apply=true untuk menjalankan isolasi.' });
   const result = await runAutoIsolation();
   res.json({ ok: true, eventKey: event.key, ...result });
+});
+
+// Workflow operasional pribadi (n8n/07-operations-private-alerts.json).
+// Semua call idempoten agar retry n8n tidak mengirim briefing atau alert ganda.
+router.post('/operations/billing-follow-up', async (req, res) => {
+  const event = await beginEvent('operations.billing-follow-up', req);
+  if (event.duplicate) return res.json({ ok: true, duplicate: true, eventKey: event.key });
+  try { return res.json({ ok: true, eventKey: event.key, ...(await sendBillingFollowUp()) }); }
+  catch (error) { await db.execute(`UPDATE n8n_webhook_events SET status='failed',error_message=? WHERE event_key=?`, [String(error.message).slice(0, 1000), event.key]); return res.status(400).json({ ok: false, eventKey: event.key, error: error.message }); }
+});
+
+router.post('/operations/spv-briefing', async (req, res) => {
+  const event = await beginEvent('operations.spv-briefing', req);
+  if (event.duplicate) return res.json({ ok: true, duplicate: true, eventKey: event.key });
+  try { return res.json({ ok: true, eventKey: event.key, ...(await sendSpvBriefing({ period: req.body?.period })) }); }
+  catch (error) { await db.execute(`UPDATE n8n_webhook_events SET status='failed',error_message=? WHERE event_key=?`, [String(error.message).slice(0, 1000), event.key]); return res.status(400).json({ ok: false, eventKey: event.key, error: error.message }); }
+});
+
+router.post('/operations/noc-alert', async (req, res) => {
+  const event = await beginEvent('operations.noc-alert', req);
+  if (event.duplicate) return res.json({ ok: true, duplicate: true, eventKey: event.key });
+  const title = String(req.body?.title || '').trim();
+  if (!title) return res.status(422).json({ ok: false, eventKey: event.key, error: 'title alert wajib diisi.' });
+  try { return res.json({ ok: true, eventKey: event.key, ...(await dispatchNocAlert(req.body || {})) }); }
+  catch (error) { await db.execute(`UPDATE n8n_webhook_events SET status='failed',error_message=? WHERE event_key=?`, [String(error.message).slice(0, 1000), event.key]); return res.status(400).json({ ok: false, eventKey: event.key, error: error.message }); }
 });
 
 // NMS v2 — real-time PPP event dari RouterOS (PPP profile on-up/on-down → /tool fetch) atau n8n.

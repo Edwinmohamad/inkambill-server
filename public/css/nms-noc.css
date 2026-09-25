@@ -86,9 +86,12 @@ html[data-theme="light"] .nx-card{border-color:rgba(0,0,0,.05)}
 .nx-card-head small{color:var(--x-muted);font-size:12px}
 .nx-card-body{padding:10px 18px 18px}
 .nx-card.flush .nx-card-body{padding:0}
+.nx-command-bar{display:flex;align-items:center;gap:10px;margin:-2px 0 14px;padding:11px 14px;border:1px solid var(--x-line);border-radius:var(--x-r-sm);background:var(--x-card);box-shadow:var(--x-shadow);font-size:12px}.nx-command-bar b{display:block;font-size:13px;font-weight:650;letter-spacing:-.01em}.nx-command-bar span{color:var(--x-muted)}
+.nx-topology{display:grid;gap:10px;padding:8px 18px 18px}.nx-topology-site{display:grid;grid-template-columns:130px 1fr;gap:12px;align-items:start;padding:12px;border-radius:14px;background:var(--x-card2);border:1px solid transparent}.nx-topology-site>b{font-size:11px;font-weight:650;letter-spacing:.04em;color:var(--x-muted);text-transform:uppercase}.nx-topology-site>b i{margin-right:6px;color:var(--x-accent)}.nx-topology-site>div{display:flex;gap:8px;flex-wrap:wrap}.nx-topology-router{min-width:156px;padding:10px 11px;border:1px solid var(--x-line);border-radius:11px;background:var(--x-card);text-align:left;cursor:pointer;transition:border-color .18s var(--x-ease),box-shadow .18s var(--x-ease),transform .18s var(--x-ease)}.nx-topology-router:hover{border-color:color-mix(in srgb,var(--x-accent) 52%,var(--x-line));box-shadow:0 4px 12px rgba(0,0,0,.06);transform:translateY(-1px)}.nx-topology-router:focus-visible{outline:3px solid var(--x-accent-t);outline-offset:2px}.nx-topology-router strong,.nx-topology-router small{display:block}.nx-topology-router strong{font-size:12px;font-weight:650;margin-top:4px}.nx-topology-router small{color:var(--x-muted);font-size:11px;margin-top:2px}.nx-topology-router.offline{border-color:color-mix(in srgb,var(--x-red) 45%,var(--x-line))}
+.nx.noc-tv{max-width:none;padding:18px;background:var(--x-bg);min-height:100vh}.nx.noc-tv .nx-head,.nx.noc-tv .nx-nav,.nx.noc-tv .nx-traffic-grid,.nx.noc-tv #nmsLiveLogCard,.nx.noc-tv #nmsFlapCard,.nx.noc-tv .nx-guardian{display:none}.nx.noc-tv .nx-command-bar{position:fixed;top:12px;right:12px;z-index:80;margin:0;padding:4px;background:color-mix(in srgb,var(--x-card) 90%,transparent);backdrop-filter:blur(18px)}.nx.noc-tv .nx-command-bar>div,.nx.noc-tv .nx-command-bar>.grow{display:none}.nx.noc-tv .nx-stats{grid-template-columns:repeat(6,minmax(0,1fr));padding-top:42px}.nx.noc-tv .nx-router{min-height:160px}.nx.noc-tv .nx-stat strong{font-size:42px}
 
 /* ---------- Stats ---------- */
-.nx-stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-bottom:16px}
+.nx-stats{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin-bottom:16px}
 .nx-stat{position:relative;display:block;padding:14px 16px 15px;border-radius:var(--x-r);background:var(--x-card);border:1px solid var(--x-line);box-shadow:var(--x-shadow);transition:transform .2s var(--x-ease)}
 html[data-theme="light"] .nx-stat{border-color:rgba(0,0,0,.05)}
 a.nx-stat:hover{transform:translateY(-1px)}
@@ -419,6 +422,16 @@ html[data-theme="dark"] .nx-mini-stats div{background:#2c2c2e}
 .nx-mini-stats b{font-size:20px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .nx-note{padding:10px 12px;border-radius:12px;background:var(--x-card2);color:var(--x-muted);font-size:12.5px;line-height:1.5}
 html[data-theme="dark"] .nx-note{background:#2c2c2e}
+.nx-guardian{position:fixed;right:22px;bottom:18px;z-index:30;display:flex;align-items:flex-end;gap:8px;pointer-events:none}
+.nx-guardian-pet{width:88px;height:88px;padding:0;border:1px solid color-mix(in srgb,var(--x-line) 78%,transparent);border-radius:26px;background:#17191e;overflow:hidden;box-shadow:0 10px 26px rgba(0,0,0,.22);cursor:pointer;pointer-events:auto;animation:nxGuardianWalk 6s ease-in-out infinite}
+.nx-guardian-pet img{display:block;width:100%;height:100%;object-fit:cover;object-position:54% 50%;transform:scale(1.28);transition:transform .2s ease}
+.nx-guardian-pet:hover img{transform:scale(1.37) rotate(2deg)}
+.nx-guardian-bubble{max-width:210px;padding:9px 12px;border:1px solid var(--x-line);border-radius:14px 14px 4px 14px;background:color-mix(in srgb,var(--x-card) 93%,transparent);box-shadow:0 8px 24px rgba(0,0,0,.15);color:var(--x-text);font-size:12px;line-height:1.35;opacity:0;transform:translateX(8px) translateY(5px);transition:.2s ease}
+.nx-guardian:hover .nx-guardian-bubble,.nx-guardian:focus-within .nx-guardian-bubble{opacity:1;transform:none}
+.nx-guardian.alert .nx-guardian-pet{animation:nxGuardianAlert .85s ease-in-out infinite;border-color:var(--x-red)}
+.nx-guardian.alert .nx-guardian-bubble{border-color:color-mix(in srgb,var(--x-red) 55%,var(--x-line));color:var(--x-red)}
+@keyframes nxGuardianWalk{0%,100%{transform:translateX(0) rotate(-1deg)}25%{transform:translateX(-3px) translateY(-2px) rotate(1deg)}50%{transform:translateX(0) rotate(1deg)}75%{transform:translateX(3px) translateY(-2px) rotate(-1deg)}}
+@keyframes nxGuardianAlert{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px) rotate(-2deg)}75%{transform:translateX(4px) rotate(2deg)}}
 .nx-shortcuts{display:grid;grid-template-columns:auto 1fr;gap:8px 14px;font-size:13px}
 .nx-pre{white-space:pre-wrap;font-family:var(--x-mono);font-size:12.5px;padding:12px;border-radius:12px;background:var(--x-card2);max-height:320px;overflow:auto;margin:0}
 html[data-theme="dark"] .nx-pre{background:#2c2c2e}
@@ -454,5 +467,7 @@ html[data-theme="dark"] .nx-pre{background:#2c2c2e}
   .nx-table.cards .nx-actions{justify-content:flex-start}
   .nx-table.cards .nx-actions .nx-btn{height:36px;min-width:40px}
   .nx-bulk{bottom:12px}
+  .nx-command-bar{align-items:flex-start}.nx-topology-site{grid-template-columns:1fr}
+  .nx-guardian{right:12px;bottom:10px}.nx-guardian-pet{width:68px;height:68px;border-radius:22px}.nx-guardian-bubble{display:none}
 }
 @media (prefers-reduced-motion:reduce){.nx *{animation:none!important;transition:none!important}}

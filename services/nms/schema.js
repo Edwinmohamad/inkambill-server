@@ -169,6 +169,10 @@ async function ensureNmsV2Schema() {
   await db.query(`ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS site_id BIGINT UNSIGNED NULL`);
   await tryQuery(`CREATE INDEX IF NOT EXISTS idx_audit_target ON audit_logs(entity_type, entity_id)`, 'audit index');
   await tryQuery(`CREATE INDEX IF NOT EXISTS idx_audit_site_time ON audit_logs(site_id, created_at)`, 'audit site index');
+  // Prevent legacy/manual writes from assigning the same PPP username twice on
+  // one router.  If old data still contains duplicates this intentionally logs
+  // a warning and leaves data untouched; operators can reconcile first.
+  await tryQuery(`CREATE UNIQUE INDEX IF NOT EXISTS uq_customer_router_pppoe ON customers(router_id, pppoe_username)`, 'customer router PPP username unique');
 
   // Status layanan sesuai spesifikasi (active / isolated / suspended) diturunkan dari kolom
   // existing customer_status + network_status sebagai VIRTUAL column, supaya tidak ada dua
@@ -187,6 +191,8 @@ async function purgeNmsHistory() {
   await db.query(`DELETE FROM nms_alerts WHERE resolved_at IS NOT NULL AND resolved_at < DATE_SUB(NOW(), INTERVAL 30 DAY)`);
   await db.query(`DELETE FROM nms_secret_snapshots WHERE snap_date < DATE_SUB(CURDATE(), INTERVAL 60 DAY)`).catch(() => {});
   await db.query(`DELETE FROM nms_scheduled_actions WHERE status IN ('done','cancelled','failed') AND created_at < DATE_SUB(NOW(), INTERVAL 90 DAY)`).catch(() => {});
+  await db.query(`DELETE FROM pppoe_sync_logs WHERE created_at < DATE_SUB(NOW(), INTERVAL 365 DAY)`).catch(() => {});
+  await db.query(`DELETE FROM nms_sync_batches WHERE created_at < DATE_SUB(NOW(), INTERVAL 365 DAY)`).catch(() => {});
 }
 
 module.exports = { ensureNmsV2Schema, purgeNmsHistory };

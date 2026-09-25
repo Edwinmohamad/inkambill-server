@@ -34,14 +34,25 @@ async function openAlerts(siteId) {
 async function getDashboard(siteId = null) {
   const key = `nms:dash:${siteId || 'all'}`;
   return cache.wrap(key, 5000, async () => {
-    const [routers, counts, alerts, flaps, events] = await Promise.all([poller.routerSnapshots(siteId), store.counts(siteId), openAlerts(siteId), flapping(siteId), recentEvents(siteId)]);
+    const params = siteId ? [Number(siteId)] : [];
+    const siteWhere = siteId ? 'AND p.site_id=?' : '';
+    const [routers, counts, alerts, flaps, events, freshnessRows, todayRows, impactRows] = await Promise.all([
+      poller.routerSnapshots(siteId), store.counts(siteId), openAlerts(siteId), flapping(siteId), recentEvents(siteId),
+      db.query(`SELECT MIN(p.last_seen_on_router_at) oldest, MAX(p.last_seen_on_router_at) newest FROM ppp_secrets p WHERE p.removed_on_router_at IS NULL ${siteWhere}`, params).then(([r]) => r[0] || {}),
+      db.query(`SELECT COALESCE(SUM(linked_count),0) linked, COUNT(*) batches FROM nms_sync_batches WHERE created_at >= CURDATE() ${siteId ? 'AND site_id=?' : ''}`, params).then(([r]) => r[0] || {}),
+      db.query(`SELECT p.router_id, COUNT(*) linked, SUM(p.is_online=1) online, SUM(p.is_isolated=1) isolated FROM ppp_secrets p WHERE p.removed_on_router_at IS NULL ${siteWhere} GROUP BY p.router_id`, params).then(([r]) => r || [])
+    ]);
+    const impact = new Map(impactRows.map(r => [Number(r.router_id), { linked: Number(r.linked || 0), online: Number(r.online || 0), isolated: Number(r.isolated || 0) }]));
+    routers.forEach(router => { router.impact = impact.get(Number(router.routerId)) || { linked: 0, online: 0, isolated: 0 }; });
     const reachable = routers.filter(r => r.status === 'online').length;
     return {
       generatedAt: new Date().toISOString(), siteId: siteId ? Number(siteId) : null,
       degraded: routers.length > 0 && reachable < routers.length,
       allOffline: routers.length > 0 && reachable === 0,
       routers, customers: { online: counts.online, offline: counts.offline, isolated: counts.isolated, total: counts.total },
-      sync: { synced: counts.synced, unsynced: counts.unsynced, exempt: counts.exempt, syncedPct: counts.syncedPct },
+      sync: { synced: counts.synced, unsynced: counts.unsynced, exempt: counts.exempt, syncedPct: counts.syncedPct, linkedToday: Number(todayRows.linked || 0), batchesToday: Number(todayRows.batches || 0) },
+      freshness: { oldest: freshnessRows.oldest || null, newest: freshnessRows.newest || null, stale: !freshnessRows.newest || Date.now() - new Date(freshnessRows.newest).getTime() > 10 * 60000 },
+      healthScore: Math.max(0, Math.round((routers.length ? reachable / routers.length * 45 : 45) + counts.syncedPct * .45 + (alerts.filter(a => a.severity === 'critical').length ? 0 : 10))),
       alerts, flapping: flaps, events
     };
   });

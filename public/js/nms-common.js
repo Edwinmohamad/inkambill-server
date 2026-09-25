@@ -309,7 +309,7 @@
   function openMap(r, { onDone } = {}) {
     const s = sheet({ title: 'Hubungkan ke pelanggan', subtitle: `<span class="mono">${esc(r.username)}</span> · ${esc(r.site_code || '')}${r.router_name ? ' / ' + esc(r.router_name) : ''}`, size: 'sm',
       body: `<div class="nx-field"><label>Site</label><select data-site>${sitesList.map(o => `<option value="${o.id}" ${Number(o.id) === Number(r.site_id) ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></div>
-        <div class="nx-field nx-ac"><label>Pelanggan</label><input type="search" data-q placeholder="Ketik nama, Customer ID, atau HP" autocomplete="off" autofocus><div class="nx-ac-list" data-list hidden></div></div><div class="nx-note" data-picked>Belum memilih pelanggan.</div>`,
+        <div class="nx-field nx-ac"><label>Pelanggan</label><input type="search" data-q placeholder="Ketik nama, Customer ID, atau HP" autocomplete="off" autofocus><div class="nx-ac-list" data-list hidden></div></div><div class="nx-note" data-picked>Belum memilih pelanggan.</div><div class="nx-field"><label>Alasan mapping manual</label><input type="text" data-reason minlength="5" maxlength="255" placeholder="Contoh: verifikasi pelanggan oleh teknisi"></div>`,
       foot: `<button type="button" class="nx-btn" data-close>Batal</button><button type="button" class="nx-btn primary" data-save disabled>Hubungkan</button>` });
     let rows = [], pick = null, idx = -1, timer = null;
     const list = s.$('[data-list]');
@@ -328,7 +328,7 @@
     s.$('[data-site]').addEventListener('change', search);
     s.$('[data-save]').addEventListener('click', async e => {
       const btn = e.currentTarget; btn.classList.add('busy');
-      try { await api(`/nms/api/secrets/${r.id}/map`, { method: 'POST', body: { customerId: pick.id } }); toast(`${r.username} → ${pick.name}`, 'ok'); s.close(); onDone?.(); changed(); }
+      try { await api(`/nms/api/secrets/${r.id}/map`, { method: 'POST', body: { customerId: pick.id, reason: s.$('[data-reason]').value } }); toast(`${r.username} → ${pick.name}`, 'ok'); s.close(); onDone?.(); changed(); }
       catch (err) { toast(err.message, 'err'); btn.classList.remove('busy'); }
     });
   }

@@ -148,8 +148,10 @@ router.post('/api/sync/commit', requireNetworkControl, api(async req => {
 }));
 router.get('/api/customers/search', api(async req => ({ rows: await smartSync.searchCustomers({ q: String(req.query.q || '').trim().slice(0, 80), siteId: siteParam(req) }) })));
 router.post('/api/secrets/:id/map', requireNetworkControl, api(async req => {
+  const reason = String(req.body.reason || '').trim().slice(0, 255);
+  if (reason.length < 5) throw Object.assign(new Error('Alasan mapping manual minimal 5 karakter.'), { status: 400 });
   const { secret, customer } = await smartSync.manualMap(Number(req.params.id), Number(req.body.customerId));
-  await audit({ userId: req.session.user.id, action: 'nms_manual_map', entityType: 'ppp_secret', entityId: secret.id, siteId: secret.site_id, ip: req.ip, description: `Map ${secret.username} → ${customer.customer_code} ${customer.name}`, details: { username: secret.username, customerId: customer.id } });
+  await audit({ userId: req.session.user.id, action: 'nms_manual_map', entityType: 'ppp_secret', entityId: secret.id, siteId: secret.site_id, ip: req.ip, description: `Map ${secret.username} → ${customer.customer_code} ${customer.name}`, details: { username: secret.username, customerId: customer.id, reason } });
   return { secretId: secret.id, customerId: customer.id, customerName: customer.name };
 }));
 router.post('/api/secrets/:id/unmap', requireNetworkControl, api(async req => {
@@ -239,6 +241,13 @@ router.get('/api/approvals', api(async () => ({ rows: await automation.listAppro
 router.post('/api/approvals/:id/approve', requireAdmin, api(async req => automation.decideApproval(Number(req.params.id), true, ctxOf(req))));
 router.post('/api/approvals/:id/reject', requireAdmin, api(async req => automation.decideApproval(Number(req.params.id), false, ctxOf(req))));
 router.get('/api/sync/batches', api(async () => ({ rows: await smartSync.batches() })));
+router.get('/api/sync/batches/:id/export', async (req, res, next) => {
+  try {
+    const { name, csv } = await smartSync.batchCsv(Number(req.params.id));
+    res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${name}.csv"`, 'Cache-Control': 'no-store' });
+    res.send(csv);
+  } catch (err) { next(err); }
+});
 router.post('/api/sync/batches/:id/undo', requireNetworkControl, api(async req => {
   const out = await smartSync.undoBatch(Number(req.params.id), req.session.user.id);
   await audit({ userId: req.session.user.id, action: 'nms_smart_sync_undo', entityType: 'nms_sync_batch', entityId: out.batchId, siteId: out.siteId, ip: req.ip, description: `Undo Smart Sync #${out.batchId}: ${out.released} dilepas` });

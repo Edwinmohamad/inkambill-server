@@ -95,16 +95,41 @@
     N.setOffline(list.some(r => r.status === 'offline'));
   }
 
+  // ---------- Site topology + operator-friendly router detail ----------
+  function renderTopology() {
+    const groups = new Map();
+    sorted().forEach(r => { const k = `${r.siteId}|${r.siteCode}`; if (!groups.has(k)) groups.set(k, { code: r.siteCode, rows: [] }); groups.get(k).rows.push(r); });
+    $('nmsTopology').innerHTML = groups.size ? [...groups.values()].map(g => `<section class="nx-topology-site"><b><i class="bi bi-diagram-3"></i>${esc(g.code || 'SITE')}</b><div>${g.rows.map(r => `<button type="button" class="nx-topology-router ${r.status === 'offline' ? 'offline' : ''}" data-router-detail="${r.routerId}"><span class="nx-state ${r.status === 'online' ? 'online' : r.status === 'offline' ? 'isolated' : 'offline'}"></span><strong>${esc(r.name)}</strong><small>${r.impact?.linked || 0} pelanggan · ${r.impact?.online || 0} online</small></button>`).join('')}</div></section>`).join('') : '<div class="nx-empty">Belum ada router aktif.</div>';
+  }
+  function routerDetail(id) {
+    const r = routers.get(Number(id)); if (!r) return;
+    const t = r.telemetry || {}, impact = r.impact || {};
+    N.sheet({ title: r.name, subtitle: `${esc(r.siteCode || '')} · ${r.status === 'online' ? 'Online' : r.status === 'offline' ? 'Tidak terjangkau' : 'Menunggu polling'}`, size: 'sm',
+      body: `<div class="nx-mini-stats"><div><small>Pelanggan ter-link</small><b>${impact.linked || 0}</b></div><div><small>Sesi online</small><b>${impact.online || 0}</b></div><div><small>CPU</small><b>${t.cpuPct ?? '—'}%</b></div><div><small>Uptime</small><b>${t.uptimeSeconds ? fmtUptime(t.uptimeSeconds) : '—'}</b></div></div><div class="nx-kv"><span>WAN</span><b>${esc(r.wan?.interface || 'auto')} · ↓ ${fmtBps(r.wan?.rxBps)} · ↑ ${fmtBps(r.wan?.txBps)}</b><span>RAM</span><b>${t.memory?.pct ?? '—'}%</b><span>Disk</span><b>${t.disk?.freePct == null ? '—' : 100 - t.disk.freePct}% terpakai</b><span>Terakhir online</span><b>${r.lastOkAt ? esc(N.ago(r.lastOkAt)) : '—'}</b></div>`, foot: '<button type="button" class="nx-btn" data-close>Tutup</button>' });
+  }
+  $('nmsTopology').addEventListener('click', e => { const id = e.target.closest('[data-router-detail]')?.dataset.routerDetail; if (id) routerDetail(id); });
+
+  function renderTopIssues() {
+    const items = [
+      ...alerts.filter(a => !a.acknowledged_by).map(a => ({ tone: a.severity === 'critical' ? 'red' : 'orange', icon: 'bi-exclamation-triangle', title: a.title, sub: `${a.site_code || 'Semua site'} · sejak ${hhmmss(a.opened_at)}` })),
+      ...sorted().filter(r => r.status === 'offline').map(r => ({ tone: 'red', icon: 'bi-router', title: `${r.name} tidak terjangkau`, sub: `${r.siteCode || ''} · sekitar ${r.impact?.linked || 0} pelanggan ter-link` })),
+      ...((data.flapping || []).slice(0, 3).map(f => ({ tone: 'orange', icon: 'bi-arrow-repeat', title: `${f.customer_name || f.username} putus-sambung`, sub: `${f.reconnects} reconnect · ${f.site_code}` })))
+    ].slice(0, 6);
+    $('nmsTopIssues').innerHTML = items.length ? items.map(x => `<li><span class="li-icon ${x.tone}"><i class="bi ${x.icon}"></i></span><div class="li-main"><b>${esc(x.title)}</b><small>${esc(x.sub)}</small></div></li>`).join('') : '<li><span class="li-icon green"><i class="bi bi-check-lg"></i></span><div class="li-main"><b>Semua stabil</b><small>Tidak ada masalah prioritas.</small></div></li>';
+  }
+
   // ---------- Sync ring + KPI ----------
   function renderSync() {
     const s = data.sync || {}, c = data.customers || {}, col = COLORS();
     $('kpiOnline').textContent = c.online ?? 0; $('kpiOffline').textContent = c.offline ?? 0; $('kpiIsolated').textContent = c.isolated ?? 0; $('kpiUnsynced').textContent = s.unsynced ?? 0;
+    $('kpiHealth').textContent = data.healthScore ?? 0;
+    $('kpiFreshness').textContent = data.freshness?.newest ? `${data.freshness.stale ? '⚠ mirror basi ' : 'mirror '}${N.ago(data.freshness.newest)}` : '⚠ belum ada mirror';
     const total = (s.synced || 0) + (s.unsynced || 0) + (s.exempt || 0);
     const seg = [[s.synced || 0, col.green], [s.unsynced || 0, col.purple], [s.exempt || 0, col.gray]];
     const R = 70, len = 2 * Math.PI * R; let off = 0;
     const arcs = total ? seg.filter(([v]) => v > 0).map(([v, color]) => { const l = v / total * len; const gap = seg.filter(([x]) => x > 0).length > 1 ? 3 : 0; const a = `<circle cx="85" cy="85" r="${R}" fill="none" stroke="${color}" stroke-width="16" stroke-dasharray="${Math.max(0, l - gap)} ${len}" stroke-dashoffset="${-off}" stroke-linecap="butt"/>`; off += l; return a; }).join('') : '';
     $('nxSyncRing').innerHTML = `<svg viewBox="0 0 170 170"><circle cx="85" cy="85" r="${R}" fill="none" stroke="${col.track}" stroke-width="16"/>${arcs}</svg><div class="c"><b>${s.syncedPct ?? 0}%</b><small>ter-link</small></div>`;
-    $('nxSyncLegend').innerHTML = `<span><i style="background:${col.green}"></i>Ter-link <b>${s.synced ?? 0}</b></span><span><i style="background:${col.purple}"></i>Belum <b>${s.unsynced ?? 0}</b></span><span><i style="background:${col.gray}"></i>Exempt <b>${s.exempt ?? 0}</b></span>`;
+    $('nxSyncLegend').innerHTML = `<span><i style="background:${col.green}"></i>Ter-link <b>${s.synced ?? 0}</b></span><span><i style="background:${col.purple}"></i>Belum <b>${s.unsynced ?? 0}</b></span><span><i style="background:${col.gray}"></i>Exempt <b>${s.exempt ?? 0}</b></span><span>Hari ini <b>${s.linkedToday ?? 0}</b> · ${s.batchesToday ?? 0} batch</span>`;
   }
 
   // ---------- Perlu perhatian (dari rekonsiliasi) ----------
@@ -118,6 +143,13 @@
   // ---------- Alerts ----------
   function renderAlerts() {
     $('nmsAlerts').innerHTML = alerts.map(a => `<div class="nx-alert ${a.severity === 'critical' ? 'critical' : ''} ${a.acknowledged_by ? 'acked' : ''}"><span class="ic"><i class="bi bi-exclamation-lg"></i></span><div class="grow"><b>${esc(a.title)}</b><div class="muted" style="font-size:12.5px">Sejak ${esc(hhmmss(a.opened_at))}${a.details?.stillOffline != null ? ` · masih offline ${a.details.stillOffline}` : ''}</div></div>${N.canControl && !a.acknowledged_by ? `<button type="button" class="nx-btn sm" data-ack="${a.id}">Tandai sudah dilihat</button>` : ''}</div>`).join('');
+    const guardian = $('nmsGuardian'), guardianText = $('nmsGuardianText');
+    if (guardian && guardianText) {
+      const critical = alerts.some(a => a.severity === 'critical' && !a.acknowledged_by);
+      const stale = !!data.freshness?.stale;
+      guardian.classList.toggle('alert', critical || stale);
+      guardianText.textContent = critical ? 'Ada alarm penting! Yuk cek panel perhatian.' : stale ? 'Data router sudah lama. Tarik ulang dulu, ya!' : 'Semua terlihat baik. Aku jaga router ya!';
+    }
   }
   $('nmsAlerts').addEventListener('click', async e => {
     const id = e.target.closest('[data-ack]')?.dataset.ack; if (!id) return;
@@ -155,7 +187,7 @@
     const li = e.target.closest('[data-sid]'); if (li?.dataset.sid) N.drawer(Number(li.dataset.sid));
   });
 
-  function renderAll() { renderTraffic(); renderRouters(); renderSync(); renderAlerts(); renderLog(); renderFlapping(); N.markUpdated(data.generatedAt); }
+  function renderAll() { renderTraffic(); renderRouters(); renderTopology(); renderSync(); renderAlerts(); renderTopIssues(); renderLog(); renderFlapping(); N.markUpdated(data.generatedAt); }
   async function refresh() {
     const res = await api(`/nms/api/dashboard${N.withSite()}`);
     data = res.data;
@@ -163,7 +195,7 @@
     alerts = data.alerts || [];
     const lastId = Math.max(0, ...events.filter(e => e.id).map(e => e.id));
     (data.events || []).slice().reverse().filter(e => e.id > lastId).forEach(pushEvent);
-    renderTraffic(); renderRouters(); renderSync(); renderAlerts(); renderFlapping(); N.markUpdated(data.generatedAt);
+    renderTraffic(); renderRouters(); renderTopology(); renderSync(); renderAlerts(); renderTopIssues(); renderFlapping(); N.markUpdated(data.generatedAt);
   }
 
   renderAll();
@@ -171,12 +203,13 @@
   window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(renderTraffic, 150); });
   N.stream({
     telemetry: r => { if (N.site && Number(r.siteId) !== Number(N.site)) return; routers.set(r.routerId, r); if (!frame) frame = requestAnimationFrame(() => { frame = null; renderTraffic(); renderRouters(); }); N.markUpdated(new Date().toISOString()); },
-    router_state: s => { const r = routers.get(s.routerId); if (r) { r.status = s.status; r.lastError = s.error; renderRouters(); renderTraffic(); } if (s.status === 'offline') toast(`Router ${r?.name || s.routerId} tidak terjangkau`, 'err'); },
+    router_state: s => { const r = routers.get(s.routerId); if (r) { r.status = s.status; r.lastError = s.error; renderRouters(); renderTopology(); renderTopIssues(); renderTraffic(); } if (s.status === 'offline') toast(`Router ${r?.name || s.routerId} tidak terjangkau`, 'err'); },
     ppp: e => pushEvent(e),
-    alert: a => { alerts = [{ ...a, opened_at: a.openedAt }, ...alerts.filter(x => x.id !== a.id)]; renderAlerts(); toast(a.title, 'err'); },
+    alert: a => { alerts = [{ ...a, opened_at: a.openedAt }, ...alerts.filter(x => x.id !== a.id)]; renderAlerts(); renderTopIssues(); toast(a.title, 'err'); },
     alert_resolved: () => refresh().catch(() => {}),
     sync: () => refresh().catch(() => {})
   }, { fallback: refresh, fallbackMs: 20000 });
   document.addEventListener('nx:changed', () => refresh().catch(() => {}));
   setInterval(() => { if (!document.hidden) refresh().catch(() => N.setLive('down')); }, 30000);
+  $('nmsNocMode')?.addEventListener('click', async () => { const on = app.classList.toggle('noc-tv'); $('nmsNocMode').innerHTML = on ? '<i class="bi bi-fullscreen-exit"></i>Keluar NOC' : '<i class="bi bi-arrows-fullscreen"></i>Mode NOC'; try { if (on && !document.fullscreenElement) await app.requestFullscreen?.(); else if (!on && document.fullscreenElement) await document.exitFullscreen?.(); } catch (_) {} });
 })();

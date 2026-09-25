@@ -71,7 +71,7 @@
     try {
       const { rows } = await api('/nms/api/sync/batches');
       $('nxBatches').innerHTML = rows.length ? rows.map(b => `<li><span class="li-icon ${b.undone_at ? 'gray' : b.source === 'auto' ? 'purple' : 'green'}"><i class="bi ${b.source === 'auto' ? 'bi-robot' : 'bi-magic'}"></i></span><div class="li-main"><b>${b.linked_count} secret terhubung${b.site_code ? ` · ${esc(b.site_code)}` : ''}</b><small>${esc(dateTime(b.created_at))} · ${b.source === 'auto' ? 'otomatis' : esc(b.created_by_name || '—')}${b.undone_at ? ` · di-undo ${esc(b.undone_by_name || '')} ${esc(dateTime(b.undone_at))}` : ''} · ${esc(b.pairs.slice(0, 3).map(p => `${p.username} → ${p.customerName}`).join(', '))}${b.pairs.length > 3 ? '…' : ''}</small></div>
-        <button type="button" class="nx-btn sm ghost" data-view="${b.id}">Lihat</button>${b.can_undo && N.canControl ? `<button type="button" class="nx-btn sm orange" data-undo="${b.id}"><i class="bi bi-arrow-counterclockwise"></i>Undo</button>` : ''}</li>`).join('')
+        <a class="nx-btn sm ghost" href="/nms/api/sync/batches/${b.id}/export" title="Ekspor CSV batch">CSV</a><button type="button" class="nx-btn sm ghost" data-view="${b.id}">Lihat</button>${b.can_undo && N.canControl ? `<button type="button" class="nx-btn sm orange" data-undo="${b.id}"><i class="bi bi-arrow-counterclockwise"></i>Undo</button>` : ''}</li>`).join('')
         : '<li><span class="li-icon gray"><i class="bi bi-magic"></i></span><div class="li-main"><b>Belum ada Smart Sync</b><small>Setiap commit Smart Sync tercatat di sini dan bisa dibatalkan dalam 24 jam.</small></div></li>';
       $('nxBatches').onclick = async e => {
         const v = e.target.closest('[data-view]'), u = e.target.closest('[data-undo]');

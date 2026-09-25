@@ -1,0 +1,18 @@
+{
+  "name": "INKAMBILLING - Operasional Pribadi SPV & Billing",
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "nodes": [
+    { "parameters": { "triggerTimes": { "item": [{ "mode": "everyDay", "hour": 8, "minute": 0 }] } }, "id": "cron-spv-morning", "name": "SPV Briefing 08:00", "type": "n8n-nodes-base.cron", "typeVersion": 1, "position": [220, 160] },
+    { "parameters": { "triggerTimes": { "item": [{ "mode": "everyDay", "hour": 8, "minute": 15 }] } }, "id": "cron-billing", "name": "Billing Follow-up 08:15", "type": "n8n-nodes-base.cron", "typeVersion": 1, "position": [220, 340] },
+    { "parameters": { "triggerTimes": { "item": [{ "mode": "everyDay", "hour": 17, "minute": 30 }] } }, "id": "cron-spv-evening", "name": "SPV Briefing 17:30", "type": "n8n-nodes-base.cron", "typeVersion": 1, "position": [220, 520] },
+    { "parameters": { "method": "POST", "url": "={{$env.INKAMBILLING_URL}}/api/n8n/operations/spv-briefing", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "X-N8N-TOKEN", "value": "={{$env.INKAMBILLING_N8N_TOKEN}}" }, { "name": "X-Idempotency-Key", "value": "=spv-briefing:pagi:{{$now.toFormat('yyyy-MM-dd')}}" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ { event_key: 'spv-briefing:pagi:' + $now.toFormat('yyyy-MM-dd'), period: 'PAGI' } }}" }, "id": "send-spv-morning", "name": "Kirim Briefing SPV Pagi", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [520, 160] },
+    { "parameters": { "method": "POST", "url": "={{$env.INKAMBILLING_URL}}/api/n8n/operations/billing-follow-up", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "X-N8N-TOKEN", "value": "={{$env.INKAMBILLING_N8N_TOKEN}}" }, { "name": "X-Idempotency-Key", "value": "=billing-follow-up:{{$now.toFormat('yyyy-MM-dd')}}" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ { event_key: 'billing-follow-up:' + $now.toFormat('yyyy-MM-dd') } }}" }, "id": "send-billing", "name": "Kirim Tugas Billing", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [520, 340] },
+    { "parameters": { "method": "POST", "url": "={{$env.INKAMBILLING_URL}}/api/n8n/operations/spv-briefing", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "X-N8N-TOKEN", "value": "={{$env.INKAMBILLING_N8N_TOKEN}}" }, { "name": "X-Idempotency-Key", "value": "=spv-briefing:sore:{{$now.toFormat('yyyy-MM-dd')}}" }] }, "sendBody": true, "specifyBody": "json", "jsonBody": "={{ { event_key: 'spv-briefing:sore:' + $now.toFormat('yyyy-MM-dd'), period: 'SORE' } }}" }, "id": "send-spv-evening", "name": "Kirim Briefing SPV Sore", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [520, 520] }
+  ],
+  "connections": {
+    "SPV Briefing 08:00": { "main": [[{ "node": "Kirim Briefing SPV Pagi", "type": "main", "index": 0 }]] },
+    "Billing Follow-up 08:15": { "main": [[{ "node": "Kirim Tugas Billing", "type": "main", "index": 0 }]] },
+    "SPV Briefing 17:30": { "main": [[{ "node": "Kirim Briefing SPV Sore", "type": "main", "index": 0 }]] }
+  }
+}

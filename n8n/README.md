@@ -15,5 +15,6 @@ Workflow yang tersedia:
 4. `04-auto-billing-reminder.json` — cron pengingat tagihan melalui queue WA Gateway.
 5. `05-auto-isolate.json` — cron isolir billing harian; node sengaja mengirim `apply=true`.
 6. `06-wa-ticket-bot.json` — bot tiket WhatsApp untuk teknisi (WAHA → n8n → `/api/n8n/wa/command` → balasan via WAHA). Tidak memakai env: isi node **Config** + 2 credential Header Auth (`X-N8N-TOKEN`, `X-Api-Key`). Panduan lengkap: `docs/WA-TICKET-BOT.md`.
+7. `07-operations-private-alerts.json` — briefing pribadi SPV dan tugas follow-up billing. Panduan: `docs/OPERATIONS-WA-N8N.md`.
 
 Untuk workflow foto, pasang volume persistent pada n8n agar file di `/data/piket` tidak hilang saat container dibuat ulang.

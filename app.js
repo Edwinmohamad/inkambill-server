@@ -26,8 +26,9 @@ const { requireAuth, loadPermissions, requirePermission, requireAnyPermission, r
 const { generateMonthlyInvoices } = require('./services/invoiceService');
 const { runAutoIsolation } = require('./services/networkService');
 const { captureAllNmsTelemetry, backupAllRouters } = require('./services/nmsTelemetryService');
-const { ensureNmsV2Schema } = require('./services/nms/schema');
+const { ensureNmsV2Schema, purgeNmsHistory } = require('./services/nms/schema');
 const nmsPoller = require('./services/nms/poller');
+const nmsAutomation = require('./services/nms/automation');
 const { evaluateNetworkIncidents } = require('./services/networkAlertService');
 const { pingAllOlts } = require('./services/oltService');
 const { syncDevices: syncAcsDevices } = require('./services/acsService');
@@ -345,8 +346,24 @@ async function bootstrap() {
   }, { timezone: 'Asia/Jakarta' });
 
   cron.schedule('30 2 * * 0', async () => {
-    try { console.log('Cron retensi log:',await purgeOldLogs(7)); }
+    try { console.log('Cron retensi log:',await purgeOldLogs(7)); await purgeNmsHistory(); }
     catch (err) { console.error('Cron retensi log gagal:',err.message); }
+  }, { timezone: 'Asia/Jakarta' });
+
+  // NMS operational jobs are deliberately conservative: automatic Smart Sync
+  // remains disabled until enabled in NMS settings, while scheduled actions and
+  // configuration snapshots are durable and independently auditable.
+  cron.schedule('* * * * *', async () => {
+    try { await nmsAutomation.runDue(); }
+    catch (err) { console.error('NMS scheduled action gagal:', err.message); }
+  }, { timezone: 'Asia/Jakarta' });
+  cron.schedule('*/5 * * * *', async () => {
+    try { await nmsAutomation.maybeAutoSync(); }
+    catch (err) { console.error('NMS auto sync gagal:', err.message); }
+  }, { timezone: 'Asia/Jakarta' });
+  cron.schedule('10 3 * * *', async () => {
+    try { console.log('NMS snapshot PPP:', await nmsAutomation.takeSnapshots()); }
+    catch (err) { console.error('NMS snapshot PPP gagal:', err.message); }
   }, { timezone: 'Asia/Jakarta' });
 
   // WA Gateway watchdog — every 5 minutes: (1) resume the send queue in case it stalled while the

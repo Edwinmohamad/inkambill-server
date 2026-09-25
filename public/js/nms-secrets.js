@@ -287,6 +287,7 @@
     count();
     s.$('[data-commit]').addEventListener('click', async e => {
       const c = collect(); if (!c.total) return;
+      if (c.total > 100 && !(await N.confirmBox({ title: 'Batch besar Smart Sync', okText: `Lanjutkan ${c.total}`, message: `${c.total} pasangan akan ditulis dan dicatat dalam satu batch. Periksa kembali preview sebelum melanjutkan.` }))) return;
       const btn = e.currentTarget; btn.classList.add('busy');
       try {
         const out = await api('/nms/api/sync/commit', { method: 'POST', body: { planId: plan.planId, secretIds: c.ids.length ? c.ids : [-1], pairs: c.pairs, manual: c.manual, site_id: plan.siteId || N.site || null } });
