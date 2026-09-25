@@ -12,6 +12,7 @@ const { assignCashTransactionCode }=require('../services/cashService');
 const { isoDate, assertDateOpen, resolveBookDate, financialAudit }=require('../services/financialControlService');
 const { requireAdmin, requireMasterAdmin, isAdminRole, isMasterAdminRole }=require('../middleware/auth');
 const { createReportPdf, rupiah, COLORS }=require('../services/reportPdf');
+const { ensureV53Schema }=require('../services/schemaService');
 const { cashAgingDays, queuePaymentReceipts, streamSettlementReceipt }=require('../services/cashSettlementService');
 const router=express.Router();
 
@@ -377,7 +378,17 @@ const RECON_HISTORY_LIMIT=1000;
 const RECON_STATUSES=['all','held','settled'];
 function jakartaToday(){return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jakarta'}).format(new Date());}
 function validDateParam(value){const v=String(value||'').trim();return /^\d{4}-\d{2}-\d{2}$/.test(v)&&!Number.isNaN(new Date(`${v}T00:00:00Z`).getTime())?v:'';}
+let reconciliationHistorySchemaReady=null;
+async function ensureReconciliationHistorySchema(){
+  if(!reconciliationHistorySchemaReady){
+    reconciliationHistorySchemaReady=ensureV53Schema().catch(err=>{reconciliationHistorySchemaReady=null;throw err;});
+  }
+  return reconciliationHistorySchemaReady;
+}
 async function loadReconciliationHistory(req){
+  // Histori bergantung pada settlement_id + cash_settlements (fitur v1.28).
+  // Pastikan schema tersedia saat tab dibuka agar instalasi yang upgrade bertahap tidak 500.
+  await ensureReconciliationHistorySchema();
   const q=String(req.query.q||'').trim();const site=String(req.query.site||'').trim();const cluster=String(req.query.cluster||'').trim();
   const status=RECON_STATUSES.includes(req.query.status)?req.query.status:'all';
   const today=jakartaToday();

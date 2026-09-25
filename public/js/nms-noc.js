@@ -95,6 +95,39 @@
         ${r.activeSessions != null && !down ? `<span><b class="num">${r.activeSessions}</b> sesi</span>` : ''}
       </div></button>`;
   }
+  function renderSites() {
+    const host = $('nxSiteOverview'); if (!host) return;
+    const grouped = new Map();
+    sorted().forEach(r => {
+      const code = String(r.siteCode || 'OTHER').toUpperCase();
+      if (!grouped.has(code)) grouped.set(code, []);
+      grouped.get(code).push(r);
+    });
+    const preferred = ['KRW','CLM','KBG'];
+    const keys = [...preferred.filter(k => grouped.has(k)), ...[...grouped.keys()].filter(k => !preferred.includes(k)).sort()];
+    $('nxSiteScope').textContent = N.site ? `${keys[0] || 'SITE'} · LIVE` : `${keys.length} SITE · LIVE`;
+    if (!keys.length) { host.innerHTML = '<div class="nx-card"><div class="nx-empty">Belum ada data site.</div></div>'; return; }
+    host.innerHTML = keys.map(code => {
+      const rs = grouped.get(code);
+      const onlineRouters = rs.filter(r => r.status === 'online').length;
+      const linked = rs.reduce((n,r)=>n+Number(r.impact?.linked||0),0);
+      const online = rs.reduce((n,r)=>n+Number(r.impact?.online||0),0);
+      const isolated = rs.reduce((n,r)=>n+Number(r.impact?.isolated||0),0);
+      const rx = rs.filter(r=>r.status==='online').reduce((n,r)=>n+Number(r.wan?.rxBps||0),0);
+      const tx = rs.filter(r=>r.status==='online').reduce((n,r)=>n+Number(r.wan?.txBps||0),0);
+      const availability = rs.length ? Math.round(onlineRouters/rs.length*100) : 0;
+      const customerPct = linked ? Math.round(online/linked*100) : 0;
+      const state = onlineRouters === rs.length ? 'good' : onlineRouters ? 'warn' : 'bad';
+      return `<article class="nx-card nx-site-card ${state}">
+        <div class="nx-site-head"><div><small>SITE</small><strong>${esc(code)}</strong></div><span class="nx-site-health"><i></i>${onlineRouters}/${rs.length} router</span></div>
+        <div class="nx-site-primary"><div><small>Pelanggan online</small><strong>${online}<span>/${linked}</span></strong></div><div class="nx-site-availability"><b>${customerPct}%</b><small>session aktif</small></div></div>
+        <div class="nx-site-bar"><i style="width:${Math.max(0,Math.min(100,customerPct))}%"></i></div>
+        <div class="nx-site-metrics"><span><small>Isolir</small><b>${isolated}</b></span><span><small>Download</small><b>${esc(fmtBps(rx))}</b></span><span><small>Upload</small><b>${esc(fmtBps(tx))}</b></span></div>
+        <div class="nx-site-foot"><span>Availability router <b>${availability}%</b></span><span>${rs.map(r=>esc(r.name)).join(' · ')}</span></div>
+      </article>`;
+    }).join('');
+  }
+
   function renderRouters() {
     const list = sorted();
     $('nmsRouters').innerHTML = list.length ? list.map(routerCard).join('') : '<div class="nx-card nx-span-all"><div class="nx-empty"><i class="bi bi-router"></i>Belum ada router aktif. Tambahkan di menu Router.</div></div>';
@@ -176,7 +209,7 @@
     const li = e.target.closest('[data-sid]'); if (li?.dataset.sid) N.drawer(Number(li.dataset.sid));
   });
 
-  function renderAll() { renderTraffic(); renderRouters(); renderSync(); renderAlerts(); renderLog(); renderFlapping(); N.markUpdated(data.generatedAt); }
+  function renderAll() { renderTraffic(); renderRouters(); renderSites(); renderSync(); renderAlerts(); renderLog(); renderFlapping(); N.markUpdated(data.generatedAt); }
   const afterData = () => { renderTotal(); renderHero(); };
   async function refresh() {
     const res = await api(`/nms/api/dashboard${N.withSite()}`);
@@ -185,15 +218,15 @@
     alerts = data.alerts || [];
     const lastId = Math.max(0, ...events.filter(e => e.id).map(e => e.id));
     (data.events || []).slice().reverse().filter(e => e.id > lastId).forEach(pushEvent);
-    renderTraffic(); renderRouters(); renderSync(); renderAlerts(); renderFlapping(); afterData(); N.markUpdated(data.generatedAt);
+    renderTraffic(); renderRouters(); renderSites(); renderSync(); renderAlerts(); renderFlapping(); afterData(); N.markUpdated(data.generatedAt);
   }
 
   renderAll();
   let frame = null, resizeT = null;
   window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(renderTraffic, 150); });
   N.stream({
-    telemetry: r => { if (N.site && Number(r.siteId) !== Number(N.site)) return; routers.set(r.routerId, r); if (!frame) frame = requestAnimationFrame(() => { frame = null; renderTraffic(); renderRouters(); afterData(); }); N.markUpdated(new Date().toISOString()); },
-    router_state: s => { const r = routers.get(s.routerId); if (r) { r.status = s.status; r.lastError = s.error; renderRouters(); renderTraffic(); afterData(); } if (s.status === 'offline') toast(`Router ${r?.name || s.routerId} tidak terjangkau`, 'err'); },
+    telemetry: r => { if (N.site && Number(r.siteId) !== Number(N.site)) return; routers.set(r.routerId, r); if (!frame) frame = requestAnimationFrame(() => { frame = null; renderTraffic(); renderRouters(); renderSites(); afterData(); }); N.markUpdated(new Date().toISOString()); },
+    router_state: s => { const r = routers.get(s.routerId); if (r) { r.status = s.status; r.lastError = s.error; renderRouters(); renderTraffic(); renderSites(); afterData(); } if (s.status === 'offline') toast(`Router ${r?.name || s.routerId} tidak terjangkau`, 'err'); },
     ppp: e => pushEvent(e),
     alert: a => { alerts = [{ ...a, opened_at: a.openedAt }, ...alerts.filter(x => x.id !== a.id)]; renderAlerts(); afterData(); toast(a.title, 'err'); },
     alert_resolved: () => refresh().catch(() => {}),
