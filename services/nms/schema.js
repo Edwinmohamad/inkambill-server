@@ -72,6 +72,20 @@ async function ensureNmsV2Schema() {
     INDEX idx_nms_event_time (occurred_at)
   )`);
 
+  await db.query(`CREATE TABLE IF NOT EXISTS nms_ppp_anomalies (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    site_id BIGINT UNSIGNED NULL,
+    router_id BIGINT UNSIGNED NOT NULL,
+    username VARCHAR(128) NOT NULL,
+    anomaly_type VARCHAR(40) NOT NULL,
+    details_json LONGTEXT NULL,
+    first_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at DATETIME NULL,
+    UNIQUE KEY uq_nms_ppp_anomaly (router_id, username, anomaly_type),
+    INDEX idx_nms_ppp_anomaly_open (anomaly_type, resolved_at, site_id)
+  )`);
+
   await db.query(`CREATE TABLE IF NOT EXISTS nms_router_state (
     router_id BIGINT UNSIGNED PRIMARY KEY,
     status ENUM('online','offline','unknown') NOT NULL DEFAULT 'unknown',

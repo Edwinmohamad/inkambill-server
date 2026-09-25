@@ -343,6 +343,28 @@ function queueCidTag(secretId, opts = {}) {
     .catch(err => console.warn(`NMS tag CID #${secretId}:`, err.message));
 }
 
+/**
+ * Self-healing CID binding.
+ * customer_id di database adalah binding utama setelah secret pernah ter-link. Comment RouterOS
+ * hanya marker durable untuk recovery. Bila teknisi mengubah/menghapus comment dari Winbox,
+ * marker CID yang benar ditulis kembali tanpa mengubah teks comment lainnya.
+ */
+async function healLinkedCidTags(routerId, { limit = 25 } = {}) {
+  if (!(await settings.flag('cid_tag_enabled'))) return { checked: 0, healed: 0, failed: 0, disabled: true };
+  const [rows] = await db.query(`SELECT p.id, p.comment, c.customer_code
+    FROM ppp_secrets p JOIN customers c ON c.id=p.customer_id
+    WHERE p.router_id=? AND p.removed_on_router_at IS NULL AND c.archived_at IS NULL
+    ORDER BY p.id`, [Number(routerId)]);
+  const max = Math.max(1, Math.min(200, Number(limit) || 25));
+  const wrong = rows.filter(r => String(parseCid(r.comment) || '').toLowerCase() !== String(r.customer_code || '').toLowerCase()).slice(0, max);
+  let healed = 0, failed = 0;
+  for (const r of wrong) {
+    try { const out = await writeCidTag(r.id); if (out.written || out.unchanged) healed++; }
+    catch (err) { failed++; console.warn(`NMS self-heal CID #${r.id}:`, err.message); }
+  }
+  return { checked: rows.length, mismatched: wrong.length, healed, failed };
+}
+
 /** Tulis tag ke semua secret ter-link yang belum/salah tag. Berjalan di latar; progres di cache nms:cidjob. */
 async function writeAllCidTags({ siteId = null, userId = null } = {}) {
   const running = cache.get('nms:cidjob');
@@ -421,4 +443,4 @@ async function carryOverLinks(siteId = null) {
   return moved;
 }
 
-module.exports = { preview, commit, manualMap, unmap, searchCustomers, unlinkedCustomers, writeCidTag, writeAllCidTags, cidJobStatus, relinkByCid, carryOverLinks, loadInputs, batches, batchCsv, undoBatch, autoRun, linkSecret };
+module.exports = { preview, commit, manualMap, unmap, searchCustomers, unlinkedCustomers, writeCidTag, writeAllCidTags, cidJobStatus, healLinkedCidTags, relinkByCid, carryOverLinks, loadInputs, batches, batchCsv, undoBatch, autoRun, linkSecret };

@@ -5,7 +5,7 @@
   if (!N || !app) return;
   const { esc, api, toast, qs, rupiah, dateOnly, dateTime } = N;
   const $ = id => document.getElementById(id);
-  const ICON = { overdue_active: ['red', 'bi-cash-coin'], paid_isolated: ['orange', 'bi-emoji-frown'], inactive_online: ['red', 'bi-person-x'], secret_no_customer: ['purple', 'bi-question-circle'], customer_no_secret: ['blue', 'bi-person-plus'], removed_on_router: ['gray', 'bi-trash'] };
+  const ICON = { overdue_active: ['red', 'bi-cash-coin'], paid_isolated: ['orange', 'bi-emoji-frown'], inactive_online: ['red', 'bi-person-x'], secret_no_customer: ['purple', 'bi-question-circle'], customer_no_secret: ['blue', 'bi-person-plus'], removed_on_router: ['gray', 'bi-trash'], active_without_secret: ['red', 'bi-exclamation-triangle'], profile_mismatch: ['orange', 'bi-sliders'] };
   let groups = {};
 
   // ---------------------------------------------------------------- Rekonsiliasi
@@ -26,13 +26,16 @@
       case 'secret_no_customer': return `<td><b class="mono">${esc(r.username)}</b>${r.comment ? `<span class="sub">${esc(r.comment)}</span>` : ''}</td><td>${esc(r.site_code)}<span class="sub">${esc(r.router_name)}</span></td><td>${esc(r.profile || '—')}</td><td class="mono">${esc(r.active_address || '—')}</td><td><span class="nx-state ${r.is_online ? 'online' : 'offline'}">${r.is_online ? 'Online' : dateTime(r.last_login_at)}</span></td>`;
       case 'customer_no_secret': return `<td><b>${esc(r.customer_name)}</b><span class="sub">${esc(r.customer_code)}</span></td><td>${esc(r.site_code)}</td><td>${esc(r.package_name || '—')}${r.mikrotik_profile ? `<span class="sub">${esc(r.mikrotik_profile)}</span>` : ''}</td><td colspan="2">${esc(dateOnly(r.created_at))}</td>`;
       case 'removed_on_router': return `<td><b>${esc(r.customer_name)}</b><span class="sub">${esc(r.customer_code)} · <span class="mono">${esc(r.username)}</span></span></td><td>${esc(r.site_code)}</td><td>${esc(r.profile || '—')}</td><td colspan="2">Hilang ${esc(dateTime(r.removed_on_router_at))}</td>`;
+      case 'active_without_secret': return `<td><b class="mono">${esc(r.username)}</b><span class="sub">Aktif ${esc(r.active_uptime || '—')}</span></td><td>${esc(r.site_code)}<span class="sub">${esc(r.router_name)}</span></td><td class="mono">${esc(r.active_address || '—')}</td><td class="mono">${esc(r.active_caller_id || '—')}</td><td>${esc(dateTime(r.last_seen_at))}</td>`;
+      case 'profile_mismatch': return `<td><b>${esc(r.customer_name)}</b><span class="sub">${esc(r.customer_code)} · <span class="mono">${esc(r.username)}</span></span></td><td>${esc(r.site_code)}</td><td>${esc(r.profile || '—')}</td><td>${esc(r.package_profile || '—')}</td><td>${esc(r.package_name || '—')}</td>`;
       default: return '';
     }
   }
   const HEADS = {
     overdue_active: ['Pelanggan', 'Site', 'Tunggakan', 'Terlambat', 'Sesi'], paid_isolated: ['Pelanggan', 'Site', 'Profile', 'Bayar terakhir', 'Alasan isolir'],
     inactive_online: ['Pelanggan', 'Site', 'Status billing', 'Profile', ''], secret_no_customer: ['Username', 'Site / Router', 'Profile', 'IP', 'Sesi'],
-    customer_no_secret: ['Pelanggan', 'Site', 'Paket', 'Dibuat', ''], removed_on_router: ['Pelanggan', 'Site', 'Profile', 'Keterangan', '']
+    customer_no_secret: ['Pelanggan', 'Site', 'Paket', 'Dibuat', ''], removed_on_router: ['Pelanggan', 'Site', 'Profile', 'Keterangan', ''],
+    active_without_secret: ['Username', 'Site / Router', 'IP', 'Caller-ID', 'Terlihat terakhir'], profile_mismatch: ['Pelanggan', 'Site', 'Profile MikroTik', 'Profile Paket', 'Paket']
   };
   async function openRecon(kind) {
     const g = groups[kind]; if (!g) return;

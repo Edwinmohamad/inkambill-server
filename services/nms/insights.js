@@ -68,6 +68,28 @@ const RECON = {
       WHERE p.removed_on_router_at IS NOT NULL AND c.archived_at IS NULL AND c.customer_status='active'
         AND NOT EXISTS (SELECT 1 FROM ppp_secrets p2 WHERE p2.customer_id=c.id AND p2.removed_on_router_at IS NULL AND p2.id<>p.id)
         ${siteWhere('p.site_id', siteId, p)} ORDER BY p.removed_on_router_at DESC LIMIT ${LIMIT}`
+  },
+  active_without_secret: {
+    title: 'PPPoE Active tanpa Secret Mirror', tone: 'red', fix: null, fixLabel: null,
+    hint: 'Sesi terlihat aktif di MikroTik tetapi secret belum ada di mirror NMS. NMS mencoba recovery otomatis; yang tersisa perlu dicek di router/RADIUS.',
+    sql: (siteId, p) => `SELECT a.username, a.site_id, s.code site_code, r.name router_name, a.first_seen_at, a.last_seen_at,
+        JSON_UNQUOTE(JSON_EXTRACT(a.details_json,'$.address')) active_address,
+        JSON_UNQUOTE(JSON_EXTRACT(a.details_json,'$.callerId')) active_caller_id,
+        JSON_UNQUOTE(JSON_EXTRACT(a.details_json,'$.uptime')) active_uptime
+      FROM nms_ppp_anomalies a JOIN sites s ON s.id=a.site_id JOIN routers r ON r.id=a.router_id
+      WHERE a.anomaly_type='active_without_secret' AND a.resolved_at IS NULL
+        ${siteWhere('a.site_id', siteId, p)} ORDER BY a.last_seen_at DESC LIMIT ${LIMIT}`
+  },
+  profile_mismatch: {
+    title: 'Profile MikroTik berbeda dengan paket', tone: 'orange', fix: null, fixLabel: null,
+    hint: 'Binding pelanggan tetap aman. NMS hanya menandai perbedaan dan tidak mengubah paket billing secara otomatis.',
+    sql: (siteId, p) => `SELECT p.id secret_id, p.username, p.profile, s.code site_code, c.id customer_id, c.customer_code, c.name customer_name,
+        pk.name package_name, pk.mikrotik_profile package_profile
+      FROM ppp_secrets p JOIN customers c ON c.id=p.customer_id JOIN sites s ON s.id=p.site_id JOIN packages pk ON pk.id=c.package_id
+      WHERE p.removed_on_router_at IS NULL AND p.is_isolated=0 AND c.archived_at IS NULL
+        AND pk.mikrotik_profile IS NOT NULL AND pk.mikrotik_profile<>'' AND p.profile IS NOT NULL AND p.profile<>''
+        AND LOWER(TRIM(pk.mikrotik_profile))<>LOWER(TRIM(p.profile))
+        ${siteWhere('p.site_id', siteId, p)} ORDER BY s.code, c.name LIMIT ${LIMIT}`
   }
 };
 
