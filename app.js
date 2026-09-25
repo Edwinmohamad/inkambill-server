@@ -248,7 +248,6 @@ app.use('/network', requireAuth, requirePermission('network'), require('./routes
 // mounted separately from the older Network utilities so the UI, API, schema and
 // poller always use the same source of truth.
 app.use('/nms', requireAuth, requirePermission('network'), require('./routes/nms'));
-app.use('/noc', requireAuth, requirePermission('network'), require('./routes/noc'));
 app.use('/acs', requireAuth, requirePermission('network'), require('./routes/acs'));
 app.use('/olt', requireAuth, requirePermission('network'), require('./routes/olt'));
 app.use('/monitoring', requireAuth, requirePermission('network'), require('./routes/monitoring'));
