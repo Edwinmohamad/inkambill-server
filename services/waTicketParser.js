@@ -18,7 +18,7 @@ const COMMAND_ALIASES = {
   tiketku: 'mine', saya: 'mine',
   ambil: 'take',
   assign: 'assign', tugaskan: 'assign',
-  update: 'update', progress: 'update',
+  update: 'update', progress: 'update', proses: 'update',
   pending: 'pending', tunda: 'pending',
   close: 'close', selesai: 'close', tutup: 'close',
   buka: 'reopen', reopen: 'reopen',
@@ -142,6 +142,26 @@ function parseCommand(text, prefix = '#') {
   }
 }
 
+// Short actions are accepted only when the message is a reply to a ticket notification. The caller
+// supplies the ticket reference extracted from that quoted notification, so technicians never need
+// to type a ticket code for normal field updates.
+function parseReplyCommand(text, ticketRef) {
+  const raw = String(text || '').trim();
+  if (!ticketRef || !raw || raw.startsWith('#')) return null;
+  const { first, restLines } = splitFirstLine(raw);
+  const [word, afterWord] = takeToken(first);
+  const command = COMMAND_ALIASES[word.toLowerCase()];
+  if (!['update', 'pending', 'close'].includes(command)) return null;
+  const note = joinNote(afterWord, restLines);
+  if (command === 'update' && word.toLowerCase() === 'proses' && !note) {
+    return { command, ticketRef, percent: null, note: 'Mulai diproses via WhatsApp.', replied: true };
+  }
+  if (command !== 'close' && !note) {
+    return { command, ticketRef, error: `Tambahkan catatan, contoh: ${word.toLowerCase()} sedang menuju lokasi.` };
+  }
+  return { command, ticketRef, percent: null, note: note || null, replied: true };
+}
+
 const HELP_TEXT = [
   '*INKAMBILLING — Bot Tiket*',
   '',
@@ -158,8 +178,9 @@ const HELP_TEXT = [
   '#buka <tiket> <alasan> — buka kembali',
   '#prioritas <tiket> <rendah|sedang|tinggi|kritis>',
   '',
+  'Cara cepat: balas notifikasi tiket dengan: proses, update <catatan>, pending <alasan>, atau selesai <catatan>.',
   '<tiket> boleh kode lengkap (TT-20260923-123456) atau 6 digit terakhir (123456).',
   'Kirim foto dengan caption #update / #pending / #close untuk melampirkan bukti.'
 ].join('\n');
 
-module.exports = { parseCommand, normalizePriority, HELP_TEXT, COMMAND_ALIASES, PRIORITY_ALIASES };
+module.exports = { parseCommand, parseReplyCommand, normalizePriority, HELP_TEXT, COMMAND_ALIASES, PRIORITY_ALIASES };

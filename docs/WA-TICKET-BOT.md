@@ -1,6 +1,6 @@
 # Bot Tiket WhatsApp (WAHA + n8n)
 
-Teknisi/staff bisa membuat, mengambil, meng-update, dan menutup tiket langsung dari WhatsApp. Semua perubahan langsung tersimpan di tabel `tickets` / `ticket_updates` yang sama dengan menu **Ticketing** di web, jadi SLA, KPI tim, dan timeline progress tetap satu sumber data.
+Teknisi/staff bisa membuat, mengambil, meng-update, dan menutup tiket langsung dari WhatsApp. Semua perubahan langsung tersimpan di tabel `tickets` / `ticket_updates` yang sama dengan menu **Ticketing** di web, jadi SLA, KPI tim, dan timeline progress tetap satu sumber data. Setiap tiket baru langsung dikirim ke seluruh karyawan teknis aktif yang memiliki nomor WhatsApp; tidak menunggu konfirmasi atau PIC.
 
 ## Alur
 
@@ -39,6 +39,19 @@ baik untuk aksi dari WhatsApp maupun dari web (tiket baru, assign, pending, clos
 | `#buka <tiket> <alasan>` | Buka kembali tiket yang sudah Closed |
 | `#prioritas <tiket> <level>` | Ganti prioritas |
 | `#idgrup` | Tampilkan ID grup (untuk setup) |
+
+### Cara cepat melalui Reply
+
+Balas langsung notifikasi tiket dari bot (tidak perlu kode tiket atau awalan `#`):
+
+| Balasan | Hasil |
+|---|---|
+| `proses` | Tiket menjadi Proses |
+| `update sedang menuju lokasi` | Menambah update Proses dengan catatan |
+| `pending menunggu material` | Menandai Pending dengan alasan |
+| `selesai internet normal` | Menutup tiket dengan catatan |
+
+Balasan singkat hanya diproses jika merupakan reply ke notifikasi tiket yang memuat kode tiket. Perintah lama dengan `#` tetap dapat digunakan dari chat mana pun yang diizinkan.
 
 `<tiket>` boleh kode lengkap `TT-20260923-123456` atau cukup 6 digit terakhir `123456`. Foto yang dikirim dengan caption `#update` / `#pending` / `#close` tersimpan sebagai bukti progress dan tampil di timeline web (dengan label "via WhatsApp").
 

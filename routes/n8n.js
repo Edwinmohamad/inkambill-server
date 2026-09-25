@@ -4,6 +4,7 @@ const { runAutoIsolation } = require('../services/networkService');
 const { enqueueWaMessage, runAutoReminderSweep, approvalBatchKey } = require('../services/whatsappGatewayService');
 const { syncStockAlert } = require('../services/inventoryService');
 const { handleWaTicketMessage } = require('../services/waTicketCommandService');
+const { notifyTicketEventAsync } = require('../services/ticketWaNotifyService');
 const router = express.Router();
 
 async function beginEvent(eventType, req, keyOverride = null) {
@@ -60,6 +61,7 @@ router.post('/tickets', async (req, res) => {
   const code = `N8N-${Date.now().toString(36).toUpperCase()}`;
   const [[actor]] = await db.query(`SELECT id FROM users WHERE is_active=1 ORDER BY FIELD(role,'master_admin','admin'),id LIMIT 1`);
   const [result] = await db.execute(`INSERT INTO tickets(ticket_code,customer_id,subject,type,priority,status,description,opened_by,opened_at,source) VALUES(?,?,?,?,?,'open',?,?,NOW(),'n8n')`, [code, Number(b.customer_id) || null, subject, b.type || 'Gangguan Internet', ['low', 'medium', 'high', 'critical'].includes(b.priority) ? b.priority : 'medium', b.description || null, Number(b.opened_by_id) || actor?.id || null]);
+  notifyTicketEventAsync('created', result.insertId, { actorName: 'n8n', via: 'n8n' });
   res.status(201).json({ ok: true, eventKey: event.key, id: result.insertId, ticket_code: code });
 });
 
@@ -83,7 +85,9 @@ router.post('/wa/command', async (req, res) => {
   const payload = req.body?.payload && typeof req.body.payload === 'object' ? req.body.payload : (req.body || {});
   const text = String(payload.body || payload.caption || '').trim();
   const prefix = String(process.env.WA_TICKET_PREFIX || '#').trim() || '#';
-  if (payload.fromMe || !text.startsWith(prefix)) return res.json({ ok: true, handled: false, reason: payload.fromMe ? 'from_me' : 'not_command', replies: [] });
+  const quoted = JSON.stringify(payload?.quotedMsg || payload?.quotedMessage || payload?.contextInfo || payload?._data?.message || {});
+  const isTicketReply = /(?:TT-\d{8}-\d{6}|N8N-[A-Z0-9]+)/i.test(quoted);
+  if (payload.fromMe || (!text.startsWith(prefix) && !isTicketReply)) return res.json({ ok: true, handled: false, reason: payload.fromMe ? 'from_me' : 'not_command', replies: [] });
   const messageKey = payload.id ? `wa.command:${payload.id}` : null;
   const event = await beginEvent('wa.ticket-command', req, messageKey);
   if (event.duplicate) return res.json({ ok: true, duplicate: true, eventKey: event.key, replies: [] });

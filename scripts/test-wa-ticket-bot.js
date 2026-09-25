@@ -25,6 +25,7 @@ const fakeDb = {
       const last = state.updates.filter(u => u.ticket_id === t.id).slice(-1)[0];
       return { ...t, customer_code: c.customer_code, customer_name: c.name, customer_phone: c.phone, customer_address: c.address, site_code: c.customer_code ? 'CDS' : null, cluster_name: null, assigned_name: e.name, assigned_phone: e.phone, progress_percent: last ? last.progress_percent : null };
     };
+    if (s.includes('FROM employees e LEFT JOIN positions p')) return [state.employees.filter(e => e.is_active).map(e => ({ phone: e.phone }))];
     if (s.includes('FROM employees e LEFT JOIN users u')) return [state.employees.filter(e => e.is_active)];
     if (s.includes('FROM employees WHERE is_active=1 AND UPPER(employee_code)=?')) return [state.employees.filter(e => e.employee_code.toUpperCase() === params[0])];
     if (s.includes('FROM tickets t') && s.includes('WHERE t.ticket_code=? LIMIT 1')) return [state.tickets.filter(t => t.ticket_code === params[0]).map(ticketView)];
@@ -87,13 +88,17 @@ const text = r => r.replies[0]?.text || '';
   await test('update persen hanya jika ada %', () => { assert.strictEqual(parseCommand('#update 1 60% ok').percent, 60); assert.strictEqual(parseCommand('#update 1 2 rumah').percent, null); });
   await test('update >100% ditolak', () => assert.ok(parseCommand('#update 1 150% x').error));
   await test('bukan perintah = null', () => assert.strictEqual(parseCommand('halo pak'), null));
+  await test('reply singkat diterjemahkan dengan kode tiket dari notifikasi', () => {
+    const { parseReplyCommand } = require(path.join(root, 'services/waTicketParser'));
+    assert.deepStrictEqual(parseReplyCommand('proses', 'TT-20260925-123456'), { command: 'update', ticketRef: 'TT-20260925-123456', percent: null, note: 'Mulai diproses via WhatsApp.', replied: true });
+  });
 
   console.log('Alur perintah');
   await test('nomor tak terdaftar ditolak (chat pribadi)', async () => {
     const r = await handleWaTicketMessage(msg('#list', { from: '6289999999999@c.us' }));
     assert.match(text(r), /belum terdaftar/);
   });
-  await test('buat tiket via WA + notifikasi grup', async () => {
+  await test('buat tiket via WA + broadcast grup dan teknisi', async () => {
     const r = await handleWaTicketMessage(msg('#buat CDS-0012 tinggi Internet mati sejak pagi\nLampu LOS merah'));
     assert.match(text(r), /Tiket \*TT-\d{8}-\d{6}\* dibuat/);
     assert.strictEqual(state.tickets.length, 1);
@@ -102,6 +107,12 @@ const text = r => r.replies[0]?.text || '';
     assert.strictEqual(state.tickets[0].opened_by, 1, 'fallback ke admin karena teknisi tanpa user login');
     await flush();
     assert.ok(state.sent.some(m => m.chatId === GROUP && m.text.includes('Tiket baru')), 'grup dapat notifikasi');
+    assert.ok(state.sent.some(m => m.chatId === BUDI && m.text.includes('Balas pesan ini')), `teknisi menerima broadcast pribadi: ${JSON.stringify(state.sent)}`);
+  });
+  await test('reply "proses" memperbarui tiket tanpa mengetik kode', async () => {
+    const r = await handleWaTicketMessage(msg('proses', { quotedMsg: { body: state.tickets[0].ticket_code } }));
+    assert.match(text(r), /Proses/);
+    assert.strictEqual(state.tickets[0].status, 'progress');
   });
   await test('pelanggan tidak ditemukan', async () => assert.match(text(await handleWaTicketMessage(msg('#buat XX-1 mati'))), /tidak ditemukan/));
   await test('ambil tiket pakai 6 digit terakhir', async () => {

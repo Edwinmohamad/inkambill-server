@@ -12,7 +12,7 @@ const waha = require('./wahaClient');
 const { audit } = require('./auditService');
 const { normalizeWhatsapp } = require('./whatsappService');
 const { savePhoto, removePhoto } = require('./photoAttachmentService');
-const { parseCommand, HELP_TEXT } = require('./waTicketParser');
+const { parseCommand, parseReplyCommand, HELP_TEXT } = require('./waTicketParser');
 const notify = require('./ticketWaNotifyService');
 
 const TICKET_DIR = path.join(__dirname, '..', 'storage', 'ticket-attachments');
@@ -72,6 +72,14 @@ async function findTicket(ref) {
   if (rows.length === 1) return { ticket: await notify.loadTicketById(rows[0].id) };
   if (rows.length > 1) return { error: `Kode "${ref}" cocok dengan beberapa tiket, pakai kode lengkap:\n${rows.map(r => `• ${r.ticket_code} — ${r.subject} (${STATUS_LABEL[r.status] || r.status})`).join('\n')}` };
   return { error: `Tiket "${ref}" tidak ditemukan.` };
+}
+
+// WAHA uses different quoted-message shapes between engines/versions. The complete payload is
+// searched only for a ticket-code marker, and plain reply actions are enabled only when it exists.
+function repliedTicketRef(payload) {
+  const serialized = JSON.stringify(payload?.quotedMsg || payload?.quotedMessage || payload?.contextInfo || payload?._data?.message || {});
+  const match = serialized.match(/(?:TT-\d{8}-\d{6}|N8N-[A-Z0-9]+)/i);
+  return match ? match[0].toUpperCase() : null;
 }
 
 async function fallbackUserId() {
@@ -253,7 +261,7 @@ async function handleWaTicketMessage(input) {
   const payload = input?.payload && typeof input.payload === 'object' ? input.payload : (input || {});
   if (payload.fromMe) return { handled: false, reason: 'from_me', replies: [] };
   const text = String(payload.body || payload.caption || '').trim();
-  const cmd = parseCommand(text, PREFIX);
+  const cmd = parseCommand(text, PREFIX) || parseReplyCommand(text, repliedTicketRef(payload));
   if (!cmd) return { handled: false, reason: 'not_command', replies: [] };
 
   const chatId = String(payload.from || '');

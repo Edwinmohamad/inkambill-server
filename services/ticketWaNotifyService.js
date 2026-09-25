@@ -3,6 +3,7 @@
 //   - routes/tickets.js          -> events that happen on the web UI
 //   - waTicketCommandService.js  -> events from WA commands (to notify the OTHER chats)
 // Target group(s) = WA_TICKET_GROUP_IDS (same allowlist the WA bot accepts commands from).
+// A new ticket is also broadcast privately to every active technical employee that has a WA number.
 // Set WA_TICKET_NOTIFY=false to silence all of this without touching the bot itself.
 // Every send is best-effort: a WAHA outage must never break saving a ticket.
 const db = require('../config/db');
@@ -19,6 +20,20 @@ function notifyEnabled() {
   return String(process.env.WA_TICKET_NOTIFY || 'true').trim().toLowerCase() !== 'false';
 }
 function shortRef(code) { return String(code || '').split('-').pop(); }
+
+async function technicalRecipientPhones() {
+  const [rows] = await db.query(`SELECT e.phone
+    FROM employees e
+    LEFT JOIN positions p ON p.id=e.position_id
+    WHERE e.is_active=1 AND e.phone IS NOT NULL AND e.phone<>''
+      AND (p.category='technical' OR p.category IS NULL)`);
+  const phones = new Set();
+  for (const row of rows) {
+    const wa = validateWhatsapp(row.phone);
+    if (wa.valid) phones.add(wa.normalized);
+  }
+  return [...phones];
+}
 
 async function loadTicket(where, param) {
   const [rows] = await db.execute(`SELECT t.id,t.ticket_code,t.subject,t.type,t.priority,t.status,t.description,t.opened_at,t.closed_at,
@@ -46,7 +61,7 @@ function eventMessage(type, t, { actorName, note, via } = {}) {
   const noteLine = note ? `\nCatatan: ${note}` : '';
   switch (type) {
     case 'created':
-      return `🆕 Tiket baru ${head}\n${customerLine(t)}\nKeluhan: ${t.subject}${t.description ? `\n${t.description}` : ''}${by}\n\nAmbil: #ambil ${shortRef(t.ticket_code)}`;
+      return `🆕 Tiket baru ${head}\n${customerLine(t)}\n${t.customer_address ? `Alamat: ${t.customer_address}\n` : ''}Keluhan: ${t.subject}${t.description ? `\n${t.description}` : ''}${by}\n\nBalas pesan ini:\n• proses\n• update <catatan>\n• pending <alasan>\n• selesai <catatan>`;
     case 'assigned':
       return `👷 ${head} ditugaskan ke *${t.assigned_name || '-'}*\n${customerLine(t)}\nKeluhan: ${t.subject}${by}`;
     case 'assigned_personal':
@@ -79,6 +94,15 @@ async function notifyTicketEvent(type, ticketId, { actorName = null, note = null
     for (const groupId of skipGroups ? [] : ticketGroupIds()) {
       if (!skip.has(groupId)) await safeSend(groupId, eventMessage(type, t, { actorName, note, via }));
     }
+    // A newly created ticket is intentionally broadcast immediately: no PIC claim or confirmation
+    // is required before every active technician receives the full ticket and reply shortcuts.
+    if (type === 'created') {
+      const recipients = await technicalRecipientPhones();
+      for (const phone of recipients) {
+        const chatId = `${phone}@c.us`;
+        await safeSend(chatId, eventMessage(type, t, { actorName, note, via }));
+      }
+    }
     if (type === 'assigned' && t.assigned_phone) {
       const wa = validateWhatsapp(t.assigned_phone);
       if (wa.valid && wa.normalized !== excludePhone) {
@@ -96,4 +120,4 @@ function notifyTicketEventAsync(...args) {
   notifyTicketEvent(...args).catch(() => {});
 }
 
-module.exports = { notifyTicketEvent, notifyTicketEventAsync, loadTicket, loadTicketById, ticketGroupIds, shortRef, customerLine, PRIORITY_LABEL, STATUS_LABEL };
+module.exports = { notifyTicketEvent, notifyTicketEventAsync, loadTicket, loadTicketById, ticketGroupIds, technicalRecipientPhones, shortRef, customerLine, PRIORITY_LABEL, STATUS_LABEL };

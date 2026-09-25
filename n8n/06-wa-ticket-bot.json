@@ -33,7 +33,7 @@
         -260
       ],
       "parameters": {
-        "content": "### Alur\nPesan WA → cek token & awalan `#` → backend `/api/n8n/wa/command` (cek nomor karyawan, eksekusi tiket) → balasan dikirim lewat WAHA.\n\nPesan biasa (tanpa `#`) berhenti di node **Valid?** — tidak ada yang tersimpan.\n\nJika server INKAMBILLING tidak merespons, pengirim tetap dapat balasan \"server sedang gangguan\".",
+        "content": "### Alur\nPesan WA → cek token dan: awalan `#` ATAU reply ke notifikasi tiket → backend `/api/n8n/wa/command` (cek nomor karyawan, eksekusi tiket) → balasan dikirim lewat WAHA.\n\nPesan biasa tanpa `#` yang bukan reply tiket berhenti di node **Valid?** — tidak ada yang tersimpan.\n\nReply singkat yang didukung: `proses`, `update <catatan>`, `pending <alasan>`, `selesai <catatan>`.\n\nJika server INKAMBILLING tidak merespons, pengirim tetap dapat balasan \"server sedang gangguan\".",
         "height": 220,
         "width": 520,
         "color": 7
@@ -119,7 +119,7 @@
           "conditions": [
             {
               "id": "valid-1",
-              "leftValue": "={{ String($('Config').item.json.webhookToken || '') !== '' && String($json.query?.token || '') === $('Config').item.json.webhookToken && $json.body?.event === 'message' && $json.body?.payload?.fromMe !== true && String($json.body?.payload?.body || '').trim().startsWith('#') }}",
+              "leftValue": "={{ String($('Config').item.json.webhookToken || '') !== '' && String($json.query?.token || '') === $('Config').item.json.webhookToken && $json.body?.event === 'message' && $json.body?.payload?.fromMe !== true && (String($json.body?.payload?.body || '').trim().startsWith('#') || /(?:TT-\\d{8}-\\d{6}|N8N-[A-Z0-9]+)/i.test(JSON.stringify($json.body?.payload?.quotedMsg || $json.body?.payload?.quotedMessage || $json.body?.payload?.contextInfo || $json.body?.payload?._data?.message || {}))) }}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
