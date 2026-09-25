@@ -42,9 +42,10 @@ router.use('/tools/proxy/:toolKey',(req,res)=>{
 });
 
 router.get('/monitor', async (req,res) => {
-  const [routers] = await db.query(`SELECT r.id,r.name,r.last_status,r.last_seen_at,r.last_error,s.code site_code,s.name site_name FROM routers r JOIN sites s ON s.id=r.site_id WHERE r.is_active=1 ORDER BY s.code,r.name`);
-  const [sites] = await db.query(`SELECT id,code,name FROM sites WHERE is_active=1 ORDER BY code`);
-  res.render('network/monitor',{title:'NMS MikroTik',routers,sites});
+  // The former monitor view was removed while its route was still linked from
+  // Infrastructure Hub.  Send callers to the active NMS page instead of
+  // rendering a non-existent template (and leaving Smart Sync inaccessible).
+  res.redirect(302, '/nms');
 });
 
 router.get('/api/snapshot', async (req,res) => {

@@ -26,6 +26,8 @@ const { requireAuth, loadPermissions, requirePermission, requireAnyPermission, r
 const { generateMonthlyInvoices } = require('./services/invoiceService');
 const { runAutoIsolation } = require('./services/networkService');
 const { captureAllNmsTelemetry, backupAllRouters } = require('./services/nmsTelemetryService');
+const { ensureNmsV2Schema } = require('./services/nms/schema');
+const nmsPoller = require('./services/nms/poller');
 const { evaluateNetworkIncidents } = require('./services/networkAlertService');
 const { pingAllOlts } = require('./services/oltService');
 const { syncDevices: syncAcsDevices } = require('./services/acsService');
@@ -241,6 +243,10 @@ app.use('/debts', requireAuth, requirePermission('finance'), require('./routes/d
 app.use('/closing', requireAuth, requireMasterAdmin, require('./routes/closing'));
 app.use('/routers', requireAuth, requirePermission('network'), require('./routes/routers'));
 app.use('/network', requireAuth, requirePermission('network'), require('./routes/network'));
+// NMS v2 owns the persisted PPP-secret mirror and Smart Sync workflow.  Keep it
+// mounted separately from the older Network utilities so the UI, API, schema and
+// poller always use the same source of truth.
+app.use('/nms', requireAuth, requirePermission('network'), require('./routes/nms'));
 app.use('/noc', requireAuth, requirePermission('network'), require('./routes/noc'));
 app.use('/acs', requireAuth, requirePermission('network'), require('./routes/acs'));
 app.use('/olt', requireAuth, requirePermission('network'), require('./routes/olt'));
@@ -319,6 +325,8 @@ async function bootstrap() {
   await ensureV54Schema();
   await ensureV55Schema();
   await ensureV56Schema();
+  await ensureNmsV2Schema();
+  nmsPoller.start();
   const [rows] = await db.query('SELECT COUNT(*) total FROM users');
   if (Number(rows[0].total) === 0) {
     const username = process.env.DEFAULT_ADMIN_USERNAME || 'admin';
