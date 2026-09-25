@@ -1,0 +1,65 @@
+<link rel="stylesheet" href="/css/inventory.css?v=<%= typeof assetVersion!=='undefined'?assetVersion:'1' %>">
+<% const num=v=>Number(v||0).toLocaleString('id-ID',{maximumFractionDigits:2}); const sq=site?`?site=${encodeURIComponent(site)}`:''; const maxUse=Math.max(1,...data.topUsed.map(i=>i.usage30)); const purposeLabel={PSB:'PSB',maintenance:'Maintenance',migrasi:'Migrasi',ticket:'Ticket',operasional:'Operasional'}; %>
+<section class="inventory-page">
+  <div class="module-head">
+    <div><div class="module-kicker">WAREHOUSE ANALYTICS</div><h1>Analitik Gudang</h1><p>Nilai stock, sebaran per site, tren pergerakan, pemakaian, dead stock, dan anomali.</p></div>
+    <div class="module-actions"><form method="get"><select class="form-select form-select-sm" name="site" onchange="this.form.submit()" style="height:38px"><option value="">Semua Site</option><% sites.forEach(s=>{ %><option value="<%= s.code %>" <%= site===s.code?'selected':'' %>><%= s.code %></option><% }) %></select></form><a class="btn-tech" href="/inventory<%= sq %>"><i class="bi bi-box-seam"></i>Stock Barang</a><a class="btn-tech" href="/inventory/reorder<%= sq %>"><i class="bi bi-cart-plus"></i>Saran Pembelian</a><a class="btn-tech primary" href="/inventory/wall<%= sq %>" target="_blank"><i class="bi bi-tv"></i>Layar Gudang</a></div>
+  </div>
+
+  <div class="inv-metric-grid">
+    <div class="metric-card"><div class="metric-top"><span class="metric-label">Kesehatan</span><span class="metric-icon"><i class="bi bi-heart-pulse"></i></span></div><strong><%= summary.health %>%</strong><small><%= summary.counts.ready %> dari <%= summary.counts.all %> aman</small></div>
+    <div class="metric-card green"><div class="metric-top"><span class="metric-label">Nilai Stock</span><span class="metric-icon"><i class="bi bi-cash-coin"></i></span></div><strong><%= formatRupiah(summary.value) %></strong><small><%= num(summary.units) %> unit</small></div>
+    <a class="metric-card red" href="/inventory?status=critical<%= site?`&site=${encodeURIComponent(site)}`:'' %>"><div class="metric-top"><span class="metric-label">Critical + Low</span><span class="metric-icon"><i class="bi bi-exclamation-octagon-fill"></i></span></div><strong><%= summary.counts.critical+summary.counts.low %></strong><small><%= summary.counts.critical %> critical</small></a>
+    <a class="metric-card yellow" href="/inventory?status=soon<%= site?`&site=${encodeURIComponent(site)}`:'' %>"><div class="metric-top"><span class="metric-label">Akan Habis</span><span class="metric-icon"><i class="bi bi-hourglass-split"></i></span></div><strong><%= summary.counts.soon %></strong><small>≤ 14 hari</small></a>
+    <a class="metric-card gray" href="#dead"><div class="metric-top"><span class="metric-label">Dead Stock</span><span class="metric-icon"><i class="bi bi-moon-stars-fill"></i></span></div><strong><%= formatRupiah(summary.deadValue) %></strong><small><%= summary.counts.dead %> item · ≥<%= deadDays %> hari</small></a>
+    <a class="metric-card" href="#anomali"><div class="metric-top"><span class="metric-label">Anomali 30 Hari</span><span class="metric-icon" style="color:var(--warning)"><i class="bi bi-shield-exclamation"></i></span></div><strong><%= data.anomalies.length %></strong><small>Perlu dicek</small></a>
+  </div>
+
+  <div class="inv-grid-2">
+    <article class="inv-panel"><div class="inv-panel-head"><div><span>Nilai Stock</span><h3>Per Kategori</h3></div></div>
+      <% if(data.categories.length){ %><div class="row g-2 align-items-center"><div class="col-md-6"><div class="inv-chart sm"><canvas id="catChart"></canvas></div></div><div class="col-md-6"><ul class="inv-rank"><% data.categories.slice(0,8).forEach((c,idx)=>{ %><li><span><%= idx+1 %></span><div><b><%= c.name %></b><small class="d-block text-muted" style="font-size:11px"><%= c.items %> SKU · <%= num(c.qty) %> unit<%= c.low?` · ${c.low} perlu tindakan`:'' %></small></div><b><%= summary.value?Math.round(c.value/summary.value*100):0 %>%</b></li><% }) %></ul></div></div><% }else{ %><div class="inv-empty-ok"><small>Belum ada data.</small></div><% } %>
+    </article>
+    <article class="inv-panel"><div class="inv-panel-head"><div><span>Pergerakan</span><h3>Stock Masuk vs Keluar · 12 Minggu</h3></div></div><div class="inv-chart"><canvas id="weeklyChart"></canvas></div></article>
+  </div>
+
+  <article class="inv-panel mb-3"><div class="inv-panel-head"><div><span>Sebaran</span><h3>Heatmap Site × Kategori</h3></div><small class="text-muted">Angka = barang perlu tindakan / total SKU · klik sel untuk membuka</small></div>
+    <% const H=data.heatmap; if(H.sites.length&&H.categories.length){ %><div class="inv-heat"><table><thead><tr><th class="row">Site</th><% H.categories.forEach(c=>{ %><th><%= c %></th><% }) %></tr></thead><tbody><% H.sites.forEach(s=>{ %><tr><th class="row"><%= s %></th><% H.categories.forEach(c=>{ const cell=H.cells[`${s}|${c}`]; %><% if(cell){ %><td class="c-<%= cell.worst %>" title="<%= cell.names.slice(0,6).join(', ')||'Semua aman' %>" style="cursor:pointer" onclick="location.href='/inventory?<%= s!=='GLOBAL'?`site=${encodeURIComponent(s)}&`:'' %>q=<%= encodeURIComponent(c==='Tanpa Kategori'?'':c) %>'"><%= cell.low %>/<%= cell.items %><small><%= num(cell.qty) %> unit</small></td><% }else{ %><td class="c-none">–</td><% } %><% }) %></tr><% }) %></tbody></table></div><% }else{ %><div class="inv-empty-ok"><small>Belum ada data.</small></div><% } %>
+  </article>
+
+  <div class="inv-grid-3">
+    <article class="inv-panel"><div class="inv-panel-head"><div><span>30 Hari</span><h3>Top 10 Material Terpakai</h3></div></div>
+      <% if(data.topUsed.length){ %><ul class="inv-rank"><% data.topUsed.forEach((i,idx)=>{ %><li><span><%= idx+1 %></span><div><a href="/inventory/<%= i.id %>"><%= i.name %></a><div class="bar"><i style="width:<%= Math.round(i.usage30/maxUse*100) %>%"></i></div></div><b><%= num(i.usage30) %> <small class="text-muted"><%= i.unit %></small></b></li><% }) %></ul><% }else{ %><div class="inv-empty-ok"><small>Belum ada pemakaian 30 hari terakhir.</small></div><% } %>
+    </article>
+    <article class="inv-panel"><div class="inv-panel-head"><div><span>90 Hari</span><h3>Pemakaian per Site</h3></div></div><% if(data.bySite.length){ %><div class="inv-chart sm"><canvas id="siteChart"></canvas></div><% }else{ %><div class="inv-empty-ok"><small>Belum ada data pemakaian.</small></div><% } %></article>
+    <article class="inv-panel"><div class="inv-panel-head"><div><span>90 Hari</span><h3>Pemakaian per Tujuan</h3></div></div><% if(data.byPurpose.length){ %><div class="inv-chart sm"><canvas id="purposeChart"></canvas></div><% }else{ %><div class="inv-empty-ok"><small>Belum ada data pemakaian.</small></div><% } %></article>
+  </div>
+
+  <div class="inv-grid-2">
+    <article class="data-card" id="dead"><div class="data-card-head"><div><h3>Dead Stock</h3><small>Tidak bergerak ≥ <%= deadDays %> hari · urut nilai terbesar</small></div></div>
+      <div class="table-responsive"><table class="app-table"><thead><tr><th>Barang</th><th>Stock</th><th>Terakhir Gerak</th><th>Nilai</th></tr></thead><tbody>
+      <% data.dead.slice(0,25).forEach(i=>{ %><tr><td><a class="cell-main text-decoration-none" href="/inventory/<%= i.id %>"><%= i.name %></a><span class="cell-sub"><%= i.site_code||'GLOBAL' %> · <%= i.category_name||'-' %></span></td><td><%= num(i.qty) %> <%= i.unit %></td><td><%= i.lastMoveLabel %></td><td class="money"><%= formatRupiah(i.value) %></td></tr><% }) %>
+      <% if(!data.dead.length){ %><tr><td colspan="4"><div class="empty-state"><i class="bi bi-check-circle"></i><strong>Tidak ada dead stock</strong></div></td></tr><% } %></tbody></table></div>
+    </article>
+    <article class="data-card" id="anomali"><div class="data-card-head"><div><h3>Anomali Pergerakan</h3><small>30 hari · keluar tanpa referensi / jumlah tidak wajar</small></div><a class="btn-tech" href="/inventory/movements">Pergerakan →</a></div>
+      <div class="table-responsive"><table class="app-table"><thead><tr><th>Waktu</th><th>Barang</th><th>Pergerakan</th><th>Oleh</th></tr></thead><tbody>
+      <% data.anomalies.forEach(m=>{ %><tr><td><%= formatDateTime(m.created_at) %></td><td><a class="cell-main text-decoration-none" href="/inventory/<%= m.item_id %>"><%= m.item_name %></a><span class="inv-reason"><%= m.reason %></span></td><td><span class="status-badge <%= m.movement_type==='out'?'red':'blue' %>"><%= m.movement_type %></span> <%= num(m.qty) %> <%= m.unit %><span class="cell-sub"><%= m.reference||'tanpa referensi' %></span></td><td><%= m.user_name||'-' %></td></tr><% }) %>
+      <% if(!data.anomalies.length){ %><tr><td colspan="4"><div class="empty-state"><i class="bi bi-shield-check"></i><strong>Tidak ada anomali</strong></div></td></tr><% } %></tbody></table></div>
+    </article>
+  </div>
+</section>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+(()=>{
+  if(typeof Chart==='undefined')return;
+  const D=<%- JSON.stringify({cats:data.categories.map(c=>({name:c.name,value:Math.round(c.value)})),weekly:data.weekly,bySite:data.bySite.map(s=>({site:s.site_code,qty:Number(s.qty||0),value:Math.round(Number(s.value||0))})),byPurpose:data.byPurpose.map(p=>({purpose:purposeLabel[p.purpose]||p.purpose,qty:Number(p.qty||0),value:Math.round(Number(p.value||0))}))}).replace(/</g,'\\u003c') %>;
+  const css=getComputedStyle(document.documentElement),muted=css.getPropertyValue('--muted').trim()||'#8893a8',grid='rgba(148,163,184,.12)';
+  const palette=['#6C4FE0','#2ed6a1','#ffbd5b','#ff6969','#0a84ff','#bf5af2','#64d2ff','#ffd60a','#8e8e93','#ff9f0a'];
+  const money=v=>new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(v);
+  const base={responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:muted,boxWidth:10,boxHeight:10,font:{size:11}}}},scales:{x:{grid:{display:false},ticks:{color:muted}},y:{beginAtZero:true,grid:{color:grid},ticks:{color:muted}}}};
+  const el=id=>document.getElementById(id);
+  if(el('catChart')&&D.cats.length)new Chart(el('catChart'),{type:'doughnut',data:{labels:D.cats.map(c=>c.name),datasets:[{data:D.cats.map(c=>c.value),backgroundColor:palette,borderWidth:0,hoverOffset:6}]},options:{responsive:true,maintainAspectRatio:false,cutout:'68%',plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.label}: ${money(c.raw)}`}}}}});
+  if(el('weeklyChart'))new Chart(el('weeklyChart'),{type:'bar',data:{labels:D.weekly.labels,datasets:[{label:'Masuk',data:D.weekly.in,backgroundColor:'#2ed6a1',borderRadius:5},{label:'Keluar',data:D.weekly.out,backgroundColor:'#ff6969',borderRadius:5}]},options:base});
+  if(el('siteChart'))new Chart(el('siteChart'),{type:'bar',data:{labels:D.bySite.map(s=>s.site),datasets:[{label:'Nilai material',data:D.bySite.map(s=>s.value),backgroundColor:'#6C4FE0',borderRadius:5}]},options:{...base,indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${money(c.raw)} · ${D.bySite[c.dataIndex].qty} unit`}}},scales:{x:{...base.scales.y,ticks:{color:muted,callback:v=>money(v)}},y:{grid:{display:false},ticks:{color:muted}}}}});
+  if(el('purposeChart'))new Chart(el('purposeChart'),{type:'doughnut',data:{labels:D.byPurpose.map(p=>p.purpose),datasets:[{data:D.byPurpose.map(p=>p.value),backgroundColor:palette,borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{position:'right',labels:{color:muted,boxWidth:10,font:{size:11}}},tooltip:{callbacks:{label:c=>`${c.label}: ${money(c.raw)} · ${D.byPurpose[c.dataIndex].qty} unit`}}}}});
+})();
+</script>

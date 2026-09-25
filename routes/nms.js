@@ -18,6 +18,7 @@ const insights = require('../services/nms/insights');
 const automation = require('../services/nms/automation');
 const nmsSettings = require('../services/nms/settings');
 const widgets = require('../services/nms/widgets');
+const fasum = require('../services/nms/fasum');
 
 const router = express.Router();
 
@@ -47,6 +48,17 @@ router.get('/', async (req, res, next) => {
     const [sites, data] = await Promise.all([dashboard.sites(), dashboard.getDashboard(siteId)]);
     res.set('Cache-Control', 'no-store');
     res.render('nms/dashboard', { title: 'NOC Dashboard', sites, siteId, data, canControl: canControl(req), isAdmin: isAdminRole(req.session.user?.role), nmsPage: 'dashboard' });
+  } catch (err) { next(err); }
+});
+
+// NOC Wall: tampilan padat layar penuh untuk monitor NOC (tanpa sidebar/layout aplikasi).
+router.get('/wall', async (req, res, next) => {
+  try {
+    const siteId = siteParam(req);
+    const safe = p => p.catch(err => ({ error: err.message }));
+    const [sites, data, health] = await Promise.all([dashboard.sites(), dashboard.getDashboard(siteId), safe(insights.siteHealth())]);
+    res.set('Cache-Control', 'no-store');
+    res.render('nms/wall', { layout: false, title: 'NOC Wall', sites, siteId, boot: { data, health } });
   } catch (err) { next(err); }
 });
 
@@ -148,6 +160,7 @@ router.post('/api/sync/commit', requireNetworkControl, api(async req => {
   await audit({ userId: req.session.user.id, action: 'nms_smart_sync', entityType: 'ppp_secret', ip: req.ip, siteId: out.siteId, description: `Smart Sync: ${out.summary.linked}/${out.summary.planned} di-link`, details: { planId: out.planId, summary: out.summary, linked: out.results.filter(r => r.ok).map(r => ({ secretId: r.secretId, username: r.username, customerId: r.customerId })), failed: out.results.filter(r => !r.ok) } });
   return out;
 }));
+router.get('/api/customers/unlinked', api(async req => ({ rows: await smartSync.unlinkedCustomers({ siteId: siteParam(req), secretId: Number(req.query.secret || 0) || null }) })));
 router.get('/api/customers/search', api(async req => ({ rows: await smartSync.searchCustomers({ q: String(req.query.q || '').trim().slice(0, 80), siteId: siteParam(req) }) })));
 router.post('/api/secrets/:id/map', requireNetworkControl, api(async req => {
   // Catatan opsional: mapping manual tidak boleh gagal hanya karena catatan kosong.
@@ -244,6 +257,20 @@ router.post('/api/schedules/:id/cancel', requireNetworkControl, api(async req =>
 router.get('/api/approvals', api(async () => ({ rows: await automation.listApprovals() })));
 router.post('/api/approvals/:id/approve', requireAdmin, api(async req => automation.decideApproval(Number(req.params.id), true, ctxOf(req))));
 router.post('/api/approvals/:id/reject', requireAdmin, api(async req => automation.decideApproval(Number(req.params.id), false, ctxOf(req))));
+// Tag [CID:…] di comment MikroTik
+router.post('/api/cid-tags/write', requireNetworkControl, api(async req => ({ job: await smartSync.writeAllCidTags({ siteId: siteParam(req), userId: req.session.user.id }) })));
+router.get('/api/cid-tags/status', api(async () => ({ job: smartSync.cidJobStatus() })));
+// Fasum / exempt manual
+router.post('/api/secrets/:id/exempt', requireNetworkControl, api(async req => fasum.setExempt([Number(req.params.id)], { type: req.body.type ?? 'fasum', note: req.body.note }, ctxOf(req))));
+router.post('/api/exempt/bulk', requireNetworkControl, api(async req => fasum.setExempt(Array.isArray(req.body.secretIds) ? req.body.secretIds.slice(0, 500) : [], { type: req.body.type ?? 'fasum', note: req.body.note }, ctxOf(req))));
+router.get('/api/fasum/report', api(async req => ({ report: await fasum.report({ siteId: siteParam(req), month: req.query.month }) })));
+router.get('/api/fasum/report.csv', async (req, res, next) => {
+  try {
+    const { name, csv } = await fasum.reportCsv({ siteId: siteParam(req), month: req.query.month });
+    res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${name}.csv"`, 'Cache-Control': 'no-store' });
+    res.send(csv);
+  } catch (err) { next(err); }
+});
 router.get('/api/sync/batches', api(async () => ({ rows: await smartSync.batches() })));
 router.get('/api/sync/batches/:id/export', async (req, res, next) => {
   try {

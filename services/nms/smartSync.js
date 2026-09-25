@@ -2,21 +2,60 @@
 const crypto = require('crypto');
 const db = require('../../config/db');
 const cache = require('./cache');
-const { buildSmartSyncPlan } = require('./matching');
+const { buildSmartSyncPlan, guessScore, learnPatterns, parseCid, withCid, withoutCid, macKey, ipKey, normalizeKey } = require('./matching');
 const store = require('./secretStore');
 const bus = require('./eventBus');
+const ros = require('./rosApi');
+const settings = require('./settings');
 
 const PLAN_TTL_MS = 30 * 60 * 1000;
 const UNDO_WINDOW_H = 24;
-const METHODS = new Set(['pppoe_username', 'customer_code', 'customer_name', 'manual', 'phone', 'comment', 'fuzzy', 'created']);
+const METHODS = new Set(['pppoe_username', 'customer_code', 'customer_name', 'manual', 'phone', 'comment', 'fuzzy', 'created', 'cid_tag', 'alias', 'moved', 'mac', 'ip']);
+// Keputusan operator (bukan kecocokan pasti) → diingat sebagai alias username ↔ pelanggan.
+const OPERATOR_METHODS = new Set(['manual', 'phone', 'comment', 'fuzzy', 'mac', 'ip', 'alias']);
+const LOG_SCORE = { cid_tag: 100, customer_code: 100, alias: 99, moved: 100, customer_name: 95, mac: 90, ip: 88, phone: 88 };
 
 async function loadInputs(siteId) {
   const sp = siteId ? [Number(siteId)] : [];
-  const [secrets] = await db.query(`SELECT id, site_id, router_id, username, comment, is_exempt FROM ppp_secrets WHERE customer_id IS NULL AND removed_on_router_at IS NULL ${siteId ? 'AND site_id=?' : ''}`, sp);
-  const [customers] = await db.query(`SELECT c.id, c.site_id, c.customer_code, c.name, c.phone, p.id linked_secret_id
-    FROM customers c LEFT JOIN ppp_secrets p ON p.customer_id=c.id
+  const [rawSecrets] = await db.query(`SELECT id, site_id, router_id, username, comment, profile, caller_id, active_caller_id, remote_address, active_address, is_exempt, cid_ignore
+    FROM ppp_secrets WHERE customer_id IS NULL AND removed_on_router_at IS NULL ${siteId ? 'AND site_id=?' : ''}`, sp);
+  // Tag CID yang sengaja dilepas operator (unmap/undo) tidak boleh menautkan ulang.
+  const secrets = rawSecrets.map(s => (s.cid_ignore && parseCid(s.comment) === s.cid_ignore ? { ...s, comment: withoutCid(s.comment) } : s));
+  // Secret lama yang sudah hilang dari router tidak dihitung "terikat": pelanggannya boleh dicocokkan ke secret baru.
+  const [customers] = await db.query(`SELECT c.id, c.site_id, c.customer_code, c.name, c.phone, c.customer_status, c.pppoe_username, pk.mikrotik_profile, p.id linked_secret_id
+    FROM customers c LEFT JOIN packages pk ON pk.id=c.package_id LEFT JOIN ppp_secrets p ON p.customer_id=c.id AND p.removed_on_router_at IS NULL
     WHERE c.archived_at IS NULL AND c.customer_status IN ('active','suspended') ${siteId ? 'AND c.site_id=?' : ''}`, sp);
-  return { secrets, customers };
+  const ctx = await loadSignals(siteId, secrets);
+  return { secrets, customers, ctx };
+}
+
+/** Sinyal tambahan Smart Sync: alias operator, pola penamaan site, MAC/IP link lama, IP WAN ONT (ACS). Semua best effort. */
+async function loadSignals(siteId, secrets) {
+  const sp = siteId ? [Number(siteId)] : [];
+  const rows = async (sql, params = sp) => { try { const [r] = await db.query(sql, params); return r; } catch (_) { return []; } };
+  const addTo = (map, id, v) => { if (!v) return; const k = Number(id); if (!map.has(k)) map.set(k, new Set()); map.get(k).add(v); };
+  const ctx = { aliases: new Map(), patterns: new Map(), secretMacs: new Map(), customerMacs: new Map(), customerStaticIps: new Map(), customerLiveIps: new Map() };
+  (await rows(`SELECT site_id, username_key, customer_id FROM nms_sync_aliases ${siteId ? 'WHERE site_id=?' : ''}`)).forEach(a => ctx.aliases.set(`${a.site_id}|${a.username_key}`, Number(a.customer_id)));
+  ctx.patterns = learnPatterns(await rows(`SELECT p.site_id, p.username, c.name, c.customer_code, c.phone FROM ppp_secrets p JOIN customers c ON c.id=p.customer_id
+    WHERE p.removed_on_router_at IS NULL ${siteId ? 'AND p.site_id=?' : ''}`));
+  // Perangkat & IP yang pernah dipakai pelanggan (termasuk secret lama yang sudah dihapus dari router).
+  for (const r of await rows(`SELECT customer_id, caller_id, active_caller_id, remote_address FROM ppp_secrets WHERE customer_id IS NOT NULL ${siteId ? 'AND site_id=?' : ''}`)) {
+    addTo(ctx.customerMacs, r.customer_id, macKey(r.caller_id)); addTo(ctx.customerMacs, r.customer_id, macKey(r.active_caller_id));
+    addTo(ctx.customerStaticIps, r.customer_id, ipKey(r.remote_address));
+  }
+  for (const r of await rows(`SELECT customer_id, caller_id FROM nms_ppp_events WHERE customer_id IS NOT NULL AND event_type='login' AND caller_id IS NOT NULL AND caller_id<>''
+      AND occurred_at >= DATE_SUB(NOW(), INTERVAL 180 DAY) ${siteId ? 'AND site_id=?' : ''} GROUP BY customer_id, caller_id`)) addTo(ctx.customerMacs, r.customer_id, macKey(r.caller_id));
+  (await rows(`SELECT l.customer_id, d.wan_ip FROM customer_ont_links l JOIN acs_devices d ON d.id=l.acs_device_id WHERE d.wan_ip IS NOT NULL AND d.last_inform >= DATE_SUB(NOW(), INTERVAL 1 DAY)`, []))
+    .forEach(r => addTo(ctx.customerLiveIps, r.customer_id, ipKey(r.wan_ip)));
+  // MAC yang pernah login memakai secret yang belum ter-link.
+  const secretKey = new Map(secrets.map(s => [`${s.router_id}|${String(s.username).toLowerCase()}`, s.id]));
+  if (secretKey.size) {
+    for (const r of await rows(`SELECT router_id, LOWER(username) u, caller_id FROM nms_ppp_events WHERE customer_id IS NULL AND event_type='login' AND caller_id IS NOT NULL AND caller_id<>''
+        AND occurred_at >= DATE_SUB(NOW(), INTERVAL 60 DAY) ${siteId ? 'AND site_id=?' : ''} GROUP BY router_id, u, caller_id`)) {
+      const id = secretKey.get(`${r.router_id}|${r.u}`); if (id) addTo(ctx.secretMacs, id, macKey(r.caller_id));
+    }
+  }
+  return ctx;
 }
 
 /** Dry-run: tidak menulis DB. Rencana disimpan 30 menit dengan planId untuk di-commit. */
@@ -39,14 +78,16 @@ async function preview({ siteId = null, refresh = false } = {}) {
       throw error;
     }
   }
-  const { secrets, customers } = await loadInputs(siteId);
-  const plan = buildSmartSyncPlan(secrets, customers);
+  // Pindah router dalam site yang sama: link dibawa sebelum rencana dihitung.
+  const carried = await carryOverLinks(siteId).catch(err => { console.warn('NMS carry-over:', err.message); return []; });
+  const { secrets, customers, ctx } = await loadInputs(siteId);
+  const plan = buildSmartSyncPlan(secrets, customers, ctx);
   const [sites] = await db.query(`SELECT id, code FROM sites`);
   const siteCode = new Map(sites.map(s => [Number(s.id), s.code]));
   const decorate = row => ({ ...row, siteCode: siteCode.get(Number(row.siteId)) || null });
   const planId = crypto.randomUUID();
   const value = { planId, siteId: siteId ? Number(siteId) : null, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + PLAN_TTL_MS).toISOString(),
-    summary: plan.summary, pairs: plan.pairs.map(decorate), conflicts: plan.conflicts.map(decorate), suggestions: plan.suggestions.map(decorate), refreshResults };
+    summary: plan.summary, pairs: plan.pairs.map(decorate), conflicts: plan.conflicts.map(decorate), suggestions: plan.suggestions.map(decorate), unmatched: plan.unmatched.map(decorate), freeCustomers: plan.freeCustomers, patterns: plan.patterns, carried, refreshResults };
   cache.set(`nms:plan:${planId}`, value, PLAN_TTL_MS);
   return value;
 }
@@ -55,11 +96,11 @@ async function preview({ siteId = null, refresh = false } = {}) {
 // opts.manual = operator memilih pasangan secara eksplisit (tombol Hubungkan / pilihan konflik):
 // secret exempt boleh dihubungkan, dan bila pelanggan masih terikat ke secret lain, link lama
 // dipindahkan ke secret ini (bukan gagal). Secret lama yang sudah hilang dari router selalu dilepas.
-async function linkSecret(conn, secretId, customerId, method, { manual = false } = {}) {
+async function linkSecret(conn, secretId, customerId, method, { manual = false, allowExempt = false } = {}) {
   const [[secret]] = await conn.execute(`SELECT id, site_id, router_id, username, customer_id, removed_on_router_at, is_exempt FROM ppp_secrets WHERE id=? FOR UPDATE`, [secretId]);
   if (!secret) throw new Error('PPP Secret tidak ditemukan.');
   if (secret.removed_on_router_at) throw new Error(`PPP Secret ${secret.username} sudah tidak ada di router.`);
-  if (Number(secret.is_exempt) && !manual) throw new Error(`PPP Secret ${secret.username} dikecualikan dari Smart Sync. Hubungkan manual bila memang milik pelanggan.`);
+  if (Number(secret.is_exempt) && !manual && !allowExempt) throw new Error(`PPP Secret ${secret.username} dikecualikan dari Smart Sync. Hubungkan manual bila memang milik pelanggan.`);
   if (secret.customer_id && Number(secret.customer_id) !== Number(customerId)) throw new Error(`Secret ${secret.username} sudah terikat ke pelanggan lain.`);
   const [[customer]] = await conn.execute(`SELECT id, site_id, name, customer_code, customer_status, router_id, pppoe_username FROM customers WHERE id=? AND archived_at IS NULL FOR UPDATE`, [customerId]);
   if (!customer) throw new Error('Pelanggan tidak ditemukan / diarsipkan.');
@@ -70,15 +111,19 @@ async function linkSecret(conn, secretId, customerId, method, { manual = false }
   if (blocking.length && !manual) throw new Error(`${customer.name} sudah terikat ke secret ${blocking[0].username}. Gunakan Hubungkan manual untuk memindahkan link.`);
   const released = takenRows.map(t => t.username);
   if (takenRows.length) await conn.execute(`UPDATE ppp_secrets SET customer_id=NULL, sync_status='unsynced', match_method=NULL, last_synced_at=NOW() WHERE id IN (${takenRows.map(() => '?').join(',')})`, takenRows.map(t => t.id));
-  await conn.execute(`UPDATE ppp_secrets SET customer_id=?, sync_status='synced', match_method=?, last_synced_at=NOW()${manual ? ', is_exempt=0' : ''} WHERE id=?`, [customerId, METHODS.has(method) ? method : 'manual', secretId]);
+  await conn.execute(`UPDATE ppp_secrets SET customer_id=?, sync_status='synced', match_method=?, last_synced_at=NOW(), cid_ignore=NULL${manual || allowExempt ? ", is_exempt=0, exempt_type=NULL, exempt_source='manual'" : ''} WHERE id=?`, [customerId, METHODS.has(method) ? method : 'manual', secretId]);
   // Jaga kompatibilitas modul billing/auto-isolir yang masih membaca customers.pppoe_username.
   const source = method === 'manual' ? 'manual' : 'smart';
+  if (OPERATOR_METHODS.has(method)) {
+    await conn.execute(`INSERT INTO nms_sync_aliases (site_id, username_key, customer_id, source) VALUES (?,?,?,?)
+      ON DUPLICATE KEY UPDATE customer_id=VALUES(customer_id), source=VALUES(source), hits=hits+1, last_used_at=NOW()`, [secret.site_id, normalizeKey(secret.username), customer.id, method]).catch(() => {});
+  }
   await conn.execute(`UPDATE customers SET router_id=?, pppoe_username=?, pppoe_synced_at=NOW(), pppoe_sync_source=? WHERE id=?`, [secret.router_id, secret.username, source, customerId]);
   // Durable audit proves that the billing-side link was committed.  This is
   // deliberately in the same transaction as both records, so a partial sync
   // can never be reported as successful.
   await conn.execute(`INSERT INTO pppoe_sync_logs (customer_id, router_id, secret_id, secret_name, previous_router_id, previous_username, sync_source, match_score, status)
-    VALUES (?,?,?,?,?,?,?,?,'success')`, [customer.id, secret.router_id, String(secret.id), secret.username, customer.router_id || null, customer.pppoe_username || null, source, method === 'customer_code' ? 100 : method === 'customer_name' ? 95 : null]);
+    VALUES (?,?,?,?,?,?,?,?,'success')`, [customer.id, secret.router_id, String(secret.id), secret.username, customer.router_id || null, customer.pppoe_username || null, source, LOG_SCORE[method] ?? null]);
   return { secret, customer, released, previous: { routerId: customer.router_id || null, username: customer.pppoe_username || null } };
 }
 
@@ -91,6 +136,7 @@ async function linkMany(pairs) {
       const out = await linkSecret(conn, pair.secretId, pair.customerId, pair.matchedOn || pair.method, { manual: !pair.matchedOn && pair.method === 'manual' });
       const { secret, customer } = out;
       await conn.commit();
+      queueCidTag(secret.id);
       results.push({ ok: true, secretId: secret.id, username: secret.username, customerId: customer.id, customerName: customer.name, siteId: secret.site_id, method: pair.matchedOn || pair.method || 'manual', previous: out.previous });
     } catch (err) {
       await conn.rollback().catch(() => {});
@@ -121,8 +167,8 @@ async function commit({ planId, secretIds = null, pairs: clientPairs = null, man
   if (!plan) {
     const wanted = Array.isArray(clientPairs) ? clientPairs.filter(p => p && Number(p.secretId) && Number(p.customerId)) : [];
     if (!wanted.length && !extra.length) throw Object.assign(new Error('Preview kedaluwarsa atau tidak ditemukan. Jalankan Smart Sync Preview lagi.'), { status: 410 });
-    const { secrets, customers } = await loadInputs(siteId);
-    const fresh = buildSmartSyncPlan(secrets, customers);
+    const { secrets, customers, ctx } = await loadInputs(siteId);
+    const fresh = buildSmartSyncPlan(secrets, customers, ctx);
     const key = p => `${Number(p.secretId)}:${Number(p.customerId)}`;
     const wantedKeys = new Set(wanted.map(key));
     plan = { planId, siteId: siteId ? Number(siteId) : null, pairs: fresh.pairs.filter(p => wantedKeys.has(key(p))) };
@@ -163,6 +209,7 @@ async function manualMap(secretId, customerId, method = 'manual') {
     const out = await linkSecret(conn, secretId, customerId, method, { manual: true });
     await conn.commit();
     cache.del('nms:dash');
+    queueCidTag(secretId);
     return out;
   } catch (err) { await conn.rollback().catch(() => {}); throw err; }
   finally { conn.release(); }
@@ -171,8 +218,12 @@ async function manualMap(secretId, customerId, method = 'manual') {
 async function unmap(secretId) {
   const secret = await store.secretById(secretId);
   if (!secret.customer_id) return { secret, customerId: null };
-  await db.execute(`UPDATE ppp_secrets SET customer_id=NULL, sync_status='unsynced', match_method=NULL, last_synced_at=NOW() WHERE id=?`, [secretId]);
+  const [[cust]] = await db.query(`SELECT customer_code FROM customers WHERE id=?`, [secret.customer_id]);
+  // cid_ignore: tag lama di router (bila gagal dihapus) tidak boleh menautkan ulang secara otomatis.
+  await db.execute(`UPDATE ppp_secrets SET customer_id=NULL, sync_status='unsynced', match_method=NULL, last_synced_at=NOW(), cid_ignore=? WHERE id=?`, [parseCid(secret.comment) || cust?.customer_code || null, secretId]);
   await db.execute(`UPDATE customers SET pppoe_username=NULL WHERE id=? AND LOWER(pppoe_username)=LOWER(?)`, [secret.customer_id, secret.username]);
+  await db.execute(`DELETE FROM nms_sync_aliases WHERE site_id=? AND username_key=? AND customer_id=?`, [secret.site_id, normalizeKey(secret.username), secret.customer_id]).catch(() => {});
+  queueCidTag(secretId, { remove: true });
   cache.del('nms:dash');
   return { secret, customerId: secret.customer_id };
 }
@@ -209,7 +260,8 @@ async function undoBatch(batchId, userId = null) {
       await conn.beginTransaction();
       const [[row]] = await conn.query(`SELECT id, customer_id, router_id, username FROM ppp_secrets WHERE id=? FOR UPDATE`, [p.secretId]);
       if (!row || Number(row.customer_id) !== Number(p.customerId)) { kept++; await conn.rollback(); continue; }
-      await conn.execute(`UPDATE ppp_secrets SET customer_id=NULL, sync_status='unsynced', match_method=NULL, last_synced_at=NOW() WHERE id=?`, [p.secretId]);
+      await conn.execute(`UPDATE ppp_secrets SET customer_id=NULL, sync_status='unsynced', match_method=NULL, last_synced_at=NOW(), cid_ignore=(SELECT customer_code FROM customers WHERE id=?) WHERE id=?`, [p.customerId, p.secretId]);
+      await conn.execute(`DELETE FROM nms_sync_aliases WHERE username_key=? AND customer_id=?`, [normalizeKey(row.username), p.customerId]).catch(() => {});
       // Restore the customer-side link captured at commit time.  The guard
       // preserves a later manual edit instead of overwriting it during undo.
       const old = p.previous || {};
@@ -217,6 +269,7 @@ async function undoBatch(batchId, userId = null) {
         WHERE id=? AND router_id=? AND LOWER(COALESCE(pppoe_username,''))=LOWER(?)`,
       [old.routerId || null, old.username || null, p.customerId, row.router_id, row.username]);
       await conn.commit(); released++;
+      queueCidTag(p.secretId, { remove: true });
     } catch (err) {
       await conn.rollback().catch(() => {}); kept++;
     } finally { conn.release(); }
@@ -250,4 +303,122 @@ async function searchCustomers({ q = '', siteId = null, limit = 20 }) {
   return rows;
 }
 
-module.exports = { preview, commit, manualMap, unmap, searchCustomers, batches, batchCsv, undoBatch, autoRun, linkSecret };
+/** Pelanggan aktif/suspended yang belum terhubung ke secret mana pun, diurutkan dari yang paling mirip dengan secret. */
+async function unlinkedCustomers({ siteId = null, secretId = null, limit = 500 }) {
+  let secret = null;
+  if (secretId) { const [[row]] = await db.query(`SELECT id, site_id, router_id, username, comment, profile, caller_id, active_caller_id, remote_address, active_address FROM ppp_secrets WHERE id=?`, [Number(secretId)]); secret = row || null; }
+  const site = siteId || secret?.site_id || null;
+  const [rows] = await db.query(`SELECT c.id, c.customer_code, c.name, c.phone, c.site_id, s.code site_code, c.customer_status, pk.mikrotik_profile
+    FROM customers c JOIN sites s ON s.id=c.site_id LEFT JOIN packages pk ON pk.id=c.package_id LEFT JOIN ppp_secrets p ON p.customer_id=c.id AND p.removed_on_router_at IS NULL
+    WHERE c.archived_at IS NULL AND c.customer_status IN ('active','suspended') AND p.id IS NULL ${site ? 'AND c.site_id=?' : ''}
+    ORDER BY c.name LIMIT ?`, [...(site ? [Number(site)] : []), Math.min(2000, Number(limit) || 500)]);
+  const ctx = secret ? await loadSignals(site, [secret]) : {};
+  const out = rows.map(c => ({ ...c, score: secret ? guessScore(secret, c, ctx) : 0 }));
+  if (secret) out.sort((a, b) => b.score - a.score || String(a.name).localeCompare(String(b.name), 'id'));
+  return out;
+}
+
+// ---------------------------------------------------------------- Tag [CID:…] di comment RouterOS
+/** Tulis (atau hapus) tag Customer ID ke comment secret di router. Tidak pernah melempar ke pemanggil link. */
+async function writeCidTag(secretId, { remove = false } = {}) {
+  const secret = await store.secretById(secretId);
+  let code = null;
+  if (!remove) {
+    if (!secret.customer_id) return { skipped: 'unlinked' };
+    const [[c]] = await db.query(`SELECT customer_code FROM customers WHERE id=?`, [secret.customer_id]);
+    code = c?.customer_code; if (!code) return { skipped: 'no_code' };
+  }
+  const router = await store.routerById(secret.router_id);
+  const live = await ros.secretByName(router, secret.username);
+  if (!live) return { skipped: 'missing' };
+  const current = String(live.comment || '').trim();
+  const next = remove ? withoutCid(current) : withCid(current, code);
+  if (next === current) { if (remove) await db.execute(`UPDATE ppp_secrets SET cid_ignore=NULL WHERE id=?`, [secret.id]); return { unchanged: true }; }
+  await ros.patchSecret(router, live['.id'], { comment: next });
+  await db.execute(`UPDATE ppp_secrets SET comment=?${remove ? ', cid_ignore=NULL' : ''} WHERE id=?`, [next.slice(0, 255) || null, secret.id]);
+  return { written: true, comment: next };
+}
+function queueCidTag(secretId, opts = {}) {
+  settings.flag('cid_tag_enabled').then(on => (on ? writeCidTag(secretId, opts) : null))
+    .catch(err => console.warn(`NMS tag CID #${secretId}:`, err.message));
+}
+
+/** Tulis tag ke semua secret ter-link yang belum/salah tag. Berjalan di latar; progres di cache nms:cidjob. */
+async function writeAllCidTags({ siteId = null, userId = null } = {}) {
+  const running = cache.get('nms:cidjob');
+  if (running && !running.done) throw Object.assign(new Error('Penulisan tag CID masih berjalan.'), { status: 409 });
+  const [rows] = await db.query(`SELECT p.id, p.comment, c.customer_code FROM ppp_secrets p JOIN customers c ON c.id=p.customer_id
+    WHERE p.removed_on_router_at IS NULL ${siteId ? 'AND p.site_id=?' : ''}`, siteId ? [Number(siteId)] : []);
+  const todo = rows.filter(r => String(parseCid(r.comment) || '').toLowerCase() !== String(r.customer_code || '').toLowerCase());
+  const job = { total: todo.length, done: false, written: 0, unchanged: 0, failed: 0, errors: [], startedAt: new Date().toISOString(), siteId };
+  cache.set('nms:cidjob', job, 6 * 3600000);
+  (async () => {
+    const queue = [...todo];
+    await Promise.all(Array.from({ length: Math.min(3, queue.length) }, async () => {
+      while (queue.length) {
+        const r = queue.shift();
+        try { const out = await writeCidTag(r.id); if (out.written) job.written++; else job.unchanged++; }
+        catch (err) { job.failed++; if (job.errors.length < 5) job.errors.push(`#${r.id}: ${err.message}`); }
+      }
+    }));
+    job.done = true; job.finishedAt = new Date().toISOString();
+    bus.emit('sync', { siteId, cidTags: job.written });
+    const { audit } = require('../auditService');
+    audit({ userId, action: 'nms_cid_tags', entityType: 'ppp_secret_bulk', siteId, description: `Tulis tag CID: ${job.written} ditulis, ${job.failed} gagal dari ${job.total}`, details: job }).catch(() => {});
+  })().catch(err => { job.done = true; job.failed = job.total; job.errors.push(err.message); });
+  return job;
+}
+const cidJobStatus = () => cache.get('nms:cidjob') || null;
+
+/** Pulihkan link dari tag [CID:…] (router di-reset / restore backup). Hanya pelanggan yang belum punya secret aktif. */
+async function relinkByCid(routerId) {
+  const [rows] = await db.query(`SELECT id, site_id, username, comment, cid_ignore FROM ppp_secrets
+    WHERE router_id=? AND customer_id IS NULL AND removed_on_router_at IS NULL AND comment LIKE '%[CID:%'`, [routerId]);
+  const linked = [];
+  for (const r of rows) {
+    const code = parseCid(r.comment);
+    if (!code || (r.cid_ignore && r.cid_ignore === code)) continue;
+    const [[c]] = await db.query(`SELECT c.id FROM customers c LEFT JOIN ppp_secrets p ON p.customer_id=c.id AND p.removed_on_router_at IS NULL
+      WHERE c.site_id=? AND c.customer_code=? AND c.archived_at IS NULL AND c.customer_status IN ('active','suspended') AND p.id IS NULL LIMIT 1`, [r.site_id, code]);
+    if (!c) continue;
+    const conn = await db.getConnection();
+    try { await conn.beginTransaction(); await linkSecret(conn, r.id, c.id, 'cid_tag'); await conn.commit(); linked.push({ secretId: r.id, customerId: c.id, username: r.username }); }
+    catch (err) { await conn.rollback().catch(() => {}); }
+    finally { conn.release(); }
+  }
+  if (linked.length) { cache.del('nms:dash'); bus.emit('sync', { routerId, relinkedByTag: linked.length }); }
+  return linked;
+}
+
+/** Pelanggan pindah router di site yang sama: username sama muncul di router lain, secret lama sudah hilang → link dibawa. */
+async function carryOverLinks(siteId = null) {
+  const [rows] = await db.query(`SELECT n.id new_id, n.username, o.id old_id, o.customer_id, o.router_id old_router_id
+    FROM ppp_secrets n JOIN ppp_secrets o ON o.site_id=n.site_id AND o.router_id<>n.router_id AND LOWER(o.username)=LOWER(n.username)
+    WHERE n.customer_id IS NULL AND n.removed_on_router_at IS NULL AND o.customer_id IS NOT NULL AND o.removed_on_router_at IS NOT NULL ${siteId ? 'AND n.site_id=?' : ''}
+    ORDER BY o.removed_on_router_at DESC`, siteId ? [Number(siteId)] : []);
+  const seenCustomer = new Set(), seenSecret = new Set(), moved = [];
+  for (const r of rows) {
+    if (seenCustomer.has(r.customer_id) || seenSecret.has(r.new_id)) continue;
+    seenCustomer.add(r.customer_id); seenSecret.add(r.new_id);
+    const conn = await db.getConnection();
+    try {
+      await conn.beginTransaction();
+      // Pelanggan sudah punya secret aktif lain → bukan pindah router, jangan diubah.
+      const [[active]] = await conn.execute(`SELECT id FROM ppp_secrets WHERE customer_id=? AND removed_on_router_at IS NULL LIMIT 1`, [r.customer_id]);
+      if (active) { await conn.rollback(); continue; }
+      await linkSecret(conn, r.new_id, r.customer_id, 'moved', { allowExempt: true });
+      await conn.commit();
+      moved.push({ secretId: r.new_id, customerId: r.customer_id, username: r.username, fromRouterId: r.old_router_id });
+      queueCidTag(r.new_id);
+    } catch (err) { await conn.rollback().catch(() => {}); }
+    finally { conn.release(); }
+  }
+  if (moved.length) {
+    cache.del('nms:dash');
+    for (const m of moved) await db.execute(`INSERT INTO nms_ppp_events (site_id, username, customer_id, event_type, message, source) SELECT site_id, username, customer_id, 'map', ?, 'action' FROM ppp_secrets WHERE id=?`, [`Link dibawa dari router lama (pindah router)`, m.secretId]).catch(() => {});
+    bus.emit('sync', { siteId, moved: moved.length });
+  }
+  return moved;
+}
+
+module.exports = { preview, commit, manualMap, unmap, searchCustomers, unlinkedCustomers, writeCidTag, writeAllCidTags, cidJobStatus, relinkByCid, carryOverLinks, loadInputs, batches, batchCsv, undoBatch, autoRun, linkSecret };

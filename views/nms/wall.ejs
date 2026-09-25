@@ -1,0 +1,68 @@
+<!doctype html>
+<%# NOC Wall -- versi ringkas: status, 6 angka utama, tabel router, daftar masalah, traffic WAN.
+    Tanpa layout aplikasi supaya seluruh layar dipakai. Data awal dari server (boot JSON), lalu
+    live lewat SSE /nms/api/stream + polling ringan /nms/api/dashboard dan /api/health. %>
+<% const siteObj = (sites || []).find(s => Number(s.id) === Number(siteId)); %>
+<html lang="id" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#000000">
+  <title>NOC Wall<%= siteObj ? ` · ${siteObj.code}` : '' %> · <%= appName %></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/css/nms-wall.css?v=<%= assetVersion %>">
+  <script>(()=>{try{let t=localStorage.getItem('nw-theme')||localStorage.getItem('inkamnet-theme')||'dark';if(t==='system')t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.dataset.theme=t==='light'?'light':'dark';}catch(e){}})();</script>
+</head>
+<body>
+<main class="nw" id="nw" data-site="<%= siteId || '' %>">
+  <header class="nw-head">
+    <a class="nw-icon nw-back" href="/nms<%= siteId ? `?site=${siteId}` : '' %>" title="Kembali ke NMS"><i class="bi bi-chevron-left"></i></a>
+    <span class="nw-dot" id="nwDot"></span>
+    <div class="nw-headline">
+      <h1 id="nwTitle">Memeriksa jaringan…</h1>
+      <p id="nwSubtitle"><%= siteObj ? `${siteObj.code} · ${siteObj.name}` : 'Semua site' %></p>
+    </div>
+    <div class="nw-tools">
+      <select class="nw-site" id="nwSite" aria-label="Site">
+        <option value="">Semua site</option>
+        <% (sites || []).forEach(s => { %><option value="<%= s.id %>" <%= Number(siteId) === Number(s.id) ? 'selected' : '' %>><%= s.code %> · <%= s.name %></option><% }) %>
+      </select>
+      <button type="button" class="nw-icon" id="nwTheme" title="Tema terang / gelap (T)"><i class="bi bi-sun"></i></button>
+      <button type="button" class="nw-icon" id="nwSound" title="Alarm suara (S)"><i class="bi bi-volume-mute"></i></button>
+      <button type="button" class="nw-icon primary" id="nwFull" title="Layar penuh (F)"><i class="bi bi-arrows-fullscreen"></i></button>
+    </div>
+    <div class="nw-clock"><b id="nwClock">--:--</b><small id="nwDate">-</small></div>
+  </header>
+
+  <section class="nw-kpis" id="nwKpis"></section>
+
+  <section class="nw-main">
+    <article class="nw-card nw-routers">
+      <div class="nw-card-head"><h2>Router</h2><span id="nwRoutersSub"></span></div>
+      <div class="nw-scroll" data-autoscroll>
+        <table class="nw-table">
+          <thead><tr><th></th><th>Router</th><th>Site</th><th>CPU</th><th>RAM</th><th class="r">Download</th><th class="r">Upload</th><th class="r">Sesi</th><th class="r">Uptime</th></tr></thead>
+          <tbody id="nwRouterRows"></tbody>
+        </table>
+      </div>
+    </article>
+
+    <div class="nw-side">
+      <article class="nw-card nw-problems">
+        <div class="nw-card-head"><h2>Perlu perhatian</h2><span class="nw-count" id="nwProblemCount">0</span></div>
+        <div class="nw-scroll" data-autoscroll><ul class="nw-list" id="nwProblems"></ul></div>
+      </article>
+      <article class="nw-card nw-traffic">
+        <div class="nw-card-head"><h2>Traffic WAN</h2><span id="nwTrafficNow"></span></div>
+        <div class="nw-chart" id="nwChart"></div>
+      </article>
+    </div>
+  </section>
+</main>
+<script type="application/json" id="nwBoot"><%- JSON.stringify(boot).replace(/</g, '\\u003c') %></script>
+<script src="/js/nms-wall.js?v=<%= assetVersion %>" defer></script>
+</body>
+</html>

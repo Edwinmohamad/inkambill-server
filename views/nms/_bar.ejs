@@ -24,7 +24,7 @@
     <a href="/nms/automation<%= q %>" class="<%= nmsPage === 'automation' ? 'active' : '' %>"><i class="bi bi-clock-history"></i>Otomasi<span class="count" id="nxApprovalCount" hidden></span></a>
   </div>
   <span class="grow"></span>
-  <% if (nmsPage === 'dashboard') { %><button type="button" class="nx-btn ghost sm" id="nxCustomize" title="Atur widget dashboard"><i class="bi bi-sliders"></i><span class="nx-hide-sm">Atur</span></button><button type="button" class="nx-btn ghost sm" id="nmsNocMode" title="Layar penuh untuk layar NOC (F)"><i class="bi bi-arrows-fullscreen"></i><span class="nx-hide-sm">Layar penuh</span></button><% } %>
+  <% if (nmsPage === 'dashboard') { %><button type="button" class="nx-btn ghost sm" id="nxCustomize" title="Atur widget dashboard"><i class="bi bi-sliders"></i><span class="nx-hide-sm">Atur</span></button><a class="nx-btn tint sm" href="/nms/wall<%= q %>" title="NOC Wall: semua widget padat, layar penuh"><i class="bi bi-display"></i><span class="nx-hide-sm">NOC Wall</span></a><button type="button" class="nx-btn ghost sm" id="nmsNocMode" title="Layar penuh untuk layar NOC (F)"><i class="bi bi-arrows-fullscreen"></i><span class="nx-hide-sm">Layar penuh</span></button><% } %>
   <button type="button" class="nx-btn ghost sm icon nx-hide-sm" id="nxShortcuts" title="Pintasan keyboard" aria-label="Pintasan keyboard"><i class="bi bi-keyboard"></i></button>
 </nav>
 <div class="nx-banner" id="nmsOfflineBadge" role="status"><i class="bi bi-exclamation-triangle-fill"></i><span>Sebagian router tidak terjangkau. Data yang tampil berasal dari cache terakhir.</span></div>

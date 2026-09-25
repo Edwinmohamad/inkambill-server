@@ -16,7 +16,7 @@
   if (st.q) $('fQ').value = st.q;
 
   // ---------------------------------------------------------------- Tampilan (chips) + tersimpan
-  const BASE_VIEWS = [{ id: 'all', label: 'Semua', status: '' }, { id: 'online', label: 'Online', status: 'online' }, { id: 'offline', label: 'Offline', status: 'offline' }, { id: 'isolated', label: 'Diisolir', status: 'isolated' }];
+  const BASE_VIEWS = [{ id: 'all', label: 'Semua', status: '' }, { id: 'online', label: 'Online', status: 'online' }, { id: 'offline', label: 'Offline', status: 'offline' }, { id: 'isolated', label: 'Diisolir', status: 'isolated' }, { id: 'fasum', label: 'Fasum', status: 'fasum', tab: 'unsynced' }];
   const loadSaved = () => { try { return JSON.parse(localStorage.getItem('nx-views') || '[]'); } catch (_) { return []; } };
   const saveSaved = v => { try { localStorage.setItem('nx-views', JSON.stringify(v.slice(0, 12))); } catch (_) {} };
   function renderViews() {
@@ -30,7 +30,7 @@
     const del = e.target.closest('[data-del]');
     if (del) { e.stopPropagation(); const v = loadSaved(); v.splice(Number(del.dataset.del), 1); saveSaved(v); renderViews(); return; }
     const b = e.target.closest('[data-view]');
-    if (b) { const v = BASE_VIEWS.find(x => x.id === b.dataset.view); st.status = v.status; st.q = ''; $('fQ').value = ''; st.page = 1; load(); renderViews(); return; }
+    if (b) { const v = BASE_VIEWS.find(x => x.id === b.dataset.view); st.status = v.status; st.q = ''; $('fQ').value = ''; st.page = 1; if (v.tab && v.tab !== st.tab) { st.tab = v.tab; selected.clear(); syncTabs(); } load(); renderViews(); return; }
     const s = e.target.closest('[data-saved]');
     if (s) {
       const v = loadSaved()[Number(s.dataset.saved)]; if (!v) return;
@@ -50,7 +50,8 @@
     unsynced: ['', 'Username', 'Site / Router', 'Profile', 'IP', 'Caller-ID', 'Status', 'Ping', '']
   };
   const STATE = { online: 'Online', offline: 'Offline', isolated: 'Diisolir' };
-  const METHOD = { customer_code: 'Customer ID', customer_name: 'Nama', pppoe_username: 'Data billing', manual: 'Manual', phone: 'No. HP', comment: 'Comment', fuzzy: 'Mirip', created: 'Dibuat di NMS' };
+  const METHOD = { customer_code: 'Customer ID', customer_name: 'Nama', pppoe_username: 'Data billing', manual: 'Manual', phone: 'No. HP', comment: 'Comment', fuzzy: 'Mirip', created: 'Dibuat di NMS', cid_tag: 'Tag CID', alias: 'Alias', moved: 'Pindah router', mac: 'MAC', ip: 'IP' };
+  const METHOD_TONE = { cid_tag: 'purple', customer_code: 'green', alias: 'blue', customer_name: 'blue' };
   function head() {
     $('tHead').innerHTML = `<tr>${COLS[st.tab].map((c, i) => i === 0 ? `<th class="check">${N.canControl ? '<input type="checkbox" id="chkAll" aria-label="Pilih semua">' : ''}</th>` : `<th ${i === COLS[st.tab].length - 1 ? 'style="text-align:right"' : ''}>${c}</th>`).join('')}</tr>`;
     $('fExemptWrap').hidden = st.tab !== 'unsynced';
@@ -77,7 +78,7 @@
       <td data-label="Profile">${esc(r.profile || '—')}${r.is_isolated && r.original_profile ? `<span class="sub">asal ${esc(r.original_profile)}</span>` : ''}</td>
       <td data-label="IP">${ip(r)}</td><td data-label="Status">${state(r)}</td><td data-label="Ping" data-ping="${r.id}">${N.pingBadge(r.id)}</td><td class="acts">${actions(r)}</td></tr>`;
     return `<tr data-row="${r.id}" data-i="${i}" class="${cls}"><td class="check">${chk(r)}</td>
-      <td class="first cust" data-open="${r.id}"><span class="name mono">${esc(r.username)}</span>${r.comment ? `<span class="sub">${esc(r.comment)}</span>` : ''}${r.is_exempt ? `<span class="sub" style="color:var(--x-orange)">exempt: ${esc(r.exempt_type)}</span>` : ''}</td>
+      <td class="first cust" data-open="${r.id}"><span class="name mono">${esc(r.username)}</span>${r.comment ? `<span class="sub">${esc(r.comment)}</span>` : ''}${r.is_exempt ? (r.exempt_type === 'fasum' ? `<span class="sub"><span class="nx-pill purple" style="font-size:10.5px;padding:1px 6px"><i class="bi bi-building"></i> Fasum</span>${r.exempt_note ? ' ' + esc(r.exempt_note) : ''}${r.exempt_source === 'manual' ? '' : ' <span class="dim">· otomatis</span>'}</span>` : `<span class="sub" style="color:var(--x-orange)">exempt: ${esc(r.exempt_type)}</span>`) : ''}</td>
       <td data-label="Site">${esc(r.site_code)}<span class="sub">${esc(r.router_name)}</span></td>
       <td data-label="Profile">${esc(r.profile || '—')}</td><td data-label="IP">${ip(r)}</td>
       <td data-label="Caller-ID" class="mono">${esc(r.caller_id || r.active_caller_id || '—')}</td>
@@ -105,7 +106,8 @@
     try {
       const { counts: c } = await api(`/nms/api/counts${N.withSite()}`);
       $('cOnline').textContent = c.online; $('cOffline').textContent = c.offline; $('cIsolated').textContent = c.isolated;
-      $('cSyncPct').textContent = `${c.syncedPct}%`; $('cSynced').textContent = c.synced; $('cExempt').textContent = c.exempt;
+      $('cSyncPct').textContent = `${c.syncedPct}%`; $('cSynced').textContent = c.synced; $('cExempt').textContent = c.exempt - (c.fasum || 0);
+      if ($('cFasum')) { $('cFasum').textContent = c.fasum || 0; $('cFasumOff').textContent = c.fasumOffline || 0; }
       $('tabSynced').textContent = c.synced; $('tabUnsynced').textContent = c.unsynced;
     } catch (_) {}
   }
@@ -203,6 +205,7 @@
     const action = e.target.closest('[data-bulk]')?.dataset.bulk; if (!action) return;
     const ids = [...selected];
     if (action === 'schedule') return N.openSchedule(ids);
+    if (action === 'fasum') return N.openFasum(st.rows.filter(r => selected.has(r.id)).concat(ids.filter(id => !st.rows.some(r => r.id === id)).map(id => ({ id, username: '#' + id }))), { onDone: () => { selected.clear(); render(); } });
     bulkSheet(action, { ids });
   });
 
@@ -223,6 +226,8 @@
   $('btnMore').addEventListener('click', e => N.menu(e.currentTarget, [
     ...(N.canControl ? [{ label: 'Aksi masal per site…', icon: 'bi-collection', run: siteBulk }, '-'] : []),
     { label: 'Ekspor tab ini (CSV)', icon: 'bi-download', run: () => location.assign(`/nms/api/export${qs({ site: N.site || undefined, kind: st.tab })}`) },
+    { label: 'Laporan Fasum…', icon: 'bi-building', run: fasumReport },
+    ...(N.canControl ? [{ label: 'Tulis tag CID ke MikroTik…', icon: 'bi-tag', run: writeCidTags }] : []),
     { label: 'Riwayat Smart Sync & undo', icon: 'bi-clock-history', run: () => location.assign(`/nms/automation${N.withSite()}#sync`) },
     { label: 'Pintasan keyboard', icon: 'bi-keyboard', run: () => document.getElementById('nxShortcuts')?.click() }
   ]));
@@ -233,6 +238,9 @@
       const bad = results.filter(r => !r.ok);
       N.setOffline(bad.length > 0);
       toast(`${results.length - bad.length}/${results.length} router tersinkron${bad.length ? '. Sebagian offline, menampilkan cache.' : '.'}`, bad.length ? 'err' : 'ok');
+      const sumOf = k => results.reduce((a, r) => a + (Number(r[k]) || 0), 0);
+      const extra = [sumOf('renamed') && `${sumOf('renamed')} rename terdeteksi`, sumOf('relinkedByTag') && `${sumOf('relinkedByTag')} link pulih dari tag CID`, sumOf('moved') && `${sumOf('moved')} pindah router`].filter(Boolean);
+      if (extra.length) toast(`Link pelanggan dipertahankan: ${extra.join(', ')}.`, 'ok');
       await reload();
     } catch (err) { toast(err.message, 'err'); }
     finally { btn.classList.remove('busy'); }
@@ -250,23 +258,52 @@
     const sm = plan.summary;
     const score = v => { const c = v >= 95 ? 'var(--x-green)' : v >= 85 ? 'var(--x-blue)' : 'var(--x-orange)'; return `<span class="nx-score" style="--v:${v}%;--c:${c}"><i></i>${v}</span>`; };
     const cand = c => c.candidates || c.customers || [];
-    const tabs = [['pairs', 'Siap', plan.pairs.length], ['suggestions', 'Saran', plan.suggestions.length], ['conflicts', 'Konflik', plan.conflicts.length]];
-    s.body.innerHTML = `<div class="nx-mini-stats"><div><small>Dipindai</small><b>${sm.scanned}</b></div><div><small>Siap dihubungkan</small><b style="color:var(--x-green)">${sm.matched}</b></div><div><small>Saran</small><b style="color:var(--x-blue)">${sm.suggested || 0}</b></div><div><small>Konflik</small><b style="color:var(--x-orange)">${sm.conflicts}</b></div></div>
+    const unmatched = plan.unmatched || [];
+    const freeBySite = plan.freeCustomers || {};
+    const UM_MAX = 500;
+    const umLabel = c => `${c.name} · ${c.code}`;
+    const umLookup = new Map(Object.entries(freeBySite).map(([site, list]) => [site, new Map(list.map(c => [umLabel(c), c.id]))]));
+    const umRow = u => { const pool = freeBySite[String(u.siteId)] || []; return `<li data-umrow="${u.secretId}" data-umtext="${esc(`${u.username} ${u.comment || ''}`.toLowerCase())}"><span class="li-icon"><i class="bi bi-question-lg"></i></span><div class="li-main"><b class="mono">${esc(u.username)}</b><small>${esc(u.siteCode)}${u.comment ? ' · ' + esc(u.comment) : ''}${u.guesses.length ? '' : ' · tidak ada tebakan dekat'}</small>
+        <input type="text" data-umq="${u.secretId}" list="nxUmDl-${esc(String(u.siteId))}" placeholder="Ketik nama / Customer ID…" autocomplete="off" style="display:none;margin-top:6px;max-width:320px"></div>
+        <select data-um="${u.secretId}" style="width:auto;max-width:260px"><option value="">${pool.length ? 'Lewati' : 'Lewati (tak ada pelanggan kosong)'}</option>
+        ${u.guesses.length ? `<optgroup label="Tebakan terdekat">${u.guesses.map(g => `<option value="${g.id}">${esc(g.name)} · ${esc(g.code)} (${g.score}%)</option>`).join('')}</optgroup>` : ''}
+        ${pool.length ? `<option value="__other">Cari dari ${pool.length} pelanggan belum sync…</option>` : ''}<option value="__fasum">Tandai sebagai Fasum (bukan pelanggan)</option></select></li>`; };
+    const siteCodeOf = id => (sites.find(x => String(x.id) === String(id))?.label || '').split(' ')[0] || '';
+    const patternNote = Object.entries(plan.patterns || {}).length ? `<div class="nx-note" style="margin-bottom:8px">${Object.entries(plan.patterns).map(([site, list]) => `<b>${esc(siteCodeOf(site) || 'Site ' + site)}</b>: ${list.map(p => `${esc(p.label)} (${p.pct}%)`).join(', ')}`).join(' · ')}<br><span class="dim">Pola penamaan dipelajari dari secret yang sudah ter-link.</span></div>` : '';
+    const noSecret = Object.values(freeBySite).flat();
+    const tabs = [['pairs', 'Siap', plan.pairs.length], ['suggestions', 'Saran', plan.suggestions.length], ['conflicts', 'Konflik', plan.conflicts.length], ['unmatched', 'Belum cocok', unmatched.length], ['nosecret', 'Tanpa secret', noSecret.length]];
+    s.body.innerHTML = `<div class="nx-mini-stats"><div><small>Dipindai</small><b>${sm.scanned}</b></div><div><small>Siap dihubungkan</small><b style="color:var(--x-green)">${sm.matched}</b></div><div><small>Saran</small><b style="color:var(--x-blue)">${sm.suggested || 0}</b></div><div><small>Konflik</small><b style="color:var(--x-orange)">${sm.conflicts}</b></div><div><small>Belum cocok</small><b>${unmatched.length}</b></div></div>
       <div class="nx-seg sm" data-stabs style="margin-bottom:10px">${tabs.map(([k, l, n], i) => `<button type="button" data-k="${k}" class="${i === 0 ? 'active' : ''}">${l} <span class="count">${n}</span></button>`).join('')}</div>
       <div data-pane="pairs">
-        <p class="dim" style="margin:0 0 8px;font-size:12.5px">Username sama persis dengan Customer ID atau nama pelanggan (tidak peka huruf besar/kecil).</p>
+        <p class="dim" style="margin:0 0 8px;font-size:12.5px">Tag <span class="mono">[CID:…]</span> di comment MikroTik, alias yang pernah Anda pilih, atau username sama persis dengan Customer ID / nama pelanggan.</p>
         ${plan.pairs.length ? `<div class="nx-table-wrap" style="max-height:340px;border:1px solid var(--x-line);border-radius:12px"><table class="nx-table"><thead><tr><th class="check"><input type="checkbox" data-allp checked aria-label="Semua"></th><th>Pelanggan</th><th>Username</th><th>Site</th><th>Cocok via</th><th>Skor</th></tr></thead><tbody>
-          ${plan.pairs.map(p => `<tr><td class="check"><input type="checkbox" data-pair="${p.secretId}" checked></td><td><b>${esc(p.customerName)}</b><span class="sub">${esc(p.customerCode)}</span></td><td class="mono">${esc(p.username)}</td><td>${esc(p.siteCode)}</td><td><span class="nx-pill ${p.matchedOn === 'customer_code' ? 'green' : 'blue'}">${p.matchedOn === 'customer_code' ? 'Customer ID' : 'Nama'}</span></td><td>${score(p.score || 100)}</td></tr>`).join('')}
+          ${plan.pairs.map(p => `<tr><td class="check"><input type="checkbox" data-pair="${p.secretId}" checked></td><td><b>${esc(p.customerName)}</b><span class="sub">${esc(p.customerCode)}</span></td><td class="mono">${esc(p.username)}</td><td>${esc(p.siteCode)}</td><td><span class="nx-pill ${METHOD_TONE[p.matchedOn] || 'blue'}">${esc(METHOD[p.matchedOn] || p.matchedOn)}</span></td><td>${score(p.score || 100)}</td></tr>`).join('')}
         </tbody></table></div>` : '<div class="nx-empty">Tidak ada pasangan yang cocok persis.</div>'}
       </div>
       <div data-pane="suggestions" hidden>
-        <p class="dim" style="margin:0 0 8px;font-size:12.5px">Cocok lewat nomor HP, comment secret, atau nama yang mirip. Tidak dicentang otomatis, jadi periksa satu per satu.</p>
+        <p class="dim" style="margin:0 0 8px;font-size:12.5px">Cocok lewat MAC/IP link lama, nomor HP, comment secret, pola penamaan site, atau nama yang mirip. Profile yang sesuai paket menambah skor. Tidak dicentang otomatis, jadi periksa satu per satu.</p>${patternNote}
         ${plan.suggestions.length ? `<ul class="nx-list nx-group">${plan.suggestions.map(p => `<li><input type="checkbox" data-sug="${p.secretId}"><div class="li-main"><b><span class="mono">${esc(p.username)}</span> → ${esc(p.customerName)}</b><small>${esc(p.customerCode)} · ${esc(p.siteCode)} · ${esc((p.reasons || []).join(', '))}</small></div>${p.alternatives?.length ? `<select data-sugc="${p.secretId}" style="width:auto;max-width:220px"><option value="${p.customerId}">${esc(p.customerName)} (${p.score})</option>${p.alternatives.map(a => `<option value="${a.id}">${esc(a.name)} (${a.score})</option>`).join('')}</select>` : `<input type="hidden" data-sugc="${p.secretId}" value="${p.customerId}">`}${score(p.score)}</li>`).join('')}</ul>` : '<div class="nx-empty">Tidak ada saran tambahan.</div>'}
       </div>
       <div data-pane="conflicts" hidden>
         <p class="dim" style="margin:0 0 8px;font-size:12.5px">Satu secret cocok ke lebih dari satu pelanggan, atau satu pelanggan diklaim beberapa secret. Pilih pelanggan yang benar langsung di sini.</p>
         ${plan.conflicts.length ? `<ul class="nx-list nx-group">${plan.conflicts.slice(0, 200).map(c => `<li><span class="li-icon orange"><i class="bi bi-exclamation-lg"></i></span><div class="li-main"><b class="mono">${esc(c.username)}</b><small>${esc(c.siteCode)} · ${c.reason === 'multiple_customers' ? 'cocok ke beberapa pelanggan' : 'pelanggan diklaim beberapa secret'}</small></div><select data-conf="${c.secretId}" style="width:auto;max-width:240px"><option value="">Lewati</option>${cand(c).map(x => `<option value="${x.id}">${esc(x.name)} · ${esc(x.code)}</option>`).join('')}</select></li>`).join('')}</ul>` : '<div class="nx-empty">Tidak ada konflik.</div>'}
+      </div>
+      <div data-pane="unmatched" hidden>
+        <p class="dim" style="margin:0 0 8px;font-size:12.5px">Secret yang tidak terbaca Smart Sync. Pilih dari tebakan terdekat, atau cari dari daftar pelanggan yang belum ter-sync di site yang sama. Dihubungkan sebagai <b>Manual</b>.</p>
+        ${unmatched.length ? `<div class="nx-field" style="margin-bottom:8px"><input type="search" data-umf placeholder="Saring username / comment…" autocomplete="off"></div>
+          <ul class="nx-list nx-group" style="max-height:360px;overflow:auto">${unmatched.slice(0, UM_MAX).map(umRow).join('')}</ul>
+          ${unmatched.length > UM_MAX ? `<p class="dim" style="font-size:12px;margin:6px 0 0">Menampilkan ${UM_MAX} dari ${unmatched.length}. Sisanya bisa dihubungkan dari tab Belum ter-link.</p>` : ''}
+          ${Object.entries(freeBySite).map(([site, list]) => `<datalist id="nxUmDl-${esc(site)}">${list.map(c => `<option value="${esc(umLabel(c))}"></option>`).join('')}</datalist>`).join('')}`
+        : '<div class="nx-empty">Semua secret sudah punya pasangan, saran, atau konflik.</div>'}
+      </div>
+      <div data-pane="nosecret" hidden>
+        <p class="dim" style="margin:0 0 8px;font-size:12.5px">Pelanggan aktif yang belum punya PPP secret di router mana pun (setelah pasangan di tab Siap). Buat secret langsung di router, atau hubungkan dari tab Belum cocok.</p>
+        ${noSecret.length ? `<div class="nx-field" style="margin-bottom:8px"><input type="search" data-nsf placeholder="Saring nama / Customer ID…" autocomplete="off"></div>
+          <ul class="nx-list nx-group" style="max-height:360px;overflow:auto">${noSecret.slice(0, 500).map(c => `<li data-nsrow="${c.id}" data-nstext="${esc(`${c.name} ${c.code}`.toLowerCase())}"><span class="li-icon"><i class="bi bi-person"></i></span><div class="li-main"><b>${esc(c.name)}</b><small>${esc(c.code)} · ${esc(siteCodeOf(c.siteId))}${c.status === 'suspended' ? ' · suspended' : ''}${c.pppoe ? ` · <span style="color:var(--x-orange)">username tersimpan <span class="mono">${esc(c.pppoe)}</span> tidak ada di router</span>` : ''}</small></div><button type="button" class="nx-btn sm tint" data-mksecret="${c.id}"><i class="bi bi-plus-lg"></i>Buat secret</button></li>`).join('')}</ul>
+          ${noSecret.length > 500 ? `<p class="dim" style="font-size:12px;margin:6px 0 0">Menampilkan 500 dari ${noSecret.length}.</p>` : ''}`
+        : '<div class="nx-empty"><i class="bi bi-check-circle"></i>Semua pelanggan aktif sudah punya secret.</div>'}
       </div>`;
+    if (plan.carried?.length) toast(`${plan.carried.length} pelanggan pindah router: link dibawa otomatis.`, 'ok');
     s.$('[data-exp]').textContent = `Berlaku sampai ${N.hhmm(plan.expiresAt)} WIB`;
     s.$('[data-stabs]').addEventListener('click', e => { const b = e.target.closest('[data-k]'); if (!b) return; s.$$('[data-stabs] button').forEach(x => x.classList.toggle('active', x === b)); s.$$('[data-pane]').forEach(p => { p.hidden = p.dataset.pane !== b.dataset.k; }); });
     s.$('[data-allp]')?.addEventListener('change', e => { s.$$('[data-pair]').forEach(x => { x.checked = e.target.checked; }); count(); });
@@ -275,21 +312,53 @@
       const idSet = new Set(ids);
       const pairs = plan.pairs.filter(p => idSet.has(Number(p.secretId))).map(p => ({ secretId: p.secretId, customerId: p.customerId }));
       const manual = [];
+      const fasumIds = [];
       s.$$('[data-sug]:checked').forEach(x => { const sid = Number(x.dataset.sug); const sug = plan.suggestions.find(p => p.secretId === sid); const cid = Number(s.$(`[data-sugc="${sid}"]`)?.value || sug?.customerId); if (cid) manual.push({ secretId: sid, customerId: cid, method: sug?.matchedOn || 'fuzzy' }); });
       s.$$('[data-conf]').forEach(x => { if (x.value) manual.push({ secretId: Number(x.dataset.conf), customerId: Number(x.value), method: 'manual' }); });
+      s.$$('[data-um]').forEach(x => {
+        const sid = Number(x.dataset.um);
+        if (x.value === '__fasum') { fasumIds.push(sid); return; }
+        const cid = x.value === '__other' ? Number(s.$(`[data-umq="${sid}"]`)?.dataset.cid || 0) : Number(x.value || 0);
+        if (cid) manual.push({ secretId: sid, customerId: cid, method: 'manual' });
+      });
       const used = new Map();
       [...pairs, ...manual].forEach(p => used.set(p.customerId, (used.get(p.customerId) || 0) + 1));
       const dup = [...used.values()].some(v => v > 1);
-      return { ids, pairs, manual, dup, total: ids.length + manual.length };
+      return { ids, pairs, manual, fasumIds, dup, links: ids.length + manual.length, total: ids.length + manual.length + fasumIds.length };
     };
-    const count = () => { const c = collect(); const btn = s.$('[data-commit]'); btn.disabled = !c.total || c.dup; btn.textContent = c.dup ? 'Ada pelanggan dipilih 2×' : c.total ? `Hubungkan ${c.total}` : 'Hubungkan'; };
-    s.body.addEventListener('change', count);
+    const count = () => { const c = collect(); const btn = s.$('[data-commit]'); btn.disabled = !c.total || c.dup; btn.textContent = c.dup ? 'Ada pelanggan dipilih 2×' : c.total ? [c.links ? `Hubungkan ${c.links}` : '', c.fasumIds.length ? `Fasum ${c.fasumIds.length}` : ''].filter(Boolean).join(' + ') : 'Hubungkan'; };
+    s.body.addEventListener('change', e => {
+      const um = e.target.closest('[data-um]');
+      if (um) { const q = s.$(`[data-umq="${um.dataset.um}"]`); if (q) { const on = um.value === '__other'; q.style.display = on ? 'block' : 'none'; if (on) q.focus(); } }
+      count();
+    });
+    const umResolve = q => {
+      const u = unmatched.find(x => String(x.secretId) === q.dataset.umq);
+      const id = umLookup.get(String(u?.siteId))?.get(q.value.trim()) || 0;
+      q.dataset.cid = id || '';
+      q.style.borderColor = q.value.trim() && !id ? 'var(--x-orange)' : '';
+    };
+    s.body.addEventListener('click', e => {
+      const b = e.target.closest('[data-mksecret]'); if (!b) return;
+      const c = noSecret.find(x => String(x.id) === b.dataset.mksecret); if (!c) return;
+      N.openCreateSecret({ customer_id: c.id, customer_name: c.name, customer_code: c.code, site_id: c.siteId, mikrotik_profile: c.profile || '' }, { onDone: () => { const li = s.$(`[data-nsrow="${c.id}"]`); if (li) { li.style.opacity = '.45'; b.disabled = true; b.innerHTML = '<i class="bi bi-check2"></i>Dibuat'; } } });
+    });
+    s.body.addEventListener('input', e => {
+      if (e.target.matches('[data-nsf]')) { const f = e.target.value.trim().toLowerCase(); s.$$('[data-nsrow]').forEach(li => { li.style.display = f && !li.dataset.nstext.includes(f) ? 'none' : ''; }); return; }
+      if (e.target.matches('[data-umq]')) { umResolve(e.target); count(); return; }
+      if (e.target.matches('[data-umf]')) { const f = e.target.value.trim().toLowerCase(); s.$$('[data-umrow]').forEach(li => { li.style.display = f && !li.dataset.umtext.includes(f) ? 'none' : ''; }); }
+    });
     count();
     s.$('[data-commit]').addEventListener('click', async e => {
       const c = collect(); if (!c.total) return;
-      if (c.total > 100 && !(await N.confirmBox({ title: 'Batch besar Smart Sync', okText: `Lanjutkan ${c.total}`, message: `${c.total} pasangan akan ditulis dan dicatat dalam satu batch. Periksa kembali preview sebelum melanjutkan.` }))) return;
+      if (c.links > 100 && !(await N.confirmBox({ title: 'Batch besar Smart Sync', okText: `Lanjutkan ${c.links}`, message: `${c.total} pasangan akan ditulis dan dicatat dalam satu batch. Periksa kembali preview sebelum melanjutkan.` }))) return;
       const btn = e.currentTarget; btn.classList.add('busy');
       try {
+        if (c.fasumIds.length) {
+          const fz = await api('/nms/api/exempt/bulk', { method: 'POST', body: { secretIds: c.fasumIds, type: 'fasum' } });
+          toast(`${fz.summary.succeeded} secret ditandai Fasum${fz.summary.failed ? `, ${fz.summary.failed} gagal` : ''}.`, fz.summary.failed ? 'err' : 'ok');
+          if (!c.links) { s.close(); selected.clear(); N.changed(); return; }
+        }
         const out = await api('/nms/api/sync/commit', { method: 'POST', body: { planId: plan.planId, secretIds: c.ids.length ? c.ids : [-1], pairs: c.pairs, manual: c.manual, site_id: plan.siteId || N.site || null } });
         const sum = out.summary;
         toast(`${sum.linked} secret terhubung${sum.failed ? `, ${sum.failed} gagal` : ''}${sum.skipped ? `, ${sum.skipped} dilewati karena data berubah` : ''}.`, sum.failed ? 'err' : 'ok', sum.batchId ? { action: 'Undo', duration: 10000, onAction: async () => { try { const u = await api(`/nms/api/sync/batches/${sum.batchId}/undo`, { method: 'POST', body: {} }); toast(`${u.released} link dibatalkan.`, 'ok'); N.changed(); } catch (err) { toast(err.message, 'err'); } } } : {});
@@ -300,6 +369,57 @@
     });
   }
   $('btnSmartSync')?.addEventListener('click', smartSync);
+
+  // ---------------------------------------------------------------- Tulis tag [CID:…] ke semua secret ter-link
+  async function writeCidTags() {
+    const scope = N.site ? 'site ini' : 'semua site';
+    if (!(await N.confirmBox({ title: 'Tulis tag CID ke MikroTik?', okText: 'Tulis tag', message: `Comment setiap secret yang sudah ter-link di ${scope} diberi <span class="mono">[CID:kode pelanggan]</span>. Isi comment lain tidak dihapus. Berjalan di latar, router yang offline dilewati.` }))) return;
+    try {
+      const { job } = await api(`/nms/api/cid-tags/write${N.withSite()}`, { method: 'POST', body: {} });
+      if (!job.total) return toast('Semua secret ter-link sudah punya tag CID yang benar.', 'ok');
+      toast(`Menulis tag ke ${job.total} secret…`, 'info');
+      const poll = setInterval(async () => {
+        try {
+          const { job: j } = await api('/nms/api/cid-tags/status');
+          if (!j || !j.done) return;
+          clearInterval(poll);
+          toast(`Tag CID: ${j.written} ditulis${j.unchanged ? `, ${j.unchanged} sudah benar` : ''}${j.failed ? `, ${j.failed} gagal` : ''}.`, j.failed ? 'err' : 'ok');
+          if (j.errors?.length) toast(j.errors.slice(0, 3).join(' · '), 'err');
+          reload();
+        } catch (_) { clearInterval(poll); }
+      }, 2500);
+    } catch (err) { toast(err.message, 'err'); }
+  }
+
+  // ---------------------------------------------------------------- Laporan Fasum bulanan
+  async function fasumReport() {
+    const now = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit' }).format(new Date());
+    const s = N.sheet({ title: 'Laporan Fasum', subtitle: 'Fasilitas umum yang tidak ditagih: jumlah per site, status, dan ketersediaan layanan.', size: 'lg',
+      body: `<div class="nx-row" style="align-items:flex-end;margin-bottom:10px"><div class="nx-field" style="margin:0"><label>Bulan</label><input type="month" data-m value="${now}" max="${now}"></div><span class="grow"></span></div><div data-r><div class="nx-empty">Memuat…</div></div>`,
+      foot: '<span class="left dim" data-foot style="font-size:12px"></span><button type="button" class="nx-btn" data-close>Tutup</button><button type="button" class="nx-btn tint" data-csv><i class="bi bi-download"></i>Ekspor CSV</button>' });
+    const STATE_L = { online: 'Online', offline: 'Offline', disabled: 'Nonaktif' };
+    const h = v => `${Number(v || 0).toLocaleString('id-ID')} j`;
+    const load = async () => {
+      s.$('[data-r]').innerHTML = '<div class="nx-empty">Memuat…</div>';
+      try {
+        const { report: r } = await api(`/nms/api/fasum/report${qs({ site: N.site || undefined, month: s.$('[data-m]').value })}`);
+        s.$('[data-foot]').textContent = r.note;
+        s.$('[data-r]').innerHTML = !r.items.length ? '<div class="nx-empty"><i class="bi bi-building"></i>Belum ada secret yang ditandai Fasum. Tandai dari menu ··· atau Smart Sync → Belum cocok.</div>' : `
+          <div class="nx-mini-stats"><div><small>Total Fasum</small><b>${r.totals.count}</b></div><div><small>Online sekarang</small><b style="color:var(--x-green)">${r.totals.online}</b></div><div><small>Offline</small><b style="color:${r.totals.offline ? 'var(--x-orange)' : 'inherit'}">${r.totals.offline}</b></div><div><small>Periode</small><b>${h(r.periodHours)}</b></div></div>
+          <div class="nx-group-title" style="margin:6px 0">Per site</div>
+          <div class="nx-table-wrap" style="border:1px solid var(--x-line);border-radius:12px;margin-bottom:12px"><table class="nx-table"><thead><tr><th>Site</th><th>Jumlah</th><th>Online</th><th>Offline</th><th>Total jam online</th><th>Rata-rata ketersediaan</th></tr></thead><tbody>
+            ${r.bySite.map(x => `<tr><td><b>${esc(x.siteCode)}</b><span class="sub">${esc(x.siteName || '')}</span></td><td>${x.count}</td><td>${x.online}</td><td>${x.offline}</td><td>${h(x.onlineHours)}</td><td>${x.availabilityPct}%</td></tr>`).join('')}
+          </tbody></table></div>
+          <div class="nx-group-title" style="margin:6px 0">Detail</div>
+          <div class="nx-table-wrap" style="max-height:320px;border:1px solid var(--x-line);border-radius:12px"><table class="nx-table"><thead><tr><th>Secret</th><th>Site</th><th>Status</th><th>Jam online</th><th>Ketersediaan</th><th>Putus</th></tr></thead><tbody>
+            ${r.items.map(i => `<tr><td><b class="mono">${esc(i.username)}</b><span class="sub">${esc(i.note || '—')}${i.source === 'manual' ? '' : ' · otomatis'}</span></td><td>${esc(i.siteCode)}<span class="sub">${esc(i.routerName)}</span></td><td><span class="nx-state ${i.state === 'online' ? 'online' : 'offline'}">${STATE_L[i.state]}</span></td><td>${h(i.onlineHours)}</td><td>${i.availabilityPct}%</td><td>${i.disconnects}×</td></tr>`).join('')}
+          </tbody></table></div>`;
+      } catch (err) { s.$('[data-r]').innerHTML = `<div class="nx-empty">Gagal memuat: ${esc(err.message)}</div>`; }
+    };
+    s.$('[data-m]').addEventListener('change', load);
+    s.$('[data-csv]').addEventListener('click', () => location.assign(`/nms/api/fasum/report.csv${qs({ site: N.site || undefined, month: s.$('[data-m]').value })}`));
+    load();
+  }
 
   // ---------------------------------------------------------------- Keyboard
   function setFocus(i) {

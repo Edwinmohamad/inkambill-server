@@ -41,6 +41,7 @@ async function routerHasProfile(router, name) {
 
 async function isolate(secretId, ctx = {}) {
   const secret = await store.secretById(secretId);
+  if (Number(secret.is_exempt) && secret.exempt_type === 'fasum' && !secret.customer_id) throw Object.assign(new Error(`${secret.username} ditandai Fasum sehingga tidak diisolir. Lepas tanda Fasum dulu bila memang perlu.`), { status: 409 });
   const router = await store.routerById(secret.router_id);
   const live = await freshRosSecret(router, secret);
   const currentProfile = live.profile || DEFAULT_PROFILE;
@@ -203,7 +204,7 @@ async function describeTargets(ids, action) {
     if (action === 'isolate') {
       if (r.customer_id && Number(r.outstanding) <= 0) warnings.push('Tidak ada tunggakan');
       if (r.last_paid_at && Date.now() - new Date(r.last_paid_at).getTime() < 3 * 86400000) warnings.push('Baru bayar ≤3 hari');
-      if (r.is_exempt) warnings.push(`Exempt ${r.exempt_type || ''}`.trim());
+      if (r.is_exempt) warnings.push(r.exempt_type === 'fasum' ? 'Exempt Fasum (tidak akan diisolir)' : `Exempt ${r.exempt_type || ''}`.trim());
       if (r.is_isolated) warnings.push('Sudah diisolir');
       if (r.isolate_hold_until && String(r.isolate_hold_until) >= today) warnings.push('Ditunda (janji bayar)');
       if (!r.customer_id) warnings.push('Belum terikat pelanggan');

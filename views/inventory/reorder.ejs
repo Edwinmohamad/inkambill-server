@@ -1,0 +1,23 @@
+<link rel="stylesheet" href="/css/inventory.css?v=<%= typeof assetVersion!=='undefined'?assetVersion:'1' %>">
+<% const num=v=>Number(v||0).toLocaleString('id-ID',{maximumFractionDigits:2}); const qp=`cover=${plan.cover}${site?`&site=${encodeURIComponent(site)}`:''}`; %>
+<section class="inventory-page">
+  <div class="module-head">
+    <div><div class="module-kicker">PURCHASE PLANNING</div><h1>Saran Pembelian</h1><p>Kebutuhan beli dihitung dari pemakaian 30 hari terakhir: <b>minimum stock + pemakaian harian × <%= plan.cover %> hari − stock sekarang</b>.</p></div>
+    <div class="module-actions"><a class="btn-tech" href="/inventory<%= site?`?site=${encodeURIComponent(site)}`:'' %>"><i class="bi bi-box-seam"></i>Stock Barang</a><a class="btn-tech primary" href="/inventory/reorder.xlsx?<%= qp %>"><i class="bi bi-file-earmark-spreadsheet"></i>Export Daftar PO</a><button class="btn-tech" type="button" onclick="window.print()"><i class="bi bi-printer"></i>Cetak</button></div>
+  </div>
+  <div class="filter-card inv-no-print"><form class="d-flex flex-wrap gap-2 align-items-end" method="get">
+    <div><label class="form-label">Site</label><select class="form-select form-select-sm" name="site"><option value="">Semua Site</option><% sites.forEach(s=>{ %><option value="<%= s.code %>" <%= site===s.code?'selected':'' %>><%= s.code %></option><% }) %></select></div>
+    <div><label class="form-label">Stock untuk berapa hari?</label><select class="form-select form-select-sm" name="cover"><% [7,14,30,45,60,90].forEach(d=>{ %><option value="<%= d %>" <%= plan.cover===d?'selected':'' %>><%= d %> hari</option><% }) %></select></div>
+    <button class="btn-tech primary" style="height:31px">Hitung</button>
+  </form></div>
+  <div class="inv-kv mb-3"><div><span>Barang perlu dibeli</span><strong><%= plan.rows.length %></strong></div><div><span>Supplier</span><strong><%= plan.groups.length %></strong></div><div><span>Estimasi total biaya</span><strong><%= formatRupiah(plan.totalCost) %></strong></div><div><span>Target cakupan</span><strong><%= plan.cover %> hari</strong></div></div>
+  <div class="data-card">
+    <% if(!plan.rows.length){ %><div class="empty-state p-5"><i class="bi bi-check-circle"></i><strong>Tidak ada yang perlu dibeli</strong><small>Semua stock cukup untuk <%= plan.cover %> hari ke depan.</small></div><% } %>
+    <% plan.groups.forEach(g=>{ %><section class="inv-supplier-group"><header><div><b><i class="bi bi-truck me-1"></i><%= g.supplier %></b> <small class="text-muted">· <%= g.rows.length %> barang</small></div><b><%= formatRupiah(g.cost) %></b></header>
+      <div class="table-responsive"><table class="app-table"><thead><tr><th>Barang</th><th>Site</th><th>Stock / Min</th><th>Pakai/hari</th><th>Estimasi Habis</th><th>Saran Beli</th><th>Harga</th><th>Estimasi Biaya</th></tr></thead><tbody>
+      <% g.rows.forEach(r=>{ %><tr class="<%= highlight===r.id?'inv-highlight':'' %>" id="item-<%= r.id %>"><td><a class="cell-main text-decoration-none" href="/inventory/<%= r.id %>"><%= r.name %></a><span class="cell-sub"><%= r.item_code||'NO-SKU' %></span></td><td><%= r.site_code||'GLOBAL' %></td><td><span class="status-badge <%= r.status==='critical'?'red':r.status==='low'?'orange':'green' %>"><%= num(r.qty) %> / <%= num(r.min_stock) %></span></td><td><%= num(r.avgDaily) %></td><td><%= daysLeftLabel(r) %></td><td><b style="font-size:15px"><%= num(r.suggest) %></b> <%= r.unit %></td><td class="money"><%= formatRupiah(r.purchase_price) %></td><td class="money"><b><%= formatRupiah(r.cost) %></b></td></tr><% }) %>
+      </tbody></table></div></section><% }) %>
+  </div>
+  <% if(highlight&&!plan.rows.some(r=>r.id===highlight)){ %><div class="alert alert-info mt-3 inv-no-print"><i class="bi bi-info-circle"></i> Barang yang dipilih belum perlu dibeli untuk cakupan <%= plan.cover %> hari (stock masih cukup atau tidak ada pemakaian). Coba perbesar jumlah hari.</div><% } %>
+</section>
+<% if(highlight){ %><script>document.getElementById('item-<%= highlight %>')?.scrollIntoView({block:'center'});</script><% } %>

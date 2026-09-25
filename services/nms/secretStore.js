@@ -1,8 +1,9 @@
 // Mirror RouterOS /ppp/secret → tabel ppp_secrets, plus query untuk tab Synced / Unsynced.
 const db = require('../../config/db');
-const { encrypt } = require('../cryptoService');
+const { encrypt, decrypt } = require('../cryptoService');
 const ros = require('./rosApi');
-const { exemptOf, normalizeKey } = require('./matching');
+const { exemptOf, normalizeKey, detectRenames } = require('./matching');
+const nmsSettings = require('./settings');
 
 const ISOLIR_PROFILE = String(process.env.NMS_ISOLIR_PROFILE || 'ISOLIR').trim();
 const bool = v => v === true || String(v) === 'true' || String(v) === 'yes';
@@ -25,24 +26,42 @@ async function routerById(id) {
  *  (customers.pppoe_username + router_id) sebagai "synced" — itu data billing, bukan tebakan. */
 async function syncRouterSecrets(router) {
   const secrets = await ros.secrets(router);
+  const fasumWords = String(await nmsSettings.get('fasum_keywords').catch(() => '') || '').split(',').filter(Boolean);
   const seen = [];
+  let renames = [];
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
+    // Rename di RouterOS (.id sama, nama baru) → pindahkan baris lama ke nama baru SEBELUM upsert,
+    // sehingga link pelanggan ikut dan tidak muncul secret "baru" yang belum ter-link.
+    const [existing] = await conn.query(`SELECT id, ros_id, username, customer_id, password_enc, caller_id, remote_address FROM ppp_secrets WHERE router_id=?`, [router.id]);
+    const plain = v => { if (!v) return null; try { return decrypt(v); } catch (_) { return null; } };
+    // Semua baris dikirim (agar nama yang sudah dipakai tidak ditimpa); password hanya didekripsi untuk yang ter-link.
+    renames = detectRenames(existing.map(r => ({ ...r, password: r.customer_id && r.ros_id ? plain(r.password_enc) : null })), secrets);
+    for (const rn of renames) await conn.execute(`UPDATE ppp_secrets SET username=? WHERE id=?`, [rn.to, rn.secretId]);
+    for (const rn of renames) {
+      await conn.execute(`UPDATE customers SET pppoe_username=?, pppoe_synced_at=NOW(), pppoe_sync_source='smart' WHERE id=? AND (pppoe_username IS NULL OR LOWER(pppoe_username)=LOWER(?))`, [rn.to, rn.customerId, rn.from]);
+      await conn.execute(`INSERT INTO pppoe_sync_logs (customer_id, router_id, secret_id, secret_name, previous_router_id, previous_username, sync_source, match_score, status, error_message)
+        VALUES (?,?,?,?,?,?,'smart',100,'success',?)`, [rn.customerId, router.id, String(rn.secretId), rn.to, router.id, rn.from, `Rename di router terdeteksi (${rn.evidence.join(', ')})`]).catch(() => {});
+      await conn.execute(`INSERT INTO nms_ppp_events (router_id, site_id, username, customer_id, event_type, message, source) VALUES (?,?,?,?,'map',?,'action')`,
+        [router.id, router.site_id, rn.to, rn.customerId, `Rename ${rn.from} → ${rn.to}: link pelanggan dipertahankan`.slice(0, 255)]).catch(() => {});
+    }
     for (const s of secrets) {
       const username = String(s.name || '').trim();
       if (!username) continue;
       seen.push(username);
       const profile = s.profile || null;
-      const exempt = exemptOf({ username, profile, comment: s.comment });
+      const exempt = exemptOf({ username, profile, comment: s.comment }, fasumWords.length ? { fasumWords } : {});
       const passwordEnc = s.password ? encrypt(s.password) : null;
-      await conn.execute(`INSERT INTO ppp_secrets (site_id, router_id, ros_id, username, password_enc, profile, service, local_address, remote_address, caller_id, comment, disabled, is_isolated, is_exempt, exempt_type, last_seen_on_router_at, removed_on_router_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NULL)
+      await conn.execute(`INSERT INTO ppp_secrets (site_id, router_id, ros_id, username, password_enc, profile, service, local_address, remote_address, caller_id, comment, disabled, is_isolated, is_exempt, exempt_type, exempt_source, last_seen_on_router_at, removed_on_router_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NULL)
         ON DUPLICATE KEY UPDATE site_id=VALUES(site_id), ros_id=VALUES(ros_id), password_enc=COALESCE(VALUES(password_enc), password_enc), profile=VALUES(profile), service=VALUES(service),
           local_address=VALUES(local_address), remote_address=VALUES(remote_address), caller_id=VALUES(caller_id), comment=VALUES(comment), disabled=VALUES(disabled),
-          is_isolated=VALUES(is_isolated), is_exempt=VALUES(is_exempt), exempt_type=VALUES(exempt_type), last_seen_on_router_at=NOW(), removed_on_router_at=NULL`,
+          is_isolated=VALUES(is_isolated),
+          is_exempt=IF(exempt_source='manual', is_exempt, VALUES(is_exempt)), exempt_type=IF(exempt_source='manual', exempt_type, VALUES(exempt_type)),
+          exempt_source=IF(exempt_source='manual', 'manual', VALUES(exempt_source)), last_seen_on_router_at=NOW(), removed_on_router_at=NULL`,
         [router.site_id, router.id, s['.id'] || null, username, passwordEnc, profile, s.service || null, s['local-address'] || null, s['remote-address'] || null,
-          s['caller-id'] || null, s.comment ? String(s.comment).slice(0, 255) : null, bool(s.disabled) ? 1 : 0, (bool(s.disabled) || isIsolirProfile(profile)) ? 1 : 0, exempt ? 1 : 0, exempt]);
+          s['caller-id'] || null, s.comment ? String(s.comment).slice(0, 255) : null, bool(s.disabled) ? 1 : 0, (bool(s.disabled) || isIsolirProfile(profile)) ? 1 : 0, exempt ? 1 : 0, exempt, exempt ? 'auto' : null]);
     }
     // Secret yang hilang dari router ditandai (tidak dihapus: histori & audit tetap utuh).
     if (seen.length) {
@@ -56,7 +75,11 @@ async function syncRouterSecrets(router) {
     await conn.commit();
   } catch (err) { await conn.rollback(); throw err; }
   finally { conn.release(); }
-  return { routerId: router.id, secrets: seen.length };
+  // Setelah mirror segar: pulihkan link dari tag [CID:…] lalu bawa link pelanggan yang pindah router.
+  const smartSync = require('./smartSync');
+  const relinked = await smartSync.relinkByCid(router.id).catch(err => { console.warn(`NMS relink CID ${router.name}:`, err.message); return []; });
+  const moved = await smartSync.carryOverLinks(router.site_id).catch(err => { console.warn(`NMS carry-over ${router.name}:`, err.message); return []; });
+  return { routerId: router.id, secrets: seen.length, renamed: renames.length, relinkedByTag: relinked.length, moved: moved.length };
 }
 
 /** Terapkan snapshot /ppp/active ke ppp_secrets (flag online, IP, MAC aktif). */
@@ -91,17 +114,18 @@ async function listSecrets({ tab = 'synced', siteId = null, q = '', status = '',
   const where = ['p.removed_on_router_at IS NULL', TAB_SQL[tab] || TAB_SQL.synced];
   const params = [];
   if (siteId) { where.push('p.site_id=?'); params.push(Number(siteId)); }
-  if (tab === 'unsynced' && !includeExempt) where.push('p.is_exempt=0');
+  if (status === 'fasum') where.push(`p.is_exempt=1 AND p.exempt_type='fasum'`);
+  else if (tab === 'unsynced' && !includeExempt) where.push('p.is_exempt=0');
   if (status === 'online') where.push('p.is_online=1 AND p.is_isolated=0');
   if (status === 'offline') where.push('p.is_online=0 AND p.is_isolated=0');
   if (status === 'isolated') where.push('p.is_isolated=1');
-  if (q) { where.push('(p.username LIKE ? OR c.name LIKE ? OR c.customer_code LIKE ? OR p.active_address LIKE ? OR p.remote_address LIKE ?)'); const like = `%${q}%`; params.push(like, like, like, like, like); }
+  if (q) { where.push('(p.username LIKE ? OR c.name LIKE ? OR c.customer_code LIKE ? OR p.active_address LIKE ? OR p.remote_address LIKE ? OR p.exempt_note LIKE ? OR p.comment LIKE ?)'); const like = `%${q}%`; params.push(like, like, like, like, like, like, like); }
   const safeLimit = Math.min(200, Math.max(10, Number(limit) || 50));
   const safePage = Math.max(1, Number(page) || 1);
   const base = `FROM ppp_secrets p JOIN sites s ON s.id=p.site_id JOIN routers r ON r.id=p.router_id LEFT JOIN customers c ON c.id=p.customer_id LEFT JOIN packages pk ON pk.id=c.package_id WHERE ${where.join(' AND ')}`;
   const [[{ total }]] = await db.query(`SELECT COUNT(*) total ${base}`, params);
   const [rows] = await db.query(`SELECT p.id, p.site_id, s.code site_code, s.name site_name, p.router_id, r.name router_name, p.username, p.profile, p.original_profile,
-      p.local_address, p.remote_address, p.caller_id, p.disabled, p.is_isolated, p.is_exempt, p.exempt_type, p.is_online, p.active_address, p.active_caller_id, p.active_uptime,
+      p.local_address, p.remote_address, p.caller_id, p.disabled, p.is_isolated, p.is_exempt, p.exempt_type, p.exempt_source, p.exempt_note, p.is_online, p.active_address, p.active_caller_id, p.active_uptime,
       p.sync_status, p.match_method, p.last_synced_at, p.last_login_at, p.last_logout_at, p.comment,
       c.id customer_id, c.customer_code, c.name customer_name, c.phone customer_phone, c.network_status, c.customer_status, pk.name package_name
     ${base} ORDER BY p.is_isolated DESC, p.is_online ASC, s.code, COALESCE(c.name, p.username) LIMIT ? OFFSET ?`, [...params, safeLimit, (safePage - 1) * safeLimit]);
@@ -117,12 +141,13 @@ async function secretById(id) {
 async function counts(siteId = null) {
   const params = siteId ? [Number(siteId)] : [];
   const [[row]] = await db.query(`SELECT COUNT(*) total,
-      SUM(customer_id IS NOT NULL) synced, SUM(customer_id IS NULL AND is_exempt=0) unsynced, SUM(customer_id IS NULL AND is_exempt=1) exempt,
+      SUM(customer_id IS NOT NULL) synced, SUM(customer_id IS NULL AND is_exempt=0) unsynced, SUM(customer_id IS NULL AND is_exempt=1) exempt, SUM(customer_id IS NULL AND is_exempt=1 AND exempt_type='fasum') fasum,
+      SUM(customer_id IS NULL AND is_exempt=1 AND exempt_type='fasum' AND is_online=0 AND disabled=0) fasum_offline,
       SUM(is_online=1 AND is_isolated=0) online, SUM(is_online=0 AND is_isolated=0 AND disabled=0) offline, SUM(is_isolated=1) isolated
     FROM ppp_secrets WHERE removed_on_router_at IS NULL ${siteId ? 'AND site_id=?' : ''}`, params);
   const n = k => Number(row?.[k] || 0);
   const billable = n('synced') + n('unsynced');
-  return { total: n('total'), synced: n('synced'), unsynced: n('unsynced'), exempt: n('exempt'), online: n('online'), offline: n('offline'), isolated: n('isolated'), syncedPct: billable ? Math.round(n('synced') / billable * 1000) / 10 : 0 };
+  return { total: n('total'), synced: n('synced'), unsynced: n('unsynced'), exempt: n('exempt'), fasum: n('fasum'), fasumOffline: n('fasum_offline'), online: n('online'), offline: n('offline'), isolated: n('isolated'), syncedPct: billable ? Math.round(n('synced') / billable * 1000) / 10 : 0 };
 }
 
 module.exports = { activeRouters, routerById, syncRouterSecrets, applyActive, listSecrets, secretById, counts, isIsolirProfile, ISOLIR_PROFILE, normalizeKey };

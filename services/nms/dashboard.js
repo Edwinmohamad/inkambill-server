@@ -40,10 +40,10 @@ async function getDashboard(siteId = null) {
       poller.routerSnapshots(siteId), store.counts(siteId), openAlerts(siteId), flapping(siteId), recentEvents(siteId),
       db.query(`SELECT MIN(p.last_seen_on_router_at) oldest, MAX(p.last_seen_on_router_at) newest FROM ppp_secrets p WHERE p.removed_on_router_at IS NULL ${siteWhere}`, params).then(([r]) => r[0] || {}),
       db.query(`SELECT COALESCE(SUM(linked_count),0) linked, COUNT(*) batches FROM nms_sync_batches WHERE created_at >= CURDATE() ${siteId ? 'AND site_id=?' : ''}`, params).then(([r]) => r[0] || {}),
-      db.query(`SELECT p.router_id, COUNT(*) linked, SUM(p.is_online=1) online, SUM(p.is_isolated=1) isolated FROM ppp_secrets p WHERE p.removed_on_router_at IS NULL ${siteWhere} GROUP BY p.router_id`, params).then(([r]) => r || [])
+      db.query(`SELECT p.router_id, COUNT(*) linked, SUM(p.is_online=1) online, SUM(p.is_isolated=1) isolated, SUM(p.is_online=0 AND p.is_isolated=0 AND p.disabled=0) offline FROM ppp_secrets p WHERE p.removed_on_router_at IS NULL ${siteWhere} GROUP BY p.router_id`, params).then(([r]) => r || [])
     ]);
-    const impact = new Map(impactRows.map(r => [Number(r.router_id), { linked: Number(r.linked || 0), online: Number(r.online || 0), isolated: Number(r.isolated || 0) }]));
-    routers.forEach(router => { router.impact = impact.get(Number(router.routerId)) || { linked: 0, online: 0, isolated: 0 }; });
+    const impact = new Map(impactRows.map(r => [Number(r.router_id), { linked: Number(r.linked || 0), online: Number(r.online || 0), isolated: Number(r.isolated || 0), offline: Number(r.offline || 0) }]));
+    routers.forEach(router => { router.impact = impact.get(Number(router.routerId)) || { linked: 0, online: 0, isolated: 0, offline: 0 }; });
     const reachable = routers.filter(r => r.status === 'online').length;
     return {
       generatedAt: new Date().toISOString(), siteId: siteId ? Number(siteId) : null,

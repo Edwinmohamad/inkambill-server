@@ -1,0 +1,139 @@
+/* NOC Wall -- versi ringkas gaya Apple. Hanya yang penting: status, 6 angka, tabel router,
+   daftar "Perlu perhatian", traffic WAN. Ikut tema aplikasi (data-theme dark/light).
+   Di layar >=1280x700 semuanya muat satu layar; di bawah itu panel ditumpuk. */
+html[data-theme="dark"]{
+  --bg:#000;--card:#1c1c1e;--card-2:#2c2c2e;--fill:rgba(120,120,128,.24);--fill-2:rgba(120,120,128,.12);
+  --line:rgba(84,84,88,.45);--text:#f5f5f7;--muted:#8e8e93;--dim:#48484a;
+  --green:#30d158;--orange:#ff9f0a;--red:#ff453a;--blue:#0a84ff;--indigo:#5e5ce6;--shadow:none;
+}
+html[data-theme="light"]{
+  --bg:#f2f2f7;--card:#fff;--card-2:#f2f2f7;--fill:rgba(118,118,128,.12);--fill-2:rgba(118,118,128,.07);
+  --line:rgba(60,60,67,.12);--text:#1d1d1f;--muted:#6e6e73;--dim:#c7c7cc;
+  --green:#34c759;--orange:#ff9500;--red:#ff3b30;--blue:#007aff;--indigo:#5856d6;--shadow:0 1px 3px rgba(0,0,0,.05);
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:"Geist",-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif;font-size:13px;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+body.nw-idle{cursor:none}
+a{color:inherit;text-decoration:none}
+button,select{font:inherit;color:inherit}
+.nw{display:flex;flex-direction:column;gap:10px;padding:12px;min-height:100vh}
+
+/* ---------- Header: status sebagai judul ---------- */
+.nw-head{display:flex;align-items:center;gap:12px;min-height:52px;padding:0 4px}
+.nw-dot{width:12px;height:12px;border-radius:50%;background:var(--green);flex:0 0 auto}
+.nw-dot.warn{background:var(--orange)}
+.nw-dot.bad{background:var(--red);animation:nwBeat 1.6s ease-in-out infinite}
+@keyframes nwBeat{50%{opacity:.35}}
+.nw-headline{flex:1;min-width:0}
+.nw-headline h1{margin:0;font-size:24px;font-weight:700;letter-spacing:-.025em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nw-headline p{margin:2px 0 0;font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nw-tools{display:flex;align-items:center;gap:6px}
+.nw-site{height:32px;border:0;border-radius:8px;background:var(--fill);padding:0 10px;font-size:13px;font-weight:500;cursor:pointer}
+.nw-site option{color:#1d1d1f}
+.nw-icon{width:32px;height:32px;border:0;border-radius:50%;background:var(--fill);display:grid;place-items:center;cursor:pointer;font-size:14px;transition:transform .12s}
+.nw-icon:active{transform:scale(.94)}
+.nw-icon.primary{background:var(--blue);color:#fff}
+.nw-icon.on{background:color-mix(in srgb,var(--orange) 20%,transparent);color:var(--orange)}
+.nw-back{color:var(--blue)}
+.nw-clock{display:flex;flex-direction:column;align-items:flex-end;line-height:1.1;margin-left:6px}
+.nw-clock b{font-size:26px;font-weight:700;letter-spacing:-.03em}
+.nw-clock small{font-size:12px;color:var(--muted)}
+:fullscreen .nw-back,:fullscreen .nw-site{display:none}
+
+/* ---------- 6 angka utama ---------- */
+.nw-kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:1px;border-radius:14px;overflow:hidden;background:var(--line);box-shadow:var(--shadow)}
+.nw-kpi{background:var(--card);padding:10px 16px;min-width:0;transition:background .5s}
+.nw-kpi span{display:block;font-size:12px;color:var(--muted);font-weight:500}
+.nw-kpi strong{display:block;font-size:26px;font-weight:700;letter-spacing:-.03em;line-height:1.15;color:var(--c,var(--text));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nw-kpi strong small{font-size:14px;color:var(--muted);font-weight:500;letter-spacing:0;margin-left:2px}
+.nw-kpi.flash{background:var(--card-2)}
+a.nw-kpi:hover{background:var(--card-2)}
+
+/* ---------- Area utama ---------- */
+.nw-main{flex:1;display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);gap:10px;min-height:0}
+.nw-side{display:grid;grid-template-rows:minmax(0,1fr) minmax(200px,.62fr);gap:10px;min-height:0}
+.nw-card{display:flex;flex-direction:column;min-height:0;border-radius:14px;background:var(--card);box-shadow:var(--shadow);overflow:hidden}
+.nw-card-head{display:flex;align-items:baseline;gap:8px;padding:12px 16px 6px;flex:0 0 auto}
+.nw-card-head h2{margin:0;font-size:15px;font-weight:600;letter-spacing:-.01em}
+.nw-card-head>span{margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap}
+.nw-scroll{flex:1;min-height:0;overflow:hidden;padding:0 8px 8px}
+.nw-count{min-width:22px;height:20px;padding:0 7px;border-radius:999px;background:var(--fill);font-size:12px;font-weight:600;display:grid;place-items:center;color:var(--text)!important}
+.nw-count.bad{background:var(--red);color:#fff!important}
+.nw-count.warn{background:var(--orange);color:#fff!important}
+
+/* ---------- Tabel router ---------- */
+.nw-table{width:100%;border-collapse:collapse}
+.nw-table th{position:sticky;top:0;z-index:1;background:var(--card);font-size:11px;font-weight:500;color:var(--muted);text-align:left;padding:4px 8px 6px;white-space:nowrap}
+.nw-table td{height:34px;padding:0 8px;border-top:.5px solid var(--line);white-space:nowrap;font-size:13px}
+.nw-table .r{text-align:right}
+.nw-table td:first-child{width:18px;padding-right:0}
+.nw-table .name{font-weight:600;max-width:260px;overflow:hidden;text-overflow:ellipsis}
+.nw-table .site{font-size:11px;font-weight:600;color:var(--muted)}
+.nw-table .rx{color:var(--blue)}.nw-table .tx{color:var(--indigo)}
+.nw-table .muted{color:var(--muted)}
+.nw-table tr.off td{background:color-mix(in srgb,var(--red) 10%,transparent);color:var(--muted)}
+.nw-table tr.off .name{color:var(--red)}
+.nw-table tr.off .up{color:var(--red);font-weight:600}
+.nw-meter{display:flex;align-items:center;gap:8px;min-width:96px}
+.nw-meter i{flex:1;height:4px;border-radius:2px;background:var(--fill);overflow:hidden;max-width:64px}
+.nw-meter i b{display:block;height:100%;border-radius:2px;background:var(--green)}
+.nw-meter.warn i b{background:var(--orange)}.nw-meter.bad i b{background:var(--red)}
+.nw-meter.warn span{color:var(--orange)}.nw-meter.bad span{color:var(--red);font-weight:600}
+.nw-meter span{width:34px;text-align:right}
+.s-dot{width:8px;height:8px;border-radius:50%;display:inline-block;background:var(--green)}
+.s-dot.bad{background:var(--red)}.s-dot.warn{background:var(--orange)}
+.nw-tag{display:inline-block;margin-left:6px;font-size:10.5px;font-weight:600;padding:1px 6px;border-radius:5px;vertical-align:1px}
+.nw-tag.bad{background:color-mix(in srgb,var(--red) 16%,transparent);color:var(--red)}
+.nw-tag.warn{background:color-mix(in srgb,var(--orange) 16%,transparent);color:var(--orange)}
+
+/* ---------- Perlu perhatian ---------- */
+.nw-list{list-style:none;margin:0;padding:0 8px}
+.nw-list li{display:flex;align-items:center;gap:10px;min-height:46px;padding:6px 0;border-top:.5px solid var(--line)}
+.nw-list li:first-child{border-top:0}
+.nw-list .sev{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:0 0 auto}
+.nw-list .sev.bad{background:var(--red)}.nw-list .sev.warn{background:var(--orange)}
+.nw-list .m{flex:1;min-width:0}
+.nw-list .m b{display:block;font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nw-list .m small{display:block;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nw-list .v{font-size:14px;font-weight:600;color:var(--muted);white-space:nowrap}
+.nw-list .v.bad{color:var(--red)}.nw-list .v.warn{color:var(--orange)}
+.nw-ok{height:100%;min-height:120px;display:grid;place-items:center;text-align:center;color:var(--muted)}
+.nw-ok i{display:block;font-size:34px;color:var(--green);margin-bottom:6px}
+.nw-ok b{display:block;color:var(--text);font-size:15px}
+
+/* ---------- Traffic ---------- */
+.nw-traffic .nw-card-head>span{font-size:15px;font-weight:700;letter-spacing:-.01em}
+.nw-traffic .nw-card-head>span .rx{color:var(--blue)}.nw-traffic .nw-card-head>span .tx{color:var(--indigo);margin-left:10px}
+.nw-chart{flex:1;min-height:0;position:relative;margin:0 16px 12px}
+.nw-chart svg{position:absolute;inset:0;width:100%;height:100%}
+.nw-chart .g{stroke:var(--line)}
+.nw-chart .lbl{fill:var(--muted);font-size:10px;font-family:inherit}
+.nw-chart .empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted)}
+
+/* ---------- Satu layar penuh di layar besar ---------- */
+@media (min-width:1280px) and (min-height:700px){
+  html,body{height:100%;overflow:hidden}
+  .nw{height:100vh}
+}
+@media (min-width:2200px){
+  html{font-size:15px}
+  .nw-table td{height:40px;font-size:15px}
+  .nw-kpi strong{font-size:34px}
+  .nw-headline h1{font-size:30px}
+}
+@media (max-width:1279px),(max-height:699px){
+  .nw-main{grid-template-columns:1fr}
+  .nw-side{grid-template-rows:auto 260px}
+  .nw-scroll{overflow:auto}
+  .nw-problems .nw-scroll{max-height:360px}
+}
+@media (max-width:760px){
+  .nw-head{flex-wrap:wrap}
+  .nw-headline{order:3;flex-basis:100%}
+  .nw-headline h1{font-size:20px;white-space:normal}
+  .nw-clock{margin-left:auto}
+  .nw-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .nw-kpi strong{font-size:22px}
+  .nw-table th:nth-child(3),.nw-table td:nth-child(3),.nw-table th:nth-child(5),.nw-table td:nth-child(5),.nw-table th:nth-child(7),.nw-table td:nth-child(7),.nw-table th:nth-child(9),.nw-table td:nth-child(9){display:none}
+  .nw-meter{min-width:0}.nw-meter i{display:none}
+}

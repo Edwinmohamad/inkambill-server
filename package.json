@@ -20,7 +20,8 @@
     "test:system-cash-categories": "node scripts/test-system-cash-categories.js",
     "test:wa-ticket-bot": "node scripts/test-wa-ticket-bot.js",
     "test:waha-cross-ct": "node scripts/test-waha-cross-ct.js",
-    "test:pppoe-smart-sync": "node scripts/test-pppoe-smart-sync.js"
+    "test:pppoe-smart-sync": "node scripts/test-pppoe-smart-sync.js",
+    "test:fasum": "node scripts/test-fasum.js"
   },
   "dependencies": {
     "bcryptjs": "3.0.2",

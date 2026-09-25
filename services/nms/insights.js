@@ -272,7 +272,9 @@ async function createFlapTicket({ secretId, userId }) {
 async function morningSummaryText() {
   const [[c]] = await db.query(`SELECT SUM(is_online=1 AND is_isolated=0) online, SUM(is_isolated=1) isolated,
       SUM(is_online=0 AND is_isolated=0 AND disabled=0 AND customer_id IS NOT NULL AND (last_logout_at IS NULL OR last_logout_at < DATE_SUB(NOW(), INTERVAL 24 HOUR))) off24,
-      SUM(customer_id IS NULL AND is_exempt=0) unsynced FROM ppp_secrets WHERE removed_on_router_at IS NULL`);
+      SUM(customer_id IS NULL AND is_exempt=0) unsynced,
+      SUM(customer_id IS NULL AND is_exempt=1 AND exempt_type='fasum') fasum, SUM(customer_id IS NULL AND is_exempt=1 AND exempt_type='fasum' AND is_online=0 AND disabled=0) fasum_off
+    FROM ppp_secrets WHERE removed_on_router_at IS NULL`);
   const [[paid]] = await db.query(`SELECT COUNT(DISTINCT i.customer_id) n, COALESCE(SUM(py.amount),0) total FROM payments py JOIN invoices i ON i.id=py.invoice_id WHERE py.status='confirmed' AND py.paid_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)`).catch(() => [[{ n: 0, total: 0 }]]);
   const [routers] = await db.query(`SELECT r.name, s.code FROM routers r JOIN sites s ON s.id=r.site_id WHERE r.is_active=1 AND r.last_status='offline'`);
   const [alerts] = await db.query(`SELECT title FROM nms_alerts WHERE resolved_at IS NULL ORDER BY opened_at DESC LIMIT 3`);
@@ -283,6 +285,7 @@ async function morningSummaryText() {
     `*Ringkasan Jaringan · ${date}*`, '',
     `Online: ${n(c.online)}`, `Diisolir: ${n(c.isolated)}`, `Offline >24 jam: ${n(c.off24)}`,
     `Bayar 24 jam terakhir: ${n(paid.n)} pelanggan (Rp ${n(paid.total)})`, '',
+    ...(Number(c.fasum) ? [`Fasum: ${n(c.fasum)} (${n(c.fasum_off)} offline)`] : []),
     `Router bermasalah: ${routers.length ? routers.map(r => `${r.name} (${r.code})`).join(', ') : 'tidak ada'}`
   ];
   const leak = recon.overdue_active?.count || 0, stuck = recon.paid_isolated?.count || 0, free = recon.secret_no_customer?.count || 0;

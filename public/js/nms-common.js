@@ -243,6 +243,11 @@
     if (action === 'hold') return openHold(r);
     if (action === 'schedule') return openSchedule([r.id], who(r));
     if (action === 'package') return openPackage(r);
+    if (action === 'fasum') return openFasum([r]);
+    if (action === 'unfasum') {
+      try { await api(`/nms/api/secrets/${id}/exempt`, { method: 'POST', body: { type: null } }); toast(`${r.username} tidak lagi dikecualikan, ikut Smart Sync lagi.`, 'ok'); changed(); } catch (err) { toast(err.message, 'err'); }
+      return;
+    }
     if (action === 'ticket') { try { const { ticket } = await api(`/nms/api/secrets/${id}/ticket`, { method: 'POST', body: {} }); toast(ticket.existing ? `Tiket ${ticket.code} sudah ada.` : `Tiket ${ticket.code} dibuat.`, 'ok', { action: 'Buka', onAction: () => location.assign('/tickets') }); } catch (err) { toast(err.message, 'err'); } return; }
     if (!ACT_LABEL[action]) return;
     if (action === 'unmap' && !(await confirmBox({ title: 'Lepas link pelanggan?', danger: true, okText: 'Lepas', message: `Secret <b>${esc(r.username)}</b> tidak lagi terikat ke <b>${esc(r.customer_name || '')}</b> dan kembali ke daftar belum ter-link.` }))) return;
@@ -294,6 +299,9 @@
       items.push('-', { label: 'Lepas link pelanggan', icon: 'bi-x-circle', danger: true, run: () => act(r, 'unmap') });
     } else {
       items.push('-', { label: 'Hubungkan ke pelanggan…', icon: 'bi-link-45deg', run: () => act(r, 'map') }, { label: 'Buat pelanggan dari secret…', icon: 'bi-person-plus', run: () => act(r, 'create-customer') });
+      if (r.is_exempt && r.exempt_type === 'fasum') items.push({ label: 'Ubah catatan Fasum…', icon: 'bi-building', run: () => act(r, 'fasum') }, { label: 'Bukan Fasum (ikut Smart Sync)', icon: 'bi-building-x', run: () => act(r, 'unfasum') });
+      else if (r.is_exempt) items.push({ label: 'Tandai Fasum…', icon: 'bi-building', run: () => act(r, 'fasum') }, { label: `Lepas tanda ${r.exempt_type || 'exempt'}`, icon: 'bi-x-circle', run: () => act(r, 'unfasum') });
+      else items.push({ label: 'Tandai Fasum…', icon: 'bi-building', run: () => act(r, 'fasum') });
     }
     return items;
   }
@@ -309,27 +317,74 @@
   function openMap(r, { onDone } = {}) {
     const s = sheet({ title: 'Hubungkan ke pelanggan', subtitle: `<span class="mono">${esc(r.username)}</span> · ${esc(r.site_code || '')}${r.router_name ? ' / ' + esc(r.router_name) : ''}`, size: 'sm',
       body: `<div class="nx-field"><label>Site</label><select data-site>${sitesList.map(o => `<option value="${o.id}" ${Number(o.id) === Number(r.site_id) ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></div>
-        <div class="nx-field nx-ac"><label>Pelanggan</label><input type="search" data-q placeholder="Ketik nama, Customer ID, atau HP" autocomplete="off" autofocus><div class="nx-ac-list" data-list hidden></div></div><div class="nx-note" data-picked>Belum memilih pelanggan. Pencarian dibatasi ke site yang dipilih.</div><div class="nx-field" style="margin-top:14px"><label>Catatan <span class="dim" style="font-weight:500">(opsional)</span></label><input type="text" data-reason maxlength="255" placeholder="Contoh: dicek teknisi di lokasi"></div>`,
+        <div class="nx-field nx-ac"><label>Pelanggan</label><input type="search" data-q placeholder="Ketik nama, Customer ID, atau HP" autocomplete="off" autofocus><div class="nx-ac-list" data-list hidden></div></div><div class="nx-unl" data-unl><div class="nx-unl-head"><span>Pelanggan belum terhubung</span><small class="dim" data-unl-n>memuat…</small></div><div class="nx-unl-list" data-unl-list><div class="nx-empty" style="padding:12px">Memuat…</div></div></div><div class="nx-note" data-picked hidden></div><div class="nx-field" style="margin-top:14px"><label>Catatan <span class="dim" style="font-weight:500">(opsional)</span></label><input type="text" data-reason maxlength="255" placeholder="Contoh: dicek teknisi di lokasi"></div>`,
       foot: `<button type="button" class="nx-btn" data-close>Batal</button><button type="button" class="nx-btn primary" data-save disabled>Hubungkan</button>` });
-    let rows = [], pick = null, idx = -1, timer = null;
+    let rows = [], pick = null, idx = -1, timer = null, unl = [];
     const list = s.$('[data-list]');
+    const unlList = s.$('[data-unl-list]');
+    const renderUnl = () => {
+      const q = pick ? '' : s.$('[data-q]').value.trim().toLowerCase();
+      const shown = q ? unl.filter(c => `${c.name} ${c.customer_code} ${c.phone || ''}`.toLowerCase().includes(q)) : unl;
+      s.$('[data-unl-n]').textContent = q ? `${shown.length} dari ${unl.length}` : `${unl.length} pelanggan`;
+      unlList.innerHTML = shown.length ? shown.slice(0, 300).map(c => `<button type="button" data-u="${c.id}" class="${pick && pick.id === c.id ? 'on' : ''}"><span class="grow"><b>${esc(c.name)}</b><small class="dim mono">${esc(c.customer_code)}${c.customer_status === 'suspended' ? ' · suspended' : ''}</small></span>${c.score >= 25 ? `<span class="nx-pill ${c.score >= 85 ? 'green' : c.score >= 60 ? 'blue' : ''}">${c.score}%</span>` : ''}</button>`).join('')
+        : `<div class="nx-empty" style="padding:12px">${unl.length ? 'Tidak ada yang cocok. Hasil pencarian semua pelanggan tampil di atas.' : 'Semua pelanggan di site ini sudah terhubung.'}</div>`;
+      return shown.length;
+    };
+    const loadUnl = async () => {
+      unlList.innerHTML = '<div class="nx-empty" style="padding:12px">Memuat…</div>';
+      try { ({ rows: unl } = await api(`/nms/api/customers/unlinked${qs({ site: s.$('[data-site]').value, secret: r.id })}`)); } catch (err) { unl = []; toast(err.message, 'err'); }
+      renderUnl();
+    };
+    unlList.addEventListener('click', e => { const b = e.target.closest('[data-u]'); if (!b) return; const c = unl.find(x => String(x.id) === b.dataset.u); if (!c) return; rows = [c]; choose(0); });
+    loadUnl();
     const search = async () => {
       const q = s.$('[data-q]').value.trim(); if (q.length < 2) { list.hidden = true; return; }
+      // Daftar pelanggan belum terhubung sudah memfilter sendiri; dropdown server hanya bila tidak ada di sana
+      // (misal pelanggan yang masih terhubung ke secret lain dan ingin dipindahkan).
+      if (renderUnl()) { list.hidden = true; return; }
       try {
         ({ rows } = await api(`/nms/api/customers/search${qs({ q, site: s.$('[data-site]').value })}`)); idx = -1;
         list.innerHTML = rows.length ? rows.map((c, i) => { const self = c.linked_username && String(c.linked_username).toLowerCase() === String(r.username).toLowerCase(); const off = self || !['active', 'suspended'].includes(String(c.customer_status || 'active')); return `<button type="button" data-i="${i}" ${off ? 'disabled' : ''}><b class="mono">${esc(c.customer_code)}</b><span class="grow">${esc(c.name)}</span><small class="dim">${self ? 'sudah terhubung' : off ? esc(c.customer_status) : c.linked_username ? 'terhubung ke ' + esc(c.linked_username) : esc(c.site_code)}</small></button>`; }).join('') : '<div class="nx-empty">Tidak ditemukan di site ini.</div>';
         list.hidden = false;
       } catch (err) { toast(err.message, 'err'); }
     };
-    const choose = i => { const c = rows[i]; if (!c) return; pick = c; s.$('[data-q]').value = `${c.customer_code} · ${c.name}`; list.hidden = true; s.$('[data-picked]').innerHTML = `Terpilih <b>${esc(c.name)}</b> · ${esc(c.customer_code)}${c.linked_username ? `<br><span style="color:var(--x-orange)">Pelanggan ini masih terhubung ke <span class="mono">${esc(c.linked_username)}</span>. Link lama akan dipindahkan ke <span class="mono">${esc(r.username)}</span>.</span>` : ''}`; s.$('[data-save]').disabled = false; };
-    s.$('[data-q]').addEventListener('input', () => { clearTimeout(timer); pick = null; s.$('[data-save]').disabled = true; timer = setTimeout(search, 200); });
+    const choose = i => { const c = rows[i]; if (!c) return; pick = c; s.$('[data-q]').value = `${c.customer_code} · ${c.name}`; list.hidden = true; renderUnl(); s.$('[data-picked]').hidden = false; s.$('[data-picked]').innerHTML = `Terpilih <b>${esc(c.name)}</b> · ${esc(c.customer_code)}${c.linked_username ? `<br><span style="color:var(--x-orange)">Pelanggan ini masih terhubung ke <span class="mono">${esc(c.linked_username)}</span>. Link lama akan dipindahkan ke <span class="mono">${esc(r.username)}</span>.</span>` : ''}`; s.$('[data-save]').disabled = false; };
+    s.$('[data-q]').addEventListener('input', () => { clearTimeout(timer); pick = null; s.$('[data-save]').disabled = true; s.$('[data-picked]').hidden = true; renderUnl(); timer = setTimeout(search, 200); });
     s.$('[data-q]').addEventListener('keydown', e => { const items = [...list.querySelectorAll('button:not(:disabled)')]; if (['ArrowDown', 'ArrowUp'].includes(e.key)) { e.preventDefault(); idx = Math.max(0, Math.min(items.length - 1, idx + (e.key === 'ArrowDown' ? 1 : -1))); items.forEach((b, i) => b.classList.toggle('on', i === idx)); } if (e.key === 'Enter') { e.preventDefault(); if (items[idx]) choose(Number(items[idx].dataset.i)); } });
     list.addEventListener('click', e => { const b = e.target.closest('[data-i]'); if (b) choose(Number(b.dataset.i)); });
-    s.$('[data-site]').addEventListener('change', search);
+    s.$('[data-site]').addEventListener('change', () => { pick = null; s.$('[data-save]').disabled = true; s.$('[data-picked]').hidden = true; loadUnl(); search(); });
     s.$('[data-save]').addEventListener('click', async e => {
       const btn = e.currentTarget; btn.classList.add('busy');
       try { const out = await api(`/nms/api/secrets/${r.id}/map`, { method: 'POST', body: { customerId: pick.id, reason: s.$('[data-reason]').value } }); toast(`${r.username} → ${pick.name}${out.released?.length ? ` (dipindah dari ${out.released.join(', ')})` : ''}`, 'ok'); s.close(); onDone?.(); changed(); }
       catch (err) { toast(err.message, 'err'); btn.classList.remove('busy'); }
+    });
+  }
+
+  /** Tandai 1..n secret sebagai Fasum (fasilitas umum): tidak ditagih, tidak ikut Smart Sync, tidak diisolir, tetap dipantau. */
+  function openFasum(rows, { onDone } = {}) {
+    const list = (rows || []).filter(Boolean);
+    if (!list.length) return;
+    const linked = list.filter(r => r.customer_id);
+    const one = list.length === 1 ? list[0] : null;
+    const s = sheet({ title: one ? 'Tandai sebagai Fasum' : `Tandai ${list.length} secret sebagai Fasum`, size: 'sm',
+      subtitle: one ? `<span class="mono">${esc(one.username)}</span> · ${esc(one.site_code || '')}` : 'Fasilitas umum: masjid, pos ronda, balai desa, sekolah, dan sejenisnya.',
+      body: `<div class="nx-field"><label>Lokasi / catatan <span class="dim" style="font-weight:500">(opsional)</span></label><input type="text" data-note maxlength="255" value="${esc(one?.exempt_note || '')}" placeholder="Contoh: Masjid Al-Ikhlas RT 03" autofocus></div>
+        <ul class="nx-list" style="margin:4px 0 0;font-size:12.5px">
+          <li><span class="li-icon green"><i class="bi bi-eye"></i></span><div class="li-main"><b>Tetap dipantau</b><small>Online/offline, ping, dan alert bila mati.</small></div></li>
+          <li><span class="li-icon blue"><i class="bi bi-magic"></i></span><div class="li-main"><b>Keluar dari Smart Sync</b><small>Tidak dihitung "belum ter-link" dan tidak disarankan ke pelanggan.</small></div></li>
+          <li><span class="li-icon orange"><i class="bi bi-shield-check"></i></span><div class="li-main"><b>Tidak pernah diisolir</b><small>Termasuk isolir masal dan jadwal.</small></div></li>
+        </ul>
+        ${linked.length ? `<div class="nx-note" style="margin-top:10px;color:var(--x-orange)">${linked.length} secret masih terhubung ke pelanggan dan akan dilewati. Lepas link dulu bila memang fasum.</div>` : ''}`,
+      foot: `<button type="button" class="nx-btn" data-close>Batal</button><button type="button" class="nx-btn primary" data-save ${linked.length === list.length ? 'disabled' : ''}>Tandai Fasum</button>` });
+    s.$('[data-save]').addEventListener('click', async e => {
+      const btn = e.currentTarget; btn.classList.add('busy');
+      try {
+        const out = await api('/nms/api/exempt/bulk', { method: 'POST', body: { secretIds: list.filter(r => !r.customer_id).map(r => r.id), type: 'fasum', note: s.$('[data-note]').value } });
+        const sm = out.summary;
+        toast(`${sm.succeeded} secret ditandai Fasum${sm.failed ? `, ${sm.failed} gagal` : ''}.`, sm.failed ? 'err' : 'ok');
+        const bad = out.results.filter(x => !x.ok).slice(0, 3); if (bad.length) toast(bad.map(b => `${b.username || '#' + b.secretId}: ${b.error}`).join(' · '), 'err');
+        s.close(); onDone?.(out); changed();
+      } catch (err) { toast(err.message, 'err'); btn.classList.remove('busy'); }
     });
   }
 
@@ -630,6 +685,6 @@
   const drawerOpen = () => drawerEl.classList.contains('show') || pal.classList.contains('show') || !!document.querySelector('.nx-sheet.show');
 
   window.NX = { root, csrf, canControl, isAdmin, site: currentSite, esc, fmtBps, splitBps, fmtBytes, fmtUptime, rupiah, ago, hhmm, hhmmss, dateTime, dateOnly, todayIso, tone, COLORS, initials, qs, withSite,
-    api, toast, deferred, sheet, confirmBox, menu, ring, areaChart, markUpdated, setOffline, setLive, stream, changed, act, actionItems, pingBadge, drawer, drawerOpen, openMap, openCreateCustomer, openCreateSecret, openSchedule, openHold, openPalette, loadBadges };
+    api, toast, deferred, sheet, confirmBox, menu, ring, areaChart, markUpdated, setOffline, setLive, stream, changed, act, actionItems, pingBadge, drawer, drawerOpen, openMap, openFasum, openCreateCustomer, openCreateSecret, openSchedule, openHold, openPalette, loadBadges };
   window.NMS = window.NX; // kompatibilitas modul lama
 })();

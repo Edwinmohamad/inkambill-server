@@ -1,0 +1,49 @@
+<link rel="stylesheet" href="/css/inventory.css?v=<%= typeof assetVersion!=='undefined'?assetVersion:'1' %>">
+<% const num=v=>Number(v||0).toLocaleString('id-ID',{maximumFractionDigits:2}); const today=new Date().toISOString().slice(0,10).replace(/-/g,''); %>
+<section class="inventory-page">
+  <div class="module-head">
+    <div><div class="module-kicker">STOCK OPNAME</div><h1>Hitung Fisik Gudang</h1><p>Scan QR/barcode atau cari barang, isi jumlah fisik, lalu simpan. Selisih otomatis dicatat sebagai pergerakan stock.</p></div>
+    <div class="module-actions"><form method="get" class="d-flex gap-2"><select class="form-select form-select-sm" name="site" onchange="this.form.submit()" style="height:38px"><option value="">Semua Site</option><% sites.forEach(s=>{ %><option value="<%= s.code %>" <%= site===s.code?'selected':'' %>><%= s.code %></option><% }) %></select><select class="form-select form-select-sm" name="category" onchange="this.form.submit()" style="height:38px"><option value="">Semua Kategori</option><% categories.forEach(c=>{ %><option value="<%= c.id %>" <%= String(category)===String(c.id)?'selected':'' %>><%= c.name %></option><% }) %></select></form><a class="btn-tech" href="/inventory"><i class="bi bi-box-seam"></i>Stock Barang</a></div>
+  </div>
+  <form class="data-card" method="post" action="/inventory/opname" id="opnameForm">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="return_to" value="/inventory/opname<%= site||category?`?${new URLSearchParams(Object.fromEntries(Object.entries({site,category}).filter(([,v])=>v)))}`:'' %>">
+    <div class="inv-scan">
+      <div class="inv-search position-relative"><i class="bi bi-upc-scan position-absolute" style="left:11px;top:50%;transform:translateY(-50%);color:var(--muted)"></i><input class="form-control" style="padding-left:34px" id="scanInput" placeholder="Scan QR / barcode, atau ketik nama lalu Enter…" autocomplete="off" autofocus></div>
+      <button class="btn-tech" type="button" id="camBtn" hidden><i class="bi bi-camera"></i>Kamera</button>
+      <label class="d-flex align-items-center gap-2 small text-muted"><input type="checkbox" class="inv-check" id="onlyPending"> Sembunyikan yang sudah dihitung</label>
+      <span class="small"><b id="doneCount">0</b> / <%= items.length %> dihitung · <b id="diffCount">0</b> selisih</span>
+      <video id="camVideo" playsinline muted></video>
+      <div class="small text-danger w-100" id="scanMsg"></div>
+    </div>
+    <div class="table-responsive"><table class="app-table"><thead><tr><th>Barang</th><th>Site</th><th>Lokasi</th><th>Stock Sistem</th><th>Jumlah Fisik</th><th>Selisih</th></tr></thead><tbody>
+      <% items.forEach(i=>{ %><tr class="opname-row" data-id="<%= i.id %>" data-sys="<%= Number(i.qty||0) %>" data-code="<%= String(i.item_code||'').toLowerCase() %>" data-barcode="<%= String(i.barcode||'').toLowerCase() %>" data-name="<%= String(i.name||'').toLowerCase() %>">
+        <td><span class="cell-main"><%= i.name %></span><span class="cell-sub"><%= i.item_code||'NO-SKU' %> · <%= i.barcode||'tanpa barcode' %></span></td><td><%= i.site_code||'GLOBAL' %></td><td><%= i.location||'-' %></td><td><b><%= num(i.qty) %></b> <%= i.unit %></td>
+        <td><div class="d-flex gap-1 align-items-center"><input class="form-control form-control-sm" type="number" step="0.01" min="0" inputmode="decimal" name="counts[i<%= i.id %>]" placeholder="—"><button class="inv-mini-btn" type="button" data-same title="Sama dengan sistem">=</button></div></td>
+        <td class="diff">—</td></tr><% }) %>
+      <% if(!items.length){ %><tr><td colspan="6"><div class="empty-state"><strong>Tidak ada barang</strong></div></td></tr><% } %>
+    </tbody></table></div>
+    <div class="inv-sticky-foot"><div class="d-flex gap-2 flex-wrap"><input class="form-control form-control-sm" name="reference" value="OPNAME-<%= today %>" style="max-width:190px" title="Referensi"><input class="form-control form-control-sm" name="notes" placeholder="Catatan (opsional)" style="max-width:280px"></div><div class="d-flex gap-2 align-items-center"><small class="text-muted">Baris kosong tidak diubah.</small><button class="btn-tech primary" type="submit"><i class="bi bi-check2-circle"></i>Simpan Opname</button></div></div>
+  </form>
+</section>
+<script>
+(()=>{
+  const form=document.getElementById('opnameForm');if(!form)return;
+  const rows=[...form.querySelectorAll('.opname-row')];let dirty=false;
+  const fmt=v=>Number(v).toLocaleString('id-ID',{maximumFractionDigits:2});
+  const update=row=>{const input=row.querySelector('input');const cell=row.querySelector('.diff');const v=input.value.trim();row.classList.toggle('done',v!=='');if(v===''){cell.textContent='—';cell.className='diff';return;}const d=Math.round((Number(v)-Number(row.dataset.sys))*100)/100;cell.textContent=d===0?'Sesuai':(d>0?'+':'')+fmt(d);cell.className='diff '+(d>0?'plus':d<0?'minus':'');};
+  const stats=()=>{let done=0,diff=0;rows.forEach(r=>{const v=r.querySelector('input').value.trim();if(v!==''){done++;if(Math.round((Number(v)-Number(r.dataset.sys))*100)!==0)diff++;}});document.getElementById('doneCount').textContent=done;document.getElementById('diffCount').textContent=diff;applyHide();};
+  const hide=document.getElementById('onlyPending');const applyHide=()=>rows.forEach(r=>r.style.display=hide.checked&&r.classList.contains('done')?'none':'');hide.addEventListener('change',applyHide);
+  rows.forEach(r=>{const i=r.querySelector('input');i.addEventListener('input',()=>{dirty=true;update(r);stats();});i.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();scan.focus();scan.select();}});r.querySelector('[data-same]').addEventListener('click',()=>{i.value=r.dataset.sys;dirty=true;update(r);stats();});});
+  window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue='';}});form.addEventListener('submit',()=>{dirty=false;});
+  const scan=document.getElementById('scanInput'),msg=document.getElementById('scanMsg');
+  const find=raw=>{let v=String(raw||'').trim();if(!v)return null;let id=null;try{const j=JSON.parse(v);if(j&&j.id)id=String(j.id);if(j&&!id&&j.code)v=j.code;}catch(_){}const low=v.toLowerCase();return rows.find(r=>id&&r.dataset.id===id)||rows.find(r=>r.dataset.barcode&&r.dataset.barcode===low)||rows.find(r=>r.dataset.code&&r.dataset.code===low)||rows.find(r=>r.dataset.name===low)||rows.find(r=>r.dataset.name.includes(low));};
+  const focusRow=raw=>{const row=find(raw);if(!row){msg.textContent=`Barang "${raw}" tidak ditemukan di daftar ini.`;return false;}msg.textContent='';rows.forEach(r=>r.classList.remove('found'));row.style.display='';row.classList.add('found');row.scrollIntoView({block:'center',behavior:'smooth'});const input=row.querySelector('input');setTimeout(()=>{input.focus();input.select();},250);return true;};
+  scan.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();if(focusRow(scan.value))scan.value='';}});
+  // Kamera: memakai BarcodeDetector bawaan browser (Chrome Android/desktop). Jika tidak didukung,
+  // scanner USB/Bluetooth (mode keyboard) atau pengetikan manual tetap bisa dipakai di kolom scan.
+  const camBtn=document.getElementById('camBtn'),video=document.getElementById('camVideo');
+  if('BarcodeDetector' in window&&navigator.mediaDevices?.getUserMedia){camBtn.hidden=false;let stream=null,timer=null;
+    const stop=()=>{clearInterval(timer);stream&&stream.getTracks().forEach(t=>t.stop());stream=null;video.classList.remove('on');camBtn.innerHTML='<i class="bi bi-camera"></i>Kamera';};
+    camBtn.addEventListener('click',async()=>{if(stream)return stop();try{const det=new BarcodeDetector();stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});video.srcObject=stream;await video.play();video.classList.add('on');camBtn.innerHTML='<i class="bi bi-x-lg"></i>Tutup Kamera';timer=setInterval(async()=>{try{const codes=await det.detect(video);if(codes.length){const v=codes[0].rawValue;if(focusRow(v)){navigator.vibrate&&navigator.vibrate(80);stop();}}}catch(_){}},350);}catch(err){msg.textContent='Kamera tidak bisa dibuka: '+err.message;stop();}});}
+})();
+</script>

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Label QR Barang</title>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  @page{size:A4;margin:8mm}*{box-sizing:border-box}body{margin:0;font-family:Geist,system-ui,sans-serif;color:#111;background:#f2f2f5}
+  .bar{position:sticky;top:0;background:#fff;border-bottom:1px solid #ddd;padding:10px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:14px}
+  .bar button,.bar a{height:34px;padding:0 14px;border-radius:9px;border:1px solid #ccc;background:#fff;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;color:#111;display:inline-flex;align-items:center}
+  .bar button.primary{background:#6C4FE0;border-color:#6C4FE0;color:#fff}
+  .sheet{width:194mm;margin:12px auto;background:#fff;display:grid;grid-template-columns:repeat(3,1fr);gap:3mm;padding:3mm}
+  .label{border:1px dashed #bbb;border-radius:2mm;padding:3mm;display:grid;grid-template-columns:24mm 1fr;gap:3mm;align-items:center;height:34mm;break-inside:avoid;overflow:hidden}
+  .label img{width:24mm;height:24mm}
+  .label b{display:block;font-size:10.5pt;line-height:1.15;max-height:2.4em;overflow:hidden}
+  .label .code{font-family:ui-monospace,Menlo,monospace;font-size:9pt;font-weight:700;margin-top:1mm}
+  .label small{display:block;font-size:7.5pt;color:#555;margin-top:.8mm}
+  .empty{text-align:center;padding:60px;color:#666}
+  @media print{body{background:#fff}.bar{display:none}.sheet{margin:0;padding:0;width:auto}.label{border-color:#ddd}}
+</style></head>
+<body>
+<div class="bar"><b><%= labels.length %> label</b><form method="get" style="display:flex;gap:6px;align-items:center"><input type="hidden" name="ids" value="<%= ids %>"><label>Salinan per barang <input type="number" name="copies" min="1" max="20" value="<%= copies %>" style="width:60px;height:32px"></label><button type="submit">Terapkan</button></form><button class="primary" onclick="window.print()">Cetak</button><a href="/inventory">Kembali</a></div>
+<% if(labels.length){ %><div class="sheet"><% labels.forEach(l=>{ %><div class="label"><img src="<%= l.qr %>" alt="QR"><div><b><%= l.name %></b><div class="code"><%= l.item_code||`ID-${l.id}` %></div><small><%= l.site_code||'GLOBAL' %><%= l.location?` · ${l.location}`:'' %><%= l.barcode?` · ${l.barcode}`:'' %></small></div></div><% }) %></div><% }else{ %><div class="empty">Tidak ada barang dipilih. Centang barang di halaman Stock Barang lalu klik <b>Cetak Label QR</b>.</div><% } %>
+</body></html>

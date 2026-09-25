@@ -1,0 +1,61 @@
+<!doctype html>
+<%# Layar Gudang — tampilan fullscreen untuk TV/monitor di ruang gudang atau NOC. Tanpa layout aplikasi,
+    refresh otomatis tiap 60 detik (meta refresh) supaya tetap jalan tanpa interaksi. %>
+<% const S=summary, C=S.counts; const num=v=>Number(v||0).toLocaleString('id-ID',{maximumFractionDigits:2}); const L=2*Math.PI*80; const tone=S.health>=80?'#30d158':S.health>=55?'#ff9f0a':'#ff453a'; const fmtTime=d=>new Intl.DateTimeFormat('id-ID',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Jakarta'}).format(new Date(d)); %>
+<html lang="id" data-theme="dark">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="60">
+  <title>Layar Gudang<%= site?` · ${site}`:'' %> · <%= typeof appName!=='undefined'?appName:'INKAMNET' %></title>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+    :root{--bg:#050507;--panel:#111114;--line:rgba(255,255,255,.08);--text:#f5f5f7;--muted:#8e8e93;--ok:#30d158;--warn:#ff9f0a;--bad:#ff453a;--soon:#ffd60a;--brand:#7c62f0}
+    *{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:Geist,system-ui,sans-serif;font-variant-numeric:tabular-nums}
+    .wall{height:100vh;display:grid;grid-template-rows:auto auto 1fr;gap:1.2vw;padding:1.4vw 1.6vw}
+    header{display:flex;align-items:center;justify-content:space-between}
+    header h1{margin:0;font-size:1.9vw;font-weight:800;letter-spacing:-.01em}header h1 span{color:var(--muted);font-weight:500}
+    .clock{font-family:"Geist Mono",monospace;font-size:2.2vw;font-weight:700}.clock small{display:block;font-size:.8vw;color:var(--muted);text-align:right;font-family:Geist}
+    .row{display:grid;grid-template-columns:1.1fr repeat(5,1fr);gap:1vw}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:1.2vw;padding:1.2vw 1.4vw;min-height:0}
+    .kpi span{color:var(--muted);font-size:.95vw;font-weight:700;text-transform:uppercase;letter-spacing:.06em}.kpi strong{display:block;font-size:3.4vw;font-weight:800;line-height:1.1;margin-top:.4vw}.kpi small{color:var(--muted);font-size:.9vw}
+    .kpi.bad strong{color:var(--bad)}.kpi.warn strong{color:var(--warn)}.kpi.soon strong{color:var(--soon)}.kpi.ok strong{color:var(--ok)}
+    .gauge{display:flex;align-items:center;gap:1.2vw}.gauge svg{width:8.5vw;height:8.5vw;transform:rotate(-90deg)}.gauge b{font-size:2.8vw;font-weight:800}.gauge div span{display:block;color:var(--muted);font-size:.95vw;font-weight:700;letter-spacing:.06em}
+    .main{display:grid;grid-template-columns:1.6fr 1fr;gap:1vw;min-height:0}
+    .card h2{margin:0 0 .8vw;font-size:1.1vw;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;display:flex;justify-content:space-between}
+    .list{display:flex;flex-direction:column;gap:.55vw;overflow:hidden}
+    .item{display:grid;grid-template-columns:.45vw 1fr auto auto;gap:1vw;align-items:center;background:rgba(255,255,255,.03);border-radius:.8vw;padding:.7vw 1vw .7vw 0}
+    .item i{align-self:stretch;border-radius:0 .3vw .3vw 0}.item b{font-size:1.3vw}.item small{display:block;color:var(--muted);font-size:.85vw}
+    .item .qty{font-size:1.9vw;font-weight:800;text-align:right}.item .qty small{text-align:right}
+    .item .days{min-width:9vw;text-align:right;font-weight:700;font-size:1.05vw}
+    .bad-c{background:var(--bad);color:var(--bad)}.warn-c{background:var(--warn);color:var(--warn)}.soon-c{background:var(--soon);color:var(--soon)}
+    .feed{display:flex;flex-direction:column;gap:.35vw;overflow:hidden}.feed div{display:grid;grid-template-columns:4.2vw 1.6vw 1fr;gap:.6vw;align-items:center;font-size:1vw;padding:.45vw 0;border-bottom:1px dashed var(--line)}
+    .feed time{font-family:"Geist Mono",monospace;color:var(--muted)}.feed .d{width:1.5vw;height:1.5vw;border-radius:50%;display:grid;place-items:center;font-size:.8vw}.feed .d.out{background:var(--bad)}.feed .d.in{background:var(--ok)}.feed .d.adjustment{background:#0a84ff}
+    .feed small{color:var(--muted);display:block;font-size:.8vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .ok-big{display:grid;place-content:center;text-align:center;height:100%;color:var(--ok);font-size:1.6vw;font-weight:700;gap:.5vw}.ok-big i{font-size:5vw}
+    .fs{position:fixed;right:1vw;bottom:1vw;background:var(--panel);color:var(--muted);border:1px solid var(--line);border-radius:.6vw;padding:.4vw .7vw;cursor:pointer;opacity:.35;font:inherit;font-size:.8vw}.fs:hover{opacity:1}
+    @media(max-width:900px){.row{grid-template-columns:repeat(2,1fr)}.main{grid-template-columns:1fr}.wall{height:auto}.card,.kpi strong{font-size:inherit}}
+  </style>
+</head>
+<body>
+<div class="wall">
+  <header><h1><i class="bi bi-box-seam-fill" style="color:var(--brand)"></i> Gudang <span><%= site||'Semua Site' %></span></h1><div class="clock" id="clock">--:--<small id="date"></small></div></header>
+  <div class="row">
+    <div class="card gauge"><svg viewBox="0 0 200 200"><circle cx="100" cy="100" r="80" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="18"/><circle cx="100" cy="100" r="80" fill="none" stroke="<%= tone %>" stroke-width="18" stroke-linecap="round" stroke-dasharray="<%= L.toFixed(1) %>" stroke-dashoffset="<%= (L*(1-S.health/100)).toFixed(1) %>"/></svg><div><span>KESEHATAN</span><b style="color:<%= tone %>"><%= S.health %>%</b></div></div>
+    <div class="card kpi bad"><span>Critical</span><strong><%= C.critical %></strong><small>≤ 50% minimum</small></div>
+    <div class="card kpi warn"><span>Low Stock</span><strong><%= C.low %></strong><small>di bawah minimum</small></div>
+    <div class="card kpi soon"><span>Akan Habis</span><strong><%= C.soon %></strong><small>≤ <%= soonDays %> hari</small></div>
+    <div class="card kpi ok"><span>Masuk Hari Ini</span><strong><%= num(today.in_qty) %></strong><small>unit</small></div>
+    <div class="card kpi"><span>Keluar Hari Ini</span><strong><%= num(today.out_qty) %></strong><small><%= Number(today.n||0) %> transaksi</small></div>
+  </div>
+  <div class="main">
+    <div class="card" style="display:flex;flex-direction:column;min-height:0"><h2><span>Perlu Tindakan</span><span><%= S.actionList.length %> barang</span></h2>
+      <% if(S.actionList.length){ %><div class="list"><% S.actionList.slice(0,9).forEach(i=>{ const c=i.status==='critical'?'bad-c':i.status==='low'?'warn-c':'soon-c'; %><div class="item"><i class="<%= c %>"></i><div><b><%= i.name %></b><small><%= i.site_code||'GLOBAL' %> · <%= i.category_name||'-' %><%= i.location?` · ${i.location}`:'' %></small></div><div class="days" style="color:inherit"><span class="<%= c %>" style="background:none"><%= daysLeftLabel(i) %></span></div><div class="qty"><%= num(i.qty) %><small><%= i.unit %><%= i.min_stock?` / min ${num(i.min_stock)}`:'' %></small></div></div><% }) %></div><% }else{ %><div class="ok-big"><i class="bi bi-check-circle-fill"></i>Semua stock aman</div><% } %>
+    </div>
+    <div class="card" style="display:flex;flex-direction:column;min-height:0"><h2><span>Aktivitas Terbaru</span><span><i class="bi bi-broadcast"></i> live</span></h2>
+      <div class="feed"><% activity.forEach(m=>{ %><div><time><%= fmtTime(m.created_at) %></time><span class="d <%= m.movement_type %>"><i class="bi <%= m.movement_type==='out'?'bi-arrow-up':m.movement_type==='in'?'bi-arrow-down':'bi-sliders' %>"></i></span><span><b><%= m.movement_type==='out'?'−':'+' %><%= num(m.qty) %></b> <%= m.item_name %><small><%= m.user_name||'Sistem' %> · <%= m.reference||m.notes||'-' %></small></span></div><% }) %><% if(!activity.length){ %><div style="color:var(--muted)">Belum ada aktivitas.</div><% } %></div>
+    </div>
+  </div>
+</div>
+<button class="fs" onclick="document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen()"><i class="bi bi-arrows-fullscreen"></i> Layar penuh</button>
+<script>(()=>{const c=document.getElementById('clock'),d=document.getElementById('date');const tick=()=>{const now=new Date();c.firstChild.nodeValue=new Intl.DateTimeFormat('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'Asia/Jakarta'}).format(now);d.textContent=new Intl.DateTimeFormat('id-ID',{dateStyle:'full',timeZone:'Asia/Jakarta'}).format(now);};tick();setInterval(tick,1000);})();</script>
+</body></html>

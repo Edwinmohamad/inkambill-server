@@ -7,6 +7,7 @@ const DEFAULTS = {
   auto_sync_enabled: '0',          // Smart Sync otomatis tiap jam
   auto_sync_commit: '0',           // 1 = pasangan keyakinan tinggi langsung di-link; 0 = hanya notifikasi
   auto_sync_notify: '1',           // kirim WA ke nomor NOC saat ada secret baru belum ter-link
+  cid_tag_enabled: '1',            // tulis [CID:kode] ke comment secret MikroTik setiap kali ter-link
   summary_enabled: '0',            // ringkasan pagi via WA
   summary_hour: '7',               // jam kirim ringkasan (WIB)
   summary_numbers: '',             // kosong → pakai settings.network_alert_wa_numbers
@@ -14,6 +15,10 @@ const DEFAULTS = {
   isolate_hour: '0',               // jam isolir otomatis harian (WIB)
   flap_ticket_threshold: '10',     // reconnect/jam yang dianggap layak dibuatkan tiket
   shared_mac_threshold: '3',       // >= N MAC berbeda per secret dalam 24 jam → curiga dipakai bersama
+  fasum_keywords: 'fasum,masjid,musholla,mushola,musala,surau,gereja,vihara,pos ronda,poskamling,balai desa,balai warga,kantor desa,sekolah,posyandu,puskesmas',
+  fasum_offline_alert: '1',        // buka alert bila secret Fasum offline
+  fasum_offline_minutes: '30',     // offline lebih dari N menit → alert
+  fasum_offline_wa: '0',           // kirim WA ke nomor NOC saat alert Fasum baru terbuka
   last_summary_date: '',
   last_isolate_date: '',
   last_auto_sync_at: ''
@@ -44,12 +49,17 @@ function sanitize(body = {}) {
   if ('auto_sync_enabled' in body) b.auto_sync_enabled = bool(body.auto_sync_enabled);
   if ('auto_sync_commit' in body) b.auto_sync_commit = bool(body.auto_sync_commit);
   if ('auto_sync_notify' in body) b.auto_sync_notify = bool(body.auto_sync_notify);
+  if ('cid_tag_enabled' in body) b.cid_tag_enabled = bool(body.cid_tag_enabled);
   if ('summary_enabled' in body) b.summary_enabled = bool(body.summary_enabled);
   if ('summary_hour' in body) b.summary_hour = int(body.summary_hour, 0, 23);
   if ('isolate_hour' in body) b.isolate_hour = int(body.isolate_hour, 0, 23);
   if ('approval_threshold' in body) b.approval_threshold = int(body.approval_threshold, 0, 500);
   if ('flap_ticket_threshold' in body) b.flap_ticket_threshold = int(body.flap_ticket_threshold, 3, 500);
   if ('shared_mac_threshold' in body) b.shared_mac_threshold = int(body.shared_mac_threshold, 2, 50);
+  if ('fasum_keywords' in body) b.fasum_keywords = [...new Set(String(body.fasum_keywords || '').split(/[,;\n]+/).map(x => x.trim().toLowerCase().replace(/\s+/g, ' ')).filter(x => x.length >= 3 && x.length <= 30))].slice(0, 60).join(',');
+  if ('fasum_offline_alert' in body) b.fasum_offline_alert = bool(body.fasum_offline_alert);
+  if ('fasum_offline_wa' in body) b.fasum_offline_wa = bool(body.fasum_offline_wa);
+  if ('fasum_offline_minutes' in body) b.fasum_offline_minutes = int(body.fasum_offline_minutes, 5, 1440);
   if ('summary_numbers' in body) b.summary_numbers = String(body.summary_numbers || '').split(/[,;\n]+/).map(x => x.replace(/[^0-9+]/g, '')).filter(x => x.replace(/\D/g, '').length >= 9).slice(0, 10).join(',');
   return b;
 }

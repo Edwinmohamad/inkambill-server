@@ -181,11 +181,13 @@ async function createSecretForCustomer({ customerId, routerId = null, username =
   const prof = String(profile || c.mikrotik_profile || control.DEFAULT_PROFILE).trim();
   if (!(await control.routerHasProfile(router, prof))) throw new Error(`Profile ${prof} tidak ada di router ${router.name}.`);
   if (await ros.secretByName(router, user)) throw new Error(`Username ${user} sudah ada di router ${router.name}.`);
-  const created = await ros.createSecret(router, { name: user, password: pass, service: 'pppoe', profile: prof, comment: `${c.customer_code} ${c.name}`.slice(0, 120) });
+  const { withCid } = require('./matching');
+  const comment = (await settings.flag('cid_tag_enabled')) ? withCid(`${c.name}`.slice(0, 120), c.customer_code) : `${c.customer_code} ${c.name}`.slice(0, 120);
+  const created = await ros.createSecret(router, { name: user, password: pass, service: 'pppoe', profile: prof, comment });
   const { encrypt } = require('../cryptoService');
   await db.execute(`INSERT INTO ppp_secrets (site_id, router_id, ros_id, username, password_enc, profile, service, comment, last_seen_on_router_at) VALUES (?,?,?,?,?,?,?,?,NOW())
     ON DUPLICATE KEY UPDATE ros_id=VALUES(ros_id), password_enc=VALUES(password_enc), profile=VALUES(profile), removed_on_router_at=NULL, last_seen_on_router_at=NOW()`,
-  [router.site_id, router.id, created?.['.id'] || null, user, encrypt(pass), prof, 'pppoe', `${c.customer_code} ${c.name}`.slice(0, 255)]);
+  [router.site_id, router.id, created?.['.id'] || null, user, encrypt(pass), prof, 'pppoe', comment.slice(0, 255)]);
   const [[row]] = await db.query(`SELECT id FROM ppp_secrets WHERE router_id=? AND username=?`, [router.id, user]);
   const smartSync = require('./smartSync');
   await smartSync.manualMap(row.id, c.id, 'created');

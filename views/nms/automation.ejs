@@ -38,6 +38,7 @@
         <ul class="nx-list">
           <li><div class="li-main"><b>Jalankan tiap jam</b><small>Mencocokkan secret baru dengan data pelanggan</small></div><label class="nx-switch"><input type="checkbox" name="auto_sync_enabled" <%= settings.auto_sync_enabled === '1' ? 'checked' : '' %>><span></span></label></li>
           <li><div class="li-main"><b>Langsung hubungkan yang cocok persis</b><small>Hanya Customer ID / nama yang sama persis. Saran & konflik tetap manual.</small></div><label class="nx-switch"><input type="checkbox" name="auto_sync_commit" <%= settings.auto_sync_commit === '1' ? 'checked' : '' %>><span></span></label></li>
+          <li><div class="li-main"><b>Tulis tag Customer ID ke MikroTik</b><small>Comment secret diberi <span class="mono">[CID:kode]</span> saat ter-link. Link pulih sendiri bila router di-reset, dan teknisi bisa lihat pemiliknya di Winbox.</small></div><label class="nx-switch"><input type="checkbox" name="cid_tag_enabled" <%= settings.cid_tag_enabled === '1' ? 'checked' : '' %>><span></span></label></li>
           <li><div class="li-main"><b>Kabari lewat WA</b><small>Saat ada secret baru yang belum terhubung</small></div><label class="nx-switch"><input type="checkbox" name="auto_sync_notify" <%= settings.auto_sync_notify === '1' ? 'checked' : '' %>><span></span></label></li>
         </ul>
         <div class="nx-group-title" style="margin:14px 18px 6px">Ringkasan pagi via WA</div>
@@ -46,6 +47,13 @@
           <li><div class="li-main"><b>Jam kirim</b><small>WIB</small></div><input type="number" name="summary_hour" min="0" max="23" value="<%= settings.summary_hour %>" style="width:80px"></li>
           <li style="flex-wrap:wrap"><div class="li-main" style="flex-basis:100%"><b>Nomor tujuan</b><small>Pisahkan dengan koma. Kosong = pakai nomor Alert Jaringan di Pengaturan.</small></div><input type="text" name="summary_numbers" value="<%= settings.summary_numbers %>" placeholder="0812…, 0813…"></li>
           <li><div class="li-main"><button type="button" class="nx-btn sm" id="nxPreviewSummary"><i class="bi bi-eye"></i>Lihat contoh</button></div><% if (canControl) { %><button type="button" class="nx-btn sm tint" id="nxSendSummary"><i class="bi bi-send"></i>Kirim sekarang</button><% } %></li>
+        </ul>
+        <div class="nx-group-title" style="margin:14px 18px 6px">Fasum (fasilitas umum)</div>
+        <ul class="nx-list">
+          <li style="flex-wrap:wrap"><div class="li-main" style="flex-basis:100%"><b>Kata kunci deteksi otomatis</b><small>Dicocokkan ke username, comment, dan profile secret. Pisahkan dengan koma. Tag <span class="mono">[FASUM]</span> di comment MikroTik selalu terdeteksi. Tanda manual tidak pernah ditimpa.</small></div><input type="text" name="fasum_keywords" value="<%= settings.fasum_keywords %>" placeholder="masjid, pos ronda, balai desa"></li>
+          <li><div class="li-main"><b>Alert bila Fasum offline</b><small>Muncul di dashboard NOC, otomatis selesai saat online lagi</small></div><label class="nx-switch"><input type="checkbox" name="fasum_offline_alert" <%= settings.fasum_offline_alert === '1' ? 'checked' : '' %>><span></span></label></li>
+          <li><div class="li-main"><b>Offline lebih dari</b><small>menit</small></div><input type="number" name="fasum_offline_minutes" min="5" max="1440" value="<%= settings.fasum_offline_minutes %>" style="width:80px"></li>
+          <li><div class="li-main"><b>Kabari lewat WA</b><small>Ke nomor ringkasan pagi saat alert Fasum baru terbuka</small></div><label class="nx-switch"><input type="checkbox" name="fasum_offline_wa" <%= settings.fasum_offline_wa === '1' ? 'checked' : '' %>><span></span></label></li>
         </ul>
         <div class="nx-group-title" style="margin:14px 18px 6px">Isolir & keamanan</div>
         <ul class="nx-list">

@@ -162,6 +162,29 @@ async function ensureNmsV2Schema() {
     UNIQUE KEY uq_nms_snap (router_id, snap_date)
   )`);
   await tryQuery(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS isolate_hold_until DATE NULL`, 'customers.isolate_hold_until');
+  // Fasum / exempt manual: tanda dari operator tidak boleh ditimpa deteksi otomatis saat tarik ulang router.
+  await tryQuery(`ALTER TABLE ppp_secrets ADD COLUMN IF NOT EXISTS exempt_source VARCHAR(10) NULL COMMENT 'auto | manual'`, 'ppp_secrets.exempt_source');
+  await tryQuery(`ALTER TABLE ppp_secrets ADD COLUMN IF NOT EXISTS exempt_note VARCHAR(255) NULL`, 'ppp_secrets.exempt_note');
+  await tryQuery(`ALTER TABLE ppp_secrets ADD COLUMN IF NOT EXISTS exempt_at DATETIME NULL`, 'ppp_secrets.exempt_at');
+  await tryQuery(`ALTER TABLE ppp_secrets ADD COLUMN IF NOT EXISTS exempt_by BIGINT UNSIGNED NULL`, 'ppp_secrets.exempt_by');
+  await tryQuery(`CREATE INDEX IF NOT EXISTS idx_ppp_exempt ON ppp_secrets(is_exempt, exempt_type)`, 'ppp_secrets exempt index');
+  // Sinkron pelanggan v3: tag CID, alias pilihan operator, pindah router.
+  await tryQuery(`ALTER TABLE ppp_secrets ADD COLUMN IF NOT EXISTS cid_ignore VARCHAR(64) NULL COMMENT 'tag CID yang sengaja dilepas operator'`, 'ppp_secrets.cid_ignore');
+  await tryQuery(`CREATE INDEX IF NOT EXISTS idx_ppp_ros ON ppp_secrets(router_id, ros_id)`, 'ppp_secrets ros index');
+  await tryQuery(`ALTER TABLE ppp_secrets MODIFY match_method ENUM('pppoe_username','customer_code','customer_name','manual','phone','comment','fuzzy','created','cid_tag','alias','moved','mac','ip') NULL`, 'match_method v3');
+  await db.query(`CREATE TABLE IF NOT EXISTS nms_sync_aliases (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    site_id BIGINT UNSIGNED NOT NULL,
+    username_key VARCHAR(128) NOT NULL COMMENT 'username PPP ternormalisasi (huruf kecil)',
+    customer_id BIGINT UNSIGNED NOT NULL,
+    source VARCHAR(20) NULL,
+    hits INT UNSIGNED NOT NULL DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_used_at DATETIME NULL,
+    UNIQUE KEY uq_alias_site_user (site_id, username_key),
+    INDEX idx_alias_customer (customer_id)
+  )`);
+  await tryQuery(`ALTER TABLE nms_alerts MODIFY alert_type ENUM('mass_disconnect','flapping','router_down','shared_account','fasum_offline') NOT NULL`, 'alerts enum fasum');
   await tryQuery(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS isolate_hold_note VARCHAR(255) NULL`, 'customers.isolate_hold_note');
 
   await db.query(`ALTER TABLE routers ADD COLUMN IF NOT EXISTS wan_interface VARCHAR(64) NULL`);

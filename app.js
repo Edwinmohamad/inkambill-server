@@ -15,6 +15,7 @@ const commonLocals = require('./middleware/common');
 const paymentProofUpload = require('./middleware/paymentProofUpload');
 const customerExcelUpload = require('./middleware/customerExcelUpload');
 const clusterExcelUpload = require('./middleware/clusterExcelUpload');
+const inventoryExcelUpload = require('./middleware/inventoryExcelUpload');
 const invoiceExcelUpload = require('./middleware/invoiceExcelUpload');
 const profilePhotoUpload = require('./middleware/profilePhotoUpload');
 const cashProofUpload = require('./middleware/cashProofUpload');
@@ -42,7 +43,7 @@ const { initGatewayOnBoot, reconcileGatewayStatus, processQueue, runAutoReminder
 const { requireWahaWebhookToken } = require('./middleware/waha');
 
 const app = express();
-const assetVersion = ['public/css/app.css','public/css/debts.css','public/css/mobile-app.css','public/css/monitoring.css','public/js/app.js','public/js/mobile-app.js','public/js/nms.js','public/js/performance.js','public/js/monitoring.js']
+const assetVersion = ['public/css/app.css','public/css/debts.css','public/css/nms-wall.css','public/js/nms-wall.js','public/css/mobile-app.css','public/css/monitoring.css','public/js/app.js','public/js/mobile-app.js','public/js/nms.js','public/js/performance.js','public/js/monitoring.js']
   .map(file => Math.floor(fs.statSync(path.join(__dirname,file)).mtimeMs).toString(36))
   .join('-');
 app.set('view engine', 'ejs');
@@ -103,6 +104,18 @@ app.use('/clusters/import', (req, res, next) => {
       if (err) {
         req.session.flash = { type: 'danger', message: err.code === 'LIMIT_FILE_SIZE' ? 'File Excel maksimal 8 MB.' : err.message };
         return res.redirect('/clusters');
+      }
+      next();
+    });
+  }
+  next();
+});
+app.use('/inventory/import', (req, res, next) => {
+  if (req.method === 'POST' && req.is('multipart/form-data')) {
+    return inventoryExcelUpload(req, res, (err) => {
+      if (err) {
+        req.session.flash = { type: 'danger', message: err.code === 'LIMIT_FILE_SIZE' ? 'File Excel maksimal 8 MB.' : err.message };
+        return res.redirect('/inventory');
       }
       next();
     });
@@ -361,6 +374,8 @@ async function bootstrap() {
   cron.schedule('*/5 * * * *', async () => {
     try { await nmsAutomation.maybeAutoSync(); }
     catch (err) { console.error('NMS auto sync gagal:', err.message); }
+    try { await require('./services/nms/fasum').checkOffline(); }
+    catch (err) { console.error('NMS cek Fasum offline gagal:', err.message); }
   }, { timezone: 'Asia/Jakarta' });
   cron.schedule('10 3 * * *', async () => {
     try { console.log('NMS snapshot PPP:', await nmsAutomation.takeSnapshots()); }

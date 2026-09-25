@@ -649,3 +649,14 @@ html[data-theme="dark"] .nx-tv-dots button.on{background:#3a3a3c}
   .nx-bulk{bottom:12px}
 }
 @media (prefers-reduced-motion:reduce){.nx *{animation:none!important;transition:none!important}}
+
+/* Dialog Hubungkan: daftar pelanggan belum terhubung */
+.nx-unl{border:1px solid var(--x-line);border-radius:12px;background:var(--x-card2);overflow:hidden}
+html[data-theme="dark"] .nx-unl{background:#2c2c2e}
+.nx-unl-head{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;font-size:12px;font-weight:600;color:var(--x-muted);border-bottom:1px solid var(--x-line)}
+.nx-unl-list{max-height:220px;overflow:auto;padding:4px}
+.nx-unl-list button{display:flex;width:100%;gap:10px;align-items:center;text-align:left;background:none;border:0;border-radius:8px;padding:7px 10px;font-size:13px;color:inherit;cursor:pointer}
+.nx-unl-list button .grow{display:flex;flex-direction:column;min-width:0;flex:1}
+.nx-unl-list button b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nx-unl-list button:hover,.nx-unl-list button.on{background:var(--x-accent-t)}
+.nx-unl + .nx-note{margin-top:8px}
