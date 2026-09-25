@@ -15,6 +15,9 @@ const db = require('../config/db');
 const { validateWhatsapp } = require('./whatsappService');
 const waha = require('./wahaClient');
 const { getWahaConfig, callbackUrl } = require('./wahaConfigService');
+const antiBan = require('./waAntiBanService');
+const tpl = require('./waTemplateService');
+function realtime() { return require('./waRealtime'); }
 
 // In-memory mirror of WAHA's session state, shaped exactly like before so routes/views don't
 // need to change. Only one Node process serves this app, so module-level state is fine — same
@@ -185,7 +188,13 @@ async function handleWahaWebhookEvent(event) {
     const status = String(event.payload.status || '').toUpperCase();
     if ((status === 'STOPPED' || status === 'FAILED') && !manualLogout) scheduleRecover(5000);
   }
-  // event === 'message' (incoming messages) is intentionally a no-op for now.
+  if (type === 'message' || type === 'message.ack') {
+    const { sessionName } = await getWahaConfig();
+    if (event.session && sessionName && String(event.session) !== String(sessionName)) return;
+    const inbox = require('./waInboxService');
+    if (type === 'message') await inbox.ingestInbound(event.payload || {});
+    else await inbox.handleAck(event.payload || {});
+  }
 }
 
 async function startGateway({ manual = false } = {}) {
@@ -234,7 +243,7 @@ async function ensureGatewayAlive() {
     if (connectionState === 'qr_pending' && !qrDataUrl) {
       try { qrDataUrl = await waha.getQrDataUrl(); } catch (_) { /* dicoba lagi pada poll berikut */ }
     }
-    if (connectionState === 'connected') { processQueue(); return getGatewayStatus(); }
+    if (connectionState === 'connected') { processQueue(); return getGatewayStatus(); } // processQueue melepas pause 'disconnected'
     if (!session || manualLogout) return getGatewayStatus(); // belum pernah ditautkan / sengaja logout
 
     const status = String(session.status || '').toUpperCase();
@@ -273,6 +282,8 @@ async function ensureGatewayAlive() {
 // restart, without requiring the admin to click Connect again.
 async function initGatewayOnBoot() {
   await refreshWaFeatureFlags();
+  await antiBan.getConfig({ fresh: true });
+  await recoverStaleProcessing();
   // Pesan yang tertinggal di status lama tetap aman: antrean diproses setelah terhubung.
   try { await ensureGatewayAlive(); }
   catch (e) { console.error('WA Gateway: gagal sinkronisasi awal dengan WAHA saat startup:', e.message); }
@@ -295,21 +306,34 @@ async function logoutGateway() {
 // approvalBatch: bila diisi (lihat approvalBatchKey), pesan disimpan sebagai draf 'pending_approval'
 // dan BARU masuk antrean setelah Admin mengonfirmasi batch tersebut di halaman WA Gateway. Semua pesan
 // otomatis ke pelanggan wajib lewat jalur ini; pesan manual yang diketik/diklik staf langsung antre.
-async function enqueueWaMessage({ phone, message, customerId = null, invoiceId = null, type = 'manual', userId = null, approvalBatch = null }) {
+async function enqueueWaMessage({ phone, message, customerId = null, invoiceId = null, type = 'manual', userId = null, approvalBatch = null,
+  broadcastId = null, conversationId = null, chatMessageId = null, scheduledAt = null, media = null }) {
   const wa = validateWhatsapp(phone);
   if (!wa.valid) {
     const [r] = await db.execute(
-      `INSERT INTO wa_messages(customer_id,invoice_id,phone,message,message_type,status,error_message,created_by,approval_batch) VALUES(?,?,?,?,?,'failed',?,?,?)`,
-      [customerId, invoiceId, String(phone || ''), message, type, `Nomor WhatsApp tidak valid: ${wa.reason}`, userId, approvalBatch]
+      `INSERT INTO wa_messages(customer_id,invoice_id,phone,message,message_type,status,error_message,created_by,approval_batch,broadcast_id,conversation_id,chat_message_id) VALUES(?,?,?,?,?,'failed',?,?,?,?,?,?)`,
+      [customerId, invoiceId, String(phone || ''), message, type, `Nomor WhatsApp tidak valid: ${wa.reason}`, userId, approvalBatch, broadcastId, conversationId, chatMessageId]
     );
+    console.error(`WA queue: nomor tidak valid (${phone}) untuk pesan #${r.insertId}: ${wa.reason}`);
     return { id: r.insertId, status: 'failed', reason: wa.reason };
+  }
+  // Opt-out: pesan massal ke nomor yang sudah membalas STOP/BERHENTI tidak pernah dibuat.
+  if (antiBan.BULK_TYPES.includes(type) && await antiBan.isBlacklisted(wa.normalized)) {
+    const [r] = await db.execute(
+      `INSERT INTO wa_messages(customer_id,invoice_id,phone,message,message_type,status,error_message,created_by,approval_batch,broadcast_id) VALUES(?,?,?,?,?,'cancelled','Nomor opt-out (blacklist broadcast).',?,?,?)`,
+      [customerId, invoiceId, wa.normalized, message, type, userId, approvalBatch, broadcastId]
+    );
+    return { id: r.insertId, status: 'cancelled', reason: 'blacklist' };
   }
   const status = approvalBatch ? 'pending_approval' : 'queued';
   const [r] = await db.execute(
-    `INSERT INTO wa_messages(customer_id,invoice_id,phone,message,message_type,status,created_by,approval_batch) VALUES(?,?,?,?,?,?,?,?)`,
-    [customerId, invoiceId, wa.normalized, message, type, status, userId, approvalBatch]
+    `INSERT INTO wa_messages(customer_id,invoice_id,phone,message,message_type,status,created_by,approval_batch,broadcast_id,conversation_id,chat_message_id,scheduled_at,next_attempt_at,media_path,media_mime,media_name) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [customerId, invoiceId, wa.normalized, message, type, status, userId, approvalBatch, broadcastId, conversationId, chatMessageId, scheduledAt, scheduledAt, media?.path || null, media?.mime || null, media?.name || null]
   );
-  if (status === 'queued') processQueue();
+  if (status === 'queued') {
+    if (!antiBan.BULK_TYPES.includes(type)) priorityWaiting = true; // bangunkan worker dari jeda panjang
+    processQueue();
+  }
   return { id: r.insertId, status };
 }
 
@@ -319,6 +343,7 @@ const BATCH_LABELS = {
   payment_receipt: 'Tanda Terima Pembayaran',
   n8n_reminder: 'Reminder Tagihan (n8n)',
   n8n_ticket: 'Notifikasi Tiket ke Pelanggan (n8n)',
+  isolation_notice: 'Pemberitahuan Isolir Layanan',
 };
 function localDateKey(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -388,43 +413,147 @@ function isBlastEnabled() { return blastEnabled; }
 // gateway is not connected, processing simply stops — enqueueWaMessage() or the queue watchdog cron in
 // app.js will kick it again once reconnected, so nothing is lost, only delayed.
 const MAX_SEND_ATTEMPTS = 5;
+const MEDIA_DIR = require('path').join(__dirname, '..', 'storage', 'wa-media');
+let priorityWaiting = false;   // ada pesan non-massal (balasan inbox/manual) yang baru masuk
+let bulkSinceLongPause = 0;    // hitungan pesan massal sejak long pause terakhir
+let lastSendAt = 0;
+let queueNote = null;          // alasan antrean massal sedang menunggu (jam kerja / kuota) untuk UI
+
+function pickProviderId(response) {
+  const id = response?.id;
+  if (id && typeof id === 'object') return id._serialized || id.id || null;
+  return id || response?.key?.id || response?._data?.id?._serialized || response?._data?.id?.id || null;
+}
+
+// Jeda yang bisa "dibangunkan" lebih awal oleh pesan prioritas, tapi tetap menjaga jarak minimal
+// minDelay dari pengiriman terakhir supaya pola kirim tidak pernah beruntun.
+async function humanPause(ms, config) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    await sleep(Math.min(1000, end - Date.now()));
+    if (priorityWaiting && Date.now() - lastSendAt >= config.minDelaySec * 1000) return;
+  }
+}
+
+async function simulateTyping(chatId, config) {
+  if (!config.simulateTyping) return;
+  try { await waha.startTyping(chatId); } catch (_) { return; } // engine tidak mendukung → lewati
+  await sleep(antiBan.randomMs(config.typingMinSec, config.typingMaxSec));
+  try { await waha.stopTyping(chatId); } catch (_) { /* abaikan */ }
+}
+
+async function markChatMessage(row, patch) {
+  if (!row.chat_message_id) return;
+  try {
+    await db.execute(`UPDATE wa_chat_messages SET ack=?,wa_message_id=COALESCE(?,wa_message_id),error_message=? WHERE id=?`, [patch.ack, patch.waId || null, patch.error || null, row.chat_message_id]);
+    realtime().emit('message.ack', { conversationId: row.conversation_id, id: row.chat_message_id, ack: patch.ack, error: patch.error || null });
+  } catch (e) { console.error('WA queue: gagal update status chat:', e.message); }
+}
+
+async function nextQueuedRow(bulkAllowed) {
+  const bulkList = antiBan.BULK_TYPES.map(() => '?').join(',');
+  const [[row]] = await db.execute(
+    `SELECT * FROM wa_messages WHERE status='queued' AND (next_attempt_at IS NULL OR next_attempt_at<=NOW())
+       AND (broadcast_id IS NULL OR broadcast_id NOT IN (SELECT id FROM wa_broadcasts WHERE status IN ('paused','cancelled')))
+       ${bulkAllowed ? '' : `AND message_type NOT IN (${bulkList})`}
+     ORDER BY (message_type IN (${bulkList})) ASC, id ASC LIMIT 1`,
+    bulkAllowed ? antiBan.BULK_TYPES : [...antiBan.BULK_TYPES, ...antiBan.BULK_TYPES]
+  );
+  return row || null;
+}
+
+// Single-worker queue processor dengan engine anti-ban (lihat services/waAntiBanService.js).
 async function processQueue() {
   if (processingLock) return;
   processingLock = true;
   try {
+    const config = await antiBan.getConfig();
+    // Pause karena putus koneksi dilepas otomatis begitu gateway kembali terhubung.
+    const pause = antiBan.getPauseState();
+    if (pause.paused && pause.kind === 'disconnected' && connectionState === 'connected') await antiBan.resumeQueue('auto: gateway terhubung kembali');
     while (true) {
       if (connectionState !== 'connected') break;
-      const [[row]] = await db.execute(`SELECT * FROM wa_messages WHERE status='queued' AND (next_attempt_at IS NULL OR next_attempt_at<=NOW()) ORDER BY id ASC LIMIT 1`);
+      if (antiBan.getPauseState().paused) break;
+      priorityWaiting = false;
+      const gate = await antiBan.bulkGate(config);
+      queueNote = gate.allowed ? null : gate.reason;
+      const row = await nextQueuedRow(gate.allowed);
       if (!row) break;
+      const isBulk = antiBan.BULK_TYPES.includes(row.message_type);
+      if (isBulk && await antiBan.isBlacklisted(row.phone)) {
+        await db.execute(`UPDATE wa_messages SET status='cancelled',error_message='Dibatalkan: nomor opt-out (blacklist broadcast).' WHERE id=?`, [row.id]);
+        continue;
+      }
+      // Kunci baris: hanya satu pengiriman per pesan walau processQueue terpanggil paralel.
+      const [lock] = await db.execute(`UPDATE wa_messages SET status='processing' WHERE id=? AND status='queued'`, [row.id]);
+      if (!lock.affectedRows) continue;
+      const chatId = `${row.phone}@c.us`;
       try {
-        const response = await waha.sendText(row.phone, row.message);
-        const providerId = response?.id || response?.key?.id || response?._data?.id?.id || response?._data?.id || null;
+        await simulateTyping(chatId, config);
+        let response;
+        if (row.media_path) {
+          const buffer = await require('fs').promises.readFile(require('path').join(MEDIA_DIR, require('path').basename(row.media_path)));
+          response = await waha.sendMedia(chatId, { buffer, mimetype: row.media_mime, filename: row.media_name, caption: row.message || '' });
+        } else {
+          response = await waha.sendText(row.phone, row.message);
+        }
+        const providerId = pickProviderId(response);
         await db.execute(`UPDATE wa_messages SET status='sent',sent_at=NOW(),attempts=attempts+1,next_attempt_at=NULL,error_message=NULL,provider_message_id=? WHERE id=?`, [providerId ? String(providerId).slice(0, 255) : null, row.id]);
+        await markChatMessage(row, { ack: 'sent', waId: providerId ? String(providerId).slice(0, 255) : null });
+        if (row.broadcast_id) realtime().emit('broadcast.progress', { broadcastId: row.broadcast_id });
       } catch (e) {
         const attempts = Number(row.attempts || 0) + 1;
         const message = String(e?.message || e);
-        // Bug lama: SEMUA error (WAHA restart sesaat, sesi STARTING, timeout jaringan) langsung
-        // membuat pesan 'failed' permanen. Kini error sementara dijadwalkan ulang dengan backoff.
-        // Timeout TIDAK di-retry otomatis: WAHA mungkin sudah mengirimnya (hindari pesan dobel).
+        console.error(`WA queue: gagal kirim pesan #${row.id} (${row.message_type}) ke ${row.phone} [percobaan ${attempts}]: ${message}`);
+        if (!e?.status && !e?.timeout) await reconcileGatewayStatus();
+        const pauseKind = antiBan.classifyPauseError(e, connectionState);
+        if (pauseKind) {
+          // Auto-pause: pesan dikembalikan ke antrean (tidak hilang), seluruh antrean berhenti + alert admin.
+          await db.execute(`UPDATE wa_messages SET status='queued',attempts=?,error_message=? WHERE id=?`, [attempts, `Antrean dijeda (${pauseKind}): ${message}`.slice(0, 500), row.id]);
+          await antiBan.pauseQueue(pauseKind, message);
+          if (pauseKind === 'disconnected') scheduleRecover(5000);
+          break;
+        }
+        // Error sementara lain (5xx): jadwal ulang dengan backoff. Timeout TIDAK di-retry otomatis:
+        // WAHA mungkin sudah mengirimnya (hindari pesan dobel ke pelanggan).
         if (e?.transient && !e?.timeout && attempts < MAX_SEND_ATTEMPTS) {
-          const waitMinutes = Math.min(30, 2 ** (attempts - 1)); // 1,2,4,8 menit
+          const waitMinutes = Math.min(30, 2 ** (attempts - 1));
           await db.execute(`UPDATE wa_messages SET status='queued',attempts=?,next_attempt_at=DATE_ADD(NOW(),INTERVAL ? MINUTE),error_message=? WHERE id=?`,
             [attempts, waitMinutes, `Percobaan ${attempts} gagal, dicoba lagi ${waitMinutes} menit: ${message}`.slice(0, 500), row.id]);
-          // Kemungkinan besar sesi sedang bermasalah — cek ulang & hentikan loop, watchdog akan
-          // melanjutkan antrean begitu sesi kembali WORKING.
-          await reconcileGatewayStatus();
-          if (connectionState !== 'connected') { scheduleRecover(5000); break; }
         } else {
           const note = e?.timeout ? ' (timeout — cek HP apakah pesan sebenarnya terkirim sebelum retry)' : '';
           await db.execute(`UPDATE wa_messages SET status='failed',attempts=?,next_attempt_at=NULL,error_message=? WHERE id=?`, [attempts, `${message}${note}`.slice(0, 500), row.id]);
+          await markChatMessage(row, { ack: 'failed', error: `${message}${note}`.slice(0, 500) });
         }
       }
-      await sleep(randomDelay(4000, 9000));
+      lastSendAt = Date.now();
+      if (isBulk) bulkSinceLongPause++;
+      if (isBulk && bulkSinceLongPause >= config.longPauseEvery) {
+        bulkSinceLongPause = 0;
+        const ms = antiBan.randomMs(config.longPauseMinSec, config.longPauseMaxSec);
+        console.log(`WA anti-ban: long pause ${Math.round(ms / 1000)} dtk setelah ${config.longPauseEvery} pesan massal.`);
+        await humanPause(ms, config);
+      } else {
+        await humanPause(antiBan.randomMs(config.minDelaySec, config.maxDelaySec), config);
+      }
     }
+  } catch (e) {
+    console.error('WA queue: worker error:', e.message);
   } finally {
     processingLock = false;
   }
 }
+
+// Saat boot: pesan yang tertinggal 'processing' (app mati di tengah kirim) tidak dikirim ulang
+// otomatis — statusnya tidak pasti, jadi ditandai gagal agar Admin bisa cek & retry manual.
+async function recoverStaleProcessing() {
+  try {
+    const [r] = await db.execute(`UPDATE wa_messages SET status='failed',error_message='Status tidak pasti: aplikasi berhenti saat pesan sedang dikirim. Cek HP lalu Retry bila perlu.' WHERE status='processing'`);
+    if (r.affectedRows) console.error(`WA queue: ${r.affectedRows} pesan 'processing' ditandai gagal saat startup.`);
+  } catch (_) { /* kolom status lama belum punya 'processing' */ }
+}
+
+function getQueueNote() { return queueNote; }
 
 async function getQueueStats() {
   const [[row]] = await db.query(`SELECT
@@ -432,7 +561,8 @@ async function getQueueStats() {
     SUM(status='pending_approval') pending_approval,
     SUM(status='sent' AND DATE(created_at)=CURDATE()) sent_today,
     SUM(status='failed' AND DATE(created_at)=CURDATE()) failed_today,
-    SUM(status='sent') sent_total
+    SUM(status='sent') sent_total,
+    SUM(status='processing') processing
     FROM wa_messages`);
   return {
     queued: Number(row?.queued || 0),
@@ -440,6 +570,9 @@ async function getQueueStats() {
     sentToday: Number(row?.sent_today || 0),
     failedToday: Number(row?.failed_today || 0),
     sentTotal: Number(row?.sent_total || 0),
+    processing: Number(row?.processing || 0),
+    queueNote,
+    pause: antiBan.getPauseState(),
   };
 }
 
@@ -455,26 +588,12 @@ async function getRecentMessages(limit = 50) {
   return rows;
 }
 
-const MONTH_NAMES_ID = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
-const DEFAULT_REMINDER_TEMPLATE = 'Yth. Bapak/Ibu {nama},\n\nBersama pesan ini kami sampaikan informasi tagihan layanan internet INKAMNET Anda sebagai berikut:\n\nNo. Pelanggan : {kode}\nNo. Faktur : {no_faktur}\nPeriode : {periode}\nJumlah Tagihan : {nominal}\nJatuh Tempo : {jatuh_tempo}\n\nMohon kesediaan Bapak/Ibu untuk menyelesaikan pembayaran tepat waktu agar layanan tetap dapat digunakan tanpa gangguan. Apabila pembayaran telah dilakukan, mohon abaikan pesan ini.\n\nTerima kasih atas kepercayaan Anda.\n\nHormat kami,\nTim Layanan Pelanggan INKAMNET';
+const DEFAULT_REMINDER_TEMPLATE = tpl.OFFICIAL_TEMPLATES.find(t => t.key === 'reminder').body;
 
-function formatRupiahPlain(value) {
-  return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(value || 0));
-}
-function formatDateIndo(value) {
-  if (!value) return '-';
-  const d = new Date(value);
-  return `${d.getDate()} ${MONTH_NAMES_ID[d.getMonth()]} ${d.getFullYear()}`;
-}
-function renderReminderTemplate(template, invoice) {
-  const periode = `${MONTH_NAMES_ID[Number(invoice.period_month) - 1] || ''} ${invoice.period_year}`;
-  return String(template || DEFAULT_REMINDER_TEMPLATE)
-    .replace(/\{nama\}/g, invoice.name || '')
-    .replace(/\{kode\}/g, invoice.customer_code || '')
-    .replace(/\{periode\}/g, periode)
-    .replace(/\{nominal\}/g, formatRupiahPlain(invoice.outstanding))
-    .replace(/\{no_faktur\}/g, invoice.invoice_number || '')
-    .replace(/\{jatuh_tempo\}/g, formatDateIndo(invoice.due_date));
+// Render template pengingat. Mendukung variabel resmi ({nama_pelanggan}, {nama_bank}, ...), alias lama
+// ({nama}, {kode}, {nominal}, {no_faktur}, {jatuh_tempo}, {periode}) dan Spintax {a|b}.
+function renderReminderTemplate(template, invoice, bank = null) {
+  return tpl.renderTemplate(template || DEFAULT_REMINDER_TEMPLATE, tpl.buildVars(invoice, bank));
 }
 
 // Scheduled auto-reminder sweep — called from a cron watchdog in app.js every few minutes. Runs at
@@ -494,13 +613,15 @@ async function runAutoReminderSweep(now = new Date()) {
   // dan antrean baru berjalan setelah dikonfirmasi & gateway terhubung.
   const batch = approvalBatchKey('auto_reminder', now);
 
+  const bank = await tpl.getDefaultBank();
+  const template = settingsRow.wa_auto_reminder_template || await tpl.getTemplate('reminder');
   const offsets = String(settingsRow.wa_auto_reminder_offsets || '-3,-1,0').split(',').map(s => Number(s.trim())).filter(n => Number.isFinite(n));
   let enqueued = 0, skippedNoWa = 0, skippedAlreadySent = 0;
   for (const offset of offsets) {
     const [invoices] = await db.query(
       `SELECT i.id invoice_id,i.invoice_number,i.outstanding,i.due_date,i.period_month,i.period_year,
-              c.id customer_id,c.customer_code,c.name,c.phone,c.whatsapp_status
-       FROM invoices i JOIN customers c ON c.id=i.customer_id
+              c.id customer_id,c.customer_code,c.name,c.phone,c.whatsapp_status,p.name package_name,p.speed_label
+       FROM invoices i JOIN customers c ON c.id=i.customer_id LEFT JOIN packages p ON p.id=c.package_id
        WHERE i.status IN ('unpaid','partial','overdue') AND i.outstanding>0
          AND i.due_date=DATE_ADD(CURDATE(),INTERVAL ? DAY)
          AND c.archived_at IS NULL AND c.customer_status='active'`,
@@ -513,7 +634,7 @@ async function runAutoReminderSweep(now = new Date()) {
         [inv.invoice_id]
       );
       if (already) { skippedAlreadySent++; continue; }
-      const message = renderReminderTemplate(settingsRow.wa_auto_reminder_template, inv);
+      const message = renderReminderTemplate(template, inv, bank);
       await enqueueWaMessage({ phone: inv.phone, message, customerId: inv.customer_id, invoiceId: inv.invoice_id, type: 'auto_reminder', userId: null, approvalBatch: batch });
       enqueued++;
     }
@@ -545,4 +666,5 @@ module.exports = {
   isBlastEnabled,
   renderReminderTemplate,
   DEFAULT_REMINDER_TEMPLATE,
+  getQueueNote,
 };

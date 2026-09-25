@@ -33,6 +33,9 @@ const { scanLowStock } = require('./services/inventoryService');
 const { deliverMobilePushes } = require('./services/mobilePushService');
 const { runCashAgingAlert } = require('./services/cashSettlementService');
 const { purgeOldLogs } = require('./services/logRetentionService');
+const { ensureV56Schema } = require('./services/waCrmSchema');
+const { refreshBroadcastStatuses } = require('./services/waBroadcastService');
+const waRealtime = require('./services/waRealtime');
 const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema } = require('./services/schemaService');
 const { requireN8nToken } = require('./middleware/n8n');
 const { initGatewayOnBoot, ensureGatewayAlive, reconcileGatewayStatus, processQueue, runAutoReminderSweep } = require('./services/whatsappGatewayService');
@@ -71,14 +74,16 @@ const sessionStore = new MySQLStore({
   createDatabaseTable: true
 });
 
-app.use(session({
+// Disimpan ke variabel agar bisa dipakai ulang untuk autentikasi WebSocket Web Inbox (waRealtime).
+const sessionMiddleware = session({
   name: 'inkamnet.sid',
   secret: process.env.SESSION_SECRET || 'change-this-secret-now',
   store: sessionStore,
   resave: false,
   saveUninitialized: false,
   cookie: { httpOnly: true, sameSite: 'lax', secure: process.env.COOKIE_SECURE === 'true', maxAge: 1000*60*60*12 }
-}));
+});
+app.use(sessionMiddleware);
 app.use(loadPermissions);
 app.use(commonLocals);
 // Parse multipart payment-proof forms before CSRF validation so the hidden token is available.
@@ -258,6 +263,8 @@ app.use('/sites', requireAuth, requirePermission('network'), require('./routes/s
 app.use('/custom-invoices', requireAuth, requirePermission('billing'), require('./routes/customInvoices'));
 app.use('/logs', requireAuth, requirePermission('logs'), require('./routes/logs'));
 app.use('/', requireAuth, require('./routes/finance'));
+app.use('/wa-inbox', requireAuth, require('./routes/waInbox'));
+app.use('/wa-gateway', requireAuth, require('./routes/waCrm'));
 app.use('/wa-gateway', requireAuth, require('./routes/whatsappGateway'));
 
 app.use((err, req, res, next) => {
@@ -318,6 +325,7 @@ async function bootstrap() {
   await ensureV53Schema();
   await ensureV54Schema();
   await ensureV55Schema();
+  await ensureV56Schema();
   const [rows] = await db.query('SELECT COUNT(*) total FROM users');
   if (Number(rows[0].total) === 0) {
     const username = process.env.DEFAULT_ADMIN_USERNAME || 'admin';
@@ -359,6 +367,7 @@ async function bootstrap() {
   // (WAHA restart, container update, crash), sesi dinyalakan ulang otomatis dengan backoff, lalu
   // antrean dilanjutkan. Tidak menyentuh sesi yang WORKING atau yang sengaja di-logout Admin.
   cron.schedule('* * * * *', async () => {
+    try { await refreshBroadcastStatuses(); } catch (err) { console.error('WA broadcast status gagal:', err.message); }
     try { await ensureGatewayAlive(); } catch (err) { console.error('WA Gateway watchdog gagal:', err.message); }
   }, { timezone: 'Asia/Jakarta' });
 
@@ -420,7 +429,8 @@ async function bootstrap() {
   initGatewayOnBoot().catch(err => console.error('WA Gateway: gagal sinkronisasi awal saat startup:', err.message));
 
   const port = Number(process.env.PORT || 3000);
-  app.listen(port, '0.0.0.0', () => console.log(`INKAMNET Billing berjalan di port ${port}`));
+  const server = app.listen(port, '0.0.0.0', () => console.log(`INKAMNET Billing berjalan di port ${port}`));
+  waRealtime.attach(server, sessionMiddleware, loadPermissions);
 }
 
 bootstrap().catch(err => { console.error('Startup gagal:', err); process.exit(1); });

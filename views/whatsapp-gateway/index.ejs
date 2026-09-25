@@ -1,8 +1,8 @@
 <%
   const stateLabel={connected:'Terhubung',qr_pending:'Menunggu Scan QR',connecting:'Menghubungkan…',disconnected:'Terputus'}[gateway.state]||gateway.state;
   const stateTone={connected:'green',qr_pending:'orange',connecting:'orange',disconnected:'red'}[gateway.state]||'gray';
-  const waStatus={sent:['green','Terkirim'],failed:['red','Gagal'],queued:['orange','Antrean'],pending_approval:['purple','Menunggu Konfirmasi'],rejected:['gray','Dibatalkan']};
-  const waType={auto_reminder:['purple','Auto-Reminder'],payment_receipt:['green','Tanda Terima'],network_alert:['red','Alert Jaringan'],blast:['orange','Blast'],manual:['gray','Manual']};
+  const waStatus={sent:['green','Terkirim'],failed:['red','Gagal'],queued:['orange','Antrean'],processing:['orange','Mengirim'],pending_approval:['purple','Menunggu Konfirmasi'],rejected:['gray','Dibatalkan'],cancelled:['gray','Dibatalkan']};
+  const waType={auto_reminder:['purple','Auto-Reminder'],payment_receipt:['green','Tanda Terima'],network_alert:['red','Alert Jaringan'],blast:['orange','Blast'],broadcast:['orange','Broadcast'],inbox:['gray','Balasan Inbox'],bot_reply:['gray','Bot'],isolation_notice:['red','Pemberitahuan Isolir'],outage_notice:['red','Info Gangguan'],manual:['gray','Manual']};
   const offsetSet=new Set(String(reminderSettings.offsets||'').split(',').map(s=>Number(s.trim())).filter(Number.isFinite));
   const offsetChips=[...new Set([-7,-3,-1,0,1,3,7,...offsetSet])].sort((a,b)=>a-b);
   const offsetLabel=v=>v===0?'Hari H':(v<0?`H${v}`:`H+${v}`);
@@ -14,6 +14,8 @@
     ['manual','Kirim Manual','bi-chat-left-text'],
     ['otomatis','Pesan Otomatis','bi-clock-history'],
     ['template','Template Pesan','bi-file-earmark-text'],
+    ['quickreply','Balasan Cepat','bi-lightning-charge'],
+    ['antiban','Anti-Ban & Antrean','bi-shield-lock'],
     ['koneksi','Koneksi','bi-plug'],
     ['log','Log Pengiriman','bi-list-ul']
   ];
@@ -23,7 +25,8 @@
 <section class="wa-gateway-page wa-v2">
   <div class="module-head">
     <div><div class="module-kicker">WHATSAPP</div><h1>WA Gateway</h1><p>Kirim tagihan, tanda terima, dan informasi layanan ke pelanggan melalui WhatsApp.</p></div>
-    <a class="wa-conn-pill <%= stateTone %>" href="#koneksi" data-wa-tab-link="koneksi"><span class="wa-conn-dot"></span><span id="waStatePill"><%= stateLabel %></span><% if(gateway.connectedNumber){ %><small>+<%= gateway.connectedNumber %></small><% } %></a>
+    <div class="d-flex gap-2 flex-wrap align-items-center"><a class="btn-tech" href="/wa-inbox"><i class="bi bi-chat-dots"></i>Web Inbox</a><% if(isAdmin){ %><a class="btn-tech" href="/wa-gateway/broadcast"><i class="bi bi-megaphone"></i>Broadcast</a><% } %>
+    <a class="wa-conn-pill <%= stateTone %>" href="#koneksi" data-wa-tab-link="koneksi"><span class="wa-conn-dot"></span><span id="waStatePill"><%= stateLabel %></span><% if(gateway.connectedNumber){ %><small>+<%= gateway.connectedNumber %></small><% } %></a></div>
   </div>
 
   <div class="settings-layout">
@@ -44,6 +47,9 @@
           <article class="metric-card red"><div class="metric-top"><span class="metric-label">Gagal Hari Ini</span><span class="metric-icon"><i class="bi bi-x-octagon"></i></span></div><strong id="waFailedTodayCount"><%= stats.failedToday %></strong><small>Lihat detail di Log Pengiriman</small></article>
         </div>
 
+        <% if(pause.paused){ %>
+        <div class="wa-callout"><i class="bi bi-pause-circle-fill"></i><div><strong>Antrean pengiriman dijeda — <%= pause.label||pause.kind %></strong><small><%= pause.reason||'' %></small></div><a class="btn-tech primary" href="#antiban" data-wa-tab-link="antiban">Kelola</a></div>
+        <% } %>
         <% if(pendingBatches.length){ %>
         <div class="wa-callout">
           <i class="bi bi-patch-exclamation"></i>
@@ -204,8 +210,8 @@
       <section class="wa-panel" data-wa-panel="template" hidden>
         <% if(!isMasterAdmin){ %><div class="wa-callout neutral"><i class="bi bi-lock"></i><div><strong><%= readOnlyNote %></strong></div></div><% } %>
         <% [
-             {key:'reminder',form:'waReminderForm',title:'Pengingat Tagihan',sub:'Dipakai auto-reminder dan WA Blast.',value:reminderSettings.template,vars:['nama','kode','periode','nominal','no_faktur','jatuh_tempo']},
-             {key:'receipt',form:'waReceiptForm',title:'Tanda Terima Pembayaran',sub:'Dikirim setelah pembayaran disetujui.',value:receiptSettings.template,vars:['nama','kode','periode','nominal','metode','no_faktur','referensi','sisa']}
+             {key:'reminder',form:'waReminderForm',title:'Pengingat Tagihan',sub:'Dipakai auto-reminder dan WA Blast.',value:reminderSettings.template,vars:['nama_pelanggan','id_pelanggan','paket_layanan','nominal_tagihan','tanggal_jatuh_tempo','nomor_invoice','nama_bank','nomor_rekening','nama_pemilik_rekening','periode']},
+             {key:'receipt',form:'waReceiptForm',title:'Tanda Terima Pembayaran',sub:'Dikirim setelah pembayaran disetujui.',value:receiptSettings.template,vars:['nama_pelanggan','id_pelanggan','paket_layanan','nominal_tagihan','nomor_invoice','periode','metode','referensi','sisa']}
            ].forEach(t=>{ %>
         <div class="data-card">
           <div class="data-card-head"><div><h3><%= t.title %></h3><small><%= t.sub %></small></div></div>
@@ -217,7 +223,7 @@
                   <% t.vars.forEach(v=>{ %><button type="button" class="wa-chip mono" data-insert="{<%= v %>}" <%= isMasterAdmin?'':'disabled' %>>{<%= v %>}</button><% }) %>
                 </div>
               </div>
-              <textarea class="form-control wa-template-input" name="template" form="<%= t.form %>" rows="14" maxlength="1500" aria-label="Template <%= t.title %>" <%= isMasterAdmin?'':'readonly' %>><%= t.value %></textarea>
+              <textarea class="form-control wa-template-input" name="template" form="<%= t.form %>" rows="14" maxlength="4000" aria-label="Template <%= t.title %>" <%= isMasterAdmin?'':'readonly' %>><%= t.value %></textarea>
               <% if(isMasterAdmin){ %>
               <div class="wa-form-actions">
                 <button type="button" class="btn-tech" data-reset-template="<%= t.key %>">Pakai template standar</button>
@@ -233,6 +239,8 @@
         </div>
         <% }) %>
       </section>
+
+<%- include('_crm-panels') %>
 
       <!-- KONEKSI -->
       <section class="wa-panel" data-wa-panel="koneksi" hidden>
@@ -324,9 +332,13 @@
 (()=>{
   const csrf=<%- safeJson(csrfToken) %>;
   const DEFAULTS={reminder:<%- safeJson(defaultReminderTemplate||'') %>,receipt:<%- safeJson(typeof defaultReceiptTemplate!=='undefined'?defaultReceiptTemplate:'') %>};
-  const SAMPLE={nama:'Budi Santoso',kode:'CDS-0012',periode:'Oktober 2026',nominal:'Rp 166.500',no_faktur:'INV-202610-0012',jatuh_tempo:'10 Oktober 2026',metode:'transfer',referensi:'TRF-88213',sisa:'Rp 0'};
-  const WA_STATUS={sent:['green','Terkirim'],failed:['red','Gagal'],queued:['orange','Antrean'],pending_approval:['purple','Menunggu Konfirmasi'],rejected:['gray','Dibatalkan']};
-  const WA_TYPE={auto_reminder:'Auto-Reminder',payment_receipt:'Tanda Terima',network_alert:'Alert Jaringan',blast:'Blast',manual:'Manual'};
+  const SAMPLE={nama:'Budi Santoso',kode:'CDS-0012',periode:'Oktober 2026',nominal:'Rp 166.500',no_faktur:'INV-202610-0012',jatuh_tempo:'10 Oktober 2026',metode:'transfer',referensi:'TRF-88213',sisa:'Rp 0',
+    nama_pelanggan:'Budi Santoso',id_pelanggan:'CDS-0012',paket_layanan:'Home-10Mbps',nominal_tagihan:'Rp 166.500',tanggal_jatuh_tempo:'10 Oktober 2026',nomor_invoice:'INV-202610-0012',
+    nama_bank:<%- safeJson(defaultBank?(/^bank\b/i.test(defaultBank.bank_name)?defaultBank.bank_name:'Bank '+defaultBank.bank_name):'Bank BCA') %>,nomor_rekening:<%- safeJson(defaultBank?.account_number||'1234567890') %>,nama_pemilik_rekening:<%- safeJson(defaultBank?.account_name||'INKAMNET') %>,detail_gangguan:'Perbaikan kabel fiber optik',estimasi_selesai:'Pukul 16.00 WIB'};
+  const WA_STATUS={sent:['green','Terkirim'],failed:['red','Gagal'],queued:['orange','Antrean'],processing:['orange','Mengirim'],pending_approval:['purple','Menunggu Konfirmasi'],rejected:['gray','Dibatalkan'],cancelled:['gray','Dibatalkan']};
+  const WA_TYPE={auto_reminder:'Auto-Reminder',payment_receipt:'Tanda Terima',network_alert:'Alert Jaringan',blast:'Blast',broadcast:'Broadcast',inbox:'Balasan Inbox',bot_reply:'Bot',isolation_notice:'Pemberitahuan Isolir',outage_notice:'Info Gangguan',manual:'Manual'};
+  /* Balasan cepat: isi form dari tombol Ubah */
+  document.addEventListener('click',e=>{const b=e.target.closest('[data-qr-edit]');if(!b)return;const d=JSON.parse(b.dataset.qrEdit);const f=document.getElementById('waQuickForm');if(!f)return;f.shortcut.value=d.shortcut;f.title.value=d.title;f.body.value=d.body;f.querySelector('input[type=checkbox][name=is_active]').checked=!!d.is_active;f.scrollIntoView({behavior:'smooth'});});
   const STATE_LABELS={connected:'Terhubung',qr_pending:'Menunggu Scan QR',connecting:'Menghubungkan…',disconnected:'Terputus'};
   const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 
@@ -365,7 +377,7 @@
   });
 
   /* Template: sisip data + pratinjau */
-  const render=t=>String(t||'').replace(/\{(\w+)\}/g,(m,k)=>SAMPLE[k]??m);
+  const render=t=>{let out=String(t||'').replace(/\{(\w+)\}/g,(m,k)=>SAMPLE[k]??m);for(let i=0;i<50&&/\{([^{}]*\|[^{}]*)\}/.test(out);i++)out=out.replace(/\{([^{}]*\|[^{}]*)\}/,(m,x)=>x.split('|')[0]);return out;};
   $$('[data-template]').forEach(box=>{
     const input=$('.wa-template-input',box), preview=$('[data-preview]',box);
     const update=()=>{preview.textContent=render(input.value)||'—';};

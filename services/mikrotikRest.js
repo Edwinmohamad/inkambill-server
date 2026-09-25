@@ -136,7 +136,31 @@ async function reboot(router) {
   return request(router, 'POST', '/system/reboot', {});
 }
 
+// ---- Firewall address-list (isolir berbasis IP) -------------------------------------------------
+// REST equivalent dari CLI: /ip firewall address-list remove [find address=X.X.X.X list=ISOLIR]
+async function removeFromAddressList(router, address, list = 'ISOLIR') {
+  if (!address) return { removed: 0 };
+  const result = await request(router, 'GET', `/ip/firewall/address-list?list=${encodeURIComponent(list)}&address=${encodeURIComponent(address)}&.proplist=.id,address,list`);
+  const rows = Array.isArray(result) ? result : [];
+  for (const r of rows) await request(router, 'DELETE', `/ip/firewall/address-list/${encodeURIComponent(r['.id'])}`);
+  return { removed: rows.length };
+}
+// REST equivalent: /ip firewall address-list add list=ISOLIR address=X.X.X.X comment=...
+async function addToAddressList(router, address, list = 'ISOLIR', comment = '') {
+  if (!address) return { added: false };
+  const existing = await request(router, 'GET', `/ip/firewall/address-list?list=${encodeURIComponent(list)}&address=${encodeURIComponent(address)}&.proplist=.id`);
+  if (Array.isArray(existing) && existing.length) return { added: false, exists: true };
+  await request(router, 'PUT', '/ip/firewall/address-list', { list, address, comment: String(comment || '').slice(0, 120) });
+  return { added: true };
+}
+async function secretRemoteAddress(router, username) {
+  const result = await request(router, 'GET', `/ppp/secret?name=${encodeURIComponent(username)}&.proplist=.id,remote-address`);
+  const row = Array.isArray(result) ? result[0] : result;
+  return row?.['remote-address'] || null;
+}
+
 module.exports = {
   request, testConnection, findSecret, findActive, isolatePppoe, unisolatePppoe,
-  listSecrets, listActive, listProfiles, listInterfaces, createSecret, updateSecret, getSecret, deleteSecret, disconnectSecret, reboot
+  listSecrets, listActive, listProfiles, listInterfaces, createSecret, updateSecret, getSecret, deleteSecret, disconnectSecret, reboot,
+  removeFromAddressList, addToAddressList, secretRemoteAddress
 };

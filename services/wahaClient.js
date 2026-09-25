@@ -58,7 +58,7 @@ async function getSession(config = null) {
 
 function buildSessionConfig(config, webhookCallbackUrl) {
   const webhooks = [
-    ...(webhookCallbackUrl ? [{ url: webhookCallbackUrl, events: ['session.status', 'message'] }] : []),
+    ...(webhookCallbackUrl ? [{ url: webhookCallbackUrl, events: ['session.status', 'message', 'message.ack'] }] : []),
     ...config.extraWebhookUrls.map(url => ({ url, events: ['message'] }))
   ];
   return webhooks.length ? { webhooks } : undefined;
@@ -143,6 +143,31 @@ async function resolveLidToPhone(lid) {
   } catch (_) { return null; }
 }
 
+// ---- Simulasi perilaku manusia & media (dipakai engine anti-ban dan Web Inbox) ------------------
+async function startTyping(chatId) {
+  const config = await getWahaConfig();
+  return request('POST', '/api/startTyping', { session: config.sessionName, chatId }, config, { timeoutMs: 8000 });
+}
+async function stopTyping(chatId) {
+  const config = await getWahaConfig();
+  return request('POST', '/api/stopTyping', { session: config.sessionName, chatId }, config, { timeoutMs: 8000 });
+}
+// Tandai chat sudah dibaca (centang biru) sebelum membalas.
+async function sendSeen(chatId, messageIds = null) {
+  const config = await getWahaConfig();
+  const body = { session: config.sessionName, chatId };
+  if (messageIds && messageIds.length) body.messageIds = messageIds;
+  return request('POST', '/api/sendSeen', body, config, { timeoutMs: 8000 });
+}
+// Kirim gambar/dokumen (base64). Catatan: di WAHA Core sebagian engine hanya mendukung sendText;
+// sendImage/sendFile tersedia di WAHA Plus — error dari WAHA diteruskan apa adanya ke log.
+async function sendMedia(chatId, { buffer, mimetype, filename, caption = '' }) {
+  const config = await getWahaConfig();
+  const isImage = /^image\/(jpeg|png|webp)$/.test(String(mimetype || ''));
+  const body = { session: config.sessionName, chatId, caption, file: { mimetype, filename: filename || 'lampiran', data: Buffer.from(buffer).toString('base64') } };
+  return request('POST', isImage ? '/api/sendImage' : '/api/sendFile', body, config, { timeoutMs: 60000 });
+}
+
 const MAX_MEDIA_BYTES = 6 * 1024 * 1024;
 async function downloadMedia(mediaUrl) {
   const config = await getWahaConfig();
@@ -156,4 +181,4 @@ async function downloadMedia(mediaUrl) {
   return { buffer, mimetype: String(response.headers.get('content-type') || '').split(';')[0].trim() };
 }
 
-module.exports = { request, testConnection, getSession, startSession, stopAndLogoutSession, getQrDataUrl, sendText, sendToChat, resolveLidToPhone, downloadMedia };
+module.exports = { request, testConnection, getSession, startSession, stopAndLogoutSession, getQrDataUrl, sendText, sendToChat, resolveLidToPhone, downloadMedia, startTyping, stopTyping, sendSeen, sendMedia };

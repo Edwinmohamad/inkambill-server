@@ -1,0 +1,127 @@
+<link rel="stylesheet" href="/css/wa-inbox.css?v=<%= assetVersion %>">
+<%
+  const gwLabel={connected:'Terhubung',qr_pending:'Menunggu Scan QR',connecting:'Menghubungkan…',disconnected:'Terputus'}[gateway.state]||gateway.state;
+  const gwTone={connected:'green',qr_pending:'orange',connecting:'orange',disconnected:'red'}[gateway.state]||'gray';
+%>
+<section class="wai" id="waInbox"
+  data-initial="<%= initialConversationId||'' %>" data-user-id="<%= user.id %>" data-master="<%= isMasterAdmin?'1':'0' %>">
+  <header class="wai-top">
+    <div><div class="module-kicker">WHATSAPP CRM</div><h1>Web Inbox</h1></div>
+    <div class="wai-top-right">
+      <div class="wai-pause <%= pause.paused?'':'d-none' %>" id="waiPauseBanner"><i class="bi bi-pause-circle-fill"></i><span id="waiPauseText"><%= pause.paused?`Antrean dijeda: ${pause.label||pause.kind}`:'' %></span><a href="/wa-gateway#antiban">Kelola</a></div>
+      <span class="wai-gw <%= gwTone %>" id="waiGateway"><span class="dot"></span><span id="waiGatewayLabel">WA <%= gwLabel %></span></span>
+      <span class="wai-rt" id="waiRealtime" title="Koneksi realtime"><i class="bi bi-broadcast"></i><span>Realtime</span></span>
+    </div>
+  </header>
+
+  <div class="wai-grid" id="waiGrid" data-view="list">
+    <!-- KOLOM 1: daftar & filter percakapan -->
+    <aside class="wai-col wai-list" aria-label="Daftar percakapan">
+      <div class="wai-search"><i class="bi bi-search"></i><input type="search" id="waiSearch" placeholder="Cari nama, ID, no. HP, alamat…" autocomplete="off"></div>
+      <nav class="wai-tabs" id="waiTabs">
+        <button type="button" data-filter="all" class="active">Semua <em data-count="total"></em></button>
+        <button type="button" data-filter="unread">Belum Dibaca <em data-count="unread"></em></button>
+        <button type="button" data-filter="payment">Pembayaran <em data-count="payment"></em></button>
+        <button type="button" data-filter="outage">Gangguan <em data-count="outage"></em></button>
+        <button type="button" data-filter="isolated">Terisolir <em data-count="isolated"></em></button>
+        <button type="button" data-filter="mine">Tugas Saya</button>
+      </nav>
+      <ul class="wai-conv-list" id="waiConvList"><li class="wai-empty">Memuat percakapan…</li></ul>
+    </aside>
+
+    <!-- KOLOM 2: area obrolan -->
+    <main class="wai-col wai-chat" aria-label="Percakapan">
+      <div class="wai-chat-empty" id="waiChatEmpty"><i class="bi bi-chat-square-dots"></i><strong>Pilih percakapan</strong><small>Pesan pelanggan yang masuk ke nomor WhatsApp gateway muncul di sini secara real-time.</small></div>
+      <div class="wai-chat-inner d-none" id="waiChatInner">
+        <header class="wai-chat-head">
+          <button type="button" class="wai-icon-btn wai-back" data-back="list" aria-label="Kembali"><i class="bi bi-arrow-left"></i></button>
+          <div class="wai-avatar" id="waiHeadAvatar"></div>
+          <div class="wai-head-meta"><strong id="waiHeadName"></strong><small id="waiHeadSub"></small></div>
+          <span class="wai-mode" id="waiHeadMode"></span>
+          <label class="wai-switch" title="Auto-responder bot"><input type="checkbox" id="waiBotToggle"><span></span><small>Bot</small></label>
+          <button type="button" class="wai-icon-btn wai-info-btn" data-back="info" aria-label="Info pelanggan"><i class="bi bi-person-vcard"></i></button>
+        </header>
+        <div class="wai-collision d-none" id="waiCollision"><i class="bi bi-exclamation-triangle-fill"></i><span></span></div>
+        <div class="wai-messages" id="waiMessages"></div>
+        <form class="wai-composer" id="waiComposer" autocomplete="off">
+          <div class="wai-slash d-none" id="waiSlash" role="listbox"></div>
+          <div class="wai-emoji d-none" id="waiEmoji"></div>
+          <div class="wai-attach-preview d-none" id="waiAttachPreview"><i class="bi bi-paperclip"></i><span></span><button type="button" aria-label="Hapus lampiran">&times;</button></div>
+          <div class="wai-compose-row">
+            <button type="button" class="wai-icon-btn" id="waiEmojiBtn" title="Emoji"><i class="bi bi-emoji-smile"></i></button>
+            <label class="wai-icon-btn" title="Lampirkan foto/PDF"><i class="bi bi-paperclip"></i><input type="file" id="waiFile" accept="image/jpeg,image/png,image/webp,application/pdf" hidden></label>
+            <textarea id="waiInput" rows="1" placeholder="Ketik pesan… (ketik / untuk balasan cepat)"></textarea>
+            <button type="button" class="wai-icon-btn" id="waiNoteBtn" title="Catatan internal (tidak dikirim ke pelanggan)"><i class="bi bi-sticky"></i></button>
+            <button type="submit" class="wai-send" id="waiSend" title="Kirim"><i class="bi bi-send-fill"></i></button>
+          </div>
+          <small class="wai-hint" id="waiHint">Enter kirim · Shift+Enter baris baru · <b>/</b> balasan cepat · balasan manual menonaktifkan bot 30 menit</small>
+        </form>
+      </div>
+    </main>
+
+    <!-- KOLOM 3: info pelanggan & power actions -->
+    <aside class="wai-col wai-info" aria-label="Info pelanggan">
+      <div class="wai-info-empty" id="waiInfoEmpty"><i class="bi bi-person-badge"></i><small>Detail pelanggan tampil di sini.</small></div>
+      <div class="wai-info-inner d-none" id="waiInfoInner">
+        <button type="button" class="wai-icon-btn wai-back wai-info-back" data-back="chat" aria-label="Kembali ke chat"><i class="bi bi-x-lg"></i></button>
+        <div class="wai-profile"><div class="wai-avatar lg" id="waiInfoAvatar"></div><strong id="waiInfoName"></strong><small id="waiInfoCode"></small><div class="wai-profile-badges" id="waiInfoBadges"></div></div>
+        <div class="wai-link-box d-none" id="waiLinkBox">
+          <p><i class="bi bi-link-45deg"></i> Nomor ini belum tertaut ke data pelanggan.</p>
+          <input class="form-control form-control-sm" id="waiLinkSearch" placeholder="Cari pelanggan untuk ditautkan…">
+          <ul id="waiLinkResults" class="wai-link-results"></ul>
+        </div>
+        <div id="waiInfoCards"></div>
+        <div class="wai-actions" id="waiActions">
+          <button type="button" class="btn-tech primary" id="waiActVerify"><i class="bi bi-check2-circle"></i>Verifikasi &amp; Buka Isolir</button>
+          <button type="button" class="btn-tech" id="waiActTicket"><i class="bi bi-plus-circle"></i>Buat Tiket Gangguan</button>
+          <button type="button" class="btn-tech" id="waiActAssign"><i class="bi bi-arrow-left-right"></i>Alihkan ke Admin/Divisi</button>
+          <button type="button" class="btn-tech" id="waiActNetwork"><i class="bi bi-hdd-network"></i>Cek Status Jaringan Live</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- Modal: Verifikasi & Buka Isolir -->
+<div class="modal fade" id="waiVerifyModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content app-modal">
+  <div class="modal-header"><h5 class="modal-title"><i class="bi bi-check2-circle me-2"></i>Verifikasi Pembayaran &amp; Buka Isolir</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <p class="wai-muted small mb-2" id="waiVerifyRole"><%= isMasterAdmin?'Sebagai Master Admin: tagihan langsung LUNAS → isolir dibuka di MikroTik → kuitansi digital dikirim otomatis.':'Pengajuan pembayaran dibuat dan menunggu approval Master Admin (kebijakan keuangan).' %></p>
+    <label class="form-label small fw-semibold">Tagihan yang dibayar</label>
+    <div id="waiVerifyInvoices" class="wai-check-list"></div>
+    <label class="form-label small fw-semibold mt-3">Bukti transfer dari chat</label>
+    <div id="waiVerifyProofs" class="wai-proof-pick"></div>
+    <div class="row g-2 mt-2">
+      <div class="col-md-6"><label class="form-label small fw-semibold">Bank tujuan</label><select class="form-select" id="waiVerifyBank"><% banks.forEach(b=>{ %><option value="<%= b.id %>"><%= b.bank_name %> · <%= b.account_number %> · <%= b.account_name %></option><% }) %></select></div>
+      <div class="col-md-6"><label class="form-label small fw-semibold">Alasan override hasil scan bukti (bila diminta)</label><input class="form-control" id="waiVerifyReason" maxlength="500" placeholder="Opsional"></div>
+    </div>
+    <div class="wai-verify-result d-none mt-3" id="waiVerifyResult"></div>
+  </div>
+  <div class="modal-footer"><button type="button" class="btn-tech" data-bs-dismiss="modal">Tutup</button><button type="button" class="btn-tech primary" id="waiVerifySubmit"><i class="bi bi-lightning-charge-fill"></i>Proses</button></div>
+</div></div></div>
+
+<!-- Modal: Tiket -->
+<div class="modal fade" id="waiTicketModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><div class="modal-content app-modal">
+  <div class="modal-header"><h5 class="modal-title"><i class="bi bi-tools me-2"></i>Buat Tiket Gangguan</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <label class="form-label small fw-semibold">Judul</label><input class="form-control" id="waiTicketSubject" maxlength="200">
+    <div class="row g-2 mt-1">
+      <div class="col-6"><label class="form-label small fw-semibold">Jenis</label><select class="form-select" id="waiTicketType"><option>Gangguan Internet</option><option>Internet Lambat</option><option>Perangkat Rusak</option><option>Relokasi</option><option>Lainnya</option></select></div>
+      <div class="col-6"><label class="form-label small fw-semibold">Prioritas</label><select class="form-select" id="waiTicketPriority"><option value="low">Rendah</option><option value="medium" selected>Sedang</option><option value="high">Tinggi</option><option value="critical">Kritis</option></select></div>
+    </div>
+    <label class="form-label small fw-semibold mt-2">Deskripsi (kosongkan = 5 pesan terakhir pelanggan)</label><textarea class="form-control" id="waiTicketDesc" rows="4"></textarea>
+  </div>
+  <div class="modal-footer"><button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button><button type="button" class="btn-tech primary" id="waiTicketSubmit">Buat Tiket</button></div>
+</div></div></div>
+
+<!-- Modal: Alihkan -->
+<div class="modal fade" id="waiAssignModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><div class="modal-content app-modal">
+  <div class="modal-header"><h5 class="modal-title"><i class="bi bi-arrow-left-right me-2"></i>Alihkan Percakapan</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <label class="form-label small fw-semibold">Divisi</label><select class="form-select" id="waiAssignDept"><option value="">— tanpa divisi —</option><% Object.entries(departments).forEach(([k,v])=>{ %><option value="<%= k %>"><%= v %></option><% }) %></select>
+    <label class="form-label small fw-semibold mt-2">Admin</label><select class="form-select" id="waiAssignUser"><option value="">— tanpa admin —</option><% admins.forEach(a=>{ %><option value="<%= a.id %>"><%= a.name %></option><% }) %></select>
+  </div>
+  <div class="modal-footer"><button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button><button type="button" class="btn-tech primary" id="waiAssignSubmit">Simpan</button></div>
+</div></div></div>
+
+<script src="/js/wa-inbox.js?v=<%= assetVersion %>"></script>

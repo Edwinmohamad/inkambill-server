@@ -28,32 +28,9 @@ function styleWorkbook(ws){
   row.eachCell(cell=>{cell.font={bold:true,color:{argb:'FFFFFFFF'}};cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF6030E0'}};cell.alignment={vertical:'middle'};cell.border={bottom:{style:'thin',color:{argb:'FFFF433E'}}};});
 }
 
-const PROOF_DIR=path.join(__dirname,'..','storage','payment-proofs');
-fs.mkdirSync(PROOF_DIR,{recursive:true});
+const { PROOF_DIR,saveProofFile,removeProofFile,paymentReference,postCashTransaction,maybeAutoUnisolate,verifyPendingPayment }=require('../services/paymentVerificationService');
 
-function proofExtension(mime){
-  return ({'image/jpeg':'.jpg','image/png':'.png','image/webp':'.webp','application/pdf':'.pdf'})[mime]||'';
-}
-function proofSignatureMatches(file){
-  const b=file?.buffer;if(!b||b.length<12)return false;
-  if(file.mimetype==='image/jpeg')return b[0]===0xff&&b[1]===0xd8&&b[2]===0xff;
-  if(file.mimetype==='image/png')return b.subarray(0,8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]));
-  if(file.mimetype==='image/webp')return b.subarray(0,4).toString()==='RIFF'&&b.subarray(8,12).toString()==='WEBP';
-  if(file.mimetype==='application/pdf')return b.subarray(0,5).toString()==='%PDF-';
-  return false;
-}
-async function saveProofFile(file){
-  if(!file)return null;
-  const ext=proofExtension(file.mimetype);
-  if(!ext||!proofSignatureMatches(file))throw new Error('Isi file bukti tidak sesuai format JPG, PNG, WEBP, atau PDF yang diizinkan.');
-  const filename=`proof-${Date.now()}-${crypto.randomUUID()}${ext}`;
-  await fs.promises.writeFile(path.join(PROOF_DIR,filename),file.buffer,{flag:'wx'});
-  return {filename,originalName:file.originalname,mime:file.mimetype,size:file.size};
-}
-async function removeProofFile(filename){
-  if(!filename)return;
-  try{await fs.promises.unlink(path.join(PROOF_DIR,path.basename(filename)));}catch(e){if(e.code!=='ENOENT')console.error('Gagal hapus bukti lama:',e.message);}
-}
+// v1.30 — helper bukti & jurnal dipindah ke services/paymentVerificationService.js (dipakai juga Web Inbox WA).
 function localReturn(value,fallback='/payments'){
   const v=String(value||'');
   return v.startsWith('/')&&!v.startsWith('//')?v:fallback;
@@ -68,38 +45,6 @@ function selectedPaymentIds(body){
   const list=Array.isArray(raw)?raw:[raw];
   return [...new Set(list.map(Number).filter(Number.isInteger).filter(x=>x>0))];
 }
-function paymentReference(paymentId, date=new Date()){
-  const d=new Date(date);
-  const stamp=`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
-  return `PAY-${stamp}-${String(paymentId).padStart(6,'0')}`;
-}
-
-async function paymentCashMeta(conn,invoiceId){
-  const [rows]=await conn.execute(`SELECT c.site_id,c.name customer_name,c.customer_code,i.invoice_number FROM invoices i JOIN customers c ON c.id=i.customer_id WHERE i.id=?`,[invoiceId]);
-  return rows[0]||null;
-}
-async function billingCategory(conn,name='Pendapatan Billing'){
-  const [rows]=await conn.execute(`SELECT id FROM cash_categories WHERE name=? AND type='income' LIMIT 1`,[name]);
-  return rows[0]?.id||null;
-}
-async function postCashTransaction(conn,{paymentId,invoiceId,amount,reference,bookDate,categoryName='Pendapatan Billing',prefix='Pembayaran',actorUserId=null}){
-  const meta=await paymentCashMeta(conn,invoiceId);if(!meta)return;
-  const catId=await billingCategory(conn,categoryName);if(!catId)return;
-  const [exists]=await conn.execute(`SELECT id FROM cash_transactions WHERE source_type='payment' AND source_id=? LIMIT 1`,[paymentId]);
-  if(exists.length)return;
-  const [r]=await conn.execute(`INSERT INTO cash_transactions(transaction_date,name,category_id,site_id,amount,notes,source_type,source_id,created_by) VALUES(?,?,?,?,?,?,'payment',?,?)`,[
-    bookDate,`${prefix} ${meta.customer_name}`,catId,meta.site_id,amount,`Faktur ${meta.invoice_number}${reference?` · ${reference}`:''}`,paymentId,actorUserId
-  ]);
-  await assignCashTransactionCode(conn,r.insertId,catId,new Date(`${bookDate}T12:00:00`));
-}
-async function maybeAutoUnisolate(invoiceId){
-  const [paidRows]=await db.execute(`SELECT i.status,c.id customer_id,c.network_status,c.isolation_reason FROM invoices i JOIN customers c ON c.id=i.customer_id WHERE i.id=?`,[invoiceId]);
-  if(paidRows[0]?.status==='paid'&&paidRows[0]?.network_status==='isolated'&&paidRows[0]?.isolation_reason==='billing'){
-    try{await unisolateCustomer(paidRows[0].customer_id,true);}
-    catch(netErr){await db.execute(`INSERT INTO automation_logs(job_name,status,message) VALUES('auto_unisolate','failed',?)`,[netErr.message.slice(0,1000)]);}
-  }
-}
-
 async function openInvoiceOptions(site='',cluster=''){
   let sql=`SELECT i.id,i.invoice_number,i.outstanding,c.customer_code,c.name customer_name,s.code site_code,cl.name cluster_name
     FROM invoices i JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id
@@ -355,36 +300,11 @@ router.post('/:id/proof',async(req,res)=>{
 });
 
 router.post('/:id/verify',requireMasterAdmin,async(req,res)=>{
-  const conn=await db.getConnection();let aliasSaved=null;
   try{
-    await conn.beginTransaction();
-    const [rows]=await conn.execute(`SELECT * FROM payments WHERE id=? FOR UPDATE`,[req.params.id]);
-    const p=rows[0];if(!p)throw new Error('Pembayaran tidak ditemukan');
-    if(p.status!=='pending')throw new Error('Hanya pembayaran berstatus menunggu yang dapat disetujui.');
-    if(['transfer','qris'].includes(p.method)&&!p.proof_path)throw new Error('Bukti transfer/QRIS wajib dilampirkan sebelum approval.');
-    const booking=await resolveBookDate(conn,{mode:req.body.book_date_mode,paidAt:p.paid_at,manualDate:req.body.manual_book_date});
-    const [invoiceRows]=await conn.execute(`SELECT i.outstanding,i.status
-      FROM invoices i JOIN customers c ON c.id=i.customer_id
-      WHERE i.id=? AND c.customer_status='active' AND c.archived_at IS NULL FOR UPDATE`,[p.invoice_id]);
-    if(!invoiceRows.length)throw new Error('Faktur pembayaran tidak ditemukan.');
-    if(Number(p.amount)>Number(invoiceRows[0].outstanding))throw new Error('Nominal transfer melebihi sisa tagihan saat ini. Periksa pembayaran lain sebelum verifikasi.');
-    // v1.29 — hasil scan bukti bermasalah (nominal/penerima/pengirim/duplikat) wajib disertai alasan.
-    const scanGate=await approvalGate(conn,p,{reason:req.body.scan_override_reason,actorUserId:req.session.user.id});
-    if(req.body.save_payer_alias==='1'&&SCANNABLE_METHODS.has(p.method)){
-      const [aliasRows]=await conn.execute(`SELECT ps.sender_name,i.customer_id FROM payment_proof_scans ps JOIN invoices i ON i.id=? WHERE ps.payment_id=? LIMIT 1`,[p.invoice_id,p.id]);
-      if(aliasRows[0]?.sender_name)aliasSaved=await saveCustomerPayerAlias(conn,{customerId:aliasRows[0].customer_id,payerName:aliasRows[0].sender_name,userId:req.session.user.id})?aliasRows[0]:null;
-    }
-    await conn.execute(`UPDATE payments SET status='confirmed',settlement_status=?,booked_at=?,booked_date_mode=?,verified_by=?,verified_at=NOW() WHERE id=?`,[p.method==='cash'?'held_by_staff':'not_applicable',booking.date,booking.mode,req.session.user.id,p.id]);
-    await refreshInvoiceStatus(conn,p.invoice_id);
-    if(p.method!=='cash')await postCashTransaction(conn,{paymentId:p.id,invoiceId:p.invoice_id,amount:p.amount,reference:p.reference,bookDate:booking.date,actorUserId:req.session.user.id});
-    await financialAudit({conn,userId:req.session.user.id,action:'approve',entityType:'payment',entityId:p.id,before:p,after:{status:'confirmed',booked_at:booking.date,booked_date_mode:booking.mode,proof_scan:scanGate.status||null},reason:`Approval pembayaran (${booking.mode})${scanGate.overridden?` · hasil scan bukti ${scanGate.status}, alasan: ${scanGate.reason}`:''}`,ip:req.ip});
-    await conn.commit();
-    if(aliasSaved)reevaluateCustomerPending(aliasSaved.customer_id).catch(err=>console.error('Re-evaluasi pengirim dikenal gagal:',err.message));
+    const {payment:p}=await verifyPendingPayment(req.params.id,{userId:req.session.user.id,ip:req.ip,bookDateMode:req.body.book_date_mode,manualBookDate:req.body.manual_book_date,scanOverrideReason:req.body.scan_override_reason,savePayerAlias:req.body.save_payer_alias==='1'});
     await audit({userId:req.session.user.id,action:'approve',entityType:'payment',entityId:p.id,description:`Approval Master Admin ${p.proof_path?'dengan bukti':'tanpa bukti'} untuk pembayaran ${p.reference||p.id}`,ip:req.ip});
-    await maybeAutoUnisolate(p.invoice_id);
-    await queuePaymentReceipts([p.id],req.session.user.id);
     req.session.flash={type:'success',message:`Pembayaran disetujui Master Admin ${p.proof_path?'berdasarkan bukti':'tanpa bukti lampiran'}. Tagihan dan jurnal terkait sudah diperbarui.`};
-  }catch(e){await conn.rollback();req.session.flash={type:'danger',message:`Verifikasi gagal: ${e.message}`};}finally{conn.release();}
+  }catch(e){req.session.flash={type:'danger',message:`Verifikasi gagal: ${e.message}`};}
   res.redirect(localReturn(req.body.return_to,'/payments'));
 });
 

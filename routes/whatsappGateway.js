@@ -18,7 +18,9 @@ const router = express.Router();
 // already gate the Tagihan/Pelanggan pages these buttons live on.
 // Halaman WA Gateway memakai tab berbasis hash (#otomatis, #template, ...). Form yang sama bisa disimpan
 // dari dua tab (mis. jadwal di "Otomatis", teks di "Template"), jadi kembalikan user ke tab asalnya.
-const WA_TABS = new Set(['ringkasan', 'persetujuan', 'manual', 'otomatis', 'template', 'koneksi', 'log']);
+const WA_TABS = new Set(['ringkasan', 'persetujuan', 'manual', 'otomatis', 'template', 'quickreply', 'antiban', 'koneksi', 'log']);
+const antiBan = require('../services/waAntiBanService');
+const tpl = require('../services/waTemplateService');
 function returnTab(req, fallback) {
   const tab = String(req.body?.return_tab || '').trim();
   return WA_TABS.has(tab) ? tab : fallback;
@@ -47,6 +49,14 @@ router.get('/', requirePermission('settings'), async (req, res) => {
   ]);
   const [[settingsRow]] = settingsResult;
   const [customers] = customersResult;
+  const [[waTemplates], [quickReplies], [blacklist], [banks], [[crmSettings]]] = await Promise.all([
+    db.query(`SELECT template_key,title,body,updated_at FROM wa_templates ORDER BY FIELD(template_key,'reminder','isolation','outage','receipt'),template_key`),
+    db.query(`SELECT id,shortcut,title,body,is_active FROM wa_quick_replies ORDER BY shortcut`),
+    db.query(`SELECT b.phone,b.reason,b.source,b.created_at,c.name customer_name FROM wa_blacklist b LEFT JOIN customers c ON c.id=b.customer_id ORDER BY b.created_at DESC LIMIT 200`),
+    db.query(`SELECT id,bank_name,account_number,account_name FROM banks WHERE is_active=1 AND type IN ('bank_transfer','virtual_account','other') ORDER BY bank_name`),
+    db.query(`SELECT wa_default_bank_id,wa_isolation_notice_enabled FROM settings WHERE id=1 LIMIT 1`),
+  ]);
+  const antiban = await antiBan.getConfig({ fresh: true });
   res.render('whatsapp-gateway/index', {
     title: 'WA Gateway',
     gateway,
@@ -55,6 +65,9 @@ router.get('/', requirePermission('settings'), async (req, res) => {
     customers,
     pendingBatches,
     blastEnabled: isBlastEnabled(),
+    antiban, pause: antiBan.getPauseState(), waTemplates, quickReplies, blacklist, banks, templateVariables: tpl.VARIABLES,
+    defaultBankId: crmSettings?.wa_default_bank_id || null, defaultBank: await tpl.getDefaultBank({ fresh: true }),
+    isolationNoticeEnabled: crmSettings ? !!Number(crmSettings.wa_isolation_notice_enabled) : true,
     connectionSettings: publicConfig(rawConnection),
     reminderSettings: {
       enabled: !!settingsRow?.wa_auto_reminder_enabled,
@@ -253,22 +266,24 @@ router.post('/blast', requireWaSendPermission, async (req, res) => {
   if (ids.length > 500) return res.status(400).json({ ok: false, message: 'Maksimal 500 pelanggan per blast.' });
   const placeholders = ids.map(() => '?').join(',');
   const [rows] = await db.query(
-    `SELECT c.id customer_id,c.customer_code,c.name,c.phone,c.whatsapp_status,
+    `SELECT c.id customer_id,c.customer_code,c.name,c.phone,c.whatsapp_status,p.name package_name,p.speed_label,
             i.id invoice_id,i.invoice_number,i.outstanding,i.due_date,i.period_month,i.period_year
-     FROM customers c
+     FROM customers c LEFT JOIN packages p ON p.id=c.package_id
      LEFT JOIN invoices i ON i.id=(SELECT i2.id FROM invoices i2 WHERE i2.customer_id=c.id AND i2.status IN ('unpaid','partial','overdue') AND i2.outstanding>0 ORDER BY i2.period_year DESC,i2.period_month DESC,i2.id DESC LIMIT 1)
      WHERE c.id IN (${placeholders})`,
     ids
   );
   const [[settingsRow]] = await db.query(`SELECT wa_auto_reminder_template FROM settings WHERE id=1 LIMIT 1`);
+  const bank = await tpl.getDefaultBank();
+  const blastTemplate = req.body.template || settingsRow?.wa_auto_reminder_template || await tpl.getTemplate('reminder');
   let enqueued = 0, skippedNoWa = 0, skippedNoInvoice = 0;
   for (const row of rows) {
     if (row.whatsapp_status !== 'valid') { skippedNoWa++; continue; }
     if (!row.invoice_id) { skippedNoInvoice++; continue; }
-    const message = renderReminderTemplate(req.body.template || settingsRow?.wa_auto_reminder_template, {
-      name: row.name, customer_code: row.customer_code, outstanding: row.outstanding,
+    const message = renderReminderTemplate(blastTemplate, {
+      name: row.name, customer_code: row.customer_code, outstanding: row.outstanding, package_name: row.package_name, speed_label: row.speed_label,
       invoice_number: row.invoice_number, due_date: row.due_date, period_month: row.period_month, period_year: row.period_year,
-    });
+    }, bank);
     await enqueueWaMessage({ phone: row.phone, message, customerId: row.customer_id, invoiceId: row.invoice_id, type: 'blast', userId: req.session.user.id });
     enqueued++;
   }

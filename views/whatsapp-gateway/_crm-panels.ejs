@@ -1,0 +1,116 @@
+<%
+  const ab=antiban||{};
+  const pad2=v=>String(v).padStart(2,'0');
+  const fmtWib=v=>v?new Date(v).toLocaleString('id-ID',{timeZone:'Asia/Jakarta',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'-';
+  const lockedNote='Pengaturan ini hanya dapat diubah oleh Master Admin.';
+  const tplMeta={reminder:'Auto-reminder H-3/H-1, WA Blast, broadcast',isolation:'Otomatis setelah auto-isolir (menunggu konfirmasi Admin)',outage:'Broadcast gangguan — isi {detail_gangguan} & {estimasi_selesai} di form broadcast',receipt:'Kuitansi saat verifikasi dari Web Inbox & tanda terima pembayaran'};
+%>
+      <!-- TEMPLATE RESMI (wa_templates) -->
+      <section class="wa-panel" data-wa-panel="template" data-wa-extra hidden>
+        <div class="data-card">
+          <div class="data-card-head"><div><h3>Rekening Tujuan Transfer</h3><small>Mengisi variabel {nama_bank}, {nomor_rekening}, {nama_pemilik_rekening} di semua template.</small></div></div>
+          <form method="post" action="/wa-gateway/default-bank" class="wa-form">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <div class="wa-field-grid">
+              <label>Rekening<select class="form-select" name="bank_id" <%= isMasterAdmin?'':'disabled' %>><option value="">Otomatis (rekening transfer aktif pertama)</option><% banks.forEach(b=>{ %><option value="<%= b.id %>" <%= Number(defaultBankId)===Number(b.id)?'selected':'' %>><%= b.bank_name %> · <%= b.account_number %> · <%= b.account_name %></option><% }) %></select></label>
+              <div class="wa-field"><span class="wa-field-label">Dipakai sekarang</span><strong><%= defaultBank?`${defaultBank.bank_name} · ${defaultBank.account_number} a.n. ${defaultBank.account_name}`:'Belum ada rekening aktif — tambahkan di Pengaturan → Bank' %></strong></div>
+            </div>
+            <% if(isMasterAdmin){ %><div class="wa-form-actions"><button class="btn-tech primary" type="submit">Simpan</button></div><% } %>
+          </form>
+        </div>
+        <div class="data-card">
+          <div class="data-card-head"><div><h3>Template Resmi (Bahasa Formal · Transfer Manual)</h3><small>Mendukung variabel database dan Spintax <code>{pilihan1|pilihan2}</code> untuk variasi kata otomatis (anti-spam).</small></div></div>
+          <div class="wa-chip-row mb-2">
+            <% templateVariables.forEach(([k,label])=>{ %><span class="wa-chip mono" title="<%= label %>">{<%= k %>}</span><% }) %>
+          </div>
+          <% waTemplates.forEach(t=>{ %>
+          <details class="wa-details" <%= t.template_key==='reminder'?'open':'' %>>
+            <summary><strong><%= t.title %></strong> <small class="wa-muted">· <%= tplMeta[t.template_key]||t.template_key %></small></summary>
+            <form method="post" action="/wa-gateway/templates/<%= t.template_key %>" class="wa-form mt-2">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+              <textarea class="form-control wa-template-input" name="body" rows="12" maxlength="4000" <%= isMasterAdmin?'':'readonly' %>><%= t.body %></textarea>
+              <% if(isMasterAdmin){ %><div class="wa-form-actions">
+                <button class="btn-tech" type="submit" formaction="/wa-gateway/templates/<%= t.template_key %>/reset" onclick="return confirm('Kembalikan ke naskah resmi?')">Pakai naskah resmi</button>
+                <button class="btn-tech primary" type="submit">Simpan</button>
+              </div><% } %>
+            </form>
+          </details>
+          <% }) %>
+        </div>
+      </section>
+
+      <!-- ANTI-BAN & ANTREAN -->
+      <section class="wa-panel" data-wa-panel="antiban" hidden>
+        <div class="data-card">
+          <div class="data-card-head"><div><h3>Status Antrean</h3><small>Auto-pause aktif bila WhatsApp/WAHA membalas rate limit, unauthorized, atau sesi terputus.</small></div>
+            <% if(isAdmin){ %><form method="post" action="/wa-gateway/queue/<%= pause.paused?'resume':'pause' %>"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn-tech <%= pause.paused?'primary':'' %>" type="submit"><i class="bi <%= pause.paused?'bi-play-fill':'bi-pause-fill' %>"></i><%= pause.paused?'Lanjutkan Antrean':'Jeda Semua Pengiriman' %></button></form><% } %>
+          </div>
+          <% if(pause.paused){ %>
+            <div class="wa-callout"><i class="bi bi-pause-circle-fill"></i><div><strong>Antrean DIJEDA — <%= pause.label||pause.kind %></strong><small><%= pause.reason||'' %><%= pause.at?` · sejak ${new Date(pause.at).toLocaleString('id-ID',{timeZone:'Asia/Jakarta'})}`:'' %><%= pause.kind==='disconnected'?' · lanjut otomatis setelah WhatsApp terhubung kembali':'' %></small></div></div>
+          <% } else { %>
+            <p class="wa-foot-note"><i class="bi bi-check2-circle"></i> Antrean berjalan normal<%= stats.queueNote?` · ${stats.queueNote}`:'' %>.</p>
+          <% } %>
+        </div>
+
+        <div class="data-card">
+          <div class="data-card-head"><div><h3>Engine Anti-Ban</h3><small>Berlaku untuk seluruh antrean. Jam kerja & kuota hanya untuk pesan massal (broadcast, blast, reminder, pemberitahuan isolir/gangguan).</small></div></div>
+          <form method="post" action="/wa-gateway/antiban-settings" class="wa-form">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <% const dis=isMasterAdmin?'':'disabled'; %>
+            <div class="wa-field-grid">
+              <label>Jeda acak antar pesan (detik)<span class="d-flex gap-2"><input class="form-control" type="number" name="min_delay" min="3" max="120" value="<%= ab.minDelaySec %>" <%= dis %>><input class="form-control" type="number" name="max_delay" min="3" max="300" value="<%= ab.maxDelaySec %>" <%= dis %>></span></label>
+              <label>Long pause setiap N pesan massal<input class="form-control" type="number" name="long_pause_every" min="5" max="200" value="<%= ab.longPauseEvery %>" <%= dis %>></label>
+              <label>Durasi long pause (detik)<span class="d-flex gap-2"><input class="form-control" type="number" name="long_pause_min" min="30" max="900" value="<%= ab.longPauseMinSec %>" <%= dis %>><input class="form-control" type="number" name="long_pause_max" min="30" max="1800" value="<%= ab.longPauseMaxSec %>" <%= dis %>></span></label>
+              <label>Simulasi "sedang mengetik…" (detik)<span class="d-flex gap-2"><input class="form-control" type="number" name="typing_min" min="0" max="10" value="<%= ab.typingMinSec %>" <%= dis %>><input class="form-control" type="number" name="typing_max" min="0" max="15" value="<%= ab.typingMaxSec %>" <%= dis %>></span></label>
+              <label>Jam operasional pesan massal (WIB)<span class="d-flex gap-2 align-items-center"><select class="form-select" name="work_start" <%= dis %>><% for(let h=0;h<24;h++){ %><option value="<%= h %>" <%= ab.workStartHour===h?'selected':'' %>><%= pad2(h) %>.00</option><% } %></select>–<select class="form-select" name="work_end" <%= dis %>><% for(let h=1;h<=24;h++){ %><option value="<%= h %>" <%= ab.workEndHour===h?'selected':'' %>><%= pad2(h) %>.00</option><% } %></select></span></label>
+              <label>Maksimum pesan massal per jam<input class="form-control" type="number" name="hourly_limit" min="10" max="200" value="<%= ab.hourlyLimit %>" <%= dis %>><small class="wa-muted">Disarankan 50–100 per nomor.</small></label>
+              <label>Kata kunci opt-out (pisahkan koma)<input class="form-control" name="optout_keywords" value="<%= (ab.optOutKeywords||[]).join(', ') %>" <%= dis %>></label>
+              <div class="wa-field">
+                <label class="form-check form-switch"><input class="form-check-input" type="checkbox" name="simulate_typing" value="1" <%= ab.simulateTyping?'checked':'' %> <%= dis %>> Kirim status mengetik sebelum pesan</label>
+                <label class="form-check form-switch"><input class="form-check-input" type="checkbox" name="mark_read" value="1" <%= ab.markReadBeforeReply?'checked':'' %> <%= dis %>> Tandai dibaca (centang biru) sebelum membalas</label>
+                <label class="form-check form-switch"><input class="form-check-input" type="checkbox" name="isolation_notice" value="1" <%= isolationNoticeEnabled?'checked':'' %> <%= dis %>> Siapkan pemberitahuan isolir otomatis</label>
+              </div>
+            </div>
+            <% if(isMasterAdmin){ %><div class="wa-form-actions"><button class="btn-tech primary" type="submit">Simpan Pengaturan Anti-Ban</button></div><% } else { %><p class="wa-foot-note"><%= lockedNote %></p><% } %>
+          </form>
+        </div>
+
+        <div class="data-card">
+          <div class="data-card-head"><div><h3>Blacklist Broadcast (Opt-Out)</h3><small>Pelanggan yang membalas <%= (ab.optOutKeywords||[]).slice(0,2).join(' / ') %> otomatis masuk daftar ini dan tidak menerima pesan massal. Balasan MULAI mengaktifkan kembali.</small></div></div>
+          <% if(isAdmin){ %>
+          <form method="post" action="/wa-gateway/blacklist" class="wa-form">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <div class="wa-field-grid"><label>Nomor WhatsApp<input class="form-control" name="phone" placeholder="0812xxxxxxxx" required></label><label>Alasan<input class="form-control" name="reason" maxlength="255" placeholder="Permintaan pelanggan"></label></div>
+            <div class="wa-form-actions"><button class="btn-tech" type="submit"><i class="bi bi-slash-circle"></i>Tambah ke Blacklist</button></div>
+          </form>
+          <% } %>
+          <div class="table-responsive"><table class="app-table"><thead><tr><th>Nomor</th><th>Pelanggan</th><th>Alasan</th><th>Sumber</th><th>Sejak</th><th></th></tr></thead><tbody>
+            <% blacklist.forEach(b=>{ %><tr><td class="mono">+<%= b.phone %></td><td><%= b.customer_name||'-' %></td><td><%= b.reason||'-' %></td><td><%= b.source==='keyword'?'Balasan pelanggan':'Manual' %></td><td><%= fmtWib(b.created_at) %></td><td><% if(isAdmin){ %><form method="post" action="/wa-gateway/blacklist/<%= b.phone %>/delete" onsubmit="return confirm('Hapus dari blacklist?')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn-tech" type="submit">Hapus</button></form><% } %></td></tr><% }) %>
+            <% if(!blacklist.length){ %><tr><td colspan="6" class="cell-sub">Belum ada nomor opt-out.</td></tr><% } %>
+          </tbody></table></div>
+        </div>
+      </section>
+
+      <!-- BALASAN CEPAT -->
+      <section class="wa-panel" data-wa-panel="quickreply" hidden>
+        <div class="data-card">
+          <div class="data-card-head"><div><h3>Balasan Cepat (Slash Command)</h3><small>Ketik <b>/</b> di kolom chat Web Inbox untuk memunculkan menu ini. Variabel & Spintax didukung dan diisi dengan data pelanggan percakapan.</small></div><a class="btn-tech" href="/wa-inbox"><i class="bi bi-chat-dots"></i>Buka Web Inbox</a></div>
+          <div class="table-responsive"><table class="app-table"><thead><tr><th>Shortcut</th><th>Judul</th><th>Isi</th><th>Status</th><th></th></tr></thead><tbody>
+            <% quickReplies.forEach(q=>{ %><tr><td class="mono">/<%= q.shortcut %></td><td><%= q.title %></td><td><span class="cell-sub" style="white-space:pre-wrap"><%= q.body.length>160?q.body.slice(0,160)+'…':q.body %></span></td><td><span class="status-badge <%= q.is_active?'green':'gray' %>"><%= q.is_active?'Aktif':'Nonaktif' %></span></td>
+              <td><% if(isMasterAdmin){ %><button type="button" class="btn-tech" data-qr-edit='<%- JSON.stringify({shortcut:q.shortcut,title:q.title,body:q.body,is_active:q.is_active}).replace(/'/g,"&#39;") %>'>Ubah</button>
+              <form method="post" action="/wa-gateway/quick-replies/<%= q.id %>/delete" class="d-inline" onsubmit="return confirm('Hapus balasan cepat ini?')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn-tech" type="submit">Hapus</button></form><% } %></td></tr><% }) %>
+          </tbody></table></div>
+        </div>
+        <% if(isMasterAdmin){ %>
+        <div class="data-card">
+          <div class="data-card-head"><div><h3>Tambah / Ubah Balasan Cepat</h3><small>Shortcut yang sama akan diperbarui.</small></div></div>
+          <form method="post" action="/wa-gateway/quick-replies" class="wa-form" id="waQuickForm">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <div class="wa-field-grid"><label>Shortcut (tanpa /)<input class="form-control mono" name="shortcut" maxlength="40" pattern="[a-zA-Z0-9_\-/]+" required></label><label>Judul<input class="form-control" name="title" maxlength="120" required></label></div>
+            <label class="d-block mt-2">Isi pesan<textarea class="form-control" name="body" rows="6" maxlength="4000" required></textarea></label>
+            <label class="form-check form-switch mt-2"><input type="hidden" name="is_active" value="0"><input class="form-check-input" type="checkbox" name="is_active" value="1" checked> Aktif</label>
+            <div class="wa-form-actions"><button class="btn-tech primary" type="submit">Simpan</button></div>
+          </form>
+        </div>
+        <% } %>
+      </section>

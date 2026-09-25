@@ -3,7 +3,9 @@ const db = require('../config/db');
 // v1.28 — Rekonsiliasi cash: pengingat umur cash di tim dan tanda terima WhatsApp pembayaran.
 
 const DEFAULT_AGING_DAYS = 3;
-const DEFAULT_RECEIPT_TEMPLATE = 'Yth. Bapak/Ibu {nama},\n\nTerima kasih, pembayaran tagihan layanan internet INKAMNET Anda telah kami terima dengan rincian sebagai berikut:\n\nNo. Faktur : {no_faktur}\nPeriode : {periode}\nJumlah Dibayar : {nominal}\nMetode Pembayaran : {metode}\nNo. Referensi : {referensi}\nSisa Tagihan : {sisa}\n\nMohon simpan pesan ini sebagai bukti pembayaran. Terima kasih atas kepercayaan Anda menggunakan layanan INKAMNET.\n\nHormat kami,\nTim Layanan Pelanggan INKAMNET';
+// v1.30 — template resmi Konfirmasi Pembayaran & Kuitansi Digital (lihat waTemplateService). Template lama
+// ({nama},{no_faktur},{periode},{nominal},{metode},{referensi},{sisa}) tetap didukung.
+const DEFAULT_RECEIPT_TEMPLATE = require('./waTemplateService').OFFICIAL_TEMPLATES.find(t => t.key === 'receipt').body;
 const MONTH_NAMES_ID = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 const METHOD_LABEL = { cash: 'tunai', transfer: 'transfer', qris: 'QRIS', gateway: 'payment gateway', other: 'lainnya' };
 
@@ -72,17 +74,10 @@ async function runCashAgingAlert(now = new Date()) {
   return { ran: true, notified, collectors: rows.length };
 }
 
-function renderReceiptTemplate(template, row) {
-  const periode = `${MONTH_NAMES_ID[Number(row.period_month) - 1] || ''} ${row.period_year || ''}`.trim();
-  return String(template || DEFAULT_RECEIPT_TEMPLATE)
-    .replace(/\{nama\}/g, row.customer_name || '')
-    .replace(/\{kode\}/g, row.customer_code || '')
-    .replace(/\{periode\}/g, periode)
-    .replace(/\{nominal\}/g, rupiahPlain(row.amount))
-    .replace(/\{metode\}/g, METHOD_LABEL[row.method] || row.method || '')
-    .replace(/\{no_faktur\}/g, row.invoice_number || '')
-    .replace(/\{referensi\}/g, row.reference || `#${row.id}`)
-    .replace(/\{sisa\}/g, rupiahPlain(row.outstanding));
+function renderReceiptTemplate(template, row, bank = null) {
+  const tpl = require('./waTemplateService');
+  const vars = tpl.buildVars({ ...row, remaining: row.outstanding, method_label: METHOD_LABEL[row.method] || row.method, payment_id: row.id }, bank);
+  return tpl.renderTemplate(template || DEFAULT_RECEIPT_TEMPLATE, vars);
 }
 
 // Dipanggil setelah approval (commit) — tidak pernah menggagalkan approval.
@@ -94,9 +89,12 @@ async function queuePaymentReceipts(paymentIds, userId = null) {
     if (!Number(settings?.wa_payment_receipt_enabled)) return { queued: 0, reason: 'disabled' };
     const { enqueueWaMessage, approvalBatchKey } = require('./whatsappGatewayService');
     const [rows] = await db.query(`SELECT p.id,p.amount,p.method,p.reference,p.status,i.id invoice_id,i.invoice_number,i.period_month,i.period_year,i.outstanding,
-        c.id customer_id,c.customer_code,c.name customer_name,c.phone,c.whatsapp_status
-      FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id
+        c.id customer_id,c.customer_code,c.name customer_name,c.phone,c.whatsapp_status,pk.name package_name,pk.speed_label
+      FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id LEFT JOIN packages pk ON pk.id=c.package_id
       WHERE p.id IN (${ids.map(() => '?').join(',')})`, ids);
+    const tplSvc = require('./waTemplateService');
+    const bank = await tplSvc.getDefaultBank();
+    const receiptTemplate = settings.wa_payment_receipt_template || await tplSvc.getTemplate('receipt');
     let queued = 0;
     for (const row of rows) {
       if (row.status !== 'confirmed') continue;
@@ -104,7 +102,7 @@ async function queuePaymentReceipts(paymentIds, userId = null) {
       if (!row.phone || row.whatsapp_status === 'invalid') continue;
       const [[already]] = await db.query(`SELECT id FROM wa_messages WHERE invoice_id=? AND message_type='payment_receipt' AND message LIKE ? LIMIT 1`, [row.invoice_id, `%${row.reference || `#${row.id}`}%`]);
       if (already) continue;
-      await enqueueWaMessage({ phone: row.phone, message: renderReceiptTemplate(settings.wa_payment_receipt_template, row), customerId: row.customer_id, invoiceId: row.invoice_id, type: 'payment_receipt', userId, approvalBatch: approvalBatchKey('payment_receipt') });
+      await enqueueWaMessage({ phone: row.phone, message: renderReceiptTemplate(receiptTemplate, row, bank), customerId: row.customer_id, invoiceId: row.invoice_id, type: 'payment_receipt', userId, approvalBatch: approvalBatchKey('payment_receipt') });
       queued++;
     }
     return { queued };
