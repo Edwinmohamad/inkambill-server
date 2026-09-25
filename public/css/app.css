@@ -2359,3 +2359,7 @@ html[data-theme="dark"] .recon-page .cash-age.late{background:var(--danger-tint)
 .wa-row .form-switch{padding-left:0;min-height:0}
 .wa-row .form-switch .form-check-input{float:none;margin:0;width:2.6em;height:1.45em;cursor:pointer}
 @media(max-width:767.98px){.wa-row:has(.form-switch){flex-wrap:nowrap}}
+
+/* Approval pembayaran: penerima tunai dan rekening transfer mendapat ruang yang
+   cukup, lalu turun rapi pada layar tablet dan ponsel lewat breakpoint lama. */
+@media(min-width:1400px){.payment-filter-grid{grid-template-columns:minmax(220px,1.35fr) repeat(3,minmax(145px,.8fr)) auto}}

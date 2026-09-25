@@ -71,7 +71,18 @@ router.get('/',async(req,res)=>{
   const approval=['pending','confirmed','failed'].includes(String(req.query.approval||''))?String(req.query.approval):'';
   // v1.29 — filter metode (cash/transfer/QRIS) dan hasil scan bukti transfer.
   const method=['cash','transfer','qris'].includes(String(req.query.method||''))?String(req.query.method):'';
+  // Filter penerima dibuat eksplisit agar antrean approval cash dan transfer
+  // dapat dipisahkan tanpa mengandalkan pencarian teks. Nilai URL sengaja hanya
+  // memakai ID (bukan nama/rekening) lalu divalidasi terhadap data aktif.
+  const recipient=String(req.query.recipient||'').trim();
   const scanFilter=['ok','warning','mismatch','unreadable','processing','none'].includes(String(req.query.scan||''))?String(req.query.scan):'';
+  const staff=await staffOptions();
+  const banks=await bankOptions();
+  const cashRecipientId=/^cash:(\d+)$/.test(recipient)?Number(recipient.slice(5)):0;
+  const transferRecipientId=/^transfer:(\d+)$/.test(recipient)?Number(recipient.slice(9)):0;
+  const cashRecipient=cashRecipientId&&staff.some(member=>Number(member.id)===cashRecipientId)?cashRecipientId:0;
+  const transferBank=transferRecipientId?banks.find(bank=>Number(bank.id)===transferRecipientId):null;
+  const activeRecipient=cashRecipient?`cash:${cashRecipient}`:transferBank?`transfer:${transferBank.id}`:'';
   let sql=`SELECT p.*,i.invoice_number,i.due_date,c.customer_code,c.name customer_name,s.code site_code,cl.name cluster_name,u.name collector_name,v.name verifier_name,pu.name proof_uploader_name,ps.overall_status scan_overall,ps.status scan_state
     FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id
     LEFT JOIN users u ON u.id=COALESCE(p.collector_user_id,p.received_by) LEFT JOIN users v ON v.id=p.verified_by LEFT JOIN users pu ON pu.id=p.proof_uploaded_by
@@ -82,6 +93,11 @@ router.get('/',async(req,res)=>{
   if(month&&year){sql+=` AND MONTH(p.paid_at)=? AND YEAR(p.paid_at)=?`;params.push(month,year);}
   if(approval){sql+=` AND p.status=?`;params.push(approval);}
   if(method){sql+=` AND p.method=?`;params.push(method);}
+  if(cashRecipient){sql+=` AND p.method='cash' AND COALESCE(p.collector_user_id,p.received_by)=?`;params.push(cashRecipient);}
+  if(transferBank){
+    const bankLabel=`${transferBank.bank_name} · ${transferBank.account_number} · ${transferBank.account_name}`;
+    sql+=` AND p.method='transfer' AND p.bank_name=?`;params.push(bankLabel);
+  }
   if(scanFilter==='none')sql+=` AND p.method IN ('transfer','qris') AND ps.id IS NULL`;
   else if(scanFilter==='processing')sql+=` AND p.method IN ('transfer','qris') AND ps.id IS NOT NULL AND (ps.status<>'done' OR ps.overall_status='processing')`;
   else if(scanFilter){sql+=` AND p.method IN ('transfer','qris') AND ps.status='done' AND ps.overall_status=?`;params.push(scanFilter);}
@@ -105,8 +121,6 @@ router.get('/',async(req,res)=>{
   const scanConfig=await getScanSettings();
   const proofScan={enabled:scanConfig.enabled,hasKey:!!scanConfig.apiKey,keySource:scanConfig.apiKeySource,model:scanConfig.model,defaultModel:PROOF_SCAN_DEFAULT_MODEL,tolerance:scanConfig.tolerance,maxDateDiffDays:scanConfig.maxDateDiffDays,recipientNames:scanConfig.recipientNames.join(', ')};
   const openInvoices=await openInvoiceOptions(site,cluster);
-  const staff=await staffOptions();
-  const banks=await bankOptions();
   const [sites]=await db.query(`SELECT code,name FROM sites WHERE is_active=1 ORDER BY code`);
   const [clusters]=await db.query(`SELECT cl.id,cl.name,s.code site_code FROM clusters cl JOIN sites s ON s.id=cl.site_id WHERE cl.status!='inactive' ORDER BY s.code,cl.name`);
   const summaryMonth=month||new Date().getMonth()+1,summaryYear=year||new Date().getFullYear();
@@ -126,7 +140,7 @@ router.get('/',async(req,res)=>{
   // otherwise an Admin can submit Data Kas successfully and it appears to vanish. Approve/Reject
   // remain protected by requireMasterAdmin on the mutation routes.
   const [cashApprovals]=await db.query(`SELECT ct.id,ct.transaction_code,ct.transaction_date,ct.name,ct.amount,ct.notes,ct.proof_path,ct.proof_mime,COALESCE(ct.approval_status,'PENDING_APPROVAL') approval_status,cc.name category_name,cc.type category_type,s.code site_code,u.name creator_name FROM cash_transactions ct JOIN cash_categories cc ON cc.id=ct.category_id LEFT JOIN sites s ON s.id=ct.site_id LEFT JOIN users u ON u.id=ct.created_by WHERE ct.approval_status='PENDING_APPROVAL' OR (ct.approval_status IS NULL AND COALESCE(ct.source_type,'manual')='manual') ORDER BY ct.transaction_date DESC,ct.id DESC LIMIT 250`);
-  res.render('payments/index',{title:'Approval & Transaksi',payments,openInvoices,staff,banks,sites,clusters,cashApprovals,summary:summary||{},missingProof:missingProof||{total:0,amount:0},preselectedInvoiceId,filters:{q,site,cluster,month,year,approval,method,scan:scanFilter},methodCounts,scanCounts,proofScan,summaryMonth,summaryYear});
+  res.render('payments/index',{title:'Approval & Transaksi',payments,openInvoices,staff,banks,sites,clusters,cashApprovals,summary:summary||{},missingProof:missingProof||{total:0,amount:0},preselectedInvoiceId,filters:{q,site,cluster,month,year,approval,method,recipient:activeRecipient,scan:scanFilter},methodCounts,scanCounts,proofScan,summaryMonth,summaryYear});
 });
 
 // v1.29 — Scan bukti transfer: pengaturan, status polling, scan ulang, dan pengirim dikenal.
