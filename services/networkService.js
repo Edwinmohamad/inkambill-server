@@ -3,8 +3,8 @@ const mt = require('./mikrotikRest');
 
 async function getCustomerNetwork(customerId) {
   const [rows] = await db.execute(`
-    SELECT c.id,c.customer_code,c.name,c.pppoe_username,c.network_status,c.isolation_reason,
-           r.* FROM customers c LEFT JOIN routers r ON r.id=c.router_id WHERE c.id=?
+    SELECT r.*,c.id customer_id,c.customer_code,c.name customer_name,c.pppoe_username,c.network_status,c.isolation_reason,c.router_id
+      FROM customers c LEFT JOIN routers r ON r.id=c.router_id WHERE c.id=?
   `,[customerId]);
   if (!rows.length) throw new Error('Pelanggan tidak ditemukan');
   const c=rows[0];
@@ -27,7 +27,13 @@ async function checkCustomer(customerId) {
   }
 }
 
+// v2 NMS: bila pelanggan sudah terikat ke ppp_secrets, gunakan engine NMS (profile ISOLIR +
+// drop sesi + audit + live log). Jalur lama (disable secret) tetap sebagai fallback.
+function nmsControl(){ return require('./nms/control'); }
+
 async function isolateCustomer(customerId, reason='manual') {
+  const nmsSecretId=await nmsControl().secretForCustomer(customerId).catch(()=>null);
+  if (nmsSecretId) { await nmsControl().isolate(nmsSecretId,{reason,source:reason==='billing'?'auto_isolate':'manual'}); return true; }
   const c=await getCustomerNetwork(customerId);
   await mt.isolatePppoe(c,c.pppoe_username);
   await db.execute(`UPDATE customers SET status_changed_at=IF(network_status<>'isolated',NOW(),status_changed_at),network_status='isolated',isolation_reason=? WHERE id=?`,[reason,customerId]);
@@ -53,6 +59,13 @@ async function clearIsolirAddressList(c, customerId) {
 }
 
 async function unisolateCustomer(customerId, onlyBilling=false) {
+  const nmsSecretId=await nmsControl().secretForCustomer(customerId).catch(()=>null);
+  if (nmsSecretId) {
+    const [[row]]=await db.execute(`SELECT isolation_reason FROM customers WHERE id=?`,[customerId]);
+    if (onlyBilling && row?.isolation_reason !== 'billing') return {skipped:true,reason:'not_billing_isolation'};
+    const r=await nmsControl().unisolate(nmsSecretId,{source:onlyBilling?'payment':'manual'});
+    return {skipped:false,addressList:{removed:r.addressListRemoved}};
+  }
   const c=await getCustomerNetwork(customerId);
   if (onlyBilling && c.isolation_reason !== 'billing') return {skipped:true,reason:'not_billing_isolation'};
   await mt.unisolatePppoe(c,c.pppoe_username);

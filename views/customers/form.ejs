@@ -29,7 +29,7 @@
   </div>
 </div>
 <% } %>
-<div class="col-12"><div class="nms-config-notice"><i class="bi bi-router-fill"></i><span><b>Konfigurasi PPPoE dipusatkan di MikroTik NMS</b><small>Secret, router, auto suggest pelanggan, serta sinkronisasi site dikelola dari <a href="/network/monitor">MikroTik NMS</a> agar tidak terjadi salah site atau data ganda.</small></span></div></div>
+<div class="col-12"><div class="nms-config-notice"><i class="bi bi-router-fill"></i><span><b>Konfigurasi PPPoE dipusatkan di MikroTik NMS</b><small>Secret, router, auto suggest pelanggan, serta sinkronisasi site dikelola dari <a href="/nms/secrets">MikroTik NMS</a> agar tidak terjadi salah site atau data ganda.</small></span></div></div>
 </div><hr style="border-color:var(--line);margin:24px 0"><div class="module-kicker">BILLING POLICY</div><div class="row g-3">
 <div class="col-md-3"><label class="form-label">Aktif Sejak</label><input class="form-control" type="date" name="activation_date" value="<%= customer?.activation_date ? new Date(customer.activation_date).toISOString().slice(0,10) : '' %>"></div>
 <div class="col-md-3"><label class="form-label">Jatuh Tempo</label><input class="form-control" id="customerDueDay" type="number" min="1" max="28" name="due_day" value="<%= customer?.due_day || '' %>" placeholder="Default site"></div>

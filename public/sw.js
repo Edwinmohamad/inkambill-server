@@ -4,7 +4,7 @@
 // sehingga polling JSON selalu mendapat respons lama (mis. log WA baru "hilang" setelah muncul).
 // Naikkan CACHE setiap kali aset inti berubah; versi lama dihapus otomatis saat activate.
 const CACHE='inkamnet-shell-v131';
-const CORE=['/css/app.css','/js/app.js','/js/nms.js','/js/performance.js','/img/inkamnet-wordmark-hq.png'];
+const CORE=['/css/app.css','/js/app.js','/js/nms-noc.js','/css/nms-noc.css','/js/performance.js','/img/inkamnet-wordmark-hq.png'];
 const STATIC_DEST=new Set(['style','script','image','font']);
 const STATIC_PATH=/^\/(css|js|img|fonts?|vendor)\//;
 self.addEventListener('install',event=>{self.skipWaiting();event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(CORE)).catch(()=>{}));});

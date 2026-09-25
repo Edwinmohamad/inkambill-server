@@ -34,6 +34,8 @@ const { deliverMobilePushes } = require('./services/mobilePushService');
 const { runCashAgingAlert } = require('./services/cashSettlementService');
 const { purgeOldLogs } = require('./services/logRetentionService');
 const { ensureV56Schema } = require('./services/waCrmSchema');
+const { ensureNmsV2Schema, purgeNmsHistory } = require('./services/nms/schema');
+const nmsPoller = require('./services/nms/poller');
 const { refreshBroadcastStatuses } = require('./services/waBroadcastService');
 const waRealtime = require('./services/waRealtime');
 const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema } = require('./services/schemaService');
@@ -42,7 +44,7 @@ const { initGatewayOnBoot, ensureGatewayAlive, reconcileGatewayStatus, processQu
 const { requireWahaWebhookToken } = require('./middleware/waha');
 
 const app = express();
-const assetVersion = ['public/css/app.css','public/css/mobile-app.css','public/css/monitoring.css','public/js/app.js','public/js/mobile-app.js','public/js/nms.js','public/js/performance.js','public/js/monitoring.js']
+const assetVersion = ['public/css/app.css','public/css/mobile-app.css','public/css/monitoring.css','public/js/app.js','public/js/mobile-app.js','public/js/nms-common.js','public/js/nms-noc.js','public/js/nms-secrets.js','public/css/nms-noc.css','public/js/performance.js','public/js/monitoring.js']
   .map(file => Math.floor(fs.statSync(path.join(__dirname,file)).mtimeMs).toString(36))
   .join('-');
 app.set('view engine', 'ejs');
@@ -246,7 +248,7 @@ app.use('/debts', requireAuth, requirePermission('finance'), require('./routes/d
 app.use('/closing', requireAuth, requireMasterAdmin, require('./routes/closing'));
 app.use('/routers', requireAuth, requirePermission('network'), require('./routes/routers'));
 app.use('/network', requireAuth, requirePermission('network'), require('./routes/network'));
-app.use('/noc', requireAuth, requirePermission('network'), require('./routes/noc'));
+app.use('/nms', requireAuth, requirePermission('network'), require('./routes/nms'));
 app.use('/acs', requireAuth, requirePermission('network'), require('./routes/acs'));
 app.use('/olt', requireAuth, requirePermission('network'), require('./routes/olt'));
 app.use('/monitoring', requireAuth, requirePermission('network'), require('./routes/monitoring'));
@@ -326,6 +328,7 @@ async function bootstrap() {
   await ensureV54Schema();
   await ensureV55Schema();
   await ensureV56Schema();
+  await ensureNmsV2Schema();
   const [rows] = await db.query('SELECT COUNT(*) total FROM users');
   if (Number(rows[0].total) === 0) {
     const username = process.env.DEFAULT_ADMIN_USERNAME || 'admin';
@@ -427,6 +430,12 @@ async function bootstrap() {
   // process independent of this app, so on boot we just sync our in-memory status mirror with
   // whatever WAHA currently reports — no QR re-scan needed unless nothing was ever linked there.
   initGatewayOnBoot().catch(err => console.error('WA Gateway: gagal sinkronisasi awal saat startup:', err.message));
+
+  // NMS v2 poller (telemetry, PPP active diff, secret mirror, FO-cut detection) + retensi event.
+  nmsPoller.start();
+  cron.schedule('45 2 * * *', async () => {
+    try { await purgeNmsHistory(); } catch (err) { console.error('NMS purge gagal:', err.message); }
+  }, { timezone: 'Asia/Jakarta' });
 
   const port = Number(process.env.PORT || 3000);
   const server = app.listen(port, '0.0.0.0', () => console.log(`INKAMNET Billing berjalan di port ${port}`));

@@ -16,37 +16,8 @@ router.get('/',async(req,res,next)=>{try{
   const [[lastSync]]=await db.query(`SELECT * FROM acs_sync_logs ORDER BY id DESC LIMIT 1`);res.render('acs/index',{title:'Monitoring ONT',devices,summary:summary||{},lastSync,filters:{q,status,signal,site,mapping},...(await options()),acsConfigured:!!config().baseUrl});
 }catch(err){next(err);}});
 
-router.get('/map',async(req,res,next)=>{try{
-  const [nodes]=await db.query(`SELECT n.*,s.code site_code,c.customer_code,c.name customer_name,d.online_status,d.signal_status,d.rx_power,d.last_inform FROM network_map_nodes n LEFT JOIN sites s ON s.id=n.site_id LEFT JOIN customers c ON c.id=n.customer_id LEFT JOIN customer_ont_links col ON col.customer_id=c.id LEFT JOIN acs_devices d ON d.id=COALESCE(n.acs_device_id,col.acs_device_id) WHERE n.is_active=1 ORDER BY FIELD(n.node_type,'pop','olt','odc','odp','pole','customer','other'),n.name`);
-  const [links]=await db.query(`SELECT l.* FROM network_map_links l JOIN network_map_nodes a ON a.id=l.source_node_id JOIN network_map_nodes b ON b.id=l.target_node_id WHERE l.is_active=1 AND a.is_active=1 AND b.is_active=1 ORDER BY l.id`);
-  const severity={unknown:0,online:1,warning:2,offline:3};
-  const statusByNode=new Map(nodes.map(n=>[Number(n.id),n.online_status==='offline'?'offline':n.signal_status==='critical'?'offline':n.signal_status==='warning'?'warning':'online']));
-  // Propagate the worst downstream state towards ODP/ODC/OLT/POP. With links drawn upstream ->
-  // downstream, one affected customer makes the complete path to that customer glow warning/red.
-  for(let pass=0;pass<nodes.length;pass++){let changed=false;for(const link of links){if(link.status_mode!=='automatic')continue;const downstream=statusByNode.get(Number(link.target_node_id))||'unknown',upstream=statusByNode.get(Number(link.source_node_id))||'unknown';if(severity[downstream]>severity[upstream]){statusByNode.set(Number(link.source_node_id),downstream);changed=true;}}if(!changed)break;}
-  const mapLinks=links.map(l=>({...l,effective_status:l.status_mode==='manual'?l.manual_status:(statusByNode.get(Number(l.target_node_id))||'online')}));
-  const [customers]=await db.query(`SELECT c.id,c.customer_code,c.name,s.code site_code FROM customers c JOIN sites s ON s.id=c.site_id WHERE c.archived_at IS NULL AND c.customer_status='active' ORDER BY s.code,c.name`);
-  const [devices]=await db.query(`SELECT d.id,d.serial_number,d.device_id,c.name customer_name FROM acs_devices d LEFT JOIN customer_ont_links l ON l.acs_device_id=d.id LEFT JOIN customers c ON c.id=l.customer_id ORDER BY c.name,d.serial_number LIMIT 1000`);
-  const {sites}=await options();const [[lastSync]]=await db.query(`SELECT * FROM acs_sync_logs ORDER BY id DESC LIMIT 1`);
-  res.render('acs/map',{title:'Network Map Geografis',nodes,mapLinks,customers,devices,sites,lastSync});
-}catch(err){next(err);}});
-
-router.post('/map/nodes',requireAdmin,async(req,res)=>{try{
-  const type=['pop','olt','odc','odp','customer','pole','other'].includes(req.body.node_type)?req.body.node_type:'other';const name=String(req.body.name||'').trim();const lat=Number(req.body.latitude),lng=Number(req.body.longitude);
-  if(!name||!Number.isFinite(lat)||lat < -90||lat > 90||!Number.isFinite(lng)||lng < -180||lng > 180)throw new Error('Nama dan koordinat titik tidak valid.');
-  const [result]=await db.execute(`INSERT INTO network_map_nodes(node_type,name,site_id,customer_id,acs_device_id,latitude,longitude,capacity,notes,created_by) VALUES(?,?,?,?,?,?,?,?,?,?)`,[type,name,req.body.site_id||null,req.body.customer_id||null,req.body.acs_device_id||null,lat,lng,Number(req.body.capacity)||null,String(req.body.notes||'').trim()||null,req.session.user.id]);
-  await audit({userId:req.session.user.id,action:'create_map_node',entityType:'network_map_node',entityId:result.insertId,description:`Tambah titik ${type}: ${name}`,ip:req.ip});req.session.flash={type:'success',message:`Titik ${name} ditambahkan ke Network Map.`};
-}catch(err){req.session.flash={type:'danger',message:`Titik gagal disimpan: ${err.message}`};}res.redirect('/acs/map');});
-
-router.post('/map/links',requireAdmin,async(req,res)=>{try{
-  const source=Number(req.body.source_node_id),target=Number(req.body.target_node_id);if(!source||!target||source===target)throw new Error('Titik asal dan tujuan harus berbeda.');
-  const cable=['backbone','distribution','drop','wireless','other'].includes(req.body.cable_type)?req.body.cable_type:'distribution';const mode=req.body.status_mode==='manual'?'manual':'automatic';const status=['online','warning','offline','unknown'].includes(req.body.manual_status)?req.body.manual_status:'online';
-  const [result]=await db.execute(`INSERT INTO network_map_links(source_node_id,target_node_id,cable_type,status_mode,manual_status,cable_length_m,core_label,notes,created_by) VALUES(?,?,?,?,?,?,?,?,?)`,[source,target,cable,mode,status,Number(req.body.cable_length_m)||null,String(req.body.core_label||'').trim()||null,String(req.body.notes||'').trim()||null,req.session.user.id]);
-  await audit({userId:req.session.user.id,action:'create_map_link',entityType:'network_map_link',entityId:result.insertId,description:`Hubungkan node #${source} ke #${target}`,ip:req.ip});req.session.flash={type:'success',message:'Jalur kabel berhasil ditambahkan.'};
-}catch(err){req.session.flash={type:'danger',message:`Jalur gagal disimpan: ${err.code==='ER_DUP_ENTRY'?'Jalur tersebut sudah ada.':err.message}`};}res.redirect('/acs/map');});
-
-router.post('/map/nodes/:id/delete',requireAdmin,async(req,res)=>{await db.execute(`DELETE FROM network_map_links WHERE source_node_id=? OR target_node_id=?`,[req.params.id,req.params.id]);await db.execute(`DELETE FROM network_map_nodes WHERE id=?`,[req.params.id]);await audit({userId:req.session.user.id,action:'delete_map_node',entityType:'network_map_node',entityId:req.params.id,description:'Hapus titik dan jalur terkait',ip:req.ip});req.session.flash={type:'success',message:'Titik dan jalur terkait dihapus.'};res.redirect('/acs/map');});
-router.post('/map/links/:id/delete',requireAdmin,async(req,res)=>{await db.execute(`DELETE FROM network_map_links WHERE id=?`,[req.params.id]);await audit({userId:req.session.user.id,action:'delete_map_link',entityType:'network_map_link',entityId:req.params.id,description:'Hapus jalur Network Map',ip:req.ip});req.session.flash={type:'success',message:'Jalur dihapus.'};res.redirect('/acs/map');});
+// v2 NMS rebuild: modul "Network Map" (/acs/map + CRUD titik/jalur) dihapus total.
+// Tabel network_map_nodes/network_map_links dibiarkan (data tidak dihapus).
 
 router.get('/reconcile',async(req,res,next)=>{try{
   const [devices]=await db.query(`SELECT d.* FROM acs_devices d LEFT JOIN customer_ont_links l ON l.acs_device_id=d.id WHERE l.id IS NULL ORDER BY d.last_inform DESC LIMIT 500`);

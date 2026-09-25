@@ -2,7 +2,7 @@ const db = require('../config/db');
 
 const PERMISSIONS = [
   'dashboard', 'customers', 'billing', 'warehouse', 'support',
-  'network', 'finance', 'reports', 'logs', 'settings'
+  'network', 'network_control', 'finance', 'reports', 'logs', 'settings'
 ];
 
 const DEFAULT_PERMISSIONS = {

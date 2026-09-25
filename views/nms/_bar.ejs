@@ -1,0 +1,18 @@
+<div class="nms-bar" id="nmsBar">
+  <div class="nms-bar-title"><small>MikroTik NMS · NOC</small><b>INKAMNET Network Operations</b></div>
+  <nav class="nms-tabs">
+    <a href="/nms<%= siteId ? `?site=${siteId}` : '' %>" class="<%= nmsPage==='dashboard'?'active':'' %>"><i class="bi bi-speedometer2"></i> Dashboard</a>
+    <a href="/nms/secrets<%= siteId ? `?site=${siteId}` : '' %>" class="<%= nmsPage==='secrets'?'active':'' %>"><i class="bi bi-person-lines-fill"></i> PPP Secrets</a>
+  </nav>
+  <div class="nms-bar-spacer"></div>
+  <span class="nms-pill red nms-offline-badge" id="nmsOfflineBadge"><i class="bi bi-exclamation-octagon-fill"></i><span>ROUTER UNREACHABLE / OFFLINE (SHOWING CACHED DATA)</span></span>
+  <span class="nms-pill gray" id="nmsUpdated" title="Waktu data terakhir">Last Updated: —</span>
+  <span class="nms-pill yellow" id="nmsLive" title="Status koneksi real-time (SSE)"><i class="dot"></i><span>CONNECTING</span></span>
+  <label class="nms-site-select">Site
+    <select id="nmsSiteSelect" aria-label="Select Site">
+      <option value="">Semua Site</option>
+      <% sites.forEach(s=>{ %><option value="<%= s.id %>" <%= Number(siteId)===Number(s.id)?'selected':'' %>><%= s.code %> · <%= s.name %></option><% }) %>
+    </select>
+  </label>
+  <time class="nms-clock" data-nms-clock>--:--:--</time>
+</div>

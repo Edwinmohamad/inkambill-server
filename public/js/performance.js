@@ -7,5 +7,4 @@
   document.querySelectorAll('img:not([loading])').forEach(img=>{if(!img.closest('#appLoader,.sidebar-brand,.avatar')){img.loading='lazy';img.decoding='async';}});
   document.querySelectorAll('form[method="get"] select').forEach(select=>select.addEventListener('change',()=>select.closest('.data-card,.filter-card')?.classList.add('partial-skeleton')));
   window.addEventListener('pageshow',()=>document.querySelectorAll('.partial-skeleton').forEach(el=>el.classList.remove('partial-skeleton')));
-  if(location.pathname==='/noc'){const refresh=()=>fetch('/noc/api/summary',{headers:{Accept:'application/json'}}).then(r=>r.ok?r.json():Promise.reject()).then(data=>window.dispatchEvent(new CustomEvent('inkamnet:noc-summary',{detail:data}))).catch(()=>{});refresh();setInterval(refresh,30000);}
 })();

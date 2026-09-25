@@ -14,7 +14,7 @@ const uiPalettes=new Set(['nebula','ocean','emerald','sunset','rose','ice']);
 const clean=(v)=>String(v||'').trim();
 const nullable=(v)=>clean(v)||null;
 const invoiceLogoDir=path.join(__dirname,'..','storage','invoice-branding');
-const permissionLabels={dashboard:'Dashboard',customers:'Pelanggan & Paket',billing:'Tagihan & Pembayaran',warehouse:'Gudang',support:'Dukungan',network:'Jaringan',finance:'Keuangan',reports:'Laporan',logs:'Log Aktivitas',settings:'Pengaturan'};
+const permissionLabels={dashboard:'Dashboard',customers:'Pelanggan & Paket',billing:'Tagihan & Pembayaran',warehouse:'Gudang',support:'Dukungan',network:'Jaringan',network_control:'Kontrol Jaringan (Isolir/Kick/Lock MAC)',finance:'Keuangan',reports:'Laporan',logs:'Log Aktivitas',settings:'Pengaturan'};
 fs.mkdirSync(invoiceLogoDir,{recursive:true});
 
 function logoSignatureMatches(file){

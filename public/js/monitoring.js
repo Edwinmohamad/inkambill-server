@@ -178,7 +178,7 @@
     wirePickTargets(body, 'mikrotik');
   }
   function renderMikrotikBoardActions() {
-    document.getElementById('ccBoardActions').innerHTML = `<button type="button" class="btn-tech sm" id="ccMtCapture"><i class="bi bi-lightning-charge"></i>Capture Now</button><a class="btn-tech sm" href="/network/monitor"><i class="bi bi-broadcast-pin"></i>NMS Monitor</a>`;
+    document.getElementById('ccBoardActions').innerHTML = `<button type="button" class="btn-tech sm" id="ccMtCapture"><i class="bi bi-lightning-charge"></i>Capture Now</button><a class="btn-tech sm" href="/nms/secrets"><i class="bi bi-broadcast-pin"></i>NMS Monitor</a>`;
     const btn = document.getElementById('ccMtCapture');
     if (btn) btn.addEventListener('click', async () => {
       btn.disabled = true;

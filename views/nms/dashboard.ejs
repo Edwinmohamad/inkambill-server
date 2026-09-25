@@ -1,0 +1,62 @@
+<link rel="stylesheet" href="/css/nms-noc.css?v=<%= assetVersion %>">
+<section class="nms-noc" id="nmsDashboard" data-site="<%= siteId || '' %>" data-csrf="<%= csrfToken %>" data-can-control="<%= canControl?'1':'0' %>">
+  <%- include('_bar') %>
+
+  <div class="nms-alerts" id="nmsAlerts" aria-live="assertive"></div>
+
+  <div class="nms-kpis">
+    <a class="nms-kpi green" href="/nms/secrets?tab=synced<%= siteId?`&site=${siteId}`:'' %>" data-status="online"><small>Pelanggan Online</small><strong id="kpiOnline"><%= data.customers.online %></strong><em>sesi PPPoE aktif</em></a>
+    <a class="nms-kpi yellow" href="/nms/secrets?tab=synced<%= siteId?`&site=${siteId}`:'' %>" data-status="offline"><small>Offline</small><strong id="kpiOffline"><%= data.customers.offline %></strong><em>secret aktif tanpa sesi</em></a>
+    <a class="nms-kpi red" href="/nms/secrets?tab=synced<%= siteId?`&site=${siteId}`:'' %>" data-status="isolated"><small>Terisolir</small><strong id="kpiIsolated"><%= data.customers.isolated %></strong><em>profile isolir / disabled</em></a>
+    <a class="nms-kpi blue" href="/nms/secrets?tab=unsynced<%= siteId?`&site=${siteId}`:'' %>"><small>Unsynced Secret</small><strong id="kpiUnsynced"><%= data.sync.unsynced %></strong><em>belum terikat pelanggan</em></a>
+    <div class="nms-kpi"><small>Router Reachable</small><strong id="kpiRouters"><%= data.routers.filter(r=>r.status==='online').length %>/<%= data.routers.length %></strong><em id="kpiRoutersSub">poll 15 detik</em></div>
+  </div>
+
+  <div class="nms-grid">
+    <article class="nms-card c-12">
+      <div class="nms-card-head"><h3>Router Health</h3><span class="grow"></span><small class="dim">CPU hijau &lt;60% · kuning 60–80% · merah &gt;80%</small></div>
+      <div class="nms-routers" id="nmsRouters"></div>
+    </article>
+
+    <article class="nms-card c-8">
+      <div class="nms-card-head"><h3>WAN / Uplink Bandwidth</h3><span class="grow"></span>
+        <select id="nmsBwRouter" aria-label="Router bandwidth"></select>
+        <% if(canControl){ %><button type="button" class="nms-btn xs" id="nmsWanEdit" title="Atur interface WAN"><i class="bi bi-gear"></i></button><% } %>
+      </div>
+      <div class="nms-bw-readout">
+        <div><small>RX (DOWN)</small><b class="rx" id="bwRx">0 Mbps</b></div>
+        <div><small>TX (UP)</small><b class="tx" id="bwTx">0 Mbps</b></div>
+        <div><small>PEAK RX · 30M</small><b id="bwPeakRx">0</b></div>
+        <div><small>PEAK TX · 30M</small><b id="bwPeakTx">0</b></div>
+        <div><small>INTERFACE</small><b id="bwIface" class="mono">—</b></div>
+      </div>
+      <div class="nms-chart-box"><canvas id="nmsBwChart" aria-label="Grafik bandwidth real-time"></canvas></div>
+    </article>
+
+    <article class="nms-card c-4">
+      <div class="nms-card-head"><h3>Sync Progress</h3><span class="grow"></span><a class="nms-btn xs" href="/nms/secrets?tab=unsynced<%= siteId?`&site=${siteId}`:'' %>">Smart Sync →</a></div>
+      <div class="nms-donut-box"><canvas id="nmsSyncChart" aria-label="Synced vs Unsynced"></canvas><div class="nms-donut-center"><b id="syncPct"><%= data.sync.syncedPct %>%</b><small>SYNCED</small></div></div>
+      <div class="nms-legend"><span><i style="background:#10B981"></i>Synced <b class="num" id="syncSynced"><%= data.sync.synced %></b></span><span><i style="background:#EF4444"></i>Unsynced <b class="num" id="syncUnsynced"><%= data.sync.unsynced %></b></span><span><i style="background:#6B7280"></i>Exempt <b class="num" id="syncExempt"><%= data.sync.exempt %></b></span></div>
+    </article>
+
+    <article class="nms-card c-8">
+      <div class="nms-card-head"><h3>Live Log Streamer</h3><span class="grow"></span>
+        <div class="nms-console-filter" id="nmsLogFilter">
+          <button type="button" class="on" data-f="all">ALL</button><button type="button" data-f="login">LOGIN</button><button type="button" data-f="logout">DISCONNECT</button><button type="button" data-f="auth_failed">AUTH FAIL</button><button type="button" data-f="action">ACTION</button>
+        </div>
+        <button type="button" class="nms-btn xs" id="nmsLogPause" title="Pause auto-scroll"><i class="bi bi-pause-fill"></i></button>
+      </div>
+      <div class="nms-console" id="nmsConsole" role="log" aria-live="polite"></div>
+    </article>
+
+    <article class="nms-card c-4">
+      <div class="nms-card-head"><h3>Flapping · 1 Jam</h3><span class="grow"></span><small class="dim">&gt;5 reconnect</small></div>
+      <div class="nms-table-wrap" style="max-height:260px"><table class="nms-table"><thead><tr><th>Pelanggan / User</th><th>Site</th><th>Reconnect</th></tr></thead><tbody id="nmsFlapping"></tbody></table></div>
+    </article>
+  </div>
+  <div class="nms-toasts" id="nmsToasts"></div>
+  <script type="application/json" id="nmsBoot"><%- JSON.stringify(data).replace(/</g,'\\u003c') %></script>
+</section>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
+<script src="/js/nms-common.js?v=<%= assetVersion %>" defer></script>
+<script src="/js/nms-noc.js?v=<%= assetVersion %>" defer></script>
