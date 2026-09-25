@@ -187,7 +187,7 @@ router.get('/status.json', requirePermission('settings'), async (req, res) => {
 // Connecting/disconnecting the gateway links a real personal WhatsApp number to this app, so it is
 // deliberately restricted to Master Admin — the same sensitivity tier as Force Delete.
 router.post('/connect', requireMasterAdmin, async (req, res) => {
-  const state = await startGateway();
+  const state = await startGateway({ manual: true });
   await audit({ userId: req.session.user.id, action: 'connect', entityType: 'wa_gateway', entityId: null, description: `Memulai koneksi WA Gateway: ${state.state}`, ip: req.ip });
   req.session.flash = state.state === 'disconnected'
     ? { type: 'danger', message: `WA Gateway belum dapat dihubungkan: ${state.lastDisconnectReason || 'periksa URL, API key, firewall, dan status WAHA.'}` }

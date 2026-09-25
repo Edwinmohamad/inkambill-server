@@ -35,7 +35,7 @@ const { runCashAgingAlert } = require('./services/cashSettlementService');
 const { purgeOldLogs } = require('./services/logRetentionService');
 const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema } = require('./services/schemaService');
 const { requireN8nToken } = require('./middleware/n8n');
-const { initGatewayOnBoot, reconcileGatewayStatus, processQueue, runAutoReminderSweep } = require('./services/whatsappGatewayService');
+const { initGatewayOnBoot, ensureGatewayAlive, reconcileGatewayStatus, processQueue, runAutoReminderSweep } = require('./services/whatsappGatewayService');
 const { requireWahaWebhookToken } = require('./middleware/waha');
 
 const app = express();
@@ -353,6 +353,13 @@ async function bootstrap() {
       const result = await runAutoReminderSweep();
       if (result.ran) console.log('WA Gateway auto-reminder sweep:', result);
     } catch (err) { console.error('WA Gateway auto-reminder sweep gagal:', err.message); }
+  }, { timezone: 'Asia/Jakarta' });
+
+  // WA Gateway auto-reconnect watchdog — tiap menit: bila sesi WAHA STOPPED/FAILED/macet STARTING
+  // (WAHA restart, container update, crash), sesi dinyalakan ulang otomatis dengan backoff, lalu
+  // antrean dilanjutkan. Tidak menyentuh sesi yang WORKING atau yang sengaja di-logout Admin.
+  cron.schedule('* * * * *', async () => {
+    try { await ensureGatewayAlive(); } catch (err) { console.error('WA Gateway watchdog gagal:', err.message); }
   }, { timezone: 'Asia/Jakarta' });
 
   cron.schedule('*/5 * * * *', async () => {

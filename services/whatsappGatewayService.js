@@ -28,6 +28,23 @@ let startingPromise = null;
 let processingLock = false;
 let blastEnabled = false; // cache settings.wa_blast_enabled (dibaca sinkron oleh middleware/common.js)
 
+// ---- Auto-reconnect watchdog state ----------------------------------------------------------------
+// Bug lama: bila WAHA melaporkan STOPPED/FAILED (WAHA restart, container update, crash browser,
+// koneksi WA putus) app hanya mencerminkan "disconnected" dan TIDAK PERNAH menyalakan ulang sesi —
+// harus menunggu Admin klik Connect. Watchdog di bawah (dipanggil tiap menit dari app.js + saat
+// webhook STOPPED/FAILED masuk) menyalakan ulang sesi otomatis dengan backoff.
+let manualLogout = false;          // Admin sengaja logout → jangan auto-reconnect
+let recoverAttempts = 0;
+let nextRecoverAt = 0;
+let lastRecoverAt = null;
+let startingSince = null;          // kapan status STARTING pertama terlihat (deteksi sesi macet)
+let reconcileFailures = 0;         // gagal menjangkau WAHA berturut-turut
+let watchdogRunning = false;
+let recoverTimer = null;
+const MAX_UNREACHABLE_BEFORE_DISCONNECTED = 3;
+const STARTING_STUCK_MS = 5 * 60 * 1000;
+const RECOVER_BACKOFF_MS = [0, 30e3, 60e3, 2 * 60e3, 5 * 60e3, 10 * 60e3, 15 * 60e3];
+
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function randomDelay(minMs, maxMs) { return minMs + Math.floor(Math.random() * (maxMs - minMs)); }
 
@@ -56,8 +73,16 @@ function getGatewayStatus() {
     connectedNumber,
     lastConnectedAt,
     lastDisconnectReason,
+    autoReconnect: {
+      enabled: !manualLogout,
+      attempts: recoverAttempts,
+      lastAttemptAt: lastRecoverAt,
+      nextAttemptAt: nextRecoverAt ? new Date(nextRecoverAt) : null,
+    },
   };
 }
+
+function resetRecoverBackoff() { recoverAttempts = 0; nextRecoverAt = 0; }
 
 function resetGatewayState(reason = 'Konfigurasi WAHA diperbarui; hubungkan ulang sesi.') {
   connectionState = 'disconnected';
@@ -66,6 +91,9 @@ function resetGatewayState(reason = 'Konfigurasi WAHA diperbarui; hubungkan ulan
   lastConnectedAt = null;
   lastDisconnectReason = reason;
   startingPromise = null;
+  startingSince = null;
+  reconcileFailures = 0;
+  resetRecoverBackoff();
   return getGatewayStatus();
 }
 
@@ -76,40 +104,62 @@ function applySessionSnapshot(session) {
     connectionState = 'disconnected';
     qrDataUrl = null;
     connectedNumber = null;
+    startingSince = null;
     return;
   }
   const status = String(session.status || '').toUpperCase();
+  const previous = connectionState;
   connectionState = STATUS_MAP[status] || 'disconnected';
+  startingSince = status === 'STARTING' ? (startingSince || Date.now()) : null;
   if (connectionState === 'connected') {
     qrDataUrl = null;
     connectedNumber = extractNumber(session?.me?.id) || connectedNumber;
-    if (!lastConnectedAt) lastConnectedAt = new Date();
+    if (!lastConnectedAt || previous !== 'connected') lastConnectedAt = new Date();
     lastDisconnectReason = null;
+    resetRecoverBackoff();
   } else {
     connectedNumber = null;
     if (connectionState !== 'qr_pending') qrDataUrl = null;
-    if (status === 'FAILED') lastDisconnectReason = 'WAHA melaporkan status FAILED — cek log WAHA untuk detail.';
+    if (status === 'FAILED') lastDisconnectReason = 'WAHA melaporkan status FAILED — sesi akan dinyalakan ulang otomatis.';
+    else if (status === 'STOPPED' && previous === 'connected') lastDisconnectReason = 'Sesi WAHA berhenti (STOPPED) — sesi akan dinyalakan ulang otomatis.';
+    else if (status === 'SCAN_QR_CODE' && previous === 'connected') lastDisconnectReason = 'Perangkat tertaut dilepas dari HP — scan ulang QR diperlukan.';
   }
 }
 
 // Pulls the current session state straight from WAHA over HTTP. This is the safety-net path —
-// the webhook (handleWahaWebhookEvent) is what normally keeps the mirror fresh in real time, but
-// this covers the case where a webhook call never arrived (WAHA restarted mid-flight, a network
-// hiccup, etc). Called on every /wa-gateway status.json poll and every 5 minutes from app.js.
+// the webhook (handleWahaWebhookEvent) is what normally keeps the mirror fresh in real time.
 async function reconcileGatewayStatus() {
   try {
     const session = await waha.getSession();
+    reconcileFailures = 0;
     applySessionSnapshot(session);
     if (connectionState === 'qr_pending') {
       try { qrDataUrl = await waha.getQrDataUrl(); }
       catch (e) { console.error('WA Gateway: gagal ambil QR dari WAHA:', e.message); }
     }
   } catch (e) {
-    // Transient WAHA/network hiccup — keep showing the last known state rather than flashing to
-    // "disconnected" on every blip.
-    console.error('WA Gateway: gagal sinkronisasi status dari WAHA:', e.message);
+    // Satu-dua blip jaringan: tetap tampilkan status terakhir. Tapi bila WAHA benar-benar tidak
+    // terjangkau beberapa kali berturut-turut, jangan terus mengaku "connected" (bug lama: /send
+    // tetap menerima pesan lalu semuanya gagal permanen).
+    reconcileFailures++;
+    console.error(`WA Gateway: gagal sinkronisasi status dari WAHA (${reconcileFailures}x):`, e.message);
+    if (reconcileFailures >= MAX_UNREACHABLE_BEFORE_DISCONNECTED && connectionState !== 'disconnected') {
+      connectionState = 'disconnected';
+      connectedNumber = null;
+      qrDataUrl = null;
+      lastDisconnectReason = `WAHA tidak dapat dijangkau: ${e.message}. Menyambung ulang otomatis...`;
+    }
   }
   return getGatewayStatus();
+}
+
+function scheduleRecover(delayMs = 5000) {
+  if (recoverTimer) return;
+  recoverTimer = setTimeout(() => {
+    recoverTimer = null;
+    ensureGatewayAlive().catch(e => console.error('WA Gateway watchdog gagal:', e.message));
+  }, delayMs);
+  if (recoverTimer.unref) recoverTimer.unref();
 }
 
 // Called by routes/waha.js whenever WAHA pushes a webhook event. This is the fast path — updates
@@ -120,27 +170,36 @@ async function handleWahaWebhookEvent(event) {
     // Malformed/empty payload (shouldn't happen, but webhook bodies are external input) — skip
     // rather than risk flipping the mirror to 'disconnected' on a payload we can't actually read.
     if (!event?.payload) return;
-    applySessionSnapshot({ status: event.payload.status, me: event.payload.me });
+    // WAHA bisa memakai webhook global (WHATSAPP_HOOK_URL) untuk SEMUA sesi. Tanpa filter ini,
+    // status sesi lain (mis. sesi uji "STOPPED") ikut memutus status gateway kita.
+    const { sessionName } = await getWahaConfig();
+    if (event.session && sessionName && String(event.session) !== String(sessionName)) return;
+    // WAHA mengirim `me` di level atas event (bukan di payload); dukung keduanya.
+    applySessionSnapshot({ status: event.payload.status, me: event.payload.me || event.me });
+    reconcileFailures = 0;
     if (connectionState === 'qr_pending') {
       try { qrDataUrl = await waha.getQrDataUrl(); }
       catch (e) { console.error('WA Gateway: gagal ambil QR dari WAHA (webhook):', e.message); }
     }
     if (connectionState === 'connected') processQueue();
+    const status = String(event.payload.status || '').toUpperCase();
+    if ((status === 'STOPPED' || status === 'FAILED') && !manualLogout) scheduleRecover(5000);
   }
-  // event === 'message' (incoming messages) is intentionally a no-op for now — this module only
-  // handles outbound reminders/blast today. The webhook is already wired up, so a future two-way
-  // feature (auto-reply, "reply STOP to opt out", etc.) just needs a handler added here.
+  // event === 'message' (incoming messages) is intentionally a no-op for now.
 }
 
-async function startGateway() {
-  if (connectionState === 'connecting' || connectionState === 'qr_pending' || connectionState === 'connected') {
-    return getGatewayStatus();
-  }
+async function startGateway({ manual = false } = {}) {
+  if (manual) { manualLogout = false; resetRecoverBackoff(); }
   if (startingPromise) return startingPromise;
   startingPromise = (async () => {
-    connectionState = 'connecting';
-    qrDataUrl = null;
     try {
+      // Bug lama: keputusan diambil dari mirror in-memory yang bisa basi ("connected" padahal WAHA
+      // sudah STOPPED) sehingga tombol Connect tidak melakukan apa-apa. Selalu cek WAHA dulu.
+      await reconcileGatewayStatus();
+      if (connectionState === 'connected' || connectionState === 'qr_pending') return getGatewayStatus();
+      if (connectionState === 'connecting' && !(startingSince && Date.now() - startingSince > STARTING_STUCK_MS)) return getGatewayStatus();
+      connectionState = 'connecting';
+      qrDataUrl = null;
       const config = await getWahaConfig({ fresh: true });
       await waha.startSession(callbackUrl(config));
       await reconcileGatewayStatus();
@@ -156,29 +215,79 @@ async function startGateway() {
   return startingPromise;
 }
 
+// Watchdog auto-reconnect — dipanggil tiap menit dari app.js, saat boot, dan saat webhook
+// STOPPED/FAILED. Aman dipanggil berulang: tidak pernah mengganggu sesi yang WORKING/SCAN_QR_CODE,
+// memakai backoff agar tidak membanjiri WAHA saat WAHA sendiri sedang down.
+async function ensureGatewayAlive() {
+  if (watchdogRunning) return getGatewayStatus();
+  watchdogRunning = true;
+  try {
+    let session;
+    try {
+      session = await waha.getSession();
+      reconcileFailures = 0;
+    } catch (e) {
+      await reconcileGatewayStatus(); // hitung kegagalan & tandai disconnected bila perlu
+      return getGatewayStatus();
+    }
+    applySessionSnapshot(session);
+    if (connectionState === 'qr_pending' && !qrDataUrl) {
+      try { qrDataUrl = await waha.getQrDataUrl(); } catch (_) { /* dicoba lagi pada poll berikut */ }
+    }
+    if (connectionState === 'connected') { processQueue(); return getGatewayStatus(); }
+    if (!session || manualLogout) return getGatewayStatus(); // belum pernah ditautkan / sengaja logout
+
+    const status = String(session.status || '').toUpperCase();
+    const stuckStarting = status === 'STARTING' && startingSince && Date.now() - startingSince > STARTING_STUCK_MS;
+    if (!(status === 'STOPPED' || status === 'FAILED' || stuckStarting)) return getGatewayStatus();
+    if (Date.now() < nextRecoverAt) return getGatewayStatus();
+
+    recoverAttempts++;
+    lastRecoverAt = new Date();
+    nextRecoverAt = Date.now() + RECOVER_BACKOFF_MS[Math.min(recoverAttempts, RECOVER_BACKOFF_MS.length - 1)];
+    console.log(`WA Gateway: sesi WAHA ${status}${stuckStarting ? ' (macet)' : ''} — auto-reconnect percobaan #${recoverAttempts}`);
+    try {
+      if (stuckStarting) {
+        const config = await getWahaConfig();
+        const name = encodeURIComponent(config.sessionName);
+        try { await waha.request('POST', `/api/sessions/${name}/stop`, undefined, config); } catch (_) { /* lanjut start */ }
+        startingSince = null;
+      }
+      connectionState = 'connecting';
+      const config = await getWahaConfig({ fresh: true });
+      await waha.startSession(callbackUrl(config));
+      await reconcileGatewayStatus();
+      if (connectionState === 'connected') console.log('WA Gateway: auto-reconnect berhasil.');
+    } catch (e) {
+      connectionState = 'disconnected';
+      lastDisconnectReason = `Auto-reconnect gagal (#${recoverAttempts}): ${e.message}`;
+      console.error('WA Gateway:', lastDisconnectReason);
+    }
+    return getGatewayStatus();
+  } finally {
+    watchdogRunning = false;
+  }
+}
+
 // Used once at app boot (see app.js) to resume a session that was already linked before this
-// restart, without requiring the admin to click Connect again. Unlike the old Baileys version,
-// WAHA keeps the WhatsApp session alive in its own process independent of this app's lifecycle,
-// so this mostly just needs to sync the in-memory mirror — but we still call startSession() in
-// case WAHA itself was restarted and the session needs to be resumed there too.
+// restart, without requiring the admin to click Connect again.
 async function initGatewayOnBoot() {
   await refreshWaFeatureFlags();
-  try {
-    const existing = await waha.getSession();
-    if (!existing) return getGatewayStatus(); // never connected — wait for admin to press Connect
-    await startGateway();
-  } catch (e) {
-    console.error('WA Gateway: gagal sinkronisasi awal dengan WAHA saat startup:', e.message);
-  }
+  // Pesan yang tertinggal di status lama tetap aman: antrean diproses setelah terhubung.
+  try { await ensureGatewayAlive(); }
+  catch (e) { console.error('WA Gateway: gagal sinkronisasi awal dengan WAHA saat startup:', e.message); }
   return getGatewayStatus();
 }
 
 async function logoutGateway() {
+  manualLogout = true;
+  resetRecoverBackoff();
   try { await waha.stopAndLogoutSession(); } catch (e) { console.error('WA Gateway: gagal logout dari WAHA:', e.message); }
   connectionState = 'disconnected';
   qrDataUrl = null;
   connectedNumber = null;
   lastConnectedAt = null;
+  lastDisconnectReason = 'Diputuskan oleh Admin.';
 }
 
 // Enqueue a message for the send queue. Validates the phone number up front (via the existing
@@ -278,6 +387,7 @@ function isBlastEnabled() { return blastEnabled; }
 // followed by a randomized delay to keep the sending rate human-like and reduce ban risk. If the
 // gateway is not connected, processing simply stops — enqueueWaMessage() or the queue watchdog cron in
 // app.js will kick it again once reconnected, so nothing is lost, only delayed.
+const MAX_SEND_ATTEMPTS = 5;
 async function processQueue() {
   if (processingLock) return;
   processingLock = true;
@@ -291,7 +401,23 @@ async function processQueue() {
         const providerId = response?.id || response?.key?.id || response?._data?.id?.id || response?._data?.id || null;
         await db.execute(`UPDATE wa_messages SET status='sent',sent_at=NOW(),attempts=attempts+1,next_attempt_at=NULL,error_message=NULL,provider_message_id=? WHERE id=?`, [providerId ? String(providerId).slice(0, 255) : null, row.id]);
       } catch (e) {
-        await db.execute(`UPDATE wa_messages SET status='failed',attempts=attempts+1,next_attempt_at=NULL,error_message=? WHERE id=?`, [String(e?.message || e).slice(0, 500), row.id]);
+        const attempts = Number(row.attempts || 0) + 1;
+        const message = String(e?.message || e);
+        // Bug lama: SEMUA error (WAHA restart sesaat, sesi STARTING, timeout jaringan) langsung
+        // membuat pesan 'failed' permanen. Kini error sementara dijadwalkan ulang dengan backoff.
+        // Timeout TIDAK di-retry otomatis: WAHA mungkin sudah mengirimnya (hindari pesan dobel).
+        if (e?.transient && !e?.timeout && attempts < MAX_SEND_ATTEMPTS) {
+          const waitMinutes = Math.min(30, 2 ** (attempts - 1)); // 1,2,4,8 menit
+          await db.execute(`UPDATE wa_messages SET status='queued',attempts=?,next_attempt_at=DATE_ADD(NOW(),INTERVAL ? MINUTE),error_message=? WHERE id=?`,
+            [attempts, waitMinutes, `Percobaan ${attempts} gagal, dicoba lagi ${waitMinutes} menit: ${message}`.slice(0, 500), row.id]);
+          // Kemungkinan besar sesi sedang bermasalah — cek ulang & hentikan loop, watchdog akan
+          // melanjutkan antrean begitu sesi kembali WORKING.
+          await reconcileGatewayStatus();
+          if (connectionState !== 'connected') { scheduleRecover(5000); break; }
+        } else {
+          const note = e?.timeout ? ' (timeout — cek HP apakah pesan sebenarnya terkirim sebelum retry)' : '';
+          await db.execute(`UPDATE wa_messages SET status='failed',attempts=?,next_attempt_at=NULL,error_message=? WHERE id=?`, [attempts, `${message}${note}`.slice(0, 500), row.id]);
+        }
       }
       await sleep(randomDelay(4000, 9000));
     }
@@ -399,6 +525,7 @@ async function runAutoReminderSweep(now = new Date()) {
 module.exports = {
   startGateway,
   initGatewayOnBoot,
+  ensureGatewayAlive,
   logoutGateway,
   getGatewayStatus,
   resetGatewayState,
