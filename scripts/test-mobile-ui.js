@@ -8,6 +8,7 @@ const app=read('app.js');
 const clientJs=read('public/js/app.js');
 const paymentModal=read('views/payments/_payment-modal.ejs');
 const cashView=read('views/finance/cash.ejs');
+const invoiceView=read('views/invoices/index.ejs');
 const required=[
   [common,"/INKAMNET-GO\\//i",'server-side app detection'],
   [layout,"class=\"<%= isMobileApp?'inkamnet-go-app':'' %>\"",'app body class'],
@@ -26,6 +27,17 @@ const required=[
   ,[js,"window.addEventListener('popstate'",'Android back closes active overlays']
   ,[js,"window.addEventListener('pageshow'",'back-forward cache overlay recovery']
   ,[js,"window.visualViewport?.addEventListener('resize'",'keyboard-aware viewport sizing']
+  ,[invoiceView,'class="invoice-row','invoice rows have APK card hooks']
+  ,[invoiceView,'go-invoice-ref','invoice reference visible on APK card']
+  ,[invoiceView,'go-invoice-action-button','mobile action button hook']
+  ,[css,'body.inkamnet-go-app .invoice-table tr.invoice-row','invoice card layout']
+  ,[css,'body.inkamnet-go-app .invoice-pay-button span{display:inline!important}','LUNAS label remains visible in APK']
+  ,[css,'body.inkamnet-go-app .ink-action-popover{','mobile action bottom sheet']
+  ,[css,'body.inkamnet-go-app .customer-bulk-bar{','bulk actions stay above APK bottom nav']
+  ,[css,'body.inkamnet-go-app .closing-sticky-bar{','closing actions stay above APK bottom nav']
+  ,[css,'body.inkamnet-go-app .operation-loader{','operation loader stays above APK bottom nav']
+  ,[js,'a[target="_blank"]','target blank fallback in WebView']
+  ,[js,'closeMobileActionPopovers','stale action popover recovery']
   ,[js,"document.addEventListener('shown.bs.modal'",'modal history integration']
   ,[cashView,'data-go-cash-open','stable quick cash action target']
   ,[js,"item.dataset.type===cashAction",'quick income/expense category selection']

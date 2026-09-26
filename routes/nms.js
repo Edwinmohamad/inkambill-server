@@ -3,6 +3,7 @@
 // Baca data: permission 'network'. Aksi yang mengubah layanan pelanggan: Admin ATAU permission
 // 'network_control' (dapat diberikan ke role operator NOC di Pengaturan → Role & Akses).
 const express = require('express');
+const crypto = require('crypto');
 const { isAdminRole } = require('../middleware/auth');
 const { audit } = require('../services/auditService');
 const db = require('../config/db');
@@ -19,8 +20,18 @@ const automation = require('../services/nms/automation');
 const nmsSettings = require('../services/nms/settings');
 const widgets = require('../services/nms/widgets');
 const fasum = require('../services/nms/fasum');
+const excelSync = require('../services/nms/excelSync');
+const nmsExcelUpload = require('../middleware/nmsExcelUpload');
 
 const router = express.Router();
+
+// Multer error khusus endpoint XLSX harus tetap berbentuk JSON karena dipanggil dari modal NMS.
+function uploadExcel(req, res, next) {
+  nmsExcelUpload(req, res, err => {
+    if (!err) return next();
+    return res.status(400).json({ ok: false, error: err.message || 'Gagal membaca file Excel.' });
+  });
+}
 
 const canControl = req => isAdminRole(req.session.user?.role) || (req.permissions || []).includes('network_control');
 function requireNetworkControl(req, res, next) {
@@ -227,14 +238,14 @@ router.post('/api/secrets/:id/map', requireNetworkControl, api(async req => {
   const customerId = Number(req.body.customerId);
   if (!Number.isInteger(customerId) || customerId <= 0) throw Object.assign(new Error('Pilih pelanggan terlebih dahulu.'), { status: 400 });
   const reason = String(req.body.reason || '').trim().slice(0, 255) || 'Mapping manual dari NMS';
-  const { secret, customer, released } = await smartSync.manualMap(Number(req.params.id), customerId);
-  await audit({ userId: req.session.user.id, action: 'nms_manual_map', entityType: 'ppp_secret', entityId: secret.id, siteId: secret.site_id, ip: req.ip, description: `Map ${secret.username} → ${customer.customer_code} ${customer.name}${released?.length ? ` (dipindah dari ${released.join(', ')})` : ''}`, details: { username: secret.username, customerId: customer.id, reason, released } });
-  return { secretId: secret.id, customerId: customer.id, customerName: customer.name, released: released || [] };
+  const { secret, customer, released, replacedCustomer } = await smartSync.manualMap(Number(req.params.id), customerId);
+  await audit({ userId: req.session.user.id, action: 'nms_manual_map', entityType: 'ppp_secret', entityId: secret.id, siteId: secret.site_id, ip: req.ip, description: `Map ${secret.username} → ${customer.customer_code} ${customer.name}${released?.length ? ` (dipindah dari ${released.join(', ')})` : ''}${replacedCustomer ? ` (menimpa ${replacedCustomer.code} ${replacedCustomer.name})` : ''}`, details: { username: secret.username, customerId: customer.id, reason, released, replacedCustomer } });
+  return { secretId: secret.id, customerId: customer.id, customerName: customer.name, released: released || [], replacedCustomer: replacedCustomer || null };
 }));
 router.post('/api/secrets/:id/unmap', requireNetworkControl, api(async req => {
-  const { secret, customerId } = await smartSync.unmap(Number(req.params.id));
-  await audit({ userId: req.session.user.id, action: 'nms_unmap', entityType: 'ppp_secret', entityId: secret.id, siteId: secret.site_id, ip: req.ip, description: `Unmap ${secret.username}`, details: { customerId } });
-  return { secretId: secret.id };
+  const { secret, customerId, fallbackSecret, alreadyUnlinked } = await smartSync.unmap(Number(req.params.id));
+  await audit({ userId: req.session.user.id, action: 'nms_unmap', entityType: 'ppp_secret', entityId: secret.id, siteId: secret.site_id, ip: req.ip, description: `Unmap ${secret.username}`, details: { customerId, fallbackSecret, alreadyUnlinked: !!alreadyUnlinked } });
+  return { secretId: secret.id, customerId, fallbackSecret: fallbackSecret || null, alreadyUnlinked: !!alreadyUnlinked };
 }));
 
 // Inline actions
@@ -307,6 +318,102 @@ router.get('/api/export', async (req, res) => {
     res.send(csv);
   } catch (err) { res.status(400).json({ ok: false, error: err.message }); }
 });
+
+// ---------- Excel mapping PPP: export -> edit -> preview -> apply ----------
+router.get('/api/excel/template', requireNetworkControl, async (req, res, next) => {
+  try {
+    const wb = await excelSync.templateWorkbook({ siteId: siteParam(req) });
+    const scope = siteParam(req) ? `site-${siteParam(req)}` : 'all-site';
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="template-mapping-ppp-${scope}.xlsx"`,
+      'Cache-Control': 'no-store'
+    });
+    await wb.xlsx.write(res); res.end();
+  } catch (err) { next(err); }
+});
+
+router.get('/api/excel/export', async (req, res, next) => {
+  try {
+    const kind = ['synced', 'unsynced', 'all'].includes(String(req.query.kind || 'all')) ? String(req.query.kind || 'all') : 'all';
+    const wb = await excelSync.exportWorkbook({ siteId: siteParam(req), kind });
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="nms-ppp-mapping-${kind}-${automation.jakartaDate()}.xlsx"`,
+      'Cache-Control': 'no-store'
+    });
+    await wb.xlsx.write(res); res.end();
+  } catch (err) { next(err); }
+});
+
+router.post('/api/excel/preview', requireNetworkControl, uploadExcel, api(async req => {
+  if (!req.file?.buffer) throw Object.assign(new Error('Pilih file Excel .xlsx terlebih dahulu.'), { status: 400 });
+  const preview = await excelSync.previewImport(req.file.buffer, { siteId: siteParam(req) });
+  return { fileName: req.file.originalname, preview };
+}));
+
+router.post('/api/excel/apply', requireNetworkControl, uploadExcel, api(async req => {
+  if (!req.file?.buffer) throw Object.assign(new Error('Pilih file Excel .xlsx terlebih dahulu.'), { status: 400 });
+  const siteId = siteParam(req);
+  const allowOverwrite = String(req.body?.allow_overwrite || '') === '1';
+  const preview = await excelSync.previewImport(req.file.buffer, { siteId });
+  if (preview.summary.error) {
+    throw Object.assign(new Error(`Import dibatalkan: masih ada ${preview.summary.error} baris error. Perbaiki file lalu Preview ulang.`), { status: 400 });
+  }
+  if (preview.summary.warning && !allowOverwrite) {
+    throw Object.assign(new Error(`Ada ${preview.summary.warning} konflik mapping. Centang izin pemindahan/overwrite setelah memeriksa Preview.`), { status: 409 });
+  }
+
+  const actionable = preview.rows.filter(r => r.status === 'ready' || (allowOverwrite && r.status === 'warning'));
+  const unlinkRows = actionable.filter(r => r.action === 'UNLINK');
+  const linkRows = actionable.filter(r => r.action === 'LINK');
+  const unlinkResults = [];
+  for (const r of unlinkRows) {
+    try {
+      const out = await smartSync.unmap(r.secretId);
+      unlinkResults.push({ ok: true, row: r.row, secretId: r.secretId, username: r.username, customerId: out.customerId });
+    } catch (err) {
+      unlinkResults.push({ ok: false, row: r.row, secretId: r.secretId, username: r.username, error: err.message });
+    }
+  }
+
+  let linkResult = { summary: { planned: 0, linked: 0, failed: 0, batchId: null }, results: [] };
+  if (linkRows.length) {
+    linkResult = await smartSync.commit({
+      planId: `excel-${crypto.randomUUID()}`,
+      pairs: [],
+      manual: linkRows.map(r => ({ secretId: r.secretId, customerId: r.customerId, method: 'manual' })),
+      siteId,
+      userId: req.session.user.id,
+      source: 'excel'
+    });
+  }
+
+  const unlinkOk = unlinkResults.filter(r => r.ok).length;
+  const unlinkFailed = unlinkResults.length - unlinkOk;
+  const summary = {
+    rows: preview.summary.total,
+    unchanged: preview.summary.noop,
+    linked: Number(linkResult.summary?.linked || 0),
+    linkFailed: Number(linkResult.summary?.failed || 0),
+    unlinked: unlinkOk,
+    unlinkFailed,
+    batchId: linkResult.summary?.batchId || null
+  };
+  await audit({
+    userId: req.session.user.id,
+    action: 'nms_excel_mapping_import',
+    entityType: 'ppp_secret',
+    entityId: null,
+    siteId,
+    ip: req.ip,
+    description: `Import Excel mapping PPP: ${summary.linked} link, ${summary.unlinked} unlink, ${summary.linkFailed + summary.unlinkFailed} gagal`,
+    details: { fileName: req.file.originalname, allowOverwrite, summary, unlinkFailed: unlinkResults.filter(r => !r.ok).slice(0, 20), linkFailed: (linkResult.results || []).filter(r => !r.ok).slice(0, 20) }
+  }).catch(() => {});
+
+  return { summary, unlinkResults, linkResults: linkResult.results || [] };
+}));
+
 router.get('/api/packages', api(async req => ({ rows: await packagesFor(siteParam(req)) })));
 router.get('/api/routers', api(async req => ({ rows: (await store.activeRouters(siteParam(req))).map(r => ({ id: r.id, name: r.name, site_id: r.site_id, site_code: r.site_code })) })));
 

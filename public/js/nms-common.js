@@ -31,7 +31,7 @@
 
   // ------------------------------------------------------------ API
   async function api(url, { method = 'GET', body = null } = {}) {
-    const res = await fetch(url, { method, credentials: 'same-origin', headers: { Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}), ...(method !== 'GET' ? { 'X-CSRF-Token': csrf } : {}) }, body: body ? JSON.stringify(body) : null });
+    const res = await fetch(url, { method, credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}), ...(method !== 'GET' ? { 'X-CSRF-Token': csrf } : {}) }, body: body ? JSON.stringify(body) : null });
     let data = null; try { data = await res.json(); } catch (_) { throw new Error(res.status === 403 ? 'Akses ditolak atau sesi kedaluwarsa. Muat ulang halaman.' : `HTTP ${res.status}`); }
     if (!res.ok || data.ok === false) throw Object.assign(new Error(data.error || `HTTP ${res.status}`), { status: res.status, code: data.code });
     return data;
@@ -339,12 +339,19 @@
     loadUnl();
     const search = async () => {
       const q = s.$('[data-q]').value.trim(); if (q.length < 2) { list.hidden = true; return; }
-      // Daftar pelanggan belum terhubung sudah memfilter sendiri; dropdown server hanya bila tidak ada di sana
-      // (misal pelanggan yang masih terhubung ke secret lain dan ingin dipindahkan).
-      if (renderUnl()) { list.hidden = true; return; }
+      // Selalu cari seluruh pelanggan di site, bukan hanya saat daftar "belum terhubung" kosong.
+      // Ini penting agar operator bisa memilih pelanggan yang sedang terhubung ke secret lain lalu memindahkannya.
       try {
-        ({ rows } = await api(`/nms/api/customers/search${qs({ q, site: s.$('[data-site]').value })}`)); idx = -1;
-        list.innerHTML = rows.length ? rows.map((c, i) => { const self = c.linked_username && String(c.linked_username).toLowerCase() === String(r.username).toLowerCase(); const off = self || !['active', 'suspended'].includes(String(c.customer_status || 'active')); return `<button type="button" data-i="${i}" ${off ? 'disabled' : ''}><b class="mono">${esc(c.customer_code)}</b><span class="grow">${esc(c.name)}</span><small class="dim">${self ? 'sudah terhubung' : off ? esc(c.customer_status) : c.linked_username ? 'terhubung ke ' + esc(c.linked_username) : esc(c.site_code)}</small></button>`; }).join('') : '<div class="nx-empty">Tidak ditemukan di site ini.</div>';
+        const res = await api(`/nms/api/customers/search${qs({ q, site: s.$('[data-site]').value })}`);
+        const unlinkedIds = new Set(unl.map(c => Number(c.id)));
+        rows = (res.rows || []).filter(c => c.linked_username || !unlinkedIds.has(Number(c.id)));
+        idx = -1;
+        list.innerHTML = rows.length ? rows.map((c, i) => {
+          const self = c.linked_username && String(c.linked_username).trim().toLowerCase() === String(r.username).trim().toLowerCase();
+          const off = self || !['active', 'suspended'].includes(String(c.customer_status || 'active'));
+          const note = self ? 'sudah terhubung ke secret ini' : off ? esc(c.customer_status) : c.linked_username ? `terhubung ke ${esc(c.linked_username)} · akan dipindahkan` : esc(c.site_code);
+          return `<button type="button" data-i="${i}" ${off ? 'disabled' : ''}><b class="mono">${esc(c.customer_code)}</b><span class="grow">${esc(c.name)}</span><small class="dim">${note}</small></button>`;
+        }).join('') : '<div class="nx-empty">Tidak ada pelanggan terhubung lain yang cocok.</div>';
         list.hidden = false;
       } catch (err) { toast(err.message, 'err'); }
     };
@@ -354,9 +361,22 @@
     list.addEventListener('click', e => { const b = e.target.closest('[data-i]'); if (b) choose(Number(b.dataset.i)); });
     s.$('[data-site]').addEventListener('change', () => { pick = null; s.$('[data-save]').disabled = true; s.$('[data-picked]').hidden = true; loadUnl(); search(); });
     s.$('[data-save]').addEventListener('click', async e => {
+      if (!pick) return;
+      const moving = pick.linked_username && String(pick.linked_username).trim().toLowerCase() !== String(r.username).trim().toLowerCase();
+      if (moving) {
+        const yes = await confirmBox({
+          title: 'Pindahkan link pelanggan?',
+          okText: 'Pindahkan',
+          message: `<b>${esc(pick.name)}</b> saat ini terhubung ke <span class="mono">${esc(pick.linked_username)}</span>.<br>Link lama akan dilepas dan dipindahkan ke <span class="mono">${esc(r.username)}</span>.`
+        });
+        if (!yes) return;
+      }
       const btn = e.currentTarget; btn.classList.add('busy');
-      try { const out = await api(`/nms/api/secrets/${r.id}/map`, { method: 'POST', body: { customerId: pick.id, reason: s.$('[data-reason]').value } }); toast(`${r.username} → ${pick.name}${out.released?.length ? ` (dipindah dari ${out.released.join(', ')})` : ''}`, 'ok'); s.close(); onDone?.(); changed(); }
-      catch (err) { toast(err.message, 'err'); btn.classList.remove('busy'); }
+      try {
+        const out = await api(`/nms/api/secrets/${r.id}/map`, { method: 'POST', body: { customerId: pick.id, reason: s.$('[data-reason]').value } });
+        toast(`${r.username} → ${pick.name}${out.released?.length ? ` (link lama ${out.released.join(', ')} dilepas)` : ''}`, 'ok');
+        s.close(); onDone?.(); changed();
+      } catch (err) { toast(err.message, 'err'); btn.classList.remove('busy'); }
     });
   }
 

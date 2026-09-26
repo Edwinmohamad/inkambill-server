@@ -24,6 +24,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
 import android.webkit.SslErrorHandler;
@@ -83,14 +84,13 @@ public final class MainActivity extends FragmentActivity {
         CrashReporter.install(this);
         NotificationHelper.createChannel(this);
         AlertWorker.schedule(this);
-        getWindow().setStatusBarColor(Color.rgb(9, 13, 24));
-        getWindow().setNavigationBarColor(Color.rgb(9, 13, 24));
+        applyNativeAppleTheme();
 
         FrameLayout root = new FrameLayout(this);
-        root.setBackgroundColor(Color.rgb(9, 13, 24));
+        root.setBackgroundColor(Color.rgb(245, 245, 247));
 
         webView = new WebView(this);
-        webView.setBackgroundColor(Color.rgb(9, 13, 24));
+        webView.setBackgroundColor(Color.rgb(245, 245, 247));
         root.addView(webView, matchParent());
 
         progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
@@ -314,7 +314,7 @@ public final class MainActivity extends FragmentActivity {
         splash.setOrientation(LinearLayout.VERTICAL);
         splash.setGravity(Gravity.CENTER);
         splash.setPadding(dp(28), dp(28), dp(28), dp(28));
-        splash.setBackgroundColor(Color.rgb(9, 13, 24));
+        splash.setBackgroundColor(Color.rgb(245, 245, 247));
 
         ImageView mark = new ImageView(this);
         mark.setImageResource(R.drawable.inkamnet_mark);
@@ -322,11 +322,11 @@ public final class MainActivity extends FragmentActivity {
         markParams.bottomMargin = dp(20);
         splash.addView(mark, markParams);
 
-        TextView name = text("INKAMNET GO", 25, Color.WHITE, true);
+        TextView name = text("INKAMNET GO", 25, Color.rgb(29, 29, 31), true);
         name.setLetterSpacing(.12f);
         splash.addView(name);
 
-        TextView tagline = text("CONNECT  ·  CONTROL  ·  GROW", 10, Color.rgb(174, 184, 208), true);
+        TextView tagline = text("CONNECT  ·  CONTROL  ·  GROW", 10, Color.rgb(110, 110, 115), true);
         tagline.setLetterSpacing(.16f);
         LinearLayout.LayoutParams taglineParams = wrapContent();
         taglineParams.topMargin = dp(10);
@@ -345,17 +345,17 @@ public final class MainActivity extends FragmentActivity {
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setGravity(Gravity.CENTER);
         panel.setPadding(dp(30), dp(30), dp(30), dp(30));
-        panel.setBackgroundColor(Color.rgb(9, 13, 24));
+        panel.setBackgroundColor(Color.rgb(245, 245, 247));
 
         TextView symbol = text("↯", 42, Color.rgb(108, 75, 255), true);
         panel.addView(symbol);
 
-        TextView title = text(getString(R.string.offline_title), 22, Color.WHITE, true);
+        TextView title = text(getString(R.string.offline_title), 22, Color.rgb(29, 29, 31), true);
         LinearLayout.LayoutParams titleParams = wrapContent();
         titleParams.topMargin = dp(14);
         panel.addView(title, titleParams);
 
-        TextView body = text(getString(R.string.offline_body), 14, Color.rgb(174, 184, 208), false);
+        TextView body = text(getString(R.string.offline_body), 14, Color.rgb(110, 110, 115), false);
         LinearLayout.LayoutParams bodyParams = wrapContent();
         bodyParams.topMargin = dp(8);
         bodyParams.bottomMargin = dp(22);
@@ -378,16 +378,16 @@ public final class MainActivity extends FragmentActivity {
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setGravity(Gravity.CENTER);
         panel.setPadding(dp(30), dp(30), dp(30), dp(30));
-        panel.setBackgroundColor(Color.rgb(9, 13, 24));
+        panel.setBackgroundColor(Color.rgb(245, 245, 247));
 
         ImageView mark = new ImageView(this);
         mark.setImageResource(R.drawable.inkamnet_mark);
         LinearLayout.LayoutParams markParams = new LinearLayout.LayoutParams(dp(68), dp(68));
         markParams.bottomMargin = dp(18);
         panel.addView(mark, markParams);
-        panel.addView(text("Buka INKAMNET GO", 22, Color.WHITE, true));
+        panel.addView(text("Buka INKAMNET GO", 22, Color.rgb(29, 29, 31), true));
 
-        TextView detail = text("Verifikasi identitas untuk melanjutkan.", 13, Color.rgb(174, 184, 208), false);
+        TextView detail = text("Verifikasi identitas untuk melanjutkan.", 13, Color.rgb(110, 110, 115), false);
         LinearLayout.LayoutParams detailParams = wrapContent();
         detailParams.topMargin = dp(8);
         detailParams.bottomMargin = dp(22);
@@ -541,13 +541,15 @@ public final class MainActivity extends FragmentActivity {
                     || data.getData().equals(cameraOutputUri))) {
                 // Some camera apps echo EXTRA_OUTPUT back as data; never delete the new photo.
                 result = new Uri[]{cameraOutputUri};
-            } else if (data != null && data.getData() != null) {
-                result = new Uri[]{data.getData()};
-                deleteUnusedCameraOutput();
             } else if (data != null && data.getClipData() != null) {
+                // Multiple-selection intents may expose both getData() and ClipData. Prefer ClipData
+                // so all selected proof/doc files reach the web form instead of silently keeping one.
                 int count = data.getClipData().getItemCount();
                 result = new Uri[count];
                 for (int i = 0; i < count; i++) result[i] = data.getClipData().getItemAt(i).getUri();
+                deleteUnusedCameraOutput();
+            } else if (data != null && data.getData() != null) {
+                result = new Uri[]{data.getData()};
                 deleteUnusedCameraOutput();
             } else {
                 deleteUnusedCameraOutput();
@@ -706,6 +708,23 @@ public final class MainActivity extends FragmentActivity {
             webView.destroy();
         }
         super.onDestroy();
+    }
+
+    private void applyNativeAppleTheme() {
+        int chrome = Color.rgb(245, 245, 247);
+        getWindow().setStatusBarColor(chrome);
+        getWindow().setNavigationBarColor(chrome);
+        if (Build.VERSION.SDK_INT >= 30) {
+            WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller != null) {
+                int light = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                        | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+                controller.setSystemBarsAppearance(light, light);
+            }
+        } else {
+            getWindow().getDecorView().setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+        }
     }
 
     private void applySystemBarInsets(View root) {

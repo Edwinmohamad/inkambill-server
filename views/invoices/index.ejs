@@ -68,21 +68,21 @@
         <thead><tr><% if(isAdmin){ %><th class="invoice-check-col"><input type="checkbox" class="form-check-input" data-select-all aria-label="Pilih semua tagihan"></th><% } %><th>No.</th><th>Pelanggan</th><th>Site</th><th>Periode</th><th>Jatuh Tempo</th><th>Tagihan</th><th>Status</th><% if(isAdmin){ %><th class="invoice-pay-head">Bayar</th><% } %><th class="invoice-action-head">Tindakan</th></tr></thead>
         <tbody>
           <% invoices.forEach((i,index)=>{ const wa=String(i.phone||'').replace(/\D/g,'').replace(/^0/,'62').replace(/^8/,'628'); const waValid=/^628[1-9]\d{7,11}$/.test(wa); const reminder=`Yth. Bapak/Ibu ${i.customer_name},\n\nBersama pesan ini kami sampaikan informasi tagihan layanan internet INKAMNET Anda sebagai berikut:\n\nNo. Faktur : ${i.invoice_number}\nPeriode : ${monthNames[i.period_month-1]} ${i.period_year}\nJumlah Tagihan : ${formatRupiah(i.outstanding)}\n\nMohon kesediaan Bapak/Ibu untuk menyelesaikan pembayaran tepat waktu. Apabila pembayaran telah dilakukan, mohon abaikan pesan ini.\n\nTerima kasih atas kepercayaan Anda.\n\nHormat kami,\nTim Layanan Pelanggan INKAMNET`; const hasPending=Number(i.pending_payment_count||0)>0; const canPay=Number(i.outstanding)>0 && !hasPending && !['paid','cancelled','refunded'].includes(i.status); %>
-          <tr>
+          <tr class="invoice-row <%= isAdmin?'has-admin-actions':'' %>">
             <% if(isAdmin){ %><td class="invoice-check-col"><input type="checkbox" class="form-check-input" data-row-check data-can-pay="<%= canPay?'1':'0' %>" value="<%= i.id %>" aria-label="Pilih tagihan <%= i.invoice_number %>"></td><% } %>
-            <td><span class="cell-main"><%= index+1 %></span></td>
-            <td>
-              <div><span class="cell-main"><%= i.customer_name %></span><span class="cell-sub"><%= i.customer_code %></span><% if(i.customer_archived_at){ %><span class="status-badge gray customer-archived-pill" title="Pelanggan ini sudah diarsipkan — riwayat tagihan tetap ditampilkan untuk audit."><i class="bi bi-archive-fill"></i>Diarsipkan</span><% } %></div>
+            <td class="invoice-no-cell"><span class="cell-main"><%= index+1 %></span></td>
+            <td class="invoice-customer-cell">
+              <div><span class="cell-main"><%= i.customer_name %></span><span class="cell-sub"><%= i.customer_code %></span><span class="go-invoice-ref"><%= i.invoice_number %></span><% if(i.customer_archived_at){ %><span class="status-badge gray customer-archived-pill" title="Pelanggan ini sudah diarsipkan — riwayat tagihan tetap ditampilkan untuk audit."><i class="bi bi-archive-fill"></i>Diarsipkan</span><% } %></div>
             </td>
-            <td><span class="cell-main"><%= i.site_code %></span><span class="cell-sub">Cluster <%= i.cluster_name||'-' %></span></td>
-            <td><span class="cell-main"><%= monthNames[i.period_month-1] %> <%= i.period_year %></span><span class="cell-sub"><%= i.is_prorata?'PRORATA':'BULANAN' %></span></td>
-            <td><%= formatDate(i.due_date) %></td>
-            <td class="money"><%= formatRupiah(i.total) %><span class="cell-sub"><%= i.package_name %></span></td>
-            <td><% if(hasPending){ %><span class="status-badge orange"><i class="bi bi-hourglass-split"></i> Menunggu Approval</span><% }else if(i.status==='paid'){ %><span class="status-badge green"><i class="bi bi-check2-circle"></i> Lunas</span><% }else{ %><span class="status-badge red"><i class="bi bi-exclamation-circle"></i> Belum Lunas</span><% } %></td>
+            <td class="invoice-site-cell"><span class="go-cell-label">Site</span><span class="cell-main"><%= i.site_code %></span><span class="cell-sub">Cluster <%= i.cluster_name||'-' %></span></td>
+            <td class="invoice-period-cell"><span class="go-cell-label">Periode</span><span class="cell-main"><%= monthNames[i.period_month-1] %> <%= i.period_year %></span><span class="cell-sub"><%= i.is_prorata?'PRORATA':'BULANAN' %></span></td>
+            <td class="invoice-due-cell"><span class="go-cell-label">Jatuh Tempo</span><span class="cell-main"><%= formatDate(i.due_date) %></span></td>
+            <td class="money invoice-total-cell"><span class="go-cell-label">Tagihan</span><span class="cell-main"><%= formatRupiah(i.total) %></span><span class="cell-sub"><%= i.package_name %></span></td>
+            <td class="invoice-status-cell"><% if(hasPending){ %><span class="status-badge orange"><i class="bi bi-hourglass-split"></i> Menunggu Approval</span><% }else if(i.status==='paid'){ %><span class="status-badge green"><i class="bi bi-check2-circle"></i> Lunas</span><% }else{ %><span class="status-badge red"><i class="bi bi-exclamation-circle"></i> Belum Lunas</span><% } %></td>
             <% if(isAdmin){ %><td class="invoice-pay-cell"><% if(canPay){ %><button type="button" class="invoice-pay-button" data-bs-toggle="modal" data-bs-target="#paymentModal" data-payment-invoice-id="<%= i.id %>" title="Input pembayaran penuh untuk approval"><i class="bi bi-check2-circle"></i><span>Lunasi</span></button><% } %></td><% } %>
             <td class="invoice-action-cell">
               <div class="invoice-inline-actions">
-                <button class="action-menu" type="button" data-action-popover-target="invoiceAction<%= i.id %>" aria-label="Buka tindakan tagihan <%= i.invoice_number %>"><i class="bi bi-three-dots-vertical"></i></button>
+                <button class="action-menu go-invoice-action-button" type="button" data-action-popover-target="invoiceAction<%= i.id %>" aria-label="Buka tindakan tagihan <%= i.invoice_number %>"><i class="bi bi-three-dots-vertical"></i><span class="go-action-label">Tindakan</span></button>
               </div>
               <div class="ink-action-popover" id="invoiceAction<%= i.id %>" hidden>
                 <div class="ink-action-popover-head"><div><small>TAGIHAN</small><strong><%= i.customer_name %></strong><span><%= i.invoice_number %></span></div></div>
@@ -103,7 +103,7 @@
             </td>
           </tr>
           <% }) %>
-          <% if(!invoices.length){ %><tr><td colspan="<%= isAdmin?10:8 %>"><div class="empty-state"><i class="bi bi-receipt"></i><strong>Tidak ada tagihan pada filter ini</strong><small>Ubah periode/filter atau gunakan Refresh / Generate Tagihan.</small></div></td></tr><% } %>
+          <% if(!invoices.length){ %><tr class="invoice-empty-row"><td colspan="<%= isAdmin?10:8 %>"><div class="empty-state"><i class="bi bi-receipt"></i><strong>Tidak ada tagihan pada filter ini</strong><small>Ubah periode/filter atau gunakan Refresh / Generate Tagihan.</small></div></td></tr><% } %>
         </tbody>
       </table>
     </div>

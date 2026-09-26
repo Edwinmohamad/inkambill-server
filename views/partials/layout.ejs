@@ -66,7 +66,7 @@
       <div class="go-sheet-handle"></div><header><div><small>AKSI CEPAT</small><h2 id="goQuickTitle">Tambah data</h2></div><button type="button" data-go-sheet-close><i class="bi bi-x-lg"></i></button></header>
       <div class="go-quick-grid">
         <% if(can('customers')){ %><a href="/customers/new"><i class="bi bi-person-plus-fill"></i><span><b>Pelanggan</b><small>Registrasi PSB</small></span></a><% } %>
-        <% if(can('billing')){ %><a href="/invoices"><i class="bi bi-wallet2"></i><span><b>Pembayaran</b><small>Buka tagihan</small></span></a><% } %>
+        <% if(can('billing')){ %><a href="/invoices?status=open" data-go-pay-invoices><i class="bi bi-check2-circle"></i><span><b>Lunasi Tagihan</b><small>Tagihan belum lunas</small></span></a><% } %>
         <% if(can('finance')){ %><a href="/cash" data-go-cash-action="income"><i class="bi bi-arrow-down-left-circle-fill"></i><span><b>Pemasukan</b><small>Catat kas masuk</small></span></a><a href="/cash" data-go-cash-action="expense"><i class="bi bi-arrow-up-right-circle-fill"></i><span><b>Pengeluaran</b><small>Catat kas keluar</small></span></a><% } %>
         <% if(can('support')){ %><a href="/tickets"><i class="bi bi-life-preserver"></i><span><b>Ticketing</b><small>Buat pekerjaan</small></span></a><% } %>
       </div>

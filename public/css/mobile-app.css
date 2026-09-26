@@ -1,23 +1,74 @@
-/* INKAMNET GO native-like shell. Every rule is scoped so desktop remains unchanged. */
-body.inkamnet-go-app{--go-purple:var(--brand,#6C4FE0);--go-purple-2:var(--brand-2,#8F7AF0);--go-bg:#f5f4fa;--go-card:#fff;--go-ink:#171429;--go-muted:#77738b;--go-line:#ebe9f3;background:var(--go-bg);padding-bottom:calc(78px + env(safe-area-inset-bottom));}
-body.inkamnet-go-app .ambient-grid,body.inkamnet-go-app .ambient-orb,body.inkamnet-go-app .signal-stream,body.inkamnet-go-app .sidebar,body.inkamnet-go-app .sidebar-backdrop{display:none!important}
-body.inkamnet-go-app .main-panel{margin:0!important;width:100%;min-width:0;background:var(--go-bg)}
-body.inkamnet-go-app .topbar{position:sticky;top:0;z-index:1030;min-height:68px!important;padding:calc(8px + env(safe-area-inset-top)) 16px 8px!important;border:0!important;background:linear-gradient(135deg,var(--go-purple),var(--go-purple-2))!important;color:white;box-shadow:0 8px 24px rgba(76,45,171,.18)}
-body.inkamnet-go-app .topbar [data-sidebar-open],body.inkamnet-go-app .topbar-kicker,body.inkamnet-go-app .language-switch,body.inkamnet-go-app .theme-toggle,body.inkamnet-go-app [data-lite-toggle]{display:none!important}
-body.inkamnet-go-app .topbar-title{font-size:1.08rem;color:#fff;font-weight:750}
-body.inkamnet-go-app .topbar-title-wrap:before{content:'INKAMNET GO';display:block;font-size:.61rem;letter-spacing:.13em;color:rgba(255,255,255,.72);font-weight:700}
-body.inkamnet-go-app .topbar-actions{gap:5px}
-body.inkamnet-go-app .topbar .icon-button,body.inkamnet-go-app .topbar .user-button{border:0!important;background:rgba(255,255,255,.13)!important;color:#fff!important;width:39px;height:39px;min-height:39px;border-radius:13px}
-body.inkamnet-go-app .topbar .avatar{width:35px;height:35px;border:2px solid rgba(255,255,255,.75)}
+/* =========================================================
+   INKAMNET GO — Apple-minimal mobile shell v1.4
+   Scope is APK-only. Desktop/web remains untouched.
+   ========================================================= */
+body.inkamnet-go-app{
+  --go-bg:#f5f5f7;
+  --go-card:#fff;
+  --go-card-soft:#f9f9fb;
+  --go-ink:#1d1d1f;
+  --go-muted:#6e6e73;
+  --go-muted-2:#8e8e93;
+  --go-line:#e5e5ea;
+  --go-line-strong:#d8d8dc;
+  --go-accent:var(--brand,#6C4FE0);
+  --go-success:#34c759;
+  --go-warning:#ff9f0a;
+  --go-danger:#ff453a;
+  --go-radius:18px;
+  background:var(--go-bg)!important;
+  color:var(--go-ink)!important;
+  padding-bottom:calc(78px + env(safe-area-inset-bottom));
+  -webkit-tap-highlight-color:transparent;
+}
+body.inkamnet-go-app .ambient-grid,
+body.inkamnet-go-app .ambient-orb,
+body.inkamnet-go-app .signal-stream,
+body.inkamnet-go-app .sidebar,
+body.inkamnet-go-app .sidebar-backdrop{display:none!important}
+body.inkamnet-go-app .main-panel{margin:0!important;width:100%;min-width:0;background:var(--go-bg)!important}
+body.inkamnet-go-app .main-panel::before{display:none!important}
+
+/* Top bar: same light Apple language as web, without a decorative gradient. */
+body.inkamnet-go-app .topbar{
+  position:sticky;top:0;z-index:1030;
+  min-height:64px!important;height:auto!important;
+  padding:calc(8px + env(safe-area-inset-top)) 14px 8px!important;
+  border:0!important;border-bottom:1px solid rgba(0,0,0,.08)!important;
+  background:rgba(245,245,247,.94)!important;
+  color:var(--go-ink)!important;
+  box-shadow:none!important;
+  backdrop-filter:saturate(180%) blur(20px);
+  -webkit-backdrop-filter:saturate(180%) blur(20px);
+}
+body.inkamnet-go-app .topbar [data-sidebar-open],
+body.inkamnet-go-app .topbar-kicker,
+body.inkamnet-go-app .language-switch,
+body.inkamnet-go-app .theme-toggle,
+body.inkamnet-go-app [data-lite-toggle]{display:none!important}
+body.inkamnet-go-app .topbar-title{font-size:1.02rem!important;color:var(--go-ink)!important;font-weight:720!important;letter-spacing:-.015em}
+body.inkamnet-go-app .topbar-title-wrap:before{content:'INKAMNET GO';display:block;margin-bottom:1px;font-size:.57rem;letter-spacing:.12em;color:var(--go-muted-2);font-weight:760}
+body.inkamnet-go-app .topbar-actions{gap:4px}
+body.inkamnet-go-app .topbar .icon-button,
+body.inkamnet-go-app .topbar .user-button{border:0!important;background:transparent!important;color:var(--go-muted)!important;width:40px;height:40px;min-height:40px;border-radius:13px}
+body.inkamnet-go-app .topbar .icon-button:active,
+body.inkamnet-go-app .topbar .user-button:active{background:#e9e9ed!important;color:var(--go-ink)!important}
+body.inkamnet-go-app .topbar .avatar{width:34px;height:34px;border:0!important;border-radius:12px!important}
+
 body.inkamnet-go-app .content-wrap{padding:14px 12px 18px!important;max-width:100%;overflow:hidden}
 body.inkamnet-go-app .page-enter{animation:none!important}
-body.inkamnet-go-app .module-head{align-items:flex-start;gap:10px;margin:2px 0 14px!important}
-body.inkamnet-go-app .module-kicker{font-size:.62rem}
-body.inkamnet-go-app .module-head h1{font-size:1.22rem!important;line-height:1.25}
-body.inkamnet-go-app .module-head p{font-size:.76rem;line-height:1.45}
-body.inkamnet-go-app .module-actions{width:100%;display:flex;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+body.inkamnet-go-app .module-head{align-items:flex-start;gap:10px;margin:3px 0 12px!important}
+body.inkamnet-go-app .module-kicker{font-size:.59rem!important;color:var(--go-muted-2)!important;letter-spacing:.08em}
+body.inkamnet-go-app .module-head h1{font-size:1.32rem!important;line-height:1.2;letter-spacing:-.025em;color:var(--go-ink)!important}
+body.inkamnet-go-app .module-head p{font-size:.76rem;line-height:1.45;color:var(--go-muted)!important;max-width:95%}
+body.inkamnet-go-app .module-actions{width:100%;display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;padding:1px 0 2px}
 body.inkamnet-go-app .module-actions::-webkit-scrollbar{display:none}
-body.inkamnet-go-app .go-primary-filter{position:relative;z-index:2;margin:0 0 12px!important;box-shadow:0 8px 22px rgba(35,25,70,.09)!important}
+body.inkamnet-go-app .btn-tech{min-height:40px;white-space:nowrap;border-radius:12px!important;box-shadow:none!important}
+body.inkamnet-go-app .btn-tech.primary{background:var(--go-accent)!important;color:#fff!important;border-color:transparent!important}
+body.inkamnet-go-app .btn-tech.success{color:var(--go-success)!important;background:rgba(52,199,89,.08)!important;border-color:rgba(52,199,89,.18)!important}
+
+/* Filters stay near the page title and use a compact two-column mobile layout. */
+body.inkamnet-go-app .go-primary-filter{position:relative;z-index:2;margin:0 0 12px!important;box-shadow:none!important}
 body.inkamnet-go-app .go-primary-filter.filter-card{padding:10px!important}
 body.inkamnet-go-app .go-primary-filter .filter-grid{display:grid!important;grid-template-columns:1fr 1fr!important;gap:8px!important}
 body.inkamnet-go-app .go-primary-filter .filter-grid>.filter-group:first-child{grid-column:1/-1;grid-row:1}
@@ -27,94 +78,235 @@ body.inkamnet-go-app .go-primary-filter .billing-filter-grid{display:grid!import
 body.inkamnet-go-app .go-primary-filter .billing-filter-search{grid-column:1/-1!important;grid-row:1!important}
 body.inkamnet-go-app .go-primary-filter .billing-filter-submit{grid-column:1/-1}
 body.inkamnet-go-app .go-primary-filter .search-box{width:100%;min-width:0}
-body.inkamnet-go-app .go-primary-filter label{font-size:.54rem}
+body.inkamnet-go-app .go-primary-filter label{font-size:.55rem;color:var(--go-muted)!important}
 body.inkamnet-go-app .go-primary-filter .universal-search-count{font-size:.55rem}
-body.inkamnet-go-app .btn-tech{white-space:nowrap;border-radius:12px!important}
-body.inkamnet-go-app .filter-card,body.inkamnet-go-app .data-card,body.inkamnet-go-app .form-card,body.inkamnet-go-app .metric-card,body.inkamnet-go-app .command-panel,body.inkamnet-go-app .ink-panel{border:1px solid var(--go-line)!important;background:var(--go-card)!important;color:var(--go-ink)!important;box-shadow:0 5px 18px rgba(35,25,70,.055)!important;border-radius:16px!important}
+
+/* Apple-minimal surfaces. */
+body.inkamnet-go-app .filter-card,
+body.inkamnet-go-app .data-card,
+body.inkamnet-go-app .form-card,
+body.inkamnet-go-app .metric-card,
+body.inkamnet-go-app .command-panel,
+body.inkamnet-go-app .ink-panel{
+  border:1px solid var(--go-line)!important;
+  background:var(--go-card)!important;
+  color:var(--go-ink)!important;
+  box-shadow:none!important;
+  border-radius:var(--go-radius)!important;
+}
+body.inkamnet-go-app .ink-panel::before,body.inkamnet-go-app .ink-panel::after{display:none!important}
 body.inkamnet-go-app .text-secondary,body.inkamnet-go-app small{color:var(--go-muted)!important}
-body.inkamnet-go-app .form-control,body.inkamnet-go-app .form-select{font-size:16px!important;border-color:var(--go-line)!important;border-radius:12px!important}
-body.inkamnet-go-app .table-responsive{border-radius:14px;overflow:auto}
-body.inkamnet-go-app table{min-width:760px}
+body.inkamnet-go-app .form-control,body.inkamnet-go-app .form-select{
+  min-height:42px;font-size:16px!important;color:var(--go-ink)!important;
+  border-color:var(--go-line)!important;border-radius:12px!important;background:#fff!important;box-shadow:none!important
+}
+body.inkamnet-go-app .form-control:focus,body.inkamnet-go-app .form-select:focus{border-color:rgba(108,79,224,.48)!important;box-shadow:0 0 0 3px rgba(108,79,224,.08)!important}
+
+/* Generic tables may scroll, but are no longer globally forced to 760px. */
+body.inkamnet-go-app .table-responsive{border-radius:14px;overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+body.inkamnet-go-app .table-responsive>.app-table:not(.invoice-table){min-width:max(680px,100%)}
+
+/* ---------- Invoice mobile cards ----------
+   This fixes the APK regression where LUNAS/Tindakan was pushed to the far-right
+   of a 1200px table and appeared to be missing on phones. */
+body.inkamnet-go-app .invoice-registry-card{overflow:visible!important;background:transparent!important;border:0!important}
+body.inkamnet-go-app .invoice-registry-head{margin-bottom:9px;padding:0 2px!important;border:0!important;background:transparent!important}
+body.inkamnet-go-app .invoice-registry-head>div:first-child h3{font-size:.95rem!important}
+body.inkamnet-go-app .invoice-registry-tools{gap:7px!important}
+body.inkamnet-go-app .invoice-registry-tools .legend-inline{display:none!important}
+body.inkamnet-go-app .invoice-selection-state{background:#fff!important;border-color:var(--go-line)!important}
+body.inkamnet-go-app .invoice-registry-card .action-safe-table{overflow:visible!important;border-radius:0!important}
+body.inkamnet-go-app .invoice-table{display:block!important;width:100%!important;min-width:0!important;border:0!important;background:transparent!important}
+body.inkamnet-go-app .invoice-table thead{display:none!important}
+body.inkamnet-go-app .invoice-table tbody{display:grid!important;gap:10px!important;width:100%!important}
+body.inkamnet-go-app .invoice-table tr.invoice-row{
+  display:grid!important;
+  grid-template-columns:28px minmax(0,1fr) auto!important;
+  gap:9px 10px!important;
+  width:100%!important;min-width:0!important;
+  padding:13px!important;
+  border:1px solid var(--go-line)!important;
+  border-radius:18px!important;
+  background:#fff!important;
+  box-shadow:none!important;
+}
+body.inkamnet-go-app .invoice-table tr.invoice-row:not(.has-admin-actions){grid-template-columns:minmax(0,1fr) auto!important}
+body.inkamnet-go-app .invoice-table tr.invoice-row>td{position:static!important;display:block!important;width:auto!important;min-width:0!important;max-width:none!important;padding:0!important;border:0!important;background:transparent!important;text-align:left!important;white-space:normal!important}
+body.inkamnet-go-app .invoice-table .invoice-no-cell{display:none!important}
+body.inkamnet-go-app .invoice-table .invoice-check-col{grid-column:1;grid-row:1;align-self:start;padding-top:2px!important}
+body.inkamnet-go-app .invoice-table .invoice-customer-cell{grid-column:2;grid-row:1;min-width:0!important}
+body.inkamnet-go-app .invoice-table tr.invoice-row:not(.has-admin-actions) .invoice-customer-cell{grid-column:1;grid-row:1}
+body.inkamnet-go-app .invoice-table .invoice-customer-cell .cell-main{font-size:.9rem!important;font-weight:760!important;letter-spacing:-.01em;color:var(--go-ink)!important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body.inkamnet-go-app .invoice-table .invoice-customer-cell .cell-sub{font-size:.64rem!important;color:var(--go-muted)!important}
+body.inkamnet-go-app .go-invoice-ref{display:block;margin-top:3px;color:var(--go-muted-2);font-family:var(--mono);font-size:.58rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.inkamnet-go-app .invoice-table .invoice-status-cell{grid-column:3;grid-row:1;align-self:start;justify-self:end}
+body.inkamnet-go-app .invoice-table tr.invoice-row:not(.has-admin-actions) .invoice-status-cell{grid-column:2;grid-row:1}
+body.inkamnet-go-app .invoice-table .invoice-status-cell .status-badge{margin:0!important;white-space:nowrap;font-size:.57rem!important}
+body.inkamnet-go-app .invoice-table .invoice-site-cell{grid-column:1/3;grid-row:2}
+body.inkamnet-go-app .invoice-table .invoice-period-cell{grid-column:3;grid-row:2;text-align:right!important}
+body.inkamnet-go-app .invoice-table tr.invoice-row:not(.has-admin-actions) .invoice-site-cell{grid-column:1;grid-row:2}
+body.inkamnet-go-app .invoice-table tr.invoice-row:not(.has-admin-actions) .invoice-period-cell{grid-column:2;grid-row:2}
+body.inkamnet-go-app .invoice-table .invoice-due-cell{grid-column:1/3;grid-row:3}
+body.inkamnet-go-app .invoice-table .invoice-total-cell{grid-column:3;grid-row:3;text-align:right!important}
+body.inkamnet-go-app .invoice-table tr.invoice-row:not(.has-admin-actions) .invoice-due-cell{grid-column:1;grid-row:3}
+body.inkamnet-go-app .invoice-table tr.invoice-row:not(.has-admin-actions) .invoice-total-cell{grid-column:2;grid-row:3}
+body.inkamnet-go-app .invoice-table .invoice-site-cell,
+body.inkamnet-go-app .invoice-table .invoice-period-cell,
+body.inkamnet-go-app .invoice-table .invoice-due-cell,
+body.inkamnet-go-app .invoice-table .invoice-total-cell{padding-top:8px!important;border-top:1px solid #f0f0f2!important}
+body.inkamnet-go-app .go-cell-label{display:block;margin-bottom:3px;color:var(--go-muted-2);font-size:.52rem;font-weight:760;letter-spacing:.07em;text-transform:uppercase}
+body.inkamnet-go-app .invoice-table .invoice-site-cell .cell-main,
+body.inkamnet-go-app .invoice-table .invoice-period-cell .cell-main,
+body.inkamnet-go-app .invoice-table .invoice-due-cell .cell-main,
+body.inkamnet-go-app .invoice-table .invoice-total-cell .cell-main{display:block;color:var(--go-ink)!important;font-size:.7rem!important;font-weight:720!important}
+body.inkamnet-go-app .invoice-table .invoice-site-cell .cell-sub,
+body.inkamnet-go-app .invoice-table .invoice-period-cell .cell-sub,
+body.inkamnet-go-app .invoice-table .invoice-total-cell .cell-sub{display:block;margin-top:2px;font-size:.56rem!important;color:var(--go-muted)!important}
+body.inkamnet-go-app .invoice-table .invoice-empty-row{display:block!important;width:100%!important;padding:18px!important;border:1px solid var(--go-line)!important;border-radius:18px!important;background:#fff!important}
+body.inkamnet-go-app .invoice-table .invoice-empty-row>td{display:block!important;width:100%!important;padding:0!important;border:0!important;background:transparent!important}
+body.inkamnet-go-app .invoice-table .invoice-pay-cell{grid-column:1/3;grid-row:4;padding-top:8px!important;border-top:1px solid #f0f0f2!important}
+body.inkamnet-go-app .invoice-table .invoice-action-cell{grid-column:3;grid-row:4;padding-top:8px!important;border-top:1px solid #f0f0f2!important;align-self:stretch}
+body.inkamnet-go-app .invoice-table tr.invoice-row:not(.has-admin-actions) .invoice-action-cell{grid-column:1/3;grid-row:4}
+body.inkamnet-go-app .invoice-pay-button{
+  width:auto!important;min-width:112px!important;height:42px!important;padding:0 14px!important;
+  justify-content:center!important;border-radius:12px!important;
+  border:1px solid rgba(52,199,89,.20)!important;background:rgba(52,199,89,.09)!important;
+  color:#168a32!important;font-size:.7rem!important;font-weight:800!important
+}
+body.inkamnet-go-app .invoice-pay-button span{display:inline!important}
+body.inkamnet-go-app .invoice-inline-actions{height:100%;justify-content:flex-end!important}
+body.inkamnet-go-app .go-invoice-action-button{width:auto!important;min-width:104px!important;height:42px!important;padding:0 12px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:6px!important;border:1px solid var(--go-line)!important;border-radius:12px!important;background:#f7f7f9!important;color:var(--go-ink)!important}
+body.inkamnet-go-app .go-action-label{display:inline!important;font-size:.68rem;font-weight:760}
+body:not(.inkamnet-go-app) .go-invoice-ref,body:not(.inkamnet-go-app) .go-cell-label,body:not(.inkamnet-go-app) .go-action-label{display:none}
+
+/* Row action menu becomes a predictable bottom sheet in APK instead of a tiny portal over a scrolled table. */
+body.inkamnet-go-app .ink-action-popover{
+  left:10px!important;right:10px!important;top:auto!important;
+  bottom:calc(78px + env(safe-area-inset-bottom))!important;
+  width:auto!important;max-height:min(68dvh,560px)!important;
+  border:1px solid var(--go-line)!important;border-radius:20px!important;
+  background:rgba(255,255,255,.98)!important;box-shadow:0 18px 54px rgba(0,0,0,.16)!important;
+  backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px)
+}
+body.inkamnet-go-app .ink-action-popover-head{padding:13px 14px 11px!important;background:#f7f7f9!important;border-bottom:1px solid var(--go-line)!important}
+body.inkamnet-go-app .ink-action-popover-body{max-height:calc(min(68dvh,560px) - 64px)!important;padding:7px!important}
+body.inkamnet-go-app .ink-action-item.compact{min-height:48px!important;border-radius:13px!important}
+body.inkamnet-go-app .ink-action-item.compact:hover{transform:none!important}
+
+/* Modals: full-height-safe, keyboard-aware and one-hand friendly. */
 body.inkamnet-go-app .modal{z-index:1130;padding:0!important;overscroll-behavior:contain}
 body.inkamnet-go-app.modal-open .modal-backdrop{z-index:1120}
 body.inkamnet-go-app .modal-dialog{height:calc(100vh - 16px);height:calc(var(--go-viewport-height,100dvh) - 16px);max-height:calc(100vh - 16px);max-height:calc(var(--go-viewport-height,100dvh) - 16px);margin:8px auto;align-items:flex-end;min-height:0}
-body.inkamnet-go-app .modal-content{display:flex;flex-direction:column;min-height:0;max-height:100%!important;overflow:hidden;border-radius:22px 22px 14px 14px!important}
-body.inkamnet-go-app .modal-header{flex:0 0 auto}
+body.inkamnet-go-app .modal-content{display:flex;flex-direction:column;min-height:0;max-height:100%!important;overflow:hidden;border:1px solid var(--go-line)!important;border-radius:22px 22px 14px 14px!important;background:#fff!important;box-shadow:0 24px 64px rgba(0,0,0,.18)!important}
+body.inkamnet-go-app .modal-header{flex:0 0 auto;border-bottom:1px solid var(--go-line)!important}
 body.inkamnet-go-app .modal-body{min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y}
-body.inkamnet-go-app .modal-footer{position:relative;bottom:auto;flex:0 0 auto;background:inherit;padding-bottom:max(12px,env(safe-area-inset-bottom));z-index:2;box-shadow:0 -7px 18px rgba(35,25,70,.07)}
+body.inkamnet-go-app .modal-footer{position:relative;bottom:auto;flex:0 0 auto;background:#fff!important;padding-bottom:max(12px,env(safe-area-inset-bottom));z-index:2;border-top:1px solid var(--go-line)!important;box-shadow:none!important}
 body.inkamnet-go-app .app-footer{display:none!important}
+body.inkamnet-go-app.modal-open .go-bottom-nav{opacity:0;visibility:hidden;pointer-events:none}
+body.inkamnet-go-app .operation-loader{left:10px!important;right:10px!important;bottom:calc(82px + env(safe-area-inset-bottom))!important;min-width:0!important;border-radius:16px!important}
+body.inkamnet-go-app .customer-bulk-bar{left:10px!important;right:10px!important;bottom:calc(80px + env(safe-area-inset-bottom))!important;border-radius:16px!important;background:rgba(255,255,255,.98)!important;border-color:var(--go-line)!important;box-shadow:0 12px 34px rgba(0,0,0,.12)!important}
+body.inkamnet-go-app .closing-sticky-bar{left:10px!important;right:10px!important;bottom:calc(80px + env(safe-area-inset-bottom))!important;border:1px solid var(--go-line)!important;border-radius:16px!important;background:rgba(255,255,255,.98)!important;color:var(--go-ink)!important;box-shadow:0 12px 34px rgba(0,0,0,.12)!important}
+body.inkamnet-go-app .payment-entry-content{height:100%;max-height:100%;overflow:hidden}
+body.inkamnet-go-app .payment-entry-body{min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;scrollbar-gutter:stable}
+body.inkamnet-go-app .payment-entry-footer{position:relative;z-index:2;flex:0 0 auto;background:#fff;padding-bottom:max(.75rem,env(safe-area-inset-bottom));box-shadow:none;border-top:1px solid var(--go-line)}
 
-/* A calmer, app-oriented dashboard: primary information first, deep analytics still available below. */
+/* Dashboard: web design language, just stacked for a phone. */
 body.inkamnet-go-app .command-dashboard{padding:0!important;background:none!important;border:0!important}
 body.inkamnet-go-app .command-tech-mesh,body.inkamnet-go-app .command-orbit,body.inkamnet-go-app .dashboard-user-ticker{display:none!important}
-body.inkamnet-go-app .command-hero{display:block!important;padding:17px!important;min-height:0!important;border:0!important;border-radius:18px!important;background:linear-gradient(135deg,#7047ef,#8b6bff)!important;box-shadow:0 12px 28px rgba(81,48,185,.22)}
-body.inkamnet-go-app .command-eyebrow{font-size:.58rem;color:rgba(255,255,255,.72)}
+body.inkamnet-go-app .command-hero{display:block!important;padding:16px!important;min-height:0!important;border:1px solid var(--go-line)!important;border-radius:20px!important;background:#fff!important;box-shadow:none!important}
+body.inkamnet-go-app .command-eyebrow{font-size:.57rem!important;color:var(--go-accent)!important}
 body.inkamnet-go-app .command-welcome-line{display:block!important}
 body.inkamnet-go-app .dashboard-user-identity{display:none!important}
-body.inkamnet-go-app .command-welcome-copy h1{font-size:1.35rem!important;color:#fff!important;margin-top:8px}
-body.inkamnet-go-app .command-welcome-copy p{font-size:.75rem!important;color:rgba(255,255,255,.78)!important;max-width:92%;margin-bottom:12px}
+body.inkamnet-go-app .command-welcome-copy h1{font-size:1.35rem!important;color:var(--go-ink)!important;margin-top:7px;letter-spacing:-.025em}
+body.inkamnet-go-app .command-welcome-copy p{font-size:.75rem!important;color:var(--go-muted)!important;max-width:96%;margin-bottom:12px}
 body.inkamnet-go-app .command-hero-actions{position:static!important;display:flex!important;gap:8px!important}
-body.inkamnet-go-app .command-period{display:flex!important;flex:1;overflow-x:auto;background:rgba(255,255,255,.12)!important;border-color:rgba(255,255,255,.2)!important;border-radius:12px!important}
-body.inkamnet-go-app .command-period select{min-width:88px;color:#fff!important;background-color:transparent!important;font-size:.7rem!important}
-body.inkamnet-go-app .command-add{width:43px;height:43px;padding:0!important;font-size:0!important;border-radius:12px!important;background:#fff!important;color:var(--go-purple)!important}
+body.inkamnet-go-app .command-period{display:flex!important;flex:1;overflow-x:auto;background:#f7f7f9!important;border-color:var(--go-line)!important;border-radius:12px!important}
+body.inkamnet-go-app .command-period select{min-width:88px;color:var(--go-ink)!important;background-color:transparent!important;font-size:.7rem!important}
+body.inkamnet-go-app .command-add{width:43px;height:43px;padding:0!important;font-size:0!important;border-radius:12px!important;background:var(--go-accent)!important;color:#fff!important;box-shadow:none!important}
 body.inkamnet-go-app .command-add i{font-size:1rem}
-body.inkamnet-go-app .command-kpis{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;margin:12px 0!important}
-body.inkamnet-go-app .command-kpi{min-height:105px!important;padding:13px!important;border:1px solid var(--go-line)!important;background:#fff!important;border-radius:16px!important;box-shadow:0 5px 18px rgba(35,25,70,.05)!important}
+body.inkamnet-go-app .command-kpis{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:9px!important;margin:10px 0!important}
+body.inkamnet-go-app .command-kpi{min-height:100px!important;padding:12px!important;border:1px solid var(--go-line)!important;background:#fff!important;border-radius:17px!important;box-shadow:none!important}
 body.inkamnet-go-app .command-kpi-icon{width:34px!important;height:34px!important;border-radius:11px!important}
 body.inkamnet-go-app .command-kpi small{font-size:.56rem!important}
 body.inkamnet-go-app .command-kpi strong{font-size:1rem!important;color:var(--go-ink)!important;overflow-wrap:anywhere}
-body.inkamnet-go-app .psb-hero-v119{grid-template-columns:1fr!important;padding:15px!important;border-radius:17px!important}
+body.inkamnet-go-app .psb-hero-v119{grid-template-columns:1fr!important;padding:14px!important;border-radius:18px!important}
 body.inkamnet-go-app .psb-hero-chart{height:140px!important}
 body.inkamnet-go-app .psb-hero-side{display:none!important}
-body.inkamnet-go-app .command-main-grid,body.inkamnet-go-app .command-pulse-grid,body.inkamnet-go-app .dashboard-widgets-v121{grid-template-columns:1fr!important;gap:10px!important}
+body.inkamnet-go-app .command-main-grid,body.inkamnet-go-app .command-pulse-grid,body.inkamnet-go-app .dashboard-widgets-v121{grid-template-columns:1fr!important;gap:9px!important}
 body.inkamnet-go-app .command-chart{height:220px!important}
 body.inkamnet-go-app .dashboard-alert-popover{position:fixed!important;left:10px!important;right:10px!important;bottom:calc(84px + env(safe-area-inset-bottom))!important;top:auto!important;width:auto!important;max-height:52vh!important}
 
+/* Bottom navigation. */
 .go-bottom-nav,.go-menu,.go-sheet{display:none}
-body.inkamnet-go-app .go-bottom-nav{position:fixed;z-index:1080;left:0;right:0;bottom:0;height:calc(68px + env(safe-area-inset-bottom));padding:7px 7px env(safe-area-inset-bottom);display:grid;grid-template-columns:repeat(5,1fr);align-items:start;background:rgba(255,255,255,.97);border-top:1px solid var(--go-line);box-shadow:0 -10px 30px rgba(35,25,70,.09);backdrop-filter:blur(20px);transition:opacity .16s ease,visibility .16s ease}
-body.inkamnet-go-app.modal-open .go-bottom-nav{opacity:0;visibility:hidden;pointer-events:none}
-body.inkamnet-go-app .payment-entry-content{height:100%;max-height:100%;overflow:hidden}
-body.inkamnet-go-app .payment-entry-body{min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;scrollbar-gutter:stable}
-body.inkamnet-go-app .payment-entry-footer{position:relative;z-index:2;flex:0 0 auto;background:var(--panel);padding-bottom:max(.75rem,env(safe-area-inset-bottom));box-shadow:0 -8px 20px rgba(35,25,70,.08)}
-@media(max-width:575.98px){body.inkamnet-go-app .modal-dialog{width:calc(100% - 16px)}}
-@media(max-width:767.98px){body.inkamnet-go-app .payment-entry-modal{padding:0!important}body.inkamnet-go-app .payment-entry-dialog{width:calc(100% - 16px);min-height:0}body.inkamnet-go-app .payment-entry-content{border-radius:18px}body.inkamnet-go-app .payment-entry-header{flex:0 0 auto}body.inkamnet-go-app .payment-entry-footer{display:grid;grid-template-columns:1fr 1fr;gap:8px}body.inkamnet-go-app .payment-entry-footer .payment-modal-total{grid-column:1/-1;width:auto;margin:0}body.inkamnet-go-app .payment-entry-footer .btn-tech{width:100%;min-height:42px;justify-content:center}}
-body.inkamnet-go-app .go-bottom-nav>a,body.inkamnet-go-app .go-bottom-nav>button{height:54px;border:0;background:none;color:#9893a8;text-decoration:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:.61rem;font-weight:650}
-body.inkamnet-go-app .go-bottom-nav i{font-size:1.2rem;line-height:1}
-body.inkamnet-go-app .go-bottom-nav .active{color:var(--go-purple)}
-body.inkamnet-go-app .go-bottom-nav .go-add-button{width:52px;height:52px;margin:-20px auto 0;border-radius:17px;background:linear-gradient(135deg,var(--go-purple),var(--go-purple-2));color:#fff;box-shadow:0 8px 22px rgba(109,69,244,.38)}
-body.inkamnet-go-app .go-bottom-nav .go-add-button i{font-size:1.55rem}
+body.inkamnet-go-app .go-bottom-nav{
+  position:fixed;z-index:1080;left:0;right:0;bottom:0;
+  height:calc(68px + env(safe-area-inset-bottom));padding:6px 7px env(safe-area-inset-bottom);
+  display:grid;grid-template-columns:repeat(5,1fr);align-items:start;
+  background:rgba(250,250,252,.96);border-top:1px solid rgba(0,0,0,.08);box-shadow:none;
+  backdrop-filter:saturate(180%) blur(22px);-webkit-backdrop-filter:saturate(180%) blur(22px);
+  transition:opacity .16s ease,visibility .16s ease
+}
+body.inkamnet-go-app .go-bottom-nav>a,body.inkamnet-go-app .go-bottom-nav>button{height:54px;border:0;background:none;color:#8e8e93;text-decoration:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:.59rem;font-weight:650}
+body.inkamnet-go-app .go-bottom-nav i{font-size:1.16rem;line-height:1}
+body.inkamnet-go-app .go-bottom-nav .active{color:var(--go-accent)}
+body.inkamnet-go-app .go-bottom-nav .go-add-button{width:48px;height:48px;margin:-17px auto 0;border-radius:15px;background:var(--go-accent);color:#fff;box-shadow:0 8px 20px rgba(108,79,224,.22)}
+body.inkamnet-go-app .go-bottom-nav .go-add-button i{font-size:1.45rem}
 body.inkamnet-go-app.go-overlay-open{overflow:hidden;overscroll-behavior:none}
-body.inkamnet-go-app .go-menu{display:flex;visibility:hidden;opacity:0;pointer-events:none;position:fixed;z-index:1100;inset:0;flex-direction:column;background:var(--go-bg);color:var(--go-ink);transition:.2s ease}
-body.inkamnet-go-app .go-menu.open{visibility:visible;opacity:1;pointer-events:auto}
-body.inkamnet-go-app .go-menu>header{padding:calc(20px + env(safe-area-inset-top)) 20px 17px;display:flex;justify-content:space-between;align-items:flex-start;background:linear-gradient(135deg,var(--go-purple),var(--go-purple-2));color:#fff;border-radius:0 0 26px 26px}
-body.inkamnet-go-app .go-menu header small{color:rgba(255,255,255,.7)!important;font-size:.62rem;letter-spacing:.15em}
-body.inkamnet-go-app .go-menu header h2{font-size:1.55rem;margin:4px 0 2px}
-body.inkamnet-go-app .go-menu header p{font-size:.75rem;color:rgba(255,255,255,.75);margin:0}
-body.inkamnet-go-app .go-menu header button,body.inkamnet-go-app .go-sheet header button{border:0;width:40px;height:40px;border-radius:13px;background:rgba(255,255,255,.16);color:inherit}
-body.inkamnet-go-app .go-menu-scroll{flex:1 1 auto;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:18px 16px calc(30px + env(safe-area-inset-bottom))}
-body.inkamnet-go-app .go-menu section{margin-bottom:22px}
-body.inkamnet-go-app .go-menu section h3{font-size:.75rem;margin:0 4px 10px;color:var(--go-muted);font-weight:750}
-body.inkamnet-go-app .go-menu-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
-body.inkamnet-go-app .go-menu-grid>a,body.inkamnet-go-app .go-menu-grid>button{min-width:0;min-height:87px;border:1px solid var(--go-line);border-radius:16px;background:#fff;color:var(--go-ink);text-decoration:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:9px 5px;text-align:center;box-shadow:0 4px 14px rgba(35,25,70,.04)}
-body.inkamnet-go-app .go-menu-grid i{width:37px;height:37px;border-radius:12px;display:grid;place-items:center;background:#f0ebff;color:var(--go-purple);font-size:1.08rem}
-body.inkamnet-go-app .go-menu-grid span{font-size:.65rem;font-weight:700;line-height:1.2}
-body.inkamnet-go-app .go-tapped{transform:scale(.96);opacity:.72}
-body.inkamnet-go-app .go-sheet{display:block;visibility:hidden;opacity:0;pointer-events:none;position:fixed;z-index:1110;inset:0;transition:.2s ease}
-body.inkamnet-go-app .go-sheet.open{visibility:visible;opacity:1;pointer-events:auto}
-body.inkamnet-go-app .go-sheet-backdrop{position:absolute;inset:0;border:0;background:rgba(20,14,41,.48);backdrop-filter:blur(3px)}
-body.inkamnet-go-app .go-sheet-panel{position:absolute;left:0;right:0;bottom:0;max-height:calc(var(--go-viewport-height,100dvh) - 12px);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:9px 16px calc(22px + env(safe-area-inset-bottom));border-radius:25px 25px 0 0;background:#fff;color:var(--go-ink);transform:translateY(105%);transition:transform .25s ease}
-body.inkamnet-go-app .go-sheet.open .go-sheet-panel{transform:none}
-body.inkamnet-go-app .go-sheet-handle{width:38px;height:4px;border-radius:4px;background:#d9d5e3;margin:0 auto 14px}
-body.inkamnet-go-app .go-sheet header{display:flex;align-items:center;justify-content:space-between;margin-bottom:15px}
-body.inkamnet-go-app .go-sheet header small{font-size:.59rem;letter-spacing:.13em;color:var(--go-purple)!important;font-weight:750}
-body.inkamnet-go-app .go-sheet header h2{font-size:1.25rem;margin:2px 0}
-body.inkamnet-go-app .go-sheet header button{background:#f1eef7;color:var(--go-ink)}
-body.inkamnet-go-app .go-quick-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-body.inkamnet-go-app .go-quick-grid a{display:flex;align-items:center;gap:10px;padding:13px;border:1px solid var(--go-line);border-radius:15px;color:var(--go-ink);text-decoration:none;background:#faf9fd}
-body.inkamnet-go-app .go-quick-grid>a>i{width:39px;height:39px;display:grid;place-items:center;border-radius:12px;background:#eee8ff;color:var(--go-purple);font-size:1.05rem}
-body.inkamnet-go-app .go-quick-grid span{display:flex;flex-direction:column;min-width:0}
-body.inkamnet-go-app .go-quick-grid b{font-size:.76rem}
-body.inkamnet-go-app .go-quick-grid small{font-size:.61rem}
 
-@media(max-width:374px){body.inkamnet-go-app .go-menu-grid{grid-template-columns:repeat(3,minmax(0,1fr))}body.inkamnet-go-app .go-quick-grid,body.inkamnet-go-app .go-primary-filter .filter-grid,body.inkamnet-go-app .go-primary-filter .billing-filter-grid{grid-template-columns:1fr!important}body.inkamnet-go-app .topbar-actions .header-center-dropdown:nth-of-type(2){display:none}}
-@media(min-width:768px){body.inkamnet-go-app .content-wrap{max-width:760px;margin:0 auto}body.inkamnet-go-app .go-bottom-nav{left:50%;right:auto;width:760px;transform:translateX(-50%);border-radius:22px 22px 0 0}body.inkamnet-go-app .go-menu,body.inkamnet-go-app .go-sheet{left:50%;right:auto;width:760px;transform:translateX(-50%)}}
+/* Full menu + quick actions. */
+body.inkamnet-go-app .go-menu{display:flex;visibility:hidden;opacity:0;pointer-events:none;position:fixed;z-index:1100;inset:0;flex-direction:column;background:var(--go-bg);color:var(--go-ink);transition:.18s ease}
+body.inkamnet-go-app .go-menu.open{visibility:visible;opacity:1;pointer-events:auto}
+body.inkamnet-go-app .go-menu>header{padding:calc(18px + env(safe-area-inset-top)) 18px 15px;display:flex;justify-content:space-between;align-items:flex-start;background:rgba(245,245,247,.97);color:var(--go-ink);border-bottom:1px solid var(--go-line)}
+body.inkamnet-go-app .go-menu header small{color:var(--go-accent)!important;font-size:.59rem;letter-spacing:.13em}
+body.inkamnet-go-app .go-menu header h2{font-size:1.45rem;margin:3px 0 2px;letter-spacing:-.025em}
+body.inkamnet-go-app .go-menu header p{font-size:.73rem;color:var(--go-muted);margin:0}
+body.inkamnet-go-app .go-menu header button,body.inkamnet-go-app .go-sheet header button{border:0;width:40px;height:40px;border-radius:13px;background:#e9e9ed;color:var(--go-ink)}
+body.inkamnet-go-app .go-menu-scroll{flex:1 1 auto;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:16px 14px calc(30px + env(safe-area-inset-bottom))}
+body.inkamnet-go-app .go-menu section{margin-bottom:20px}
+body.inkamnet-go-app .go-menu section h3{font-size:.69rem;margin:0 4px 8px;color:var(--go-muted);font-weight:760}
+body.inkamnet-go-app .go-menu-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+body.inkamnet-go-app .go-menu-grid>a,body.inkamnet-go-app .go-menu-grid>button{min-width:0;min-height:84px;border:1px solid var(--go-line);border-radius:16px;background:#fff;color:var(--go-ink);text-decoration:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:8px 5px;text-align:center;box-shadow:none}
+body.inkamnet-go-app .go-menu-grid i{width:36px;height:36px;border-radius:12px;display:grid;place-items:center;background:rgba(108,79,224,.08);color:var(--go-accent);font-size:1.02rem}
+body.inkamnet-go-app .go-menu-grid span{font-size:.63rem;font-weight:710;line-height:1.2}
+body.inkamnet-go-app .go-tapped{transform:scale(.97);opacity:.72}
+body.inkamnet-go-app .go-sheet{display:block;visibility:hidden;opacity:0;pointer-events:none;position:fixed;z-index:1110;inset:0;transition:.18s ease}
+body.inkamnet-go-app .go-sheet.open{visibility:visible;opacity:1;pointer-events:auto}
+body.inkamnet-go-app .go-sheet-backdrop{position:absolute;inset:0;border:0;background:rgba(0,0,0,.26);backdrop-filter:blur(2px)}
+body.inkamnet-go-app .go-sheet-panel{position:absolute;left:0;right:0;bottom:0;max-height:calc(var(--go-viewport-height,100dvh) - 12px);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:9px 14px calc(20px + env(safe-area-inset-bottom));border-radius:24px 24px 0 0;background:#fff;color:var(--go-ink);transform:translateY(105%);transition:transform .22s ease;box-shadow:0 -20px 50px rgba(0,0,0,.12)}
+body.inkamnet-go-app .go-sheet.open .go-sheet-panel{transform:none}
+body.inkamnet-go-app .go-sheet-handle{width:36px;height:4px;border-radius:4px;background:#d1d1d6;margin:0 auto 13px}
+body.inkamnet-go-app .go-sheet header{display:flex;align-items:center;justify-content:space-between;margin-bottom:13px}
+body.inkamnet-go-app .go-sheet header small{font-size:.57rem;letter-spacing:.12em;color:var(--go-accent)!important;font-weight:760}
+body.inkamnet-go-app .go-sheet header h2{font-size:1.2rem;margin:2px 0;letter-spacing:-.02em}
+body.inkamnet-go-app .go-quick-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+body.inkamnet-go-app .go-quick-grid a{min-height:70px;display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--go-line);border-radius:16px;color:var(--go-ink);text-decoration:none;background:#fff}
+body.inkamnet-go-app .go-quick-grid>a>i{width:38px;height:38px;display:grid;place-items:center;border-radius:12px;background:rgba(108,79,224,.08);color:var(--go-accent);font-size:1rem}
+body.inkamnet-go-app .go-quick-grid span{display:flex;flex-direction:column;min-width:0}
+body.inkamnet-go-app .go-quick-grid b{font-size:.74rem}
+body.inkamnet-go-app .go-quick-grid small{font-size:.59rem}
+
+@media(max-width:575.98px){body.inkamnet-go-app .modal-dialog{width:calc(100% - 16px)}}
+@media(max-width:767.98px){
+  body.inkamnet-go-app .payment-entry-modal{padding:0!important}
+  body.inkamnet-go-app .payment-entry-dialog{width:calc(100% - 16px);min-height:0}
+  body.inkamnet-go-app .payment-entry-content{border-radius:18px}
+  body.inkamnet-go-app .payment-entry-header{flex:0 0 auto}
+  body.inkamnet-go-app .payment-entry-footer{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  body.inkamnet-go-app .payment-entry-footer .payment-modal-total{grid-column:1/-1;width:auto;margin:0}
+  body.inkamnet-go-app .payment-entry-footer .btn-tech{width:100%;min-height:44px;justify-content:center}
+}
+@media(max-width:374px){
+  body.inkamnet-go-app .go-menu-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  body.inkamnet-go-app .go-quick-grid,
+  body.inkamnet-go-app .go-primary-filter .filter-grid,
+  body.inkamnet-go-app .go-primary-filter .billing-filter-grid{grid-template-columns:1fr!important}
+  body.inkamnet-go-app .topbar-actions .header-center-dropdown:nth-of-type(2){display:none}
+  body.inkamnet-go-app .invoice-table tr.invoice-row{padding:11px!important;gap:8px!important}
+  body.inkamnet-go-app .invoice-table .invoice-status-cell .status-badge{font-size:.52rem!important}
+}
+@media(min-width:768px){
+  body.inkamnet-go-app .content-wrap{max-width:760px;margin:0 auto}
+  body.inkamnet-go-app .go-bottom-nav{left:50%;right:auto;width:760px;transform:translateX(-50%);border-radius:22px 22px 0 0}
+  body.inkamnet-go-app .go-menu,body.inkamnet-go-app .go-sheet{left:50%;right:auto;width:760px;transform:translateX(-50%)}
+}
+@media(prefers-reduced-motion:reduce){body.inkamnet-go-app *,body.inkamnet-go-app *::before,body.inkamnet-go-app *::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}

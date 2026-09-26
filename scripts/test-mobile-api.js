@@ -26,7 +26,7 @@ assert(app.includes('deliverMobilePushes'));
 assert(push.includes("scope: 'https://www.googleapis.com/auth/firebase.messaging'"));
 assert(push.includes('fcm.googleapis.com/v1/projects/'));
 assert(push.includes("if (!firebase) return { configured:false, sent:0, failed:0 }"));
-assert(env.includes('MOBILE_ANDROID_VERSION_CODE=2'));
+assert(env.includes('MOBILE_ANDROID_VERSION_CODE=7'));
 assert(env.includes('FIREBASE_SERVICE_ACCOUNT_JSON='));
 
 console.log('Mobile API validation passed: update, App Links, crash, token registry, FCM delivery and safe fallback markers.');

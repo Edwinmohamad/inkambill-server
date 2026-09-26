@@ -63,6 +63,26 @@
     else clearLayerState();
   }));
 
+  // Android WebView is configured without multi-window support. Links that use target="_blank"
+  // (invoice PDF, receipts, WhatsApp and several report actions) can otherwise look dead. Route the
+  // click through the current WebView; trusted links stay in-app and external schemes/hosts are then
+  // handed to MainActivity's safe navigation handler.
+  document.addEventListener('click',event=>{
+    const link=event.target.closest('a[target="_blank"]');
+    if(!link||event.defaultPrevented||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
+    const href=link.href;if(!href)return;
+    event.preventDefault();
+    location.href=href;
+  });
+
+  // Keep row-action portals from surviving a bfcache restore or orientation change. A stale fixed
+  // popover can cover the LUNAS button even though its source row is no longer visible.
+  const closeMobileActionPopovers=()=>{
+    document.querySelectorAll('.ink-action-popover:not([hidden])').forEach(node=>{node.hidden=true;node.style.removeProperty('visibility');});
+    document.querySelectorAll('[data-action-popover-target][aria-expanded="true"]').forEach(node=>{node.setAttribute('aria-expanded','false');node.classList.remove('show');});
+  };
+  window.addEventListener('orientationchange',()=>setTimeout(closeMobileActionPopovers,80));
+
   document.addEventListener('show.bs.modal',()=>closeAllOverlays({consumeHistory:false,restoreFocus:false}));
   document.addEventListener('shown.bs.modal',event=>{
     const modal=event.target;if(!modal?.classList.contains('modal'))return;
@@ -76,5 +96,5 @@
   // Arriving (via Back) on an entry that was pushed for a modal/overlay — e.g. after a form in a
   // modal was submitted — skip it so one Back press returns to the previous screen.
   if(layerState())history.back();
-  window.addEventListener('pageshow',event=>{if(!event.persisted)return;closeAllOverlays({consumeHistory:false,restoreFocus:false});if(layerState()){history.back();}document.querySelectorAll('.go-tapped').forEach(node=>node.classList.remove('go-tapped'));document.querySelectorAll('.modal.show').forEach(node=>{node.classList.remove('show');node.style.display='none';node.setAttribute('aria-hidden','true');});body.classList.remove('modal-open');body.style.removeProperty('overflow');body.style.removeProperty('padding-right');document.querySelectorAll('.modal-backdrop').forEach(node=>node.remove());});
+  window.addEventListener('pageshow',event=>{if(!event.persisted)return;closeAllOverlays({consumeHistory:false,restoreFocus:false});closeMobileActionPopovers();if(layerState()){history.back();}document.querySelectorAll('.go-tapped').forEach(node=>node.classList.remove('go-tapped'));document.querySelectorAll('.modal.show').forEach(node=>{node.classList.remove('show');node.style.display='none';node.setAttribute('aria-hidden','true');});body.classList.remove('modal-open');body.style.removeProperty('overflow');body.style.removeProperty('padding-right');document.querySelectorAll('.modal-backdrop').forEach(node=>node.remove());});
 })();

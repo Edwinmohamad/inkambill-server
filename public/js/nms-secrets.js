@@ -222,10 +222,98 @@
     });
   }
 
+  // ---------------------------------------------------------------- Excel import / export mapping PPP
+  async function excelUpload(url, file, extra = {}) {
+    const fd = new FormData();
+    fd.append('nms_file', file);
+    Object.entries(extra).forEach(([k, v]) => fd.append(k, String(v)));
+    const res = await fetch(url, {
+      method: 'POST', credentials: 'same-origin', cache: 'no-store',
+      headers: { Accept: 'application/json', 'X-CSRF-Token': app.dataset.csrf }, body: fd
+    });
+    let data = null;
+    try { data = await res.json(); } catch (_) { throw new Error(`HTTP ${res.status}`); }
+    if (!res.ok || data.ok === false) throw Object.assign(new Error(data.error || `HTTP ${res.status}`), { status: res.status, code: data.code });
+    return data;
+  }
+
+  function excelStatus(row) {
+    const cfg = {
+      ready: ['bi-check-circle-fill', 'var(--x-green)', 'Siap'],
+      warning: ['bi-exclamation-triangle-fill', 'var(--x-orange)', 'Konflik'],
+      error: ['bi-x-circle-fill', 'var(--x-red)', 'Error'],
+      noop: ['bi-minus-circle', 'var(--x-gray)', 'Tidak berubah']
+    }[row.status] || ['bi-info-circle', 'var(--x-gray)', row.status || '—'];
+    return `<span style="display:inline-flex;gap:6px;align-items:center;color:${cfg[1]}"><i class="bi ${cfg[0]}"></i><b>${cfg[2]}</b></span>`;
+  }
+
+  function openExcelImport() {
+    let file = null, preview = null;
+    const sh = N.sheet({
+      title: 'Import Mapping PPP dari Excel',
+      subtitle: 'Aman: file selalu di-Preview dulu. Data baru berubah setelah tombol Apply ditekan.', size: 'lg',
+      body: `<div class="nx-note" style="margin-bottom:12px"><b>Format utama</b> · AKSI, SITE, ROUTER, PPPOE_USERNAME, CUSTOMER_CODE, CATATAN.<br><span class="dim">LINK membutuhkan CUSTOMER_CODE. UNLINK hanya membutuhkan secret. Untuk menghindari salah pelanggan, import tidak mencocokkan berdasarkan nama.</span></div>
+        <div class="nx-field"><label>File Excel (.xlsx)</label><input type="file" data-file accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"><span class="hint">Maks. 5.000 baris / 8 MB. Gunakan Template bila membuat file dari nol.</span></div>
+        <div data-preview><div class="nx-empty" style="padding:28px 0"><i class="bi bi-file-earmark-spreadsheet"></i>Pilih file, lalu klik Preview. Tidak ada data yang akan diubah pada tahap ini.</div></div>`,
+      foot: `<span class="left dim" data-foot style="font-size:12px">Belum ada file.</span><button type="button" class="nx-btn" data-template><i class="bi bi-download"></i>Template</button><button type="button" class="nx-btn" data-preview-btn disabled><i class="bi bi-eye"></i>Preview</button><button type="button" class="nx-btn primary" data-apply disabled><i class="bi bi-check2"></i>Apply</button>`
+    });
+    const renderPreview = p => {
+      preview = p;
+      const x = p.summary;
+      const hasWarn = x.warning > 0, hasErr = x.error > 0;
+      sh.$('[data-preview]').innerHTML = `
+        <div class="nx-mini-stats" style="margin-bottom:12px"><div><small>Total</small><b>${x.total}</b></div><div><small>Siap</small><b style="color:var(--x-green)">${x.ready}</b></div><div><small>Konflik</small><b style="color:${x.warning ? 'var(--x-orange)' : 'inherit'}">${x.warning}</b></div><div><small>Error</small><b style="color:${x.error ? 'var(--x-red)' : 'inherit'}">${x.error}</b></div><div><small>Tidak berubah</small><b>${x.noop}</b></div></div>
+        ${hasWarn ? `<label class="nx-check" style="margin:0 0 12px"><input type="checkbox" data-overwrite> Saya sudah cek konflik dan izinkan pelanggan/secret dipindahkan dari mapping existing.</label>` : ''}
+        ${hasErr ? `<div class="nx-note" style="margin-bottom:10px;color:var(--x-red)"><b>Apply dikunci.</b> Perbaiki ${x.error} baris error di Excel lalu Preview ulang.</div>` : ''}
+        <div class="nx-table-wrap" style="max-height:360px;border:1px solid var(--x-line);border-radius:12px"><table class="nx-table"><thead><tr><th>Baris</th><th>Aksi</th><th>Secret</th><th>Pelanggan</th><th>Validasi</th><th>Keterangan</th></tr></thead><tbody>
+          ${p.rows.slice(0, 250).map(r => `<tr><td class="mono">${r.row}</td><td><b>${esc(r.action)}</b></td><td><b class="mono">${esc(r.username)}</b><span class="sub">${esc(r.siteCode || r.site || '—')}${r.routerName || r.router ? ' · ' + esc(r.routerName || r.router) : ''}</span></td><td>${r.action === 'LINK' ? `<b class="mono">${esc(r.customerCode || '—')}</b><span class="sub">${esc(r.customerName || '')}</span>` : `<span class="dim">${esc(r.currentCustomerCode || '—')}</span>`}</td><td>${excelStatus(r)}</td><td style="max-width:360px">${esc(r.message)}</td></tr>`).join('')}
+        </tbody></table></div>${p.rows.length > 250 ? `<div class="dim" style="margin-top:8px">Menampilkan 250 dari ${p.rows.length} baris. Semua baris tetap divalidasi server.</div>` : ''}`;
+      sh.$('[data-apply]').disabled = hasErr || (!x.ready && !x.warning);
+      sh.$('[data-foot]').textContent = `${x.link} LINK · ${x.unlink} UNLINK · ${x.error} error`;
+    };
+    sh.$('[data-file]').addEventListener('change', e => {
+      file = e.target.files?.[0] || null; preview = null;
+      sh.$('[data-preview-btn]').disabled = !file; sh.$('[data-apply]').disabled = true;
+      sh.$('[data-foot]').textContent = file ? `${file.name} · ${(file.size / 1024).toFixed(0)} KB` : 'Belum ada file.';
+    });
+    sh.$('[data-template]').addEventListener('click', () => location.assign(`/nms/api/excel/template${N.withSite()}`));
+    sh.$('[data-preview-btn]').addEventListener('click', async e => {
+      if (!file) return;
+      const btn = e.currentTarget; btn.classList.add('busy');
+      try {
+        const out = await excelUpload(`/nms/api/excel/preview${N.withSite()}`, file);
+        renderPreview(out.preview);
+        toast('Preview Excel selesai. Belum ada data yang diubah.', 'ok');
+      } catch (err) { toast(err.message, 'err'); }
+      finally { btn.classList.remove('busy'); }
+    });
+    sh.$('[data-apply]').addEventListener('click', async e => {
+      if (!file || !preview) return;
+      const overwrite = !!sh.$('[data-overwrite]')?.checked;
+      if (preview.summary.warning && !overwrite) return toast('Centang izin pemindahan mapping setelah memeriksa baris Konflik.', 'err');
+      const c = preview.summary.ready + (overwrite ? preview.summary.warning : 0);
+      if (!(await N.confirmBox({ title: 'Terapkan mapping dari Excel?', okText: `Apply ${c} baris`, message: `${c} perubahan akan diproses. ${preview.summary.unlink ? `<b>${preview.summary.unlink} UNLINK</b> akan melepas relasi pelanggan dari secret.<br>` : ''}LINK akan dicatat ke Riwayat Smart Sync agar dapat diaudit/di-undo.` }))) return;
+      const btn = e.currentTarget; btn.classList.add('busy');
+      try {
+        const out = await excelUpload(`/nms/api/excel/apply${N.withSite()}`, file, { allow_overwrite: overwrite ? 1 : 0 });
+        const x = out.summary;
+        const failed = x.linkFailed + x.unlinkFailed;
+        toast(`Excel selesai: ${x.linked} link, ${x.unlinked} unlink${x.unchanged ? `, ${x.unchanged} tetap` : ''}${failed ? `, ${failed} gagal` : ''}.`, failed ? 'err' : 'ok', x.batchId ? { action: 'Riwayat', duration: 8000, onAction: () => location.assign(`/nms/automation${N.withSite()}#sync`) } : {});
+        sh.close(); selected.clear(); N.changed();
+      } catch (err) { toast(err.message, 'err'); btn.classList.remove('busy'); }
+    });
+  }
+
+  $('btnExcel')?.addEventListener('click', e => N.menu(e.currentTarget, [
+    ...(N.canControl ? [{ label: 'Import mapping dari Excel…', icon: 'bi-file-earmark-arrow-up', run: openExcelImport }, { label: 'Download template import', icon: 'bi-file-earmark-spreadsheet', run: () => location.assign(`/nms/api/excel/template${N.withSite()}`) }, '-'] : []),
+    { label: 'Ekspor tab ini ke Excel', icon: 'bi-file-earmark-arrow-down', run: () => location.assign(`/nms/api/excel/export${qs({ site: N.site || undefined, kind: st.tab })}`) },
+    { label: 'Ekspor semua mapping ke Excel', icon: 'bi-download', run: () => location.assign(`/nms/api/excel/export${qs({ site: N.site || undefined, kind: 'all' })}`) }
+  ]));
+
   // ---------------------------------------------------------------- Menu toolbar
   $('btnMore').addEventListener('click', e => N.menu(e.currentTarget, [
     ...(N.canControl ? [{ label: 'Aksi masal per site…', icon: 'bi-collection', run: siteBulk }, '-'] : []),
-    { label: 'Ekspor tab ini (CSV)', icon: 'bi-download', run: () => location.assign(`/nms/api/export${qs({ site: N.site || undefined, kind: st.tab })}`) },
+    { label: 'Ekspor tab ini (CSV legacy)', icon: 'bi-filetype-csv', run: () => location.assign(`/nms/api/export${qs({ site: N.site || undefined, kind: st.tab })}`) },
     { label: 'Laporan Fasum…', icon: 'bi-building', run: fasumReport },
     ...(N.canControl ? [{ label: 'Tulis tag CID ke MikroTik…', icon: 'bi-tag', run: writeCidTags }] : []),
     { label: 'Riwayat Smart Sync & undo', icon: 'bi-clock-history', run: () => location.assign(`/nms/automation${N.withSite()}#sync`) },
