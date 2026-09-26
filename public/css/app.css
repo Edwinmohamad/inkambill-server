@@ -2392,3 +2392,20 @@ html[data-theme="dark"] .recon-page .cash-age.late{background:var(--danger-tint)
 .closing-idebt-person .table-responsive{padding:0 14px}
 .closing-idebt-link{display:inline-flex;gap:4px;align-items:center;font-size:13px;color:var(--info);text-decoration:none;padding:10px 14px 14px}
 @media (max-width:640px){.closing-idebt-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.closing-idebt-amount small{display:none}}
+
+/* Rekonsiliasi — tampilan ringkas (tanpa widget/grafik): baris ringkasan, preset periode, daftar setoran lipat */
+.recon-summary-line{display:flex;flex-wrap:wrap;align-items:center;gap:8px 22px;padding:10px 14px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+.recon-summary-line>div{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
+.recon-summary-line span{font-size:.62rem;color:var(--muted);font-weight:650;text-transform:uppercase;letter-spacing:.04em}
+.recon-summary-line b{font-size:.92rem}
+.recon-summary-line small{font-size:.68rem;color:var(--muted)}
+.recon-summary-line .recon-aging-setting{display:flex}
+.recon-presets{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px;font-size:.68rem;color:var(--muted)}
+.recon-presets a{padding:3px 10px;border:1px solid var(--line);border-radius:999px;color:inherit;text-decoration:none}
+.recon-presets a:hover,.recon-presets a.active{border-color:var(--primary,#6C4FE0);color:var(--primary,#6C4FE0)}
+.recon-settlement-list>summary{cursor:pointer;list-style:none}
+.recon-settlement-list>summary::-webkit-details-marker{display:none}
+.recon-settlement-list>summary>i{transition:transform .15s}
+.recon-settlement-list[open]>summary>i{transform:rotate(180deg)}
+.recon-count{font-style:normal;font-size:.7rem;color:var(--muted);margin-left:4px}
+@media(max-width:640px){.recon-summary-line{flex-direction:column;align-items:flex-start}.recon-summary-line .recon-aging-setting{margin-left:0!important}}
