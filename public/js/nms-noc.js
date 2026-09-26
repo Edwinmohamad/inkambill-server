@@ -131,6 +131,7 @@
   function renderRouters() {
     const list = sorted();
     $('nmsRouters').innerHTML = list.length ? list.map(routerCard).join('') : '<div class="nx-card nx-span-all"><div class="nx-empty"><i class="bi bi-router"></i>Belum ada router aktif. Tambahkan di menu Router.</div></div>';
+    downAt.forEach((t, id) => { if (Date.now() - t < 6000) $('nmsRouters').querySelector(`[data-router-detail="${id}"]`)?.classList.add('just-down'); else downAt.delete(id); });
     const up = list.filter(r => r.status === 'online').length;
     $('kpiRouters').textContent = `${up}/${list.length}`;
     $('kpiRoutersSub').textContent = list.length && up < list.length ? `${list.length - up} tidak terjangkau` : 'polling tiap 15 detik';
@@ -147,11 +148,26 @@
   }
   $('nmsRouters').addEventListener('click', e => { const id = e.target.closest('[data-router-detail]')?.dataset.routerDetail; if (id) routerDetail(id); });
 
+  // ---------- Angka KPI bergulir halus saat berubah ----------
+  const numRaf = new WeakMap();
+  function setNum(el, v) {
+    if (!el) return;
+    const to = Number(v) || 0, from = Number(String(el.textContent).replace(/[^\d-]/g, '')) || 0;
+    if (from === to || !el.isConnected || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) { el.textContent = to; return; }
+    cancelAnimationFrame(numRaf.get(el));
+    el.classList.remove('nx-up', 'nx-down'); void el.offsetWidth; el.classList.add(to > from ? 'nx-up' : 'nx-down');
+    const t0 = performance.now(), dur = 650;
+    const step = ts => { const p = Math.min(1, (ts - t0) / dur), e = 1 - Math.pow(1 - p, 3); el.textContent = Math.round(from + (to - from) * e); if (p < 1) numRaf.set(el, requestAnimationFrame(step)); };
+    numRaf.set(el, requestAnimationFrame(step));
+  }
+  // Router yang baru saja down diberi tanda berkedip singkat (bukan terus-menerus).
+  const downAt = new Map();
+
   // ---------- Sync ring + KPI ----------
   function renderSync() {
     const s = data.sync || {}, c = data.customers || {}, col = COLORS();
-    $('kpiOnline').textContent = c.online ?? 0; $('kpiOffline').textContent = c.offline ?? 0; $('kpiIsolated').textContent = c.isolated ?? 0; $('kpiUnsynced').textContent = s.unsynced ?? 0;
-    $('kpiHealth').textContent = data.healthScore ?? 0;
+    setNum($('kpiOnline'), c.online); setNum($('kpiOffline'), c.offline); setNum($('kpiIsolated'), c.isolated); setNum($('kpiUnsynced'), s.unsynced);
+    setNum($('kpiHealth'), data.healthScore);
     $('kpiFreshness').textContent = data.freshness?.newest ? `${data.freshness.stale ? '⚠ mirror basi ' : 'mirror '}${N.ago(data.freshness.newest)}` : '⚠ belum ada mirror';
     const total = (s.synced || 0) + (s.unsynced || 0) + (s.exempt || 0);
     const seg = [[s.synced || 0, col.green], [s.unsynced || 0, col.purple], [s.exempt || 0, col.gray]];
@@ -186,12 +202,14 @@
   const siteCodeOf = id => [...routers.values()].find(r => Number(r.siteId) === Number(id))?.siteCode || '';
   const line = (e, fresh) => { const [cls, label] = TAG[e.type] || ['', e.type]; return `<div class="ln ${fresh ? 'fresh' : ''}"><span class="t">${esc(hhmmss(e.at))}</span><span><span class="nx-pill ${cls}">${esc(label)}</span></span><span class="u" title="${esc(e.message || '')}">${esc(e.username || '—')}<small>${esc(e.site_code || e.siteCode || siteCodeOf(e.siteId ?? e.site_id))}${e.address ? ' · ' + esc(e.address) : ''}${e.message && !/^PPP (Login|Disconnect)/.test(e.message) ? ' · ' + esc(e.message) : ''}</small></span></div>`; };
   const consoleEl = $('nmsConsole');
+  let lastGlance = 0;
   function renderLog() { consoleEl.innerHTML = events.filter(matches).slice(-300).map(e => line(e)).join('') || '<div class="nx-empty">Menunggu event PPP…</div>'; if (!paused) consoleEl.scrollTop = consoleEl.scrollHeight; }
   function pushEvent(e) {
     events.push(e); if (events.length > 500) events.splice(0, events.length - 500);
     if (!matches(e)) return;
     if (consoleEl.querySelector('.nx-empty')) consoleEl.innerHTML = '';
     consoleEl.insertAdjacentHTML('beforeend', line(e, true));
+    if (Date.now() - lastGlance > 4000) { lastGlance = Date.now(); mascot?.glance(consoleEl); }
     while (consoleEl.childElementCount > 300) consoleEl.firstElementChild.remove();
     if (!paused) consoleEl.scrollTop = consoleEl.scrollHeight;
   }
@@ -226,7 +244,15 @@
   window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(renderTraffic, 150); });
   N.stream({
     telemetry: r => { if (N.site && Number(r.siteId) !== Number(N.site)) return; routers.set(r.routerId, r); if (!frame) frame = requestAnimationFrame(() => { frame = null; renderTraffic(); renderRouters(); renderSites(); afterData(); }); N.markUpdated(new Date().toISOString()); },
-    router_state: s => { const r = routers.get(s.routerId); if (r) { r.status = s.status; r.lastError = s.error; renderRouters(); renderTraffic(); renderSites(); afterData(); } if (s.status === 'offline') toast(`Router ${r?.name || s.routerId} tidak terjangkau`, 'err'); },
+    router_state: s => {
+      const r = routers.get(s.routerId), prev = r?.status;
+      if (s.status === 'offline' && prev !== 'offline') downAt.set(s.routerId, Date.now());
+      if (r) { r.status = s.status; r.lastError = s.error; renderRouters(); renderTraffic(); renderSites(); afterData(); }
+      if (s.status === 'offline') {
+        toast(`Router ${r?.name || s.routerId} tidak terjangkau`, 'err');
+        if (prev !== 'offline') setTimeout(() => mascot?.goTo(`[data-router-detail="${s.routerId}"]`, `${r?.name || 'Router'} tidak terjangkau${r?.impact?.linked ? ` · ±${r.impact.linked} pelanggan terdampak` : ''}`), 120);
+      } else if (prev === 'offline' && s.status === 'online') mascot?.say(`${r?.name || 'Router'} kembali online.`);
+    },
     ppp: e => pushEvent(e),
     alert: a => { alerts = [{ ...a, opened_at: a.openedAt }, ...alerts.filter(x => x.id !== a.id)]; renderAlerts(); afterData(); toast(a.title, 'err'); },
     alert_resolved: () => refresh().catch(() => {}),
@@ -235,7 +261,7 @@
   document.addEventListener('nx:changed', () => refresh().catch(() => {}));
   setInterval(() => { if (!document.hidden) refresh().catch(() => N.setLive('down')); }, 30000);
   // ---------- Hero: skor kesehatan, kalimat status, dan maskot ----------
-  const mascot = window.NXMascot?.mount($('nxMascot'));
+  const mascot = window.NXMascot?.mount($('nxMascot'), { app });
   function heroState() {
     const list = sorted(), up = list.filter(r => r.status === 'online').length, off = list.filter(r => r.status === 'offline');
     const openAlerts = alerts.filter(a => !a.acknowledged_by);
@@ -342,47 +368,20 @@
     renderActivity(); renderLeak(); renderOutages(); renderAgenda(); renderHero();
   }
 
-  // ---------- Atur dashboard: tampil/sembunyi & urutan widget (per browser) ----------
-  const LKEY = 'nx-dash-layout-v1';
+  // ---------- Tata letak: drag & drop + ubah ukuran kartu, tersimpan per user (lihat nms-layout.js) ----------
   const widgetEls = () => [...document.querySelectorAll('#nxWidgets > .nx-w')];
-  const defaultOrder = widgetEls().map(w => w.dataset.w);
-  let layout = { order: defaultOrder, hidden: [], mascot: true, rotate: 20 };
-  try { layout = { ...layout, ...JSON.parse(localStorage.getItem(LKEY) || '{}') }; } catch (_) {}
-  layout.order = [...layout.order.filter(k => defaultOrder.includes(k)), ...defaultOrder.filter(k => !layout.order.includes(k))];
-  const saveLayout = () => { try { localStorage.setItem(LKEY, JSON.stringify(layout)); } catch (_) {} };
-  function applyLayout() {
-    widgetEls().forEach(w => { w.style.order = layout.order.indexOf(w.dataset.w); w.hidden = layout.hidden.includes(w.dataset.w); });
-    $('nxMascot').hidden = !layout.mascot; $('nxHero').classList.toggle('no-mascot', !layout.mascot);
-    setTimeout(renderTraffic, 30);
-  }
-  function openCustomize() {
-    const title = k => document.querySelector(`#nxWidgets [data-w="${k}"]`)?.dataset.title || k;
-    const s = N.sheet({ title: 'Atur dashboard', subtitle: 'Pilih widget yang tampil dan urutannya. Tersimpan di browser ini.', size: 'sm',
-      body: `<ul class="nx-list nx-group nx-sortlist" data-list></ul>
-        <div class="nx-group-title">Lainnya</div>
-        <ul class="nx-list nx-group"><li><div class="li-main"><b>Maskot Nexi</b><small>Karakter di kartu status, ekspresinya mengikuti kesehatan jaringan.</small></div><label class="nx-switch"><input type="checkbox" data-mascot ${layout.mascot ? 'checked' : ''}><span></span></label></li>
-        <li><div class="li-main"><b>Ganti panel layar penuh</b><small>Detik per panel di mode layar penuh.</small></div><select data-rotate style="width:auto">${[0, 15, 20, 30, 60].map(v => `<option value="${v}" ${Number(layout.rotate) === v ? 'selected' : ''}>${v ? `${v} detik` : 'Tidak berganti'}</option>`).join('')}</select></li></ul>`,
-      foot: '<button type="button" class="nx-btn ghost" data-reset>Kembalikan default</button><span class="grow"></span><button type="button" class="nx-btn primary" data-close>Selesai</button>' });
-    const paint = () => {
-      s.$('[data-list]').innerHTML = layout.order.map((k, i) => `<li data-k="${k}"><label class="nx-check grow"><input type="checkbox" data-vis ${layout.hidden.includes(k) ? '' : 'checked'}><span>${esc(title(k))}</span></label><button type="button" class="nx-btn sm icon ghost" data-up ${i === 0 ? 'disabled' : ''} aria-label="Naik"><i class="bi bi-chevron-up"></i></button><button type="button" class="nx-btn sm icon ghost" data-down ${i === layout.order.length - 1 ? 'disabled' : ''} aria-label="Turun"><i class="bi bi-chevron-down"></i></button></li>`).join('');
-    };
-    paint();
-    s.$('[data-list]').addEventListener('click', e => {
-      const li = e.target.closest('[data-k]'); if (!li) return; const k = li.dataset.k, i = layout.order.indexOf(k);
-      const mv = e.target.closest('[data-up]') ? -1 : e.target.closest('[data-down]') ? 1 : 0; if (!mv) return;
-      layout.order.splice(i, 1); layout.order.splice(i + mv, 0, k); saveLayout(); applyLayout(); paint();
-    });
-    s.$('[data-list]').addEventListener('change', e => { const li = e.target.closest('[data-k]'); if (!li) return; const k = li.dataset.k; layout.hidden = e.target.checked ? layout.hidden.filter(x => x !== k) : [...layout.hidden, k]; saveLayout(); applyLayout(); });
-    s.$('[data-mascot]').addEventListener('change', e => { layout.mascot = e.target.checked; saveLayout(); applyLayout(); });
-    s.$('[data-rotate]').addEventListener('change', e => { layout.rotate = Number(e.target.value); saveLayout(); });
-    s.$('[data-reset]').addEventListener('click', () => { layout = { order: [...defaultOrder], hidden: [], mascot: true, rotate: 20 }; saveLayout(); applyLayout(); s.close(); toast('Tata letak dikembalikan.', 'ok'); });
-  }
-  $('nxCustomize')?.addEventListener('click', openCustomize);
+  let relayoutT = null, tvReady = false;
+  const L = window.NXLayout.init({ app, onApply: l => {
+    mascot?.setEnabled(l.mascot); $('nxHero').classList.toggle('no-mascot', !l.mascot); $('nxMascot').hidden = !l.mascot;
+    clearTimeout(relayoutT); relayoutT = setTimeout(renderTraffic, 60);
+    if (tvReady && tv.on) tvSchedule();
+  } });
+  $('nxCustomize')?.addEventListener('click', () => L.toggleEdit());
 
   // ---------- Layar penuh (mode TV NOC): panel berganti otomatis, jam besar, layar tetap menyala ----------
   const TV_GROUPS = [['overview', 'Ringkasan'], ['traffic', 'Traffic'], ['routers', 'Router'], ['problems', 'Masalah']];
   const tv = { on: false, idx: 0, timer: null, paused: false, lock: null, cursorT: null, clockT: null };
-  const tvGroups = () => TV_GROUPS.filter(([g]) => widgetEls().some(w => w.dataset.tv === g && !layout.hidden.includes(w.dataset.w)));
+  const tvGroups = () => TV_GROUPS.filter(([g]) => widgetEls().some(w => w.dataset.tv === g && !L.layout.hidden.includes(w.dataset.w)));
   function tvShow(i) {
     const groups = tvGroups(); if (!groups.length) return;
     tv.idx = (i + groups.length) % groups.length;
@@ -392,11 +391,12 @@
     const wrap = $('nxWidgets'); wrap.classList.remove('tv-enter'); void wrap.offsetWidth; wrap.classList.add('tv-enter');
     setTimeout(renderTraffic, 40);
   }
-  function tvSchedule() { clearInterval(tv.timer); tv.timer = null; if (tv.on && !tv.paused && Number(layout.rotate) > 0) tv.timer = setInterval(() => tvShow(tv.idx + 1), Number(layout.rotate) * 1000); }
+  function tvSchedule() { clearInterval(tv.timer); tv.timer = null; if (tv.on && !tv.paused && Number(L.layout.rotate) > 0) tv.timer = setInterval(() => tvShow(tv.idx + 1), Number(L.layout.rotate) * 1000); }
   async function wake(on) { try { if (on && 'wakeLock' in navigator) tv.lock = await navigator.wakeLock.request('screen'); else { await tv.lock?.release(); tv.lock = null; } } catch (_) {} }
   const tvClock = () => { $('nxTvClock').textContent = new Date().toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit', hour12: false }); };
   const cursorIdle = () => { app.classList.remove('tv-cursor-off'); clearTimeout(tv.cursorT); tv.cursorT = setTimeout(() => { if (tv.on) app.classList.add('tv-cursor-off'); }, 3000); };
   function setTv(on) {
+    if (on) L.exitEdit();
     tv.on = on; app.classList.toggle('noc-tv', on); $('nxTvBar').hidden = !on;
     const btn = $('nmsNocMode'); if (btn) btn.innerHTML = on ? '<i class="bi bi-fullscreen-exit"></i><span class="nx-hide-sm">Keluar</span>' : '<i class="bi bi-arrows-fullscreen"></i><span class="nx-hide-sm">Layar penuh</span>';
     if (on) { tvShow(0); tvSchedule(); wake(true); tvClock(); tv.clockT = setInterval(tvClock, 10000); cursorIdle(); }
@@ -424,8 +424,10 @@
     if (e.key === ' ') { e.preventDefault(); $('nxTvPause').click(); }
   });
 
-  applyLayout();
+  tvReady = true;
   renderHero(); renderTotal();
+  // Saat halaman dibuka dan ada router down, Nexi langsung menunjuk kartunya.
+  setTimeout(() => { const off = sorted().find(r => r.status === 'offline'); if (off) mascot?.goTo(`[data-router-detail="${off.routerId}"]`, `${off.name} tidak terjangkau`); }, 1600);
   loadWidgets();
   setInterval(() => { if (!document.hidden) loadWidgets(); }, 60000);
   document.addEventListener('nx:changed', () => setTimeout(loadWidgets, 800));

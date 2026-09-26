@@ -440,7 +440,7 @@ html[data-theme="dark"] .nx-pre{background:#2c2c2e}
 /* =====================================================================
    Dashboard v3: hero status + maskot, grid widget, mode layar penuh
    ===================================================================== */
-.nx-widgets{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:16px;grid-auto-flow:row dense;align-items:stretch;margin-top:8px}
+.nx-widgets{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:16px;grid-auto-flow:row;align-items:stretch;margin-top:8px}
 .nx-w{min-width:0}.nx-w.c-12{grid-column:span 12}.nx-w.c-8{grid-column:span 8}.nx-w.c-6{grid-column:span 6}.nx-w.c-4{grid-column:span 4}
 .nx-w[hidden]{display:none!important}
 section.nx-w>.nx-section{margin-top:14px}
@@ -467,75 +467,6 @@ html[data-theme="light"] .nx-hero{border-color:rgba(0,0,0,.05)}
 .nx-hero-lane{position:relative;height:126px;margin:0 16px}
 .nx-hero-lane::after{content:"";position:absolute;left:0;right:0;bottom:12px;height:1px;background:linear-gradient(90deg,transparent,var(--x-line) 12%,var(--x-line) 88%,transparent)}
 .nx-hero.no-mascot .nx-hero-main{padding-bottom:22px}
-
-/* mascot */
-.mx-lane{position:absolute;inset:0}
-.mx{position:absolute;left:0;bottom:6px;width:96px;height:112px;padding:0;border:0;background:none;cursor:pointer;z-index:2;-webkit-tap-highlight-color:transparent;
-  --mx-shell-a:#8f7af0;--mx-shell-b:#5b3fd6;--mx-limb:#4a33b8;--mx-foot:#2f2280;--mx-face:#9ff5c8;--mx-muted:var(--x-muted)}
-html[data-theme="light"] .mx{--mx-limb:#5a41cc;--mx-foot:#3a2a99}
-.mx[data-mood="worried"]{--mx-face:#ffd27a}.mx[data-mood="panic"]{--mx-face:#ff8a80}.mx[data-mood="dizzy"]{--mx-face:#c7c7cc;--mx-shell-a:#9b93b8;--mx-shell-b:#6d6690}.mx[data-mood="sleepy"]{--mx-face:#9ccfff}
-.mx:focus-visible{outline:3px solid var(--x-accent-t);outline-offset:4px;border-radius:20px}
-.mx-actor{position:absolute;inset:0;transform-origin:50% 100%}
-.mx-dir{display:block;width:100%;height:100%;transition:transform .25s var(--x-ease)}
-.mx-svg{width:100%;height:100%;overflow:visible;display:block}
-.mx-shadow{position:absolute;left:18px;right:18px;bottom:-2px;height:8px;border-radius:50%;background:rgba(0,0,0,.22);filter:blur(2px);transform-origin:center}
-html[data-theme="dark"] .mx-shadow{background:rgba(0,0,0,.55)}
-.mx [data-eyes],.mx [data-mouth],.mx [data-extra]{display:none}
-.mx[data-eyes="round"] [data-eyes="round"],.mx[data-eyes="happy"] [data-eyes="happy"],.mx[data-eyes="wide"] [data-eyes="wide"],.mx[data-eyes="closed"] [data-eyes="closed"],.mx[data-eyes="x"] [data-eyes="x"],.mx[data-eyes="heart"] [data-eyes="heart"],.mx[data-eyes="star"] [data-eyes="star"],.mx[data-eyes="wink"] [data-eyes="wink"]{display:inline}
-.mx[data-mouth="smile"] [data-mouth="smile"],.mx[data-mouth="soft"] [data-mouth="soft"],.mx[data-mouth="wavy"] [data-mouth="wavy"],.mx[data-mouth="open"] [data-mouth="open"],.mx[data-mouth="o"] [data-mouth="o"],.mx[data-mouth="tongue"] [data-mouth="tongue"]{display:inline}
-.mx[data-extras~="brows"] [data-extra="brows"],.mx[data-extras~="blush"] [data-extra="blush"],.mx[data-extras~="sweat"] [data-extra="sweat"],.mx[data-extras~="zzz"] [data-extra="zzz"],.mx[data-extras~="stars"] [data-extra="stars"]{display:inline}
-.mx-led{fill:var(--x-green);transition:fill .3s}
-.mx[data-led="orange"] .mx-led{fill:var(--x-orange)}.mx[data-led="red"] .mx-led{fill:var(--x-red);animation:mxBlink .5s steps(2) infinite}.mx[data-led="gray"] .mx-led{fill:var(--x-gray)}.mx[data-led="blue"] .mx-led{fill:var(--x-blue);opacity:.7}
-.mx-led.d2{animation-delay:.25s}
-.mx-ports circle{fill:rgba(255,255,255,.35);animation:mxPort 1.6s infinite}.mx-ports circle:nth-child(2){animation-delay:.2s}.mx-ports circle:nth-child(3){animation-delay:.4s}.mx-ports circle:nth-child(4){animation-delay:.6s}
-.mx-face{transition:opacity .2s}
-.mx-leg,.mx-arm{transform-box:fill-box;transform-origin:50% 0}
-.mx.walking .mx-leg.l{animation:mxLeg .5s ease-in-out infinite}.mx.walking .mx-leg.r{animation:mxLeg .5s ease-in-out infinite reverse}
-.mx.walking .mx-arm.l{animation:mxArm .5s ease-in-out infinite reverse}.mx.walking .mx-arm.r{animation:mxArm .5s ease-in-out infinite}
-.mx.walking .mx-actor{animation:mxBob .25s ease-in-out infinite alternate}
-.mx[data-mood="panic"].walking .mx-leg.l,.mx[data-mood="panic"].walking .mx-leg.r,.mx[data-mood="panic"].walking .mx-arm.l,.mx[data-mood="panic"].walking .mx-arm.r{animation-duration:.22s}
-.mx[data-mood="panic"].walking .mx-actor{animation-duration:.11s}
-.mx[data-mood="sleepy"] .mx-actor{animation:mxBreath 3.2s ease-in-out infinite}
-.mx[data-mood="dizzy"] .mx-actor{animation:mxWobble 2.4s ease-in-out infinite}
-.mx:not(.walking) .mx-antenna{transform-box:fill-box;transform-origin:50% 100%;animation:mxAnt 3s ease-in-out infinite}
-.mx-sweat{animation:mxSweat 1.4s ease-in infinite}
-.mx-zzz text{animation:mxZ 2.6s ease-in-out infinite}.mx-zzz text:nth-child(2){animation-delay:.4s}.mx-zzz text:nth-child(3){animation-delay:.8s}
-.mx-stars{transform-box:fill-box;transform-origin:50% 50%;animation:mxSpin 2s linear infinite}
-.mx-actor.act-jump{animation:mxJump .7s var(--x-ease)}
-.mx-actor.act-spin{animation:mxSpinY .9s var(--x-ease)}
-.mx-actor.act-flip{animation:mxFlip .95s var(--x-ease)}
-.mx-actor.act-dance{animation:mxDance .45s ease-in-out 4}
-.mx-actor.act-squish{animation:mxSquish .8s var(--x-ease)}
-.mx-actor.act-nod{animation:mxNod .55s ease-in-out 2}
-.mx-actor.act-shake{animation:mxShake .15s linear 8}
-.mx-actor.act-dash{animation:mxBob .1s ease-in-out infinite alternate}
-.mx-actor.act-wink{animation:mxTilt 1.1s var(--x-ease)}
-.mx-actor.act-wave .mx-arm.r{animation:mxWave .32s ease-in-out 4}
-.mx-actor.act-wave{animation:mxTilt 1.3s var(--x-ease)}
-.mx-bubble{position:absolute;bottom:calc(100% + 4px);left:50%;transform:translate(-50%,6px) scale(.96);width:max-content;max-width:220px;padding:7px 11px;border-radius:14px;background:var(--x-card);color:var(--x-text);border:1px solid var(--x-line);box-shadow:0 10px 30px rgba(0,0,0,.16);font-size:12.5px;font-weight:550;line-height:1.35;text-align:left;white-space:normal;opacity:0;pointer-events:none;transition:opacity .2s,transform .25s var(--x-ease)}
-html[data-theme="dark"] .mx-bubble{background:#2c2c2e}
-.mx-bubble::after{content:"";position:absolute;left:50%;top:100%;width:10px;height:10px;background:inherit;border-right:1px solid var(--x-line);border-bottom:1px solid var(--x-line);transform:translate(-50%,-5px) rotate(45deg)}
-.mx.talk .mx-bubble{opacity:1;transform:translate(-50%,0) scale(1)}
-@keyframes mxLeg{0%,100%{transform:rotate(16deg)}50%{transform:rotate(-16deg)}}
-@keyframes mxArm{0%,100%{transform:rotate(14deg)}50%{transform:rotate(-14deg)}}
-@keyframes mxBob{from{transform:translateY(0)}to{transform:translateY(-3px)}}
-@keyframes mxBreath{0%,100%{transform:scale(1,1)}50%{transform:scale(1.02,.97)}}
-@keyframes mxWobble{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
-@keyframes mxAnt{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
-@keyframes mxBlink{50%{opacity:.25}}
-@keyframes mxPort{0%,100%{fill:rgba(255,255,255,.3)}50%{fill:rgba(160,255,210,.95)}}
-@keyframes mxSweat{0%{transform:translateY(-2px);opacity:0}30%{opacity:1}100%{transform:translateY(10px);opacity:0}}
-@keyframes mxZ{0%,100%{opacity:.2;transform:translateY(2px)}50%{opacity:1;transform:translateY(-3px)}}
-@keyframes mxSpin{to{transform:rotate(360deg)}}
-@keyframes mxJump{0%{transform:scale(1.1,.85)}35%{transform:translateY(-46px) scale(.95,1.06)}70%{transform:translateY(0) scale(1.12,.86)}100%{transform:none}}
-@keyframes mxSpinY{from{transform:rotateY(0)}to{transform:rotateY(720deg)}}
-@keyframes mxFlip{0%{transform:none}20%{transform:translateY(0) scale(1.1,.85)}55%{transform:translateY(-52px) rotate(-200deg)}85%{transform:translateY(0) rotate(-360deg)}100%{transform:rotate(-360deg)}}
-@keyframes mxDance{0%,100%{transform:rotate(0) translateY(0)}25%{transform:rotate(-10deg) translateY(-6px)}75%{transform:rotate(10deg) translateY(-6px)}}
-@keyframes mxSquish{0%{transform:none}30%{transform:scale(1.25,.7)}60%{transform:scale(.9,1.12)}100%{transform:none}}
-@keyframes mxNod{0%,100%{transform:rotate(0)}50%{transform:rotate(8deg) translateY(2px)}}
-@keyframes mxShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
-@keyframes mxTilt{0%,100%{transform:rotate(0)}30%,70%{transform:rotate(-8deg)}}
-@keyframes mxWave{0%,100%{transform:rotate(0)}50%{transform:rotate(-150deg)}}
 
 /* total traffic */
 .nx-total{display:flex;gap:22px}
@@ -606,7 +537,6 @@ html[data-theme="dark"] .nx-tv-dots button.on{background:#3a3a3c}
   .nx-total strong{font-size:20px}
   .nx-tvbar{flex-wrap:wrap}.nx-tv-clock{font-size:26px}
 }
-@media (prefers-reduced-motion:reduce){.mx *{animation:none!important}}
 
 /* ---------- Responsive ---------- */
 @media (max-width:1100px){.nx-recon{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -700,57 +630,130 @@ section.nx-w>.nx-section{margin:10px 2px 8px}.nx-section h2{font-size:17px}.nx-s
 @media (max-width:900px){.nx-site-grid,.nx-routers,.nx-traffic-grid{grid-template-columns:1fr}.nx-site-grid{overflow:visible}.nx-site-foot{flex-direction:column}.nx-site-foot span:last-child{max-width:100%;text-align:left}}
 
 /* =====================================================================
-   Nexi Rover v1 — robot patroli antar-widget. Ringan, GPU-friendly.
+   Dashboard v4 — tampilan datar & fungsional (tanpa glow/gradient),
+   tata letak bisa diseret/diubah ukuran, maskot Nexi gaya garis.
    ===================================================================== */
-.mx.mx-rover{
-  position:fixed;left:24px;top:88px;bottom:auto;width:82px;height:96px;z-index:90;
-  pointer-events:auto;transform:none!important;
-  transition:left var(--mx-travel-ms,1400ms) cubic-bezier(.22,.78,.28,1),top var(--mx-travel-ms,1400ms) cubic-bezier(.22,.78,.28,1),filter .25s,opacity .2s;
-  filter:drop-shadow(0 12px 20px rgba(0,0,0,.18));
-}
-.mx.mx-rover .mx-shadow{bottom:-4px;transition:transform .3s,opacity .3s,filter .3s}
-.mx.mx-rover.mx-walking .mx-leg.l{animation:mxLeg .38s ease-in-out infinite}
-.mx.mx-rover.mx-walking .mx-leg.r{animation:mxLeg .38s ease-in-out infinite reverse}
-.mx.mx-rover.mx-walking .mx-arm.l{animation:mxArm .38s ease-in-out infinite reverse}
-.mx.mx-rover.mx-walking .mx-arm.r{animation:mxArm .38s ease-in-out infinite}
-.mx.mx-rover.mx-walking .mx-actor{animation:mxBob .19s ease-in-out infinite alternate}
-.mx.mx-rover.mx-flying{filter:drop-shadow(0 22px 24px rgba(0,0,0,.22))}
-.mx.mx-rover.mx-flying .mx-actor{animation:mxRoverFly .7s ease-in-out infinite alternate}
-.mx.mx-rover.mx-flying .mx-leg{transform:rotate(-14deg)}
-.mx.mx-rover.mx-flying .mx-arm.l{transform:rotate(22deg)}
-.mx.mx-rover.mx-flying .mx-arm.r{transform:rotate(-22deg)}
-.mx.mx-rover.mx-flying .mx-shadow{opacity:.15;transform:scale(.62);filter:blur(6px)}
-.mx.mx-rover.mx-flying::before,.mx.mx-rover.mx-flying::after{
-  content:"";position:absolute;z-index:-1;left:37px;bottom:2px;width:9px;height:23px;border-radius:50% 50% 70% 70%;
-  background:linear-gradient(180deg,rgba(96,205,255,.95),rgba(87,112,255,.35) 55%,transparent);filter:blur(.4px);transform-origin:50% 0;
-  animation:mxThruster .28s ease-in-out infinite alternate;pointer-events:none
-}
-.mx.mx-rover.mx-flying::after{left:51px;animation-delay:.12s}
-.mx.mx-rover.mx-landed .mx-actor{animation:mxRoverLand .45s var(--x-ease) 1}
-.mx.mx-rover.mx-working .mx-arm.r{animation:mxRoverWork .42s ease-in-out infinite alternate}
-.mx.mx-rover.mx-working .mx-ports circle{animation-duration:.55s}
-.mx.mx-rover.mx-working::after{
-  content:"";position:absolute;left:50%;top:51%;width:92px;height:92px;border:1px solid color-mix(in srgb,var(--x-accent) 55%,transparent);border-radius:50%;
-  transform:translate(-50%,-50%);animation:mxScan 1.35s ease-out infinite;pointer-events:none
-}
-.mx.mx-rover .mx-bubble{max-width:190px;font-size:11.5px;padding:6px 9px;bottom:calc(100% + 1px)}
+.nx{position:relative;--x-r:12px;--x-r-sm:9px;--x-shadow:none}
+html[data-theme="dark"] .nx{--x-shadow:none}
+.nx-card,.nx-stat,.nx-router,.nx-site-card,.nx-traffic,.nx-recon-tile,.nx-site{box-shadow:none}
+.nx-hero{border-radius:14px;box-shadow:none}
+.nx-hero::before{display:none}
+.nx-hero-lane::after{background:var(--x-line)}
+.nx-avatar{background:var(--x-accent)}
+.nx-stat strong,.nx-total strong,.nx-site-primary strong,.nx-gauge .v b,.nx-leak-amount b,.nx-tv-clock,.nx .num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
 .nx-w,.nx-site-card,.nx-stat{position:relative}
-.nx-inspecting{z-index:2}
-.nx-inspecting::after{
-  content:"";position:absolute;inset:-2px;border:1px solid color-mix(in srgb,var(--x-accent) 52%,transparent);border-radius:inherit;pointer-events:none;
-  box-shadow:0 0 0 4px color-mix(in srgb,var(--x-accent) 7%,transparent),0 12px 38px color-mix(in srgb,var(--x-accent) 10%,transparent);
-  animation:nxInspectPulse 1.8s ease-in-out infinite
-}
-.nx-inspecting::before{
-  content:"NEXI · SCANNING";position:absolute;right:12px;top:10px;z-index:4;padding:4px 7px;border-radius:999px;
-  background:color-mix(in srgb,var(--x-card) 88%,transparent);border:1px solid var(--x-line);backdrop-filter:blur(14px);
-  color:var(--x-accent);font-size:8.5px;font-weight:750;letter-spacing:.08em;pointer-events:none
-}
-@keyframes mxRoverFly{from{transform:translateY(-2px) rotate(-2deg)}to{transform:translateY(-9px) rotate(2deg)}}
-@keyframes mxThruster{from{height:14px;opacity:.55;transform:scaleX(.72)}to{height:29px;opacity:1;transform:scaleX(1)}}
-@keyframes mxRoverLand{0%{transform:translateY(-9px) scale(.96,1.04)}65%{transform:translateY(2px) scale(1.04,.94)}100%{transform:none}}
-@keyframes mxRoverWork{from{transform:rotate(-14deg)}to{transform:rotate(26deg)}}
-@keyframes mxScan{0%{opacity:.8;transform:translate(-50%,-50%) scale(.5)}100%{opacity:0;transform:translate(-50%,-50%) scale(1.42)}}
-@keyframes nxInspectPulse{0%,100%{opacity:.58}50%{opacity:1}}
-@media(max-width:820px){.mx.mx-rover{display:none!important}.nx-inspecting::before,.nx-inspecting::after{display:none!important}}
-@media(prefers-reduced-motion:reduce){.mx.mx-rover{display:none!important}.nx-inspecting::before,.nx-inspecting::after{display:none!important}}
+.nx-w.c-3{grid-column:span 3}
+@media (max-width:1200px){.nx-w.c-3{grid-column:span 6}}
+@media (max-width:760px){.nx-w.c-3{grid-column:1/-1}}
+
+/* angka KPI: kilasan warna singkat saat naik/turun */
+.nx-stat strong.nx-up{animation:nxNumUp .9s ease-out}
+.nx-stat strong.nx-down{animation:nxNumDown .9s ease-out}
+@keyframes nxNumUp{0%{color:var(--x-green)}100%{color:inherit}}
+@keyframes nxNumDown{0%{color:var(--x-red)}100%{color:inherit}}
+
+/* router yang baru saja down: 3 kedip lalu diam dengan border merah */
+.nx-router.just-down{animation:nxJustDown .6s ease-in-out 3}
+@keyframes nxJustDown{50%{background:var(--x-red-t);border-color:var(--x-red)}}
+
+/* kartu dengan tinggi tetap (hasil resize): isi di-scroll */
+.nx-w.nx-fixed-h{display:flex;flex-direction:column;overflow:hidden}
+.nx-w.nx-fixed-h>.nx-card-body,.nx-w.nx-fixed-h>.nx-list,.nx-w.nx-fixed-h>.nx-log,.nx-w.nx-fixed-h>.nx-routers,.nx-w.nx-fixed-h>.nx-traffic-grid,.nx-w.nx-fixed-h>.nx-site-grid{flex:1 1 auto;min-height:0;overflow:auto}
+.nx-w.nx-fixed-h>.nx-log{max-height:none}
+@media (max-width:760px){.nx-w.nx-fixed-h{height:auto!important;display:block;overflow:visible}}
+
+/* ---------- mode atur tata letak ---------- */
+.nx-editbar{position:sticky;top:calc(var(--nx-sticky-top,76px) + 50px);z-index:35;display:flex;align-items:center;gap:10px 14px;flex-wrap:wrap;margin:0 0 12px;padding:9px 12px;border:1px solid var(--x-line2);border-radius:12px;background:var(--x-card)}
+.nx-editbar[hidden]{display:none}
+.nx-editbar-main{display:flex;flex-direction:column;min-width:0;flex:1 1 260px}
+.nx-editbar-main b{font-size:13px}
+.nx-editbar-main .dim{font-size:11.5px;color:var(--x-muted)}
+.nx-editbar-tray{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11.5px;color:var(--x-muted)}
+.nx-editbar-tray:empty{display:none}
+.nx-editbar-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.nx-select.sm{height:30px;font-size:12.5px}
+.nx-chip.sm{height:26px;padding:0 9px;font-size:11.5px;cursor:pointer}
+#nxCustomize.on{background:var(--x-text);color:var(--x-card)}
+
+.nx-editing #nxWidgets>.nx-w{animation:none;outline:1px dashed var(--x-line2);outline-offset:3px;border-radius:var(--x-r);cursor:grab;user-select:none;-webkit-user-select:none}
+.nx-editing #nxWidgets>.nx-w>*:not(.nx-w-tools){pointer-events:none}
+.nx-editing #nxWidgets>.nx-w:hover{outline-color:var(--x-muted)}
+.nx-w-tools{position:absolute;inset:0;z-index:5;pointer-events:none}
+.nx-w-tools>*{pointer-events:auto}
+.nx-w-grip{position:absolute;left:8px;top:8px;display:inline-flex;align-items:center;gap:4px;height:26px;max-width:calc(100% - 140px);padding:0 9px 0 5px;border:1px solid var(--x-line2);border-radius:7px;background:var(--x-card);color:var(--x-text);font-size:11.5px;font-weight:600;cursor:grab;touch-action:none}
+.nx-w-grip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nx-w-grip i{color:var(--x-muted)}
+.nx-w-size{position:absolute;right:42px;top:10px;padding:2px 7px;border-radius:6px;background:var(--x-card3);color:var(--x-muted);font-size:10.5px;font-weight:600;font-variant-numeric:tabular-nums}
+.nx-w-hide{position:absolute;right:8px;top:8px;width:28px;height:26px;display:grid;place-items:center;border:1px solid var(--x-line2);border-radius:7px;background:var(--x-card);color:var(--x-muted);cursor:pointer}
+.nx-w-hide:hover{color:var(--x-red);border-color:var(--x-red)}
+.nx-w-resize{position:absolute;right:0;bottom:0;width:22px;height:22px;cursor:nwse-resize;touch-action:none;
+  background:linear-gradient(135deg,transparent 0 55%,var(--x-muted) 55% 60%,transparent 60% 70%,var(--x-muted) 70% 75%,transparent 75%)}
+@media (max-width:760px){.nx-w-resize,.nx-w-size{display:none}}
+.nx-w-ph{border:1.5px dashed var(--x-muted);border-radius:var(--x-r);background:var(--x-card2);animation:none!important}
+.nx-w.nx-dragging{cursor:grabbing;opacity:.94;outline:1.5px solid var(--x-text)!important;box-shadow:0 18px 40px rgba(0,0,0,.18);transition:transform .12s;overflow:hidden;background:var(--x-bg)}
+.nx-w.nx-resizing{outline:1.5px solid var(--x-text)!important}
+body.nx-drag-active,body.nx-drag-active *{cursor:grabbing!important;user-select:none}
+body.nx-resize-active,body.nx-resize-active *{cursor:nwse-resize!important;user-select:none}
+
+/* ---------- maskot Nexi (garis datar, warna mengikuti tema & status) ---------- */
+.mx{position:absolute;left:0;top:0;z-index:40;width:58px;height:66px;padding:0;border:0;background:none;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;will-change:transform;
+  --mx-ink:var(--x-text);--mx-body:var(--x-card);--mx-led:var(--x-green)}
+.mx[hidden]{display:none}
+html[data-theme="dark"] .mx{--mx-body:var(--x-card3)}
+.mx.held{cursor:grabbing;z-index:80}
+.mx:focus-visible{outline:2px solid var(--x-text);outline-offset:3px;border-radius:10px}
+.mx[data-mood="worried"]{--mx-led:var(--x-orange)}.mx[data-mood="panic"]{--mx-led:var(--x-red)}.mx[data-mood="dizzy"]{--mx-led:var(--x-gray)}.mx[data-mood="sleepy"]{--mx-led:var(--x-blue)}
+.mx-actor{position:absolute;inset:0;transform-origin:50% 92%;transition:rotate .15s}
+.mx-dir{display:block;width:100%;height:100%}
+.mx-svg{width:100%;height:100%;overflow:visible;display:block}
+.mx-body{fill:var(--mx-body);stroke:var(--mx-ink);stroke-width:2.2}
+.mx-screen{fill:#1c1c1e}
+.mx-ant line,.mx-arm path,.mx-leg path{fill:none;stroke:var(--mx-ink);stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.mx-led{fill:var(--mx-led)}
+.mx[data-mood="panic"] .mx-led{animation:mxBlink .5s steps(2) infinite}.mx-led.d2{animation-delay:.25s}
+.mx-face .f{fill:var(--mx-led)}
+.mx-face .s{fill:none;stroke:var(--mx-led);stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.mx-look{transition:transform .12s linear}
+.mx [data-eyes],.mx [data-mouth]{display:none}
+.mx[data-eyes="round"] [data-eyes="round"],.mx[data-eyes="wide"] [data-eyes="wide"],.mx[data-eyes="happy"] [data-eyes="happy"],.mx[data-eyes="closed"] [data-eyes="closed"],.mx[data-eyes="x"] [data-eyes="x"],
+.mx[data-mouth="flat"] [data-mouth="flat"],.mx[data-mouth="smile"] [data-mouth="smile"],.mx[data-mouth="wavy"] [data-mouth="wavy"],.mx[data-mouth="o"] [data-mouth="o"]{display:inline}
+.mx-ports rect{fill:none;stroke:var(--mx-ink);stroke-width:1.3}
+.mx-ports rect:nth-child(1){animation:mxPort 2.4s steps(1) infinite}.mx-ports rect:nth-child(2){animation:mxPort 2.4s steps(1) .6s infinite}.mx-ports rect:nth-child(3){animation:mxPort 2.4s steps(1) 1.2s infinite}.mx-ports rect:nth-child(4){animation:mxPort 2.4s steps(1) 1.8s infinite}
+.mx-shadow{fill:var(--mx-ink);opacity:.12;transition:opacity .2s}
+.mx.flying .mx-shadow,.mx.held .mx-shadow{opacity:0}
+.mx-zzz{display:none;fill:var(--x-muted);font:700 8px/1 system-ui,sans-serif}
+.mx[data-mood="sleepy"] .mx-zzz{display:inline}.mx-zzz text{animation:mxZ 2.6s ease-in-out infinite}.mx-zzz text:nth-child(2){animation-delay:.5s}
+.mx-leg,.mx-arm{transform-box:fill-box;transform-origin:50% 0}
+.mx.walking .mx-leg.l{animation:mxLeg .46s ease-in-out infinite}.mx.walking .mx-leg.r{animation:mxLeg .46s ease-in-out infinite reverse}
+.mx.walking .mx-actor{animation:mxBob .23s ease-in-out infinite alternate}
+.mx.held .mx-leg.l,.mx.flying .mx-leg.l{animation:mxDangle .5s ease-in-out infinite}.mx.held .mx-leg.r,.mx.flying .mx-leg.r{animation:mxDangle .5s ease-in-out infinite reverse}
+.mx.held .mx-arm.l,.mx.flying .mx-arm.l{transform:rotate(38deg)}.mx.held .mx-arm.r,.mx.flying .mx-arm.r{transform:rotate(-38deg)}
+.mx[data-mood="sleepy"]:not(.held):not(.flying) .mx-actor{animation:mxBreath 3.4s ease-in-out infinite}
+.mx:not(.walking):not(.held) .mx-ant{transform-box:fill-box;transform-origin:50% 100%;animation:mxAnt 3.2s ease-in-out infinite}
+.mx-actor.mx-land{animation:mxLand .32s ease-out}
+.mx-actor.mx-hop{animation:mxHop .46s cubic-bezier(.3,.7,.3,1)}
+.mx-actor.mx-nod{animation:mxNod .26s ease-in-out 2}
+.mx-actor.mx-shake{animation:mxShake .12s linear 7}
+.mx-bubble{position:absolute;bottom:calc(100% + 2px);left:50%;z-index:2;width:max-content;max-width:230px;padding:6px 9px;border-radius:8px;background:var(--x-text);color:var(--x-card);font-size:11.5px;line-height:1.35;font-weight:500;text-align:left;pointer-events:none;opacity:0;transform:translate(-50%,4px);transition:opacity .16s,transform .16s}
+.mx.bubble-left .mx-bubble{left:auto;right:0;transform:translate(0,4px)}
+.mx.bubble-right .mx-bubble{left:0;transform:translate(0,4px)}
+.mx.talk .mx-bubble{opacity:1;transform:translate(-50%,0)}
+.mx.talk.bubble-left .mx-bubble,.mx.talk.bubble-right .mx-bubble{transform:none}
+.nx-hero-lane{height:92px}
+@keyframes mxLeg{0%,100%{transform:rotate(14deg)}50%{transform:rotate(-14deg)}}
+@keyframes mxDangle{0%,100%{transform:rotate(10deg)}50%{transform:rotate(-10deg)}}
+@keyframes mxBob{from{transform:translateY(0)}to{transform:translateY(-2px)}}
+@keyframes mxBreath{0%,100%{transform:scale(1,1)}50%{transform:scale(1.02,.975)}}
+@keyframes mxAnt{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
+@keyframes mxBlink{50%{opacity:.25}}
+@keyframes mxPort{0%{fill:var(--mx-led);stroke:var(--mx-led)}25%,100%{fill:none;stroke:var(--mx-ink)}}
+@keyframes mxZ{0%,100%{opacity:.2;transform:translateY(2px)}50%{opacity:1;transform:translateY(-2px)}}
+@keyframes mxLand{0%{transform:scale(1.16,.8)}60%{transform:scale(.95,1.05)}100%{transform:none}}
+@keyframes mxHop{0%{transform:none}40%{transform:translateY(-18px)}70%{transform:translateY(0) scale(1.08,.9)}100%{transform:none}}
+@keyframes mxNod{50%{transform:rotate(6deg) translateY(1px)}}
+@keyframes mxShake{25%{transform:translateX(-3px)}75%{transform:translateX(3px)}}
+@media (max-width:820px){.mx{cursor:pointer;touch-action:auto;width:48px;height:55px}.nx-hero-lane{height:78px}}
+.nx.noc-tv .mx{cursor:none}
+@media (prefers-reduced-motion:reduce){.mx *,.mx{animation:none!important;transition:none!important}}
+.nx-editing #nxWidgets>.nx-w{padding-top:40px}
+.nx-editing #nxWidgets>.nx-w.nx-card{padding-top:36px}

@@ -364,7 +364,20 @@ async function loadReconciliationData(req,{withLookups=false}={}){
     COALESCE(SUM(CASE WHEN method='cash' AND status='confirmed' AND settlement_status='held_by_staff' AND DATEDIFF(CURDATE(),DATE(paid_at))>${Number(agingDays)} THEN amount ELSE 0 END),0) overdue_total,
     COALESCE(SUM(method='cash' AND status='confirmed' AND settlement_status='held_by_staff' AND DATEDIFF(CURDATE(),DATE(paid_at))>${Number(agingDays)}),0) overdue_count
     FROM payments`);
-  const result={held,staffBalances,summary:summary||{},q,site,cluster,collector,aging,agingDays};
+  // Widget posisi cash (selalu tampil, tidak terpengaruh filter): cash yang masih dipegang
+  // tiap collector + yang sudah disetor bulan berjalan.
+  const monthStartSql=`DATE_FORMAT(CURDATE(),'%Y-%m-01')`;
+  const [cashByCollector]=await db.query(`SELECT COALESCE(u.id,0) user_id,COALESCE(u.name,'Tidak diketahui') collector_name,
+      COALESCE(SUM(CASE WHEN p.settlement_status='held_by_staff' THEN p.amount ELSE 0 END),0) held_amount,
+      COALESCE(SUM(p.settlement_status='held_by_staff'),0) held_count,
+      COALESCE(SUM(CASE WHEN p.settlement_status='settled' THEN p.amount ELSE 0 END),0) settled_month,
+      COALESCE(SUM(p.settlement_status='settled'),0) settled_month_count
+    FROM payments p LEFT JOIN users u ON u.id=COALESCE(p.collector_user_id,p.received_by)
+    WHERE p.method='cash' AND ((p.status='confirmed' AND p.settlement_status='held_by_staff') OR (p.settlement_status='settled' AND p.settled_at>=${monthStartSql}))
+    GROUP BY u.id,u.name ORDER BY held_amount DESC,settled_month DESC`);
+  const cashWidget={collectors:cashByCollector,held_total:0,held_count:0,settled_month:0,settled_month_count:0,settled_today:Number(summary?.settled_today||0)};
+  cashByCollector.forEach(r=>{cashWidget.held_total+=Number(r.held_amount||0);cashWidget.held_count+=Number(r.held_count||0);cashWidget.settled_month+=Number(r.settled_month||0);cashWidget.settled_month_count+=Number(r.settled_month_count||0);});
+  const result={held,staffBalances,summary:summary||{},cashWidget,q,site,cluster,collector,aging,agingDays};
   if(withLookups){
     // Daftar collector untuk dropdown filter: semua user yang pernah memegang pembayaran cash.
     const [collectors]=await db.query(`SELECT u.id,u.name FROM users u WHERE u.id IN (SELECT DISTINCT COALESCE(p.collector_user_id,p.received_by) FROM payments p WHERE p.method='cash') ORDER BY u.name`);

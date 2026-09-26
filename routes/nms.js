@@ -97,6 +97,66 @@ router.get('/automation', async (req, res, next) => {
 });
 
 // ---------- Dashboard & telemetry ----------
+// ---------- Tata letak dashboard: per user (tersimpan di server) + default yang diatur Admin ----------
+// user_id 0 = layout default (dipakai user yang belum menyimpan layout sendiri dan layar TV/NOC).
+let layoutTableReady = null;
+function ensureLayoutTable() {
+  if (!layoutTableReady) {
+    layoutTableReady = db.query(`CREATE TABLE IF NOT EXISTS nms_dashboard_layouts (
+      user_id INT UNSIGNED NOT NULL PRIMARY KEY,
+      layout MEDIUMTEXT NOT NULL,
+      updated_by INT UNSIGNED NULL,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`).catch(err => { layoutTableReady = null; throw err; });
+  }
+  return layoutTableReady;
+}
+const LAYOUT_KEY = /^[a-z0-9_-]{1,32}$/;
+const LAYOUT_WIDTHS = [3, 4, 6, 8, 12];
+function cleanLayout(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const keys = arr => (Array.isArray(arr) ? arr : []).map(String).filter(k => LAYOUT_KEY.test(k)).slice(0, 40);
+  const sizes = {};
+  Object.entries(src.sizes && typeof src.sizes === 'object' ? src.sizes : {}).slice(0, 40).forEach(([k, v]) => {
+    if (!LAYOUT_KEY.test(k) || !v || typeof v !== 'object') return;
+    const w = LAYOUT_WIDTHS.includes(Number(v.w)) ? Number(v.w) : null;
+    const h = Number(v.h) >= 120 && Number(v.h) <= 2000 ? Math.round(Number(v.h)) : 0;
+    if (w || h) sizes[k] = { ...(w ? { w } : {}), ...(h ? { h } : {}) };
+  });
+  const rotate = [0, 15, 20, 30, 60].includes(Number(src.rotate)) ? Number(src.rotate) : 20;
+  return { v: 2, order: keys(src.order), hidden: keys(src.hidden), sizes, mascot: src.mascot !== false, rotate };
+}
+const parseLayout = row => { try { return row ? cleanLayout(JSON.parse(row.layout)) : null; } catch (_) { return null; } };
+async function saveLayoutRow(userId, layout, by) {
+  await ensureLayoutTable();
+  const json = JSON.stringify(cleanLayout(layout));
+  if (json.length > 20000) { const err = new Error('Tata letak terlalu besar.'); err.status = 400; throw err; }
+  await db.execute(`INSERT INTO nms_dashboard_layouts (user_id, layout, updated_by) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE layout = VALUES(layout), updated_by = VALUES(updated_by)`, [userId, json, by]);
+  return JSON.parse(json);
+}
+router.get('/api/layout', api(async req => {
+  await ensureLayoutTable();
+  const uid = Number(req.session.user?.id) || 0;
+  const [rows] = await db.execute(`SELECT user_id, layout FROM nms_dashboard_layouts WHERE user_id IN (0, ?)`, [uid]);
+  return { layout: uid ? parseLayout(rows.find(r => Number(r.user_id) === uid)) : null, defaultLayout: parseLayout(rows.find(r => Number(r.user_id) === 0)) };
+}));
+router.put('/api/layout', api(async req => {
+  const uid = Number(req.session.user?.id) || 0;
+  if (!uid) { const err = new Error('Sesi tidak valid.'); err.status = 401; throw err; }
+  return { layout: await saveLayoutRow(uid, req.body?.layout, uid) };
+}));
+router.delete('/api/layout', api(async req => {
+  await ensureLayoutTable();
+  const uid = Number(req.session.user?.id) || 0;
+  if (uid) await db.execute(`DELETE FROM nms_dashboard_layouts WHERE user_id = ?`, [uid]);
+  return {};
+}));
+router.put('/api/layout/default', requireAdmin, api(async req => {
+  const layout = await saveLayoutRow(0, req.body?.layout, Number(req.session.user?.id) || null);
+  await audit({ userId: req.session.user.id, action: 'update', entityType: 'nms_dashboard_layout', entityId: null, description: 'Tata letak default dashboard NMS diperbarui', ip: req.ip }).catch(() => {});
+  return { layout };
+}));
+
 router.get('/api/dashboard', api(async req => ({ data: await dashboard.getDashboard(siteParam(req)) })));
 router.get('/api/widgets', api(async req => ({ data: await widgets.all(siteParam(req)) })));
 router.get('/api/events', api(async req => ({ rows: await dashboard.recentEvents(siteParam(req), Number(req.query.limit) || 60) })));

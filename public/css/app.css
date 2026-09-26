@@ -2409,3 +2409,25 @@ html[data-theme="dark"] .recon-page .cash-age.late{background:var(--danger-tint)
 .recon-settlement-list[open]>summary>i{transform:rotate(180deg)}
 .recon-count{font-style:normal;font-size:.7rem;color:var(--muted);margin-left:4px}
 @media(max-width:640px){.recon-summary-line{flex-direction:column;align-items:flex-start}.recon-summary-line .recon-aging-setting{margin-left:0!important}}
+
+/* Rekonsiliasi — widget posisi cash (selalu tampil di kedua tab) */
+.recon-cash-widget{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,2fr);border:1px solid var(--line);border-radius:10px;background:var(--panel);overflow:hidden}
+.recon-cash-widget .rcw-totals{display:grid;grid-template-rows:1fr 1fr;border-right:1px solid var(--line)}
+.recon-cash-widget .rcw-total{position:relative;padding:11px 14px}
+.recon-cash-widget .rcw-total+.rcw-total{border-top:1px solid var(--line)}
+.recon-cash-widget .rcw-total::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px}
+.recon-cash-widget .rcw-total.held::before{background:var(--warning)}
+.recon-cash-widget .rcw-total.settled::before{background:var(--success)}
+.recon-cash-widget span{display:block;font-family:"Geist Mono",var(--mono);font-size:.58rem;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.recon-cash-widget b{display:block;margin-top:3px;font-family:"Geist Mono",var(--mono);font-size:1.05rem;font-weight:600;letter-spacing:-.02em;white-space:nowrap}
+.recon-cash-widget .rcw-total.held b{color:var(--warning)}
+.recon-cash-widget .rcw-total.settled b{color:var(--success)}
+.recon-cash-widget small{display:block;margin-top:2px;font-size:.64rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.recon-cash-widget .rcw-people{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;padding:10px;align-content:start;max-height:220px;overflow:auto}
+.recon-cash-widget .rcw-person{display:block;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:inherit;text-decoration:none;min-width:0}
+.recon-cash-widget a.rcw-person:hover{border-color:rgba(var(--brand-rgb),.5)}
+.recon-cash-widget .rcw-person .rcw-name{text-transform:none;letter-spacing:0;font-family:inherit;font-size:.72rem;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.recon-cash-widget .rcw-person b{font-size:.9rem;color:var(--muted)}
+.recon-cash-widget .rcw-person.has-cash b{color:var(--warning)}
+.recon-cash-widget .rcw-empty{grid-column:1/-1;font-size:.72rem;color:var(--muted);padding:6px 2px}
+@media(max-width:767.98px){.recon-cash-widget{grid-template-columns:1fr}.recon-cash-widget .rcw-totals{grid-template-rows:none;grid-template-columns:1fr 1fr;border-right:0;border-bottom:1px solid var(--line)}.recon-cash-widget .rcw-total+.rcw-total{border-top:0;border-left:1px solid var(--line)}.recon-cash-widget .rcw-people{grid-template-columns:repeat(2,minmax(0,1fr))}}

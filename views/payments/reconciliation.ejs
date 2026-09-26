@@ -12,6 +12,27 @@
     <a class="recon-seg-btn <%= !isHistory?'active':'' %>" href="<%= tabHref('held') %>" role="tab" aria-selected="<%= !isHistory %>"><i class="bi bi-hourglass-split"></i>Belum Disetor<em><%= held.length %></em></a>
     <a class="recon-seg-btn <%= isHistory?'active':'' %>" href="<%= tabHref('history') %>" role="tab" aria-selected="<%= isHistory %>"><i class="bi bi-clock-history"></i>Histori &amp; Status</a>
   </nav>
+  <% if(typeof cashWidget!=='undefined'&&cashWidget){ const cw=cashWidget;
+     const jt=v=>{v=Number(v||0);return Math.abs(v)>=1e6?(v/1e6).toLocaleString('id-ID',{maximumFractionDigits:2})+' jt':formatRupiah(v);};
+     const monthLabel=new Date().toLocaleDateString('id-ID',{month:'long',year:'numeric',timeZone:'Asia/Jakarta'});
+     const holders=cw.collectors.filter(c=>Number(c.held_amount)>0||Number(c.settled_month)>0); %>
+  <div class="recon-cash-widget mb-3" aria-label="Posisi cash">
+    <div class="rcw-totals">
+      <div class="rcw-total held"><span>Belum disetor</span><b title="<%= formatRupiah(cw.held_total) %>"><%= jt(cw.held_total) %></b><small><%= cw.held_count %> transaksi · di <%= holders.filter(c=>Number(c.held_amount)>0).length %> collector</small></div>
+      <div class="rcw-total settled"><span>Sudah disetor · <%= monthLabel %></span><b title="<%= formatRupiah(cw.settled_month) %>"><%= jt(cw.settled_month) %></b><small><%= cw.settled_month_count %> transaksi · hari ini <%= jt(cw.settled_today) %></small></div>
+    </div>
+    <div class="rcw-people">
+      <% holders.forEach(c=>{ const h=Number(c.held_amount||0); %>
+      <<%= Number(c.user_id)>0?'a':'div' %> class="rcw-person <%= h>0?'has-cash':'' %>"<% if(Number(c.user_id)>0){ %> href="/payments/reconciliation?<%= new URLSearchParams({collector:c.user_id}).toString() %>#cashHeldTable"<% } %>>
+        <span class="rcw-name"><%= c.collector_name %></span>
+        <b title="<%= formatRupiah(h) %>"><%= jt(h) %></b>
+        <small><%= Number(c.held_count||0) %> trx di tangan · setor <%= jt(c.settled_month) %></small>
+      </<%= Number(c.user_id)>0?'a':'div' %>>
+      <% }) %>
+      <% if(!holders.length){ %><div class="rcw-empty">Belum ada cash di collector maupun setoran bulan ini.</div><% } %>
+    </div>
+  </div>
+  <% } %>
   <% const presetHref=(from,to)=>'/payments/reconciliation?'+new URLSearchParams({...baseFilter,tab:'history',status,basis,date_from:from,date_to:to}).toString();
      const todayJkt=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jakarta'}).format(new Date());
      const shiftDay=(iso,n)=>{const d=new Date(iso+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
