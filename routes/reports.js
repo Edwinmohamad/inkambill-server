@@ -59,6 +59,7 @@ async function billingReport(f){
 async function cashReport(f){
   const where=["ct.transaction_date BETWEEN ? AND ?","COALESCE(ct.approval_status,'APPROVED')='APPROVED'"],p=[f.from,f.to];
   if(f.site){where.push('s.code=?');p.push(f.site);}
+  else where.push('ct.internal_transfer_key IS NULL');
   if(f.category){where.push('cc.id=?');p.push(f.category);}
   if(f.flow_type){where.push('cc.type=?');p.push(f.flow_type);}
   if(f.method){where.push('p.method=?');p.push(f.method);}

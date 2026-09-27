@@ -191,6 +191,7 @@
         <div class="sidebar-section-label"><%= language==='en'?'WAREHOUSE':'GUDANG' %></div>
         <nav class="sidebar-nav">
           <a class="sidebar-link <%= currentPath === '/inventory' ? 'active' : '' %>" href="/inventory"><i class="bi bi-box-seam-fill"></i><span><%= t('stock') %></span></a>
+          <a class="sidebar-link <%= currentPath.startsWith('/inventory/procurement') ? 'active' : '' %>" href="/inventory/procurement"><i class="bi bi-bag-check-fill"></i><span>Belanja & Transfer</span></a>
           <a class="sidebar-link <%= currentPath.startsWith('/inventory/movements') ? 'active' : '' %>" href="/inventory/movements"><i class="bi bi-arrow-left-right"></i><span><%= t('movements') %></span></a>
           <a class="sidebar-link <%= currentPath.startsWith('/inventory/usage') ? 'active' : '' %>" href="/inventory/usage"><i class="bi bi-tools"></i><span><%= t('material') %></span></a>
           <a class="sidebar-link <%= currentPath.startsWith('/inventory/suppliers') ? 'active' : '' %>" href="/inventory/suppliers"><i class="bi bi-truck"></i><span><%= t('supplier') %></span></a>

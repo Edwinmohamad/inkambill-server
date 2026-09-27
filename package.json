@@ -21,7 +21,8 @@
     "test:wa-ticket-bot": "node scripts/test-wa-ticket-bot.js",
     "test:waha-cross-ct": "node scripts/test-waha-cross-ct.js",
     "test:pppoe-smart-sync": "node scripts/test-pppoe-smart-sync.js",
-    "test:fasum": "node scripts/test-fasum.js"
+    "test:fasum": "node scripts/test-fasum.js",
+    "test:procurement": "node scripts/test-procurement-module.js"
   },
   "dependencies": {
     "bcryptjs": "3.0.2",

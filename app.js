@@ -28,6 +28,7 @@ const { generateMonthlyInvoices } = require('./services/invoiceService');
 const { runAutoIsolation } = require('./services/networkService');
 const { captureAllNmsTelemetry, backupAllRouters } = require('./services/nmsTelemetryService');
 const { ensureNmsV2Schema, purgeNmsHistory } = require('./services/nms/schema');
+const { ensureProcurementSchema } = require('./services/procurementSchema');
 const nmsPoller = require('./services/nms/poller');
 const nmsAutomation = require('./services/nms/automation');
 const { evaluateNetworkIncidents } = require('./services/networkAlertService');
@@ -43,7 +44,7 @@ const { initGatewayOnBoot, reconcileGatewayStatus, processQueue, runAutoReminder
 const { requireWahaWebhookToken } = require('./middleware/waha');
 
 const app = express();
-const assetVersion = ['public/css/app.css','public/css/debts.css','public/css/nms-wall.css','public/js/nms-wall.js','public/css/mobile-app.css','public/css/monitoring.css','public/js/app.js','public/js/mobile-app.js','public/js/nms.js','public/js/performance.js','public/js/monitoring.js']
+const assetVersion = ['public/css/app.css','public/css/debts.css','public/css/inventory.css','public/css/procurement.css','public/css/nms-wall.css','public/js/nms-wall.js','public/css/mobile-app.css','public/css/monitoring.css','public/js/app.js','public/js/mobile-app.js','public/js/nms.js','public/js/performance.js','public/js/monitoring.js']
   .map(file => Math.floor(fs.statSync(path.join(__dirname,file)).mtimeMs).toString(36))
   .join('-');
 app.set('view engine', 'ejs');
@@ -340,6 +341,7 @@ async function bootstrap() {
   await ensureV56Schema();
   await ensureV57Schema();
   await ensureV58Schema();
+  await ensureProcurementSchema();
   await ensureNmsV2Schema();
   nmsPoller.start();
   const [rows] = await db.query('SELECT COUNT(*) total FROM users');

@@ -75,13 +75,13 @@
       <table class="app-table cash-ledger-table" data-bulk-scope="cashBulkBar">
         <thead><tr><% if(isAdmin){ %><th class="app-check-col"><input type="checkbox" class="form-check-input" data-select-all aria-label="Pilih semua transaksi kas"></th><% } %><th class="app-seq-col">No.</th><th>Nama</th><th>Tanggal</th><th>Kategori</th><th>Site</th><th>Bukti</th><th>Status Approval</th><th>Nominal</th><th class="text-end">Aksi</th></tr></thead>
         <tbody id="cashLedgerBody">
-          <% transactions.forEach((t,index)=>{ const editable=true;const td=new Date(t.transaction_date);const txDate=`${td.getFullYear()}-${String(td.getMonth()+1).padStart(2,'0')}-${String(td.getDate()).padStart(2,'0')}`;const inheritedPaymentProof=!t.proof_path&&t.source_payment_id&&t.source_payment_proof_path;const effectiveProof=!!(t.proof_path||inheritedPaymentProof);const effectiveProofHref=t.proof_path?`/cash/${t.id}/proof`:`/payments/${t.source_payment_id}/proof`;const effectiveProofMime=t.proof_path?t.proof_mime:t.source_payment_proof_mime;const cashApproval=t.approval_status||'APPROVED'; %>
+          <% transactions.forEach((t,index)=>{ const editable=!t.internal_transfer_key;const td=new Date(t.transaction_date);const txDate=`${td.getFullYear()}-${String(td.getMonth()+1).padStart(2,'0')}-${String(td.getDate()).padStart(2,'0')}`;const inheritedPaymentProof=!t.proof_path&&t.source_payment_id&&t.source_payment_proof_path;const effectiveProof=!!(t.proof_path||inheritedPaymentProof);const effectiveProofHref=t.proof_path?`/cash/${t.id}/proof`:`/payments/${t.source_payment_id}/proof`;const effectiveProofMime=t.proof_path?t.proof_mime:t.source_payment_proof_mime;const cashApproval=t.approval_status||'APPROVED'; %>
           <tr id="cash-row-<%= t.id %>" class="<%= Number(createdId||0)===Number(t.id)?'cash-row-created':'' %>" data-instant-filter-row data-instant-search-value="<%= [t.transaction_code,t.name,t.notes,t.category_name,t.category_code,t.site_code,t.purchase_shop_name,t.purchase_channel,t.vendor_name].filter(Boolean).join(' ') %>">
             <% if(isAdmin){ %><td class="app-check-col"><% if(editable){ %><input type="checkbox" class="form-check-input" data-row-check value="<%= t.id %>" aria-label="Pilih transaksi <%= t.transaction_code||t.id %>"><% } %></td><% } %>
             <td><span class="cell-main" data-instant-number><%= index+1 %></span></td>
             <td><span class="cell-main"><%= t.name %></span></td>
             <td><%= formatDate(t.transaction_date) %></td>
-            <td><span class="status-badge <%= t.category_type==='income'?'green':'red' %>"><%= t.category_name %></span></td>
+            <td><span class="status-badge <%= t.category_type==='income'?'green':'red' %>"><%= t.category_name %></span><% if(t.internal_transfer_key){ %><span class="cell-sub"><i class="bi bi-arrow-left-right"></i> Transfer internal · terkunci</span><% } %></td>
             <td><span class="status-badge purple"><%= t.site_code||'GLOBAL' %></span></td>
             
             <td>

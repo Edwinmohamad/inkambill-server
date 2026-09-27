@@ -1,0 +1,129 @@
+<link rel="stylesheet" href="/css/procurement.css?v=<%= assetVersion %>">
+<% const rupiah=v=>'Rp'+Number(v||0).toLocaleString('id-ID'); const count=v=>Number(v||0).toLocaleString('id-ID',{maximumFractionDigits:2}); %>
+<section class="proc-page">
+  <header class="proc-hero">
+    <div class="proc-hero-copy"><span class="proc-eyebrow"><i class="bi bi-stars"></i> WAREHOUSE PROCUREMENT</span><h1>Belanja & Transfer</h1><p>Satu tempat untuk daftar belanja permanen, penerimaan supplier, faktur, perpindahan stok, dan Data Kas.</p></div>
+    <div class="proc-hero-actions"><a class="proc-btn soft" href="/inventory"><i class="bi bi-box-seam"></i> Lihat Stok</a><button class="proc-btn primary" type="button" data-open-tab="purchase"><i class="bi bi-plus-lg"></i> Faktur Baru</button></div>
+    <div class="proc-orb one"></div><div class="proc-orb two"></div>
+  </header>
+
+  <div class="proc-metrics">
+    <article><span class="proc-metric-icon amber"><i class="bi bi-pencil-square"></i></span><div><small>Draft faktur</small><strong><%= Number(summary.draft_purchases||0) %></strong></div></article>
+    <article><span class="proc-metric-icon green"><i class="bi bi-check2-circle"></i></span><div><small>Diterima bulan ini</small><strong><%= Number(summary.received_month||0) %></strong></div></article>
+    <article><span class="proc-metric-icon red"><i class="bi bi-calendar2-week"></i></span><div><small>Sisa utang supplier</small><strong><%= rupiah(summary.supplier_due||0) %></strong></div></article>
+    <article><span class="proc-metric-icon violet"><i class="bi bi-bookmark-heart"></i></span><div><small>Shopping List aktif</small><strong><%= Number(summary.active_lists||0) %></strong></div></article>
+  </div>
+
+  <nav class="proc-segments" aria-label="Alur pengadaan">
+    <button class="active" data-proc-tab="overview"><i class="bi bi-grid-1x2"></i> Ringkasan</button>
+    <button data-proc-tab="purchase"><i class="bi bi-receipt"></i> Penerimaan & Faktur</button>
+    <button data-proc-tab="lists"><i class="bi bi-list-check"></i> Shopping List</button>
+    <button data-proc-tab="transfer"><i class="bi bi-arrow-left-right"></i> Transfer Site</button>
+  </nav>
+
+  <div class="proc-pane active" data-proc-pane="overview">
+    <div class="proc-grid proc-grid-main">
+      <section class="proc-card">
+        <div class="proc-card-head"><div><span>TRANSAKSI TERBARU</span><h2>Faktur pembelian</h2></div><button class="proc-icon-btn" data-open-tab="purchase" title="Buat faktur"><i class="bi bi-plus-lg"></i></button></div>
+        <div class="proc-table-wrap"><table class="proc-table"><thead><tr><th>Dokumen</th><th>Sumber</th><th>Tujuan</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>
+          <% purchases.slice(0,8).forEach(p=>{ %><tr><td><a href="/inventory/procurement/purchases/<%= p.id %>/invoice"><b><%= p.document_no %></b></a><small><%= formatDate(p.purchase_date) %> · <%= p.creator_name||'-' %></small></td><td><b><%= p.supplier_name||p.shop_name||'Supplier lain' %></b><small><%= p.external_invoice_no||p.source_type %></small></td><td><span class="proc-site"><%= p.destination_code %></span></td><td class="money"><b><%= rupiah(p.grand_total) %></b><small><%= Number(p.due_amount)>0?`Sisa ${rupiah(p.due_amount)}`:'Lunas/tercatat' %></small></td><td><span class="proc-status <%= p.status %>"><%= p.status==='received'?'Diterima':p.status==='draft'?'Draft':'Batal' %></span></td><td><a class="proc-row-link" href="/inventory/procurement/purchases/<%= p.id %>/invoice"><i class="bi bi-chevron-right"></i></a></td></tr><% }) %>
+          <% if(!purchases.length){ %><tr><td colspan="6"><div class="proc-empty"><i class="bi bi-receipt"></i><b>Belum ada faktur</b><span>Buat penerimaan barang pertama.</span></div></td></tr><% } %>
+        </tbody></table></div>
+      </section>
+      <aside class="proc-card proc-quick">
+        <div class="proc-card-head"><div><span>AKSI CEPAT</span><h2>Mulai pekerjaan</h2></div></div>
+        <button data-open-tab="purchase"><i class="bi bi-box-arrow-in-down"></i><span><b>Barang datang</b><small>Input barang dan terbitkan faktur</small></span><i class="bi bi-chevron-right"></i></button>
+        <button data-open-tab="transfer"><i class="bi bi-truck"></i><span><b>Kirim ke site</b><small>Pindahkan stok KRW ke KBG</small></span><i class="bi bi-chevron-right"></i></button>
+        <button data-open-tab="lists"><i class="bi bi-bookmark-plus"></i><span><b>Simpan daftar rutin</b><small>Buat template belanja permanen</small></span><i class="bi bi-chevron-right"></i></button>
+        <div class="proc-note"><i class="bi bi-shield-check"></i><p><b>Transaksi aman.</b> Data Kas otomatis dibuat sebagai Pending Approval dan transfer internal selalu memiliki pasangan yang sama.</p></div>
+      </aside>
+    </div>
+
+    <section class="proc-card mt-3">
+      <div class="proc-card-head"><div><span>PERPINDAHAN TERBARU</span><h2>Transfer antar-site</h2></div><button class="proc-text-btn" data-open-tab="transfer">Transfer baru <i class="bi bi-arrow-right"></i></button></div>
+      <div class="proc-transfer-strip">
+        <% transfers.slice(0,6).forEach(t=>{ %><article><div class="proc-route"><span><%= t.origin_code %></span><i class="bi bi-arrow-right"></i><span><%= t.destination_code %></span></div><b><%= t.document_no %></b><small><%= formatDate(t.transfer_date) %> · <%= rupiah(t.grand_total) %></small><span class="proc-status received">Selesai</span></article><% }) %>
+        <% if(!transfers.length){ %><div class="proc-empty wide"><i class="bi bi-arrow-left-right"></i><b>Belum ada transfer gudang</b></div><% } %>
+      </div>
+    </section>
+  </div>
+
+  <div class="proc-pane" data-proc-pane="purchase" id="purchase">
+    <form class="proc-composer" method="post" action="/inventory/procurement/purchases" data-line-form="purchase">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <div class="proc-composer-head"><div><span class="proc-step">01</span><div><small>PENERIMAAN BARANG</small><h2>Faktur pembelian baru</h2><p>Supplier Pandawa, toko online, atau supplier lain.</p></div></div><div class="proc-live-total"><small>Grand total</small><strong data-grand-total>Rp0</strong></div></div>
+      <div class="proc-form-grid">
+        <label>Sumber barang<select name="source_type" data-source-type><option value="pandawa">Supplier Pandawa</option><option value="online">Belanja online</option><option value="supplier_other">Supplier lainnya</option></select></label>
+        <label>Supplier<select name="supplier_id"><option value="">Pilih supplier</option><% suppliers.forEach(s=>{ %><option value="<%= s.id %>"><%= s.name %></option><% }) %></select></label>
+        <label class="online-field">Marketplace<input name="marketplace" placeholder="Shopee / Tokopedia"></label>
+        <label class="online-field">Nama toko<input name="shop_name" placeholder="Nama toko online"></label>
+        <label>No. nota supplier<input name="external_invoice_no" placeholder="Opsional"></label>
+        <label>Tanggal<input type="date" name="purchase_date" value="<%= today %>" required></label>
+        <label>Barang diterima di<select name="destination_site_id" required><option value="">Pilih gudang</option><% sites.forEach(s=>{ %><option value="<%= s.id %>"><%= s.code %> · <%= s.name %></option><% }) %></select></label>
+        <label>Kas pembayar<select name="payer_site_id"><option value="">Sama dengan gudang</option><% sites.forEach(s=>{ %><option value="<%= s.id %>">Kas <%= s.code %></option><% }) %></select></label>
+        <label>Cara pembayaran<select name="payment_type" data-payment-type><option value="cash">Cash</option><option value="transfer">Transfer</option><option value="credit">Tempo / utang</option><option value="partial">Bayar sebagian</option></select></label>
+        <label class="partial-field">Nominal dibayar<input type="number" min="0" name="paid_amount" value="0"></label>
+        <label class="due-field">Jatuh tempo<input type="date" name="due_date"></label>
+      </div>
+      <div class="proc-lines">
+        <div class="proc-lines-head"><div><small>RINCIAN BARANG</small><h3>Apa saja yang datang?</h3></div><button class="proc-btn soft sm" type="button" data-add-line><i class="bi bi-plus-lg"></i> Tambah barang</button></div>
+        <div data-lines></div>
+      </div>
+      <div class="proc-checkout">
+        <label class="proc-notes">Catatan<textarea name="notes" rows="3" placeholder="Nomor resi, kondisi barang, atau keterangan lain"></textarea></label>
+        <div class="proc-totals">
+          <label>Diskon faktur<input type="number" min="0" name="discount_amount" value="0" data-total-input></label>
+          <label>Ongkir<input type="number" min="0" name="shipping_amount" value="0" data-total-input></label>
+          <label>Pajak<input type="number" min="0" name="tax_amount" value="0" data-total-input></label>
+          <div><span>Subtotal</span><b data-subtotal>Rp0</b></div><div class="grand"><span>Total akhir</span><strong data-total-bottom>Rp0</strong></div>
+        </div>
+      </div>
+      <footer class="proc-composer-foot"><span><i class="bi bi-info-circle"></i> “Terima & Terbitkan” menambah stok dan membuat pengajuan Data Kas.</span><div><button class="proc-btn soft" name="action" value="draft">Simpan Draft</button><button class="proc-btn primary" name="action" value="receive"><i class="bi bi-check2"></i> Terima & Terbitkan Faktur</button></div></footer>
+    </form>
+  </div>
+
+  <div class="proc-pane" data-proc-pane="lists" id="lists">
+    <div class="proc-grid proc-grid-lists">
+      <form class="proc-card proc-list-builder" method="post" action="/inventory/procurement/lists" data-line-form="list">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <div class="proc-card-head"><div><span>TEMPLATE PERMANEN</span><h2>Shopping List baru</h2><p>Simpan daftar rutin dan gunakan berkali-kali.</p></div></div>
+        <div class="proc-form-grid compact"><label>Nama daftar<input name="name" required placeholder="Belanja rutin Pandawa"></label><label>Supplier<select name="supplier_id"><option value="">Tanpa default</option><% suppliers.forEach(s=>{ %><option value="<%= s.id %>"><%= s.name %></option><% }) %></select></label><label>Gudang tujuan<select name="destination_site_id"><option value="">Pilih saat digunakan</option><% sites.forEach(s=>{ %><option value="<%= s.id %>"><%= s.code %></option><% }) %></select></label></div>
+        <div class="proc-lines mini"><div class="proc-lines-head"><h3>Barang default</h3><button class="proc-btn soft sm" type="button" data-add-line><i class="bi bi-plus-lg"></i> Barang</button></div><div data-lines></div></div>
+        <label class="proc-notes">Catatan<textarea name="notes" rows="2"></textarea></label><button class="proc-btn primary full"><i class="bi bi-bookmark-check"></i> Simpan Permanen</button>
+      </form>
+      <section class="proc-list-stack">
+        <% lists.forEach(l=>{ %><article class="proc-saved-list" data-list='<%- JSON.stringify({id:l.id,supplierId:l.supplier_id,siteId:l.destination_site_id,items:l.items.map(x=>({itemId:x.item_id,qty:x.default_qty,price:x.price_hint}))}).replace(/</g,"\\u003c").replace(/'/g,"&#39;") %>'><header><div><span class="proc-list-icon"><i class="bi bi-bookmark-fill"></i></span><div><h3><%= l.name %></h3><p><%= l.supplier_name||'Supplier dipilih nanti' %> · <%= l.site_code||'Semua gudang' %></p></div></div><span><%= l.item_count %> barang</span></header><ul><% l.items.slice(0,5).forEach(x=>{ %><li><span><%= x.item_name %></span><b><%= count(x.default_qty) %> <%= x.unit %></b></li><% }) %></ul><footer><b><%= rupiah(l.estimate) %> <small>estimasi</small></b><div><form method="post" action="/inventory/procurement/lists/<%= l.id %>/toggle"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="proc-icon-btn danger" title="Arsipkan"><i class="bi bi-archive"></i></button></form><button class="proc-btn primary sm" type="button" data-use-list>Gunakan <i class="bi bi-arrow-right"></i></button></div></footer></article><% }) %>
+        <% if(!lists.length){ %><div class="proc-card proc-empty"><i class="bi bi-bookmark"></i><b>Belum ada Shopping List</b><span>Buat daftar rutin pertama di sebelah kiri.</span></div><% } %>
+      </section>
+    </div>
+  </div>
+
+  <div class="proc-pane" data-proc-pane="transfer" id="transfer">
+    <form class="proc-composer" method="post" action="/inventory/procurement/transfers" data-line-form="transfer">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <div class="proc-composer-head"><div><span class="proc-step blue">02</span><div><small>TRANSFER INTERNAL</small><h2>Kirim barang antar-site</h2><p>Stok berpindah dan dua transaksi Data Kas dibuat sebagai pasangan internal.</p></div></div><div class="proc-live-total"><small>Nilai transfer</small><strong data-grand-total>Rp0</strong></div></div>
+      <div class="proc-route-picker"><label><span>Dari gudang</span><select name="origin_site_id" data-origin-site required><option value="">Pilih asal</option><% sites.forEach(s=>{ %><option value="<%= s.id %>"><%= s.code %> · <%= s.name %></option><% }) %></select></label><i class="bi bi-arrow-right"></i><label><span>Ke gudang</span><select name="destination_site_id" required><option value="">Pilih tujuan</option><% sites.forEach(s=>{ %><option value="<%= s.id %>"><%= s.code %> · <%= s.name %></option><% }) %></select></label><label><span>Tanggal</span><input type="date" name="transfer_date" value="<%= today %>" required></label></div>
+      <div class="proc-lines"><div class="proc-lines-head"><div><small>MUATAN</small><h3>Barang yang dikirim</h3></div><button class="proc-btn soft sm" type="button" data-add-line><i class="bi bi-plus-lg"></i> Tambah barang</button></div><div data-lines></div></div>
+      <div class="proc-checkout"><label class="proc-notes">Catatan / penerima<textarea name="notes" rows="3" placeholder="Nama penerima, kendaraan, atau keterangan pengiriman"></textarea></label><div class="proc-totals"><label>Ongkir / biaya kirim<input type="number" min="0" name="shipping_amount" value="0" data-total-input></label><div><span>Nilai barang</span><b data-subtotal>Rp0</b></div><div class="grand"><span>Total transfer</span><strong data-total-bottom>Rp0</strong></div></div></div>
+      <footer class="proc-composer-foot"><span><i class="bi bi-arrow-repeat"></i> KBG menjadi pengeluaran, KRW menjadi pendapatan internal—nilai selalu sama.</span><button class="proc-btn primary"><i class="bi bi-truck"></i> Proses Transfer</button></footer>
+    </form>
+  </div>
+</section>
+
+<template id="procLineTemplate"><div class="proc-line"><span class="proc-line-index">1</span><label class="item"><small>Barang</small><select name="item_id" required><option value="">Pilih barang</option><% items.forEach(i=>{ %><option value="<%= i.id %>" data-site="<%= i.site_id||'' %>" data-price="<%= Number(i.purchase_price||0) %>" data-unit="<%= i.unit %>" data-stock="<%= Number(i.qty||0) %>"><%= i.name %> · <%= i.site_code||'GLOBAL' %> · stok <%= count(i.qty) %></option><% }) %></select><em data-stock-hint></em></label><label><small>Qty</small><input type="number" name="qty" min="0.01" step="0.01" value="1" required></label><label><small>Harga satuan</small><input type="number" name="unit_price" min="0" value="0" required></label><label class="discount"><small>Diskon</small><input type="number" name="line_discount" min="0" value="0"></label><div class="proc-line-total"><small>Subtotal</small><b>Rp0</b></div><button class="proc-line-remove" type="button" title="Hapus"><i class="bi bi-x-lg"></i></button></div></template>
+
+<script>
+(()=>{
+  const root=document.querySelector('.proc-page'),tpl=document.getElementById('procLineTemplate');if(!root||!tpl)return;
+  const money=n=>'Rp'+Math.max(0,Number(n)||0).toLocaleString('id-ID',{maximumFractionDigits:0});
+  function openTab(key){root.querySelectorAll('[data-proc-tab]').forEach(b=>b.classList.toggle('active',b.dataset.procTab===key));root.querySelectorAll('[data-proc-pane]').forEach(p=>p.classList.toggle('active',p.dataset.procPane===key));history.replaceState(null,'',key==='overview'?location.pathname:`#${key}`);window.scrollTo({top:root.querySelector('.proc-segments').offsetTop-85,behavior:'smooth'});}
+  root.addEventListener('click',e=>{const t=e.target.closest('[data-proc-tab],[data-open-tab]');if(t){e.preventDefault();openTab(t.dataset.procTab||t.dataset.openTab);}});
+  const hash=location.hash.slice(1);if(['purchase','lists','transfer'].includes(hash))openTab(hash);
+  function recalc(form){let subtotal=0;form.querySelectorAll('.proc-line').forEach((line,i)=>{line.querySelector('.proc-line-index').textContent=i+1;const q=Number(line.querySelector('[name=qty]').value)||0,p=Number(line.querySelector('[name=unit_price]').value)||0,d=Number(line.querySelector('[name=line_discount]').value)||0,v=Math.max(0,q*p-d);subtotal+=v;line.querySelector('.proc-line-total b').textContent=money(v);});let total=subtotal;const disc=Number(form.querySelector('[name=discount_amount]')?.value)||0,ship=Number(form.querySelector('[name=shipping_amount]')?.value)||0,tax=Number(form.querySelector('[name=tax_amount]')?.value)||0;total=Math.max(0,total-disc+ship+tax);form.querySelector('[data-subtotal]')&&(form.querySelector('[data-subtotal]').textContent=money(subtotal));form.querySelector('[data-grand-total]').textContent=money(total);form.querySelector('[data-total-bottom]').textContent=money(total);}
+  function addLine(form,data={}){const node=tpl.content.firstElementChild.cloneNode(true);if(form.dataset.lineForm==='list')node.querySelector('.discount').style.display='none';const select=node.querySelector('[name=item_id]');if(data.itemId)select.value=String(data.itemId);node.querySelector('[name=qty]').value=data.qty||1;const opt=select.selectedOptions[0];node.querySelector('[name=unit_price]').value=data.price??opt?.dataset.price??0;if(form.dataset.lineForm==='transfer'){const origin=form.querySelector('[data-origin-site]')?.value;[...select.options].forEach(o=>{if(o.value)o.hidden=!!origin&&o.dataset.site!==origin;});}form.querySelector('[data-lines]').appendChild(node);updateHint(node);recalc(form);}
+  function updateHint(line){const o=line.querySelector('[name=item_id]').selectedOptions[0],hint=line.querySelector('[data-stock-hint]');hint.textContent=o?.value?`Tersedia ${Number(o.dataset.stock||0).toLocaleString('id-ID')} ${o.dataset.unit||''}`:'';if(o?.value&&!Number(line.querySelector('[name=unit_price]').value))line.querySelector('[name=unit_price]').value=o.dataset.price||0;}
+  root.querySelectorAll('[data-line-form]').forEach(form=>{addLine(form);form.querySelector('[data-add-line]').addEventListener('click',()=>addLine(form));form.addEventListener('input',()=>recalc(form));form.addEventListener('change',e=>{if(e.target.name==='item_id')updateHint(e.target.closest('.proc-line'));if(e.target.matches('[data-origin-site]')){form.querySelector('[data-lines]').innerHTML='';addLine(form);}recalc(form);});form.addEventListener('click',e=>{const rm=e.target.closest('.proc-line-remove');if(rm){rm.closest('.proc-line').remove();if(!form.querySelector('.proc-line'))addLine(form);recalc(form);}});});
+  const source=root.querySelector('[data-source-type]'),payment=root.querySelector('[data-payment-type]');function conditional(){root.querySelectorAll('.online-field').forEach(x=>x.hidden=source.value!=='online');root.querySelectorAll('.partial-field').forEach(x=>x.hidden=payment.value!=='partial');root.querySelectorAll('.due-field').forEach(x=>x.hidden=!['credit','partial'].includes(payment.value));}source.addEventListener('change',conditional);payment.addEventListener('change',conditional);conditional();
+  root.querySelectorAll('[data-use-list]').forEach(btn=>btn.addEventListener('click',()=>{const card=btn.closest('[data-list]'),data=JSON.parse(card.dataset.list),form=root.querySelector('[data-line-form=purchase]');form.querySelector('[name=supplier_id]').value=data.supplierId||'';form.querySelector('[name=destination_site_id]').value=data.siteId||'';form.querySelector('[data-lines]').innerHTML='';data.items.forEach(x=>addLine(form,x));openTab('purchase');}));
+})();
+</script>
