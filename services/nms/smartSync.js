@@ -141,6 +141,18 @@ async function linkSecret(conn, secretId, customerId, method, { manual = false, 
     previousOwner = row || null;
   }
 
+  // Data lama dapat memiliki mirror customers yang masih menunjuk ke username
+  // ini, sementara customer_id pada ppp_secrets sudah kosong/berbeda. Untuk
+  // mapping manual, itu tetap harus dianggap sebagai link lama yang ditimpa;
+  // bila tidak, UNIQUE(router_id, pppoe_username) menggagalkan penyimpanan.
+  const [mirrorOwners] = await conn.execute(`SELECT id, name, customer_code
+    FROM customers
+    WHERE router_id=? AND LOWER(TRIM(COALESCE(pppoe_username,'')))=LOWER(TRIM(?)) AND id<>?
+    FOR UPDATE`, [secret.router_id, secret.username, customerId]);
+  if (mirrorOwners.length && !manual) {
+    throw new Error(`Username PPPoE ${secret.username} masih tersimpan pada pelanggan ${mirrorOwners[0].name}. Gunakan Hubungkan manual untuk menimpa link lama.`);
+  }
+
   const [takenRows] = await conn.execute(`SELECT id, router_id, username, removed_on_router_at, comment
     FROM ppp_secrets WHERE customer_id=? AND id<>? FOR UPDATE`, [customerId, secretId]);
   const blocking = takenRows.filter(t => !t.removed_on_router_at);
@@ -165,16 +177,30 @@ async function linkSecret(conn, secretId, customerId, method, { manual = false, 
     [secret.site_id, normalizeKey(secret.username), customer.id, method]).catch(() => {});
   }
 
-  const status = networkStateOf(secret);
-  await conn.execute(`UPDATE customers
-    SET status_changed_at=IF(network_status<>?,NOW(),status_changed_at),
-        router_id=?, pppoe_username=?, pppoe_synced_at=NOW(), pppoe_sync_source=?, network_status=?
-    WHERE id=?`, [status, secret.router_id, secret.username, source, status, customerId]);
+  // Lepaskan mirror pemilik lama SEBELUM username dipasang ke pelanggan baru.
+  // customers memiliki UNIQUE(router_id, pppoe_username). Pada operasi timpa
+  // (secret A milik X dipindah ke Y), menulis A ke Y lebih dahulu akan berbenturan
+  // dengan mirror X yang masih A dan membuat seluruh transaksi rollback.
   if (previousOwnerId) {
     await conn.execute(`DELETE FROM nms_sync_aliases WHERE site_id=? AND username_key=? AND customer_id=?`,
       [secret.site_id, normalizeKey(secret.username), previousOwnerId]).catch(() => {});
     await reconcileCustomerMirror(conn, previousOwnerId, { source: 'manual' });
   }
+  for (const owner of mirrorOwners) {
+    // previousOwner sudah direkonsiliasi dari ppp_secrets di atas, sehingga
+    // jangan sampai mirror-nya dibersihkan dua kali dan menimpa fallback link.
+    if (Number(owner.id) === previousOwnerId) continue;
+    await conn.execute(`UPDATE customers
+      SET status_changed_at=IF(network_status<>'offline',NOW(),status_changed_at),
+          router_id=NULL, pppoe_username=NULL, pppoe_synced_at=NOW(), pppoe_sync_source=NULL, network_status='offline'
+      WHERE id=?`, [owner.id]);
+  }
+
+  const status = networkStateOf(secret);
+  await conn.execute(`UPDATE customers
+    SET status_changed_at=IF(network_status<>?,NOW(),status_changed_at),
+        router_id=?, pppoe_username=?, pppoe_synced_at=NOW(), pppoe_sync_source=?, network_status=?
+    WHERE id=?`, [status, secret.router_id, secret.username, source, status, customerId]);
 
   const [[verifiedSecret]] = await conn.execute(`SELECT customer_id, sync_status FROM ppp_secrets WHERE id=? FOR UPDATE`, [secretId]);
   const [[verifiedCustomer]] = await conn.execute(`SELECT router_id, pppoe_username FROM customers WHERE id=? FOR UPDATE`, [customerId]);

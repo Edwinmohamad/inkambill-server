@@ -71,7 +71,7 @@ async function syncRouterSecrets(router) {
     }
     // Import link billing existing (pppoe_username) yang belum tercermin di ppp_secrets.
     await conn.execute(`UPDATE ppp_secrets p JOIN customers c ON c.site_id=p.site_id AND LOWER(TRIM(c.pppoe_username))=LOWER(p.username) AND (c.router_id IS NULL OR c.router_id=p.router_id)
-        LEFT JOIN ppp_secrets other ON other.customer_id=c.id
+        LEFT JOIN ppp_secrets other ON other.customer_id=c.id AND other.removed_on_router_at IS NULL
       SET p.customer_id=c.id, p.sync_status='synced', p.match_method='pppoe_username', p.last_synced_at=NOW()
       WHERE p.router_id=? AND p.customer_id IS NULL AND other.id IS NULL AND c.archived_at IS NULL`, [router.id]);
     await conn.commit();
