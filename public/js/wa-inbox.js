@@ -49,6 +49,8 @@
     if (state.filter === 'payment') return c.category === 'payment';
     if (state.filter === 'outage') return c.category === 'outage';
     if (state.filter === 'isolated') return c.networkStatus === 'isolated';
+    if (state.filter === 'pending') return c.status === 'pending';
+    if (state.filter === 'followup') return c.followUpAt && new Date(c.followUpAt) <= new Date() && !['resolved', 'closed'].includes(c.status);
     if (state.filter === 'mine') return c.assignedUserId === ME;
     return true;
   }
@@ -74,6 +76,10 @@
       if (c.networkStatus === 'isolated') tags.appendChild(el('span', 'tag red', 'Isolir'));
       if (c.mode === 'manual') tags.appendChild(el('span', 'tag gray', 'Manual'));
       if (c.assignedName || c.departmentLabel) tags.appendChild(el('span', 'tag purple', c.assignedName || c.departmentLabel));
+      if (c.originBroadcastName) tags.appendChild(el('span', 'tag purple', `↩ ${c.originBroadcastName}`));
+      if (c.status && c.status !== 'open') tags.appendChild(el('span', `tag ${c.status === 'pending' ? 'orange' : 'gray'}`, c.status));
+      (c.labels || []).slice(0, 3).forEach(label => tags.appendChild(el('span', 'tag', label)));
+      if (c.followUpAt && new Date(c.followUpAt) <= new Date() && !['resolved', 'closed'].includes(c.status)) tags.appendChild(el('span', 'tag red', 'Follow-up'));
       body.append(top, bottom, tags); li.append(av, body);
       li.addEventListener('click', () => openConversation(c.id));
       li.addEventListener('keydown', e => { if (e.key === 'Enter') openConversation(c.id); });
@@ -107,7 +113,7 @@
     const c = state.detail.conversation;
     $('#waiHeadAvatar').textContent = initials(c.displayName);
     $('#waiHeadName').textContent = c.displayName;
-    $('#waiHeadSub').textContent = [c.phone ? `+${c.phone}` : c.chatId, c.customerCode, c.assignedName || c.departmentLabel].filter(Boolean).join(' · ');
+    $('#waiHeadSub').textContent = [c.phone ? `+${c.phone}` : c.chatId, c.customerCode, c.assignedName || c.departmentLabel, c.originBroadcastName ? `Balasan: ${c.originBroadcastName}` : null].filter(Boolean).join(' · ');
     const mode = $('#waiHeadMode');
     mode.textContent = c.mode === 'bot' ? 'Bot Active' : (c.humanUntil ? `Manual s/d ${new Date(c.humanUntil).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}` : 'Manual');
     mode.className = `wai-mode ${c.mode}`;
@@ -258,6 +264,11 @@
     $('#waiInfoCode').textContent = cu ? `ID ${cu.customer_code} · +${c.phone || ''}` : (c.phone ? `+${c.phone}` : c.chatId);
     const badges = $('#waiInfoBadges'); badges.replaceChildren();
     const cards = $('#waiInfoCards'); cards.replaceChildren();
+    $$('#waiStatusPick button').forEach(b => b.classList.toggle('active', b.dataset.status === c.status));
+    $('#waiLabels').value = (c.labels || []).join(', ');
+    if (c.followUpAt) {
+      const fd = new Date(c.followUpAt); $('#waiFollowUp').value = new Date(fd.getTime() - fd.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    } else $('#waiFollowUp').value = '';
     $('#waiLinkBox').classList.toggle('d-none', !!cu);
     ['waiActVerify', 'waiActNetwork'].forEach(id => { $(`#${id}`).disabled = !cu; });
     if (!cu) return;
@@ -274,6 +285,19 @@
     const pc = el('section', 'wai-card'); pc.append(el('h4', null, '3 Pembayaran Terakhir'), payList); cards.appendChild(pc);
     const link = el('a', 'ink-text-link', 'Buka profil pelanggan ↗'); link.href = `/customers/${cu.id}`; link.target = '_blank'; cards.appendChild(link);
   }
+  $('#waiStatusPick').addEventListener('click', e => {
+    const b = e.target.closest('button[data-status]'); if (!b) return;
+    $$('#waiStatusPick button').forEach(x => x.classList.toggle('active', x === b));
+  });
+  $('#waiWorkflowSave').addEventListener('click', async () => {
+    if (!state.activeId) return;
+    const body = { status: $('#waiStatusPick button.active')?.dataset.status || 'open', labels: $('#waiLabels').value.split(',').map(x => x.trim()).filter(Boolean), follow_up_at: $('#waiFollowUp').value || null };
+    const btn = $('#waiWorkflowSave'); btn.disabled = true;
+    try {
+      const r = await api(`/wa-inbox/api/conversations/${state.activeId}/workflow`, { method: 'POST', body });
+      state.detail.conversation = r.conversation; upsertConv(r.conversation); renderInfo(); toast('Kontrol percakapan disimpan.', 'success');
+    } catch (e) { toast(e.message); } finally { btn.disabled = false; }
+  });
   let linkTimer = null;
   $('#waiLinkSearch').addEventListener('input', e => {
     clearTimeout(linkTimer); const q = e.target.value.trim(); const ul = $('#waiLinkResults');

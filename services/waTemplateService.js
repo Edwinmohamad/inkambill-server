@@ -7,6 +7,17 @@ const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 
 
 const OFFICIAL_TEMPLATES = [
   {
+    key: 'invoice', title: 'Tagihan Baru',
+    body: `Yth. Bapak/Ibu {nama_pelanggan} (ID: {id_pelanggan}),
+
+Tagihan layanan internet {paket_layanan} untuk periode {periode} telah diterbitkan.
+- No. Invoice: {nomor_invoice}
+- Total: {nominal_tagihan}
+- Jatuh Tempo: {tanggal_jatuh_tempo}
+
+Pembayaran dapat dilakukan ke {nama_bank}, No. Rekening {nomor_rekening}, a.n. {nama_pemilik_rekening}. Mohon kirimkan bukti pembayaran melalui balasan chat ini. Terima kasih.`
+  },
+  {
     key: 'reminder', title: 'Pengingat Tagihan (H-3 / H-1)',
     body: `{Yth.|Kepada Yth.} Bapak/Ibu {nama_pelanggan} (ID: {id_pelanggan}),
 
@@ -35,6 +46,14 @@ Rincian Tagihan:
 Untuk mengaktifkan kembali layanan internet Anda secara otomatis, mohon segera melakukan pembayaran dan mengirimkan bukti transfer melalui balasan pesan ini.`
   },
   {
+    key: 'overdue', title: 'Tagihan Lewat Jatuh Tempo',
+    body: `Yth. Bapak/Ibu {nama_pelanggan} (ID: {id_pelanggan}),
+
+Kami mengingatkan bahwa tagihan {nomor_invoice} sebesar {nominal_tagihan} telah melewati jatuh tempo pada {tanggal_jatuh_tempo}. Mohon segera melakukan pembayaran ke {nama_bank}, No. Rekening {nomor_rekening}, a.n. {nama_pemilik_rekening} agar layanan tetap dapat digunakan.
+
+Apabila pembayaran telah dilakukan, mohon kirimkan bukti transfer melalui balasan chat ini. Terima kasih.`
+  },
+  {
     key: 'outage', title: 'Pemberitahuan Gangguan Layanan',
     body: `{Yth.|Kepada Yth.} Bapak/Ibu {nama_pelanggan},
 
@@ -52,6 +71,22 @@ Pembayaran tagihan layanan internet {paket_layanan} sebesar {nominal_tagihan} te
 No. Invoice: {nomor_invoice}
 
 Status layanan Anda saat ini: AKTIF / LUNAS. Terima kasih telah melakukan pembayaran tepat waktu.`
+  },
+  {
+    key: 'maintenance', title: 'Pemeliharaan Terjadwal',
+    body: `Yth. Bapak/Ibu {nama_pelanggan},
+
+Kami informasikan akan dilakukan pemeliharaan jaringan di area {area_pelanggan} pada {jadwal_pemeliharaan}. Selama pekerjaan berlangsung, layanan dapat mengalami penurunan kualitas atau terputus sementara.
+
+Kami mohon maaf atas ketidaknyamanan ini dan berterima kasih atas pengertian Anda.`
+  },
+  {
+    key: 'announcement', title: 'Pengumuman Umum',
+    body: `Yth. Bapak/Ibu {nama_pelanggan},
+
+{isi_pengumuman}
+
+Terima kasih atas perhatian dan kepercayaan Anda kepada layanan kami.`
   },
 ];
 
@@ -75,6 +110,8 @@ const VARIABLES = [
   ['nominal_tagihan', 'Nominal tagihan (Rupiah)'], ['tanggal_jatuh_tempo', 'Tanggal jatuh tempo'], ['nama_bank', 'Bank tujuan transfer'],
   ['nomor_rekening', 'Nomor rekening'], ['nama_pemilik_rekening', 'Atas nama rekening'], ['detail_gangguan', 'Deskripsi gangguan'],
   ['estimasi_selesai', 'Perkiraan waktu pemulihan'], ['nomor_invoice', 'Nomor invoice'],
+  ['periode', 'Periode tagihan'], ['alamat_pelanggan', 'Alamat pelanggan'], ['area_pelanggan', 'Site / cluster pelanggan'],
+  ['jadwal_pemeliharaan', 'Jadwal pemeliharaan'], ['isi_pengumuman', 'Isi pengumuman'],
 ];
 const ALIASES = { nama: 'nama_pelanggan', kode: 'id_pelanggan', nominal: 'nominal_tagihan', jatuh_tempo: 'tanggal_jatuh_tempo', no_faktur: 'nomor_invoice' };
 
@@ -155,6 +192,10 @@ function buildVars(row = {}, bank = null, extra = {}) {
     nama_pemilik_rekening: bank?.account_name || '-',
     detail_gangguan: extra.detail_gangguan || '-',
     estimasi_selesai: extra.estimasi_selesai || '-',
+    alamat_pelanggan: row.address || '-',
+    area_pelanggan: [row.site_code, row.cluster_name].filter(Boolean).join(' · ') || '-',
+    jadwal_pemeliharaan: extra.jadwal_pemeliharaan || '-',
+    isi_pengumuman: extra.isi_pengumuman || '-',
     // variabel tambahan lama (tanda terima)
     periode: period,
     metode: row.method_label || row.method || '',
@@ -166,9 +207,9 @@ function buildVars(row = {}, bank = null, extra = {}) {
 
 // Konteks lengkap satu pelanggan: paket + invoice terbuka paling relevan (atau invoice tertentu).
 async function loadCustomerRow(customerId, { invoiceId = null } = {}) {
-  const [rows] = await db.execute(`SELECT c.id customer_id,c.customer_code,c.name customer_name,c.phone,c.whatsapp_status,c.whatsapp_normalized,
-      p.name package_name,p.speed_label
-    FROM customers c LEFT JOIN packages p ON p.id=c.package_id WHERE c.id=? LIMIT 1`, [customerId]);
+  const [rows] = await db.execute(`SELECT c.id customer_id,c.customer_code,c.name customer_name,c.phone,c.address,c.whatsapp_status,c.whatsapp_normalized,
+      p.name package_name,p.speed_label,s.code site_code,cl.name cluster_name
+    FROM customers c LEFT JOIN packages p ON p.id=c.package_id LEFT JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id WHERE c.id=? LIMIT 1`, [customerId]);
   const c = rows[0];
   if (!c) return null;
   const [inv] = invoiceId

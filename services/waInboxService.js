@@ -60,8 +60,8 @@ function preview(text, media) {
 }
 
 async function loadConversation(id) {
-  const [rows] = await db.execute(`SELECT cv.*,c.name customer_name,c.customer_code,c.network_status,u.name assigned_name
-    FROM wa_conversations cv LEFT JOIN customers c ON c.id=cv.customer_id LEFT JOIN users u ON u.id=cv.assigned_user_id WHERE cv.id=?`, [id]);
+  const [rows] = await db.execute(`SELECT cv.*,c.name customer_name,c.customer_code,c.network_status,u.name assigned_name,b.name origin_broadcast_name
+    FROM wa_conversations cv LEFT JOIN customers c ON c.id=cv.customer_id LEFT JOIN users u ON u.id=cv.assigned_user_id LEFT JOIN wa_broadcasts b ON b.id=cv.origin_broadcast_id WHERE cv.id=?`, [id]);
   return rows[0] || null;
 }
 
@@ -72,13 +72,16 @@ async function emitConversation(id) {
 }
 function serializeConversation(c) {
   const humanActive = c.human_until && new Date(c.human_until) > new Date();
+  let labels = [];
+  try { labels = Array.isArray(c.labels_json) ? c.labels_json : JSON.parse(c.labels_json || '[]'); } catch (_) { labels = []; }
   return {
     id: c.id, chatId: c.chat_id, phone: c.phone, customerId: c.customer_id, customerName: c.customer_name, customerCode: c.customer_code,
     displayName: c.customer_name || c.display_name || (c.phone ? `+${c.phone}` : c.chat_id), category: c.category, status: c.status,
     unread: Number(c.unread_count || 0), lastMessageAt: c.last_message_at, lastPreview: c.last_message_preview, lastDirection: c.last_direction,
     botEnabled: !!c.bot_enabled, humanUntil: humanActive ? c.human_until : null, mode: (!c.bot_enabled || humanActive) ? 'manual' : 'bot',
     assignedUserId: c.assigned_user_id, assignedName: c.assigned_name || null, assignedDepartment: c.assigned_department, departmentLabel: DEPARTMENTS[c.assigned_department] || null,
-    networkStatus: c.network_status || null,
+    networkStatus: c.network_status || null, labels: labels.map(String).slice(0, 12), followUpAt: c.follow_up_at || null,
+    originBroadcastId: c.origin_broadcast_id || null, originBroadcastName: c.origin_broadcast_name || null,
   };
 }
 function serializeMessage(m) {
@@ -123,6 +126,10 @@ async function ingestInbound(payload = {}) {
   const customer = await findCustomerByPhone(phone);
   const displayName = payload?._data?.notifyName || payload?._data?.pushName || payload?.notifyName || null;
   const conv = await upsertConversation({ chatId, phone, customerId: customer?.id || null, displayName: displayName ? String(displayName).slice(0, 180) : null });
+  if (phone) {
+    const [[origin]] = await db.execute(`SELECT broadcast_id FROM wa_messages WHERE phone=? AND broadcast_id IS NOT NULL AND status='sent' AND sent_at>=DATE_SUB(NOW(),INTERVAL 14 DAY) ORDER BY sent_at DESC,id DESC LIMIT 1`, [phone]);
+    await db.execute(`UPDATE wa_conversations SET origin_broadcast_id=? WHERE id=?`, [origin?.broadcast_id || null, conv.id]);
+  }
 
   let media = null;
   if (payload.hasMedia && payload.media?.url) {
@@ -214,16 +221,18 @@ async function listConversations({ filter = 'all', q = '', userId = null, limit 
   else if (filter === 'payment') where.push(`cv.category='payment'`);
   else if (filter === 'outage') where.push(`cv.category='outage'`);
   else if (filter === 'isolated') where.push(`c.network_status='isolated'`);
+  else if (filter === 'pending') where.push(`cv.status='pending'`);
+  else if (filter === 'followup') where.push(`cv.follow_up_at IS NOT NULL AND cv.follow_up_at<=NOW() AND cv.status NOT IN ('resolved','closed')`);
   else if (filter === 'mine' && userId) { where.push('cv.assigned_user_id=?'); params.push(userId); }
   if (q) {
     const like = `%${String(q).trim().slice(0, 80)}%`;
     where.push('(c.name LIKE ? OR c.customer_code LIKE ? OR c.address LIKE ? OR cv.phone LIKE ? OR cv.display_name LIKE ?)');
     params.push(like, like, like, like, like);
   }
-  const [rows] = await db.query(`SELECT cv.*,c.name customer_name,c.customer_code,c.network_status,u.name assigned_name
-    FROM wa_conversations cv LEFT JOIN customers c ON c.id=cv.customer_id LEFT JOIN users u ON u.id=cv.assigned_user_id
+  const [rows] = await db.query(`SELECT cv.*,c.name customer_name,c.customer_code,c.network_status,u.name assigned_name,b.name origin_broadcast_name
+    FROM wa_conversations cv LEFT JOIN customers c ON c.id=cv.customer_id LEFT JOIN users u ON u.id=cv.assigned_user_id LEFT JOIN wa_broadcasts b ON b.id=cv.origin_broadcast_id
     WHERE ${where.join(' AND ')} ORDER BY cv.last_message_at DESC,cv.id DESC LIMIT ${Math.min(300, Math.max(1, Number(limit) || 100))}`, params);
-  const [[counts]] = await db.query(`SELECT COUNT(*) total,SUM(cv.unread_count>0) unread,SUM(cv.category='payment') payment,SUM(cv.category='outage') outage,SUM(c.network_status='isolated') isolated
+  const [[counts]] = await db.query(`SELECT COUNT(*) total,SUM(cv.unread_count>0) unread,SUM(cv.category='payment') payment,SUM(cv.category='outage') outage,SUM(c.network_status='isolated') isolated,SUM(cv.status='pending') pending,SUM(cv.follow_up_at IS NOT NULL AND cv.follow_up_at<=NOW() AND cv.status NOT IN ('resolved','closed')) followup
     FROM wa_conversations cv LEFT JOIN customers c ON c.id=cv.customer_id`);
   return { conversations: rows.map(serializeConversation), counts: Object.fromEntries(Object.entries(counts || {}).map(([k, v]) => [k, Number(v || 0)])) };
 }
@@ -331,6 +340,39 @@ async function assign({ conversationId, assigneeUserId = null, department = null
   return serializeConversation(await emitConversation(conversationId));
 }
 
+async function updateWorkflow({ conversationId, status = 'open', labels = [], followUpAt = null, userId = null }) {
+  if (!['open', 'pending', 'resolved', 'closed'].includes(status)) throw new Error('Status percakapan tidak valid.');
+  const cleanLabels = [...new Set([].concat(labels || []).map(v => String(v).trim().slice(0, 40)).filter(Boolean))].slice(0, 12);
+  let follow = null;
+  if (followUpAt) {
+    follow = new Date(followUpAt);
+    if (Number.isNaN(follow.getTime())) throw new Error('Waktu follow-up tidak valid.');
+  }
+  const resolving = status === 'resolved' || status === 'closed';
+  await db.execute(`UPDATE wa_conversations SET status=?,labels_json=?,follow_up_at=?,follow_up_user_id=?,follow_up_notified_at=NULL,resolved_at=${resolving ? 'NOW()' : 'NULL'},resolved_by=? WHERE id=?`,
+    [status, JSON.stringify(cleanLabels), follow, follow ? userId : null, resolving ? userId : null, conversationId]);
+  await addSystemNote(conversationId, `Status percakapan diubah menjadi ${status.toUpperCase()}${follow ? ` · follow-up ${follow.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}` : ''}${cleanLabels.length ? ` · label: ${cleanLabels.join(', ')}` : ''}.`);
+  return serializeConversation(await emitConversation(conversationId));
+}
+
+async function notifyDueFollowUps() {
+  const [rows] = await db.query(`SELECT cv.id,cv.display_name,cv.phone,cv.assigned_user_id,cv.follow_up_user_id,c.name customer_name
+    FROM wa_conversations cv LEFT JOIN customers c ON c.id=cv.customer_id
+    WHERE cv.follow_up_at IS NOT NULL AND cv.follow_up_at<=NOW() AND cv.follow_up_notified_at IS NULL AND cv.status NOT IN ('resolved','closed') LIMIT 100`);
+  let notified = 0;
+  for (const row of rows) {
+    const recipient = row.assigned_user_id || row.follow_up_user_id;
+    if (!recipient) continue;
+    const [claimed] = await db.execute(`UPDATE wa_conversations SET follow_up_notified_at=NOW() WHERE id=? AND follow_up_notified_at IS NULL`, [row.id]);
+    if (!claimed.affectedRows) continue;
+    const name = row.customer_name || row.display_name || (row.phone ? `+${row.phone}` : `Percakapan #${row.id}`);
+    await db.execute(`INSERT INTO system_notifications(recipient_id,type,tone,icon,title,detail,href,entity_type,entity_id) VALUES(?,?,?,?,?,?,?,?,?)`,
+      [recipient, 'wa_follow_up', 'warning', 'bi-alarm', 'Follow-up WhatsApp jatuh tempo', `Percakapan dengan ${name} perlu ditindaklanjuti.`, `/wa-inbox?c=${row.id}`, 'wa_conversation', row.id]);
+    notified++;
+  }
+  return notified;
+}
+
 async function linkCustomer({ conversationId, customerId }) {
   const id = Number(customerId) || null;
   if (id) { const [[c]] = await db.execute(`SELECT id,name FROM customers WHERE id=?`, [id]); if (!c) throw new Error('Pelanggan tidak ditemukan.'); await addSystemNote(conversationId, `Percakapan ditautkan ke pelanggan ${c.name}.`); }
@@ -385,6 +427,6 @@ async function mediaFileFor(chatMessageId) {
 module.exports = {
   MEDIA_DIR, DEPARTMENTS, HUMAN_TAKEOVER_MINUTES,
   ingestInbound, handleAck, listConversations, getConversationDetail, getMessages, getCustomerContext, loadConversation,
-  markRead, sendReply, addNote, addSystemNote, setBot, assign, linkCustomer, listQuickReplies, renderQuickReply,
+  markRead, sendReply, addNote, addSystemNote, setBot, assign, updateWorkflow, notifyDueFollowUps, linkCustomer, listQuickReplies, renderQuickReply,
   createTicketFromChat, mediaFileFor, serializeConversation, saveMediaBuffer, botReply,
 };

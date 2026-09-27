@@ -24,6 +24,8 @@
         <button type="button" data-filter="payment">Pembayaran <em data-count="payment"></em></button>
         <button type="button" data-filter="outage">Gangguan <em data-count="outage"></em></button>
         <button type="button" data-filter="isolated">Terisolir <em data-count="isolated"></em></button>
+        <button type="button" data-filter="pending">Pending <em data-count="pending"></em></button>
+        <button type="button" data-filter="followup">Follow-up <em data-count="followup"></em></button>
         <button type="button" data-filter="mine">Tugas Saya</button>
       </nav>
       <ul class="wai-conv-list" id="waiConvList"><li class="wai-empty">Memuat percakapan…</li></ul>
@@ -71,6 +73,13 @@
           <ul id="waiLinkResults" class="wai-link-results"></ul>
         </div>
         <div id="waiInfoCards"></div>
+        <section class="wai-workflow">
+          <strong>Kontrol Percakapan</strong>
+          <div class="wai-status-pick" id="waiStatusPick"><button type="button" data-status="open">Open</button><button type="button" data-status="pending">Pending</button><button type="button" data-status="resolved">Resolved</button><button type="button" data-status="closed">Closed</button></div>
+          <label><span>Label (pisahkan dengan koma)</span><input type="text" id="waiLabels" maxlength="300" placeholder="Tagihan, Prioritas, Follow-up"></label>
+          <label><span>Ingatkan / follow-up</span><input type="datetime-local" id="waiFollowUp"></label>
+          <button type="button" class="btn-tech" id="waiWorkflowSave"><i class="bi bi-check2"></i>Simpan kontrol</button>
+        </section>
         <div class="wai-actions" id="waiActions">
           <button type="button" class="btn-tech primary" id="waiActVerify"><i class="bi bi-check2-circle"></i>Verifikasi &amp; Buka Isolir</button>
           <button type="button" class="btn-tech" id="waiActTicket"><i class="bi bi-plus-circle"></i>Buat Tiket Gangguan</button>

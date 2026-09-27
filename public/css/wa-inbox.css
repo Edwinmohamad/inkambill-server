@@ -160,6 +160,9 @@ html[data-theme="dark"] .wai{--wai-note:#3a3113;--wai-note-text:#f3dc8a}
   .wai-hint{display:none}
   .wai-chat-head .wai-switch small{display:none}
 }
+.wai-workflow{margin:14px 0;padding:14px;border:1px solid var(--line);border-radius:14px;display:grid;gap:10px;background:var(--panel)}
+.wai-workflow>strong{font-size:.82rem}.wai-workflow label{display:grid;gap:5px}.wai-workflow label span{font-size:.72rem;color:var(--muted);font-weight:700}.wai-workflow input{width:100%;border:1px solid var(--line);border-radius:9px;padding:8px 10px;background:transparent;color:inherit;font:inherit;font-size:.8rem}
+.wai-status-pick{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}.wai-status-pick button{border:1px solid var(--line);border-radius:8px;background:transparent;color:inherit;padding:7px 3px;font-size:.68rem}.wai-status-pick button.active{background:var(--purple,#6c4fe0);color:#fff;border-color:var(--purple,#6c4fe0)}
 /* Halaman Broadcast */
 .wab-filter{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:12px}
 .wab-filter label{display:flex;flex-direction:column;gap:4px;font-size:.78rem;color:var(--muted);font-weight:600}

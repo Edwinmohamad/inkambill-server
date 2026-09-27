@@ -214,3 +214,4 @@ html[data-theme="light"] .wab-pill.red{color:#d70015}
   .wab-seg span{font-size:12.5px;padding:0 6px}
 }
 @media (prefers-reduced-motion:reduce){.wab *{transition:none!important}}
+.wab-presets{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0 12px}.wab-presets .wab-select{min-width:200px;flex:1}

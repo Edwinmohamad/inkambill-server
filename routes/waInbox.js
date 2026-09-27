@@ -79,6 +79,13 @@ router.post('/api/conversations/:id/assign', api(async (req, res) => {
   res.json({ ok: true, conversation });
 }));
 
+router.post('/api/conversations/:id/workflow', api(async (req, res) => {
+  const id = convId(req); const b = req.body || {};
+  const conversation = await inbox.updateWorkflow({ conversationId: id, status: String(b.status || 'open'), labels: b.labels, followUpAt: b.follow_up_at || null, userId: req.session.user.id });
+  await audit({ userId: req.session.user.id, action: 'update', entityType: 'wa_conversation', entityId: id, description: `Workflow WA Inbox: ${conversation.status}`, ip: req.ip });
+  res.json({ ok: true, conversation });
+}));
+
 router.post('/api/conversations/:id/link-customer', api(async (req, res) => {
   res.json({ ok: true, conversation: await inbox.linkCustomer({ conversationId: convId(req), customerId: req.body?.customer_id }) });
 }));

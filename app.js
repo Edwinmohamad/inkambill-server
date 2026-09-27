@@ -2,6 +2,7 @@ require('dotenv').config();
 process.env.TZ = process.env.TZ || 'Asia/Jakarta';
 
 const express = require('express');
+const http = require('http');
 const path = require('path');
 const fs = require('fs');
 const session = require('express-session');
@@ -42,9 +43,11 @@ const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensu
 const { requireN8nToken } = require('./middleware/n8n');
 const { initGatewayOnBoot, reconcileGatewayStatus, processQueue, runAutoReminderSweep } = require('./services/whatsappGatewayService');
 const { requireWahaWebhookToken } = require('./middleware/waha');
+const { ensureV56Schema: ensureWaCrmSchema } = require('./services/waCrmSchema');
+const waRealtime = require('./services/waRealtime');
 
 const app = express();
-const assetVersion = ['public/css/app.css','public/css/debts.css','public/css/inventory.css','public/css/procurement.css','public/css/nms-wall.css','public/js/nms-wall.js','public/css/mobile-app.css','public/css/monitoring.css','public/js/app.js','public/js/mobile-app.js','public/js/nms.js','public/js/performance.js','public/js/monitoring.js']
+const assetVersion = ['public/css/app.css','public/css/debts.css','public/css/inventory.css','public/css/procurement.css','public/css/nms-wall.css','public/js/nms-wall.js','public/css/mobile-app.css','public/css/monitoring.css','public/css/wa-inbox.css','public/css/wa-broadcast.css','public/js/app.js','public/js/mobile-app.js','public/js/nms.js','public/js/performance.js','public/js/monitoring.js','public/js/wa-inbox.js','public/js/wa-broadcast.js']
   .map(file => Math.floor(fs.statSync(path.join(__dirname,file)).mtimeMs).toString(36))
   .join('-');
 app.set('view engine', 'ejs');
@@ -76,14 +79,15 @@ const sessionStore = new MySQLStore({
   createDatabaseTable: true
 });
 
-app.use(session({
+const sessionMiddleware = session({
   name: 'inkamnet.sid',
   secret: process.env.SESSION_SECRET || 'change-this-secret-now',
   store: sessionStore,
   resave: false,
   saveUninitialized: false,
   cookie: { httpOnly: true, sameSite: 'lax', secure: process.env.COOKIE_SECURE === 'true', maxAge: 1000*60*60*12 }
-}));
+});
+app.use(sessionMiddleware);
 app.use(loadPermissions);
 app.use(commonLocals);
 // Parse multipart payment-proof forms before CSRF validation so the hidden token is available.
@@ -278,6 +282,8 @@ app.use('/sites', requireAuth, requirePermission('network'), require('./routes/s
 app.use('/custom-invoices', requireAuth, requirePermission('billing'), require('./routes/customInvoices'));
 app.use('/logs', requireAuth, requirePermission('logs'), require('./routes/logs'));
 app.use('/', requireAuth, require('./routes/finance'));
+app.use('/wa-inbox', requireAuth, require('./routes/waInbox'));
+app.use('/wa-gateway', requireAuth, require('./routes/waCrm'));
 app.use('/wa-gateway', requireAuth, require('./routes/whatsappGateway'));
 
 app.use((err, req, res, next) => {
@@ -341,6 +347,7 @@ async function bootstrap() {
   await ensureV56Schema();
   await ensureV57Schema();
   await ensureV58Schema();
+  await ensureWaCrmSchema();
   await ensureProcurementSchema();
   await ensureNmsV2Schema();
   nmsPoller.start();
@@ -372,6 +379,8 @@ async function bootstrap() {
   cron.schedule('* * * * *', async () => {
     try { await nmsAutomation.runDue(); }
     catch (err) { console.error('NMS scheduled action gagal:', err.message); }
+    try { await require('./services/waInboxService').notifyDueFollowUps(); }
+    catch (err) { console.error('WA Inbox follow-up gagal:', err.message); }
   }, { timezone: 'Asia/Jakarta' });
   cron.schedule('*/5 * * * *', async () => {
     try { await nmsAutomation.maybeAutoSync(); }
@@ -457,7 +466,9 @@ async function bootstrap() {
   initGatewayOnBoot().catch(err => console.error('WA Gateway: gagal sinkronisasi awal saat startup:', err.message));
 
   const port = Number(process.env.PORT || 3000);
-  app.listen(port, '0.0.0.0', () => console.log(`INKAMNET Billing berjalan di port ${port}`));
+  const server = http.createServer(app);
+  waRealtime.attach(server, sessionMiddleware, loadPermissions);
+  server.listen(port, '0.0.0.0', () => console.log(`INKAMNET Billing berjalan di port ${port}`));
 }
 
 bootstrap().catch(err => { console.error('Startup gagal:', err); process.exit(1); });

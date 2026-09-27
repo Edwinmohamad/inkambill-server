@@ -1,8 +1,8 @@
 <link rel="stylesheet" href="/css/wa-broadcast.css?v=<%= assetVersion %>-ui2">
 <%
   const pad2 = v => String(v).padStart(2, '0');
-  const statusTone = { scheduled: 'purple', running: 'orange', paused: 'gray', completed: 'green', cancelled: 'red' };
-  const statusLabel = { scheduled: 'Terjadwal', running: 'Berjalan', paused: 'Dijeda', completed: 'Selesai', cancelled: 'Dibatalkan' };
+  const statusTone = { pending_approval: 'purple', scheduled: 'purple', running: 'orange', paused: 'gray', completed: 'green', cancelled: 'red' };
+  const statusLabel = { pending_approval: 'Menunggu Persetujuan', scheduled: 'Terjadwal', running: 'Berjalan', paused: 'Dijeda', completed: 'Selesai', cancelled: 'Dibatalkan' };
   const fmt = v => new Date(v).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'medium', timeStyle: 'short' });
   const hours = `${pad2(antiban.workStartHour)}.00–${pad2(antiban.workEndHour)}.00`;
 %>
@@ -71,6 +71,12 @@
           </details>
         </form>
 
+        <div class="wab-presets">
+          <select class="wab-select" id="wabPreset"><option value="">Segmen tersimpan…</option></select>
+          <button type="button" class="wab-link" id="wabPresetSave"><i class="bi bi-bookmark-plus"></i>Simpan filter</button>
+          <button type="button" class="wab-link" id="wabPresetDelete"><i class="bi bi-trash3"></i>Hapus</button>
+        </div>
+
         <div class="wab-toolbar">
           <span class="wab-count" id="wabCount">Memuat…</span>
           <span class="wab-toolbar-actions">
@@ -109,6 +115,12 @@
           <label class="wab-field"><span>Detail gangguan <code>{detail_gangguan}</code></span><input class="wab-input" id="wabDetail" maxlength="500" placeholder="Putus kabel fiber di jalur utama"></label>
           <label class="wab-field"><span>Estimasi selesai <code>{estimasi_selesai}</code></span><input class="wab-input" id="wabEta" maxlength="120" placeholder="Hari ini pukul 17.00 WIB"></label>
         </div>
+        <div class="wab-grid-2 wab-outage" id="wabMaintenance" hidden>
+          <label class="wab-field"><span>Jadwal pemeliharaan <code>{jadwal_pemeliharaan}</code></span><input class="wab-input" id="wabMaintenanceAt" maxlength="180" placeholder="Senin, 28 September 2026 pukul 01.00–03.00 WIB"></label>
+        </div>
+        <div class="wab-outage" id="wabAnnouncement" hidden>
+          <label class="wab-field"><span>Isi pengumuman <code>{isi_pengumuman}</code></span><textarea class="wab-input" id="wabAnnouncementText" rows="3" maxlength="1200" placeholder="Tuliskan isi pengumuman…"></textarea></label>
+        </div>
 
         <div class="wab-compose">
           <div class="wab-chips" aria-label="Sisipkan variabel"><% variables.forEach(([k,label])=>{ %><button type="button" class="wab-chip" data-insert="{<%= k %>}" title="<%= label %>">{<%= k %>}</button><% }) %></div>
@@ -119,6 +131,7 @@
           </div>
         </div>
         <p class="wab-hint">Spintax seperti <code>{Yth.|Kepada Yth.}</code> membuat tiap pesan sedikit berbeda.</p>
+        <label class="wab-field"><span>Lampiran opsional (JPG, PNG, WEBP, PDF · maks. 6 MB)</span><input class="wab-input" id="wabFile" type="file" accept="image/jpeg,image/png,image/webp,application/pdf"></label>
         <div class="wab-previews" id="wabPreviews"></div>
       </section>
     </div>
@@ -142,6 +155,9 @@
           <div><dt>Perkiraan durasi</dt><dd id="wabSumEta">–</dd></div>
           <div><dt>Naskah</dt><dd id="wabSumMsg">Belum diisi</dd></div>
         </dl>
+
+        <label class="wab-field"><span>Nomor uji Admin</span><input class="wab-input" id="wabTestPhone" inputmode="tel" placeholder="62812…"></label>
+        <button type="button" class="wab-btn secondary" id="wabTestSend"><i class="bi bi-phone"></i>Kirim pesan uji</button>
 
         <button type="button" class="wab-btn" id="wabSubmit" <%= blastEnabled?'':'disabled' %>><i class="bi bi-send-fill"></i>Buat broadcast</button>
         <div class="wab-result" id="wabResult" hidden></div>

@@ -1,6 +1,7 @@
 // WA CRM: Broadcast selektif/terjadwal, pengaturan Anti-Ban, template resmi, balasan cepat, blacklist.
 // Dipasang di /wa-gateway bersama routes/whatsappGateway.js (path berbeda, tidak bentrok).
 const express = require('express');
+const multer = require('multer');
 const db = require('../config/db');
 const { requireMasterAdmin, isAdminRole } = require('../middleware/auth');
 const { audit } = require('../services/auditService');
@@ -9,6 +10,7 @@ const tpl = require('../services/waTemplateService');
 const bc = require('../services/waBroadcastService');
 const { isBlastEnabled, processQueue, getGatewayStatus } = require('../services/whatsappGatewayService');
 const router = express.Router();
+const broadcastUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 6 * 1024 * 1024, files: 1 }, fileFilter: (_req, file, cb) => /^(image\/(jpeg|png|webp)|application\/pdf)$/.test(file.mimetype) ? cb(null, true) : cb(new Error('Lampiran harus JPG, PNG, WEBP, atau PDF.')) }).single('file');
 
 const SEND_PERMS = ['billing', 'support', 'customers'];
 function requireBroadcaster(req, res, next) {
@@ -48,25 +50,38 @@ router.post('/broadcast/api/preview', requireBroadcaster, api(async (req, res) =
   const b = req.body || {};
   const bank = await tpl.getDefaultBank();
   const row = Number(b.customer_id) ? await tpl.loadCustomerRow(Number(b.customer_id)) : { customer_name: 'Budi Santoso', customer_code: 'PLG-0001', package_name: 'Home', speed_label: '10Mbps', outstanding: 150000, due_date: new Date(Date.now() + 3 * 864e5), invoice_number: 'INV-CONTOH-001' };
-  const vars = tpl.buildVars(row || {}, bank, { detail_gangguan: b.detail_gangguan || undefined, estimasi_selesai: b.estimasi_selesai || undefined });
+  const vars = tpl.buildVars(row || {}, bank, { detail_gangguan: b.detail_gangguan || undefined, estimasi_selesai: b.estimasi_selesai || undefined, jadwal_pemeliharaan: b.jadwal_pemeliharaan || undefined, isi_pengumuman: b.isi_pengumuman || undefined });
   const samples = [0, 1, 2].map(() => tpl.renderTemplate(String(b.message || ''), vars));
   res.json({ ok: true, samples: [...new Set(samples)] });
+}));
+router.post('/broadcast/api/test-send', requireBroadcaster, api(async (req, res) => {
+  if (getGatewayStatus().state !== 'connected') throw new Error('WA Gateway belum terhubung.');
+  const b = req.body || {}; const phone = String(b.phone || '').trim();
+  if (!phone) throw new Error('Nomor WhatsApp tujuan uji wajib diisi.');
+  const bank = await tpl.getDefaultBank();
+  const row = Number(b.customer_id) ? await tpl.loadCustomerRow(Number(b.customer_id)) : { customer_name: 'Pelanggan Contoh', customer_code: 'TEST', package_name: 'Paket Internet', outstanding: 150000, due_date: new Date(), invoice_number: 'INV-TEST' };
+  const extra = { detail_gangguan: b.detail_gangguan, estimasi_selesai: b.estimasi_selesai, jadwal_pemeliharaan: b.jadwal_pemeliharaan, isi_pengumuman: b.isi_pengumuman };
+  const message = `[PESAN UJI — TIDAK UNTUK PELANGGAN]\n\n${tpl.renderTemplate(String(b.message || ''), tpl.buildVars(row || {}, bank, extra))}`;
+  if (!String(b.message || '').trim()) throw new Error('Naskah pesan wajib diisi.');
+  const result = await require('../services/whatsappGatewayService').enqueueWaMessage({ phone, message, customerId: row?.customer_id || null, type: 'manual', userId: req.session.user.id });
+  if (result.status === 'failed') throw new Error(result.reason || 'Nomor uji tidak valid.');
+  res.json({ ok: true, id: result.id });
 }));
 router.get('/broadcast/api/list', requireBroadcaster, api(async (req, res) => {
   res.set('Cache-Control', 'no-store').json({ ok: true, broadcasts: await bc.listBroadcasts(20), pause: antiBan.getPauseState() });
 }));
-router.post('/broadcast', requireBroadcaster, api(async (req, res) => {
+router.post('/broadcast', requireBroadcaster, (req, res, next) => broadcastUpload(req, res, err => err ? res.status(400).json({ ok: false, message: err.code === 'LIMIT_FILE_SIZE' ? 'Lampiran maksimal 6 MB.' : err.message }) : next()), api(async (req, res) => {
   if (!isBlastEnabled()) throw new Error('Fitur WA Blast/Broadcast massal sedang dinonaktifkan. Aktifkan di WA Gateway → Pesan Otomatis (Master Admin).');
   const b = req.body || {};
   const filter = filterFrom(b);
   if (b.target_mode === 'selected' && !filter.customer_ids.length) throw new Error('Belum ada pelanggan yang dipilih.');
   if (b.target_mode !== 'selected') filter.customer_ids = [];
-  const result = await bc.createBroadcast({ name: b.name, templateKey: b.template_key || null, message: b.message, extra: { detail_gangguan: b.detail_gangguan, estimasi_selesai: b.estimasi_selesai }, filter, mode: b.mode === 'scheduled' ? 'scheduled' : 'direct', scheduledAt: b.scheduled_at, userId: req.session.user.id });
+  const result = await bc.createBroadcast({ name: b.name, templateKey: b.template_key || null, message: b.message, extra: { detail_gangguan: b.detail_gangguan, estimasi_selesai: b.estimasi_selesai, jadwal_pemeliharaan: b.jadwal_pemeliharaan, isi_pengumuman: b.isi_pengumuman }, filter, mode: b.mode === 'scheduled' ? 'scheduled' : 'direct', scheduledAt: b.scheduled_at, userId: req.session.user.id, mediaFile: req.file || null });
   await audit({ userId: req.session.user.id, action: 'blast', entityType: 'wa_broadcast', entityId: result.id, description: `Broadcast WA "${String(b.name || '').slice(0, 80)}": ${result.queued} penerima${result.scheduledAt ? ` · terjadwal` : ''} (${result.skippedBlacklist} blacklist, ${result.skippedInvalid} nomor tidak valid)`, ip: req.ip });
   res.json({ ok: true, ...result });
 }));
 router.post('/broadcast/:id/:action', requireBroadcaster, api(async (req, res) => {
-  if (!['pause', 'resume', 'cancel'].includes(req.params.action)) throw new Error('Aksi tidak dikenal.');
+  if (!['pause', 'resume', 'cancel', 'retry'].includes(req.params.action)) throw new Error('Aksi tidak dikenal.');
   await bc.setBroadcastStatus(Number(req.params.id), req.params.action, req.session.user.id);
   await audit({ userId: req.session.user.id, action: req.params.action, entityType: 'wa_broadcast', entityId: Number(req.params.id), description: `Broadcast WA #${req.params.id}: ${req.params.action}`, ip: req.ip });
   res.json({ ok: true });

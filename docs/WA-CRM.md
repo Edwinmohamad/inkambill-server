@@ -14,7 +14,7 @@ seluruh perubahan skema bersifat aditif (`services/waCrmSchema.js`, dijalankan o
 ## 1. Template resmi
 
 Tersimpan di tabel `wa_templates` (dapat diedit, tombol *Pakai naskah resmi* mengembalikan teks standar):
-`reminder` (H-3/H-1), `isolation`, `outage`, `receipt`.
+`invoice` (tagihan baru), `reminder` (H-3/H-1), `overdue`, `isolation`, `outage`, `maintenance`, `announcement`, dan `receipt`.
 
 Variabel: `{nama_pelanggan} {id_pelanggan} {paket_layanan} {nominal_tagihan} {tanggal_jatuh_tempo} {nama_bank}
 {nomor_rekening} {nama_pemilik_rekening} {detail_gangguan} {estimasi_selesai} {nomor_invoice}`.
@@ -33,6 +33,8 @@ Variabel diganti lebih dulu, jadi nilai data pelanggan tidak pernah ikut di-*spi
 * **Direct Send** atau **Scheduled** (tanggal & jam WIB). Pesan terjadwal disimpan dengan `next_attempt_at` = jadwal,
   cron tiap menit mengubah status kampanye (`scheduled → running → completed`).
 * Kampanye bisa dijeda / dilanjutkan / dibatalkan. Maksimal 1000 penerima per broadcast.
+* Broadcast di atas 100 penerima masuk tahap persetujuan Admin sebelum dikirim. Pesan gagal dapat dikirim ulang tanpa mengulang yang sudah sukses.
+* Filter dapat disimpan sebagai segmen di browser admin. Tersedia kirim uji ke nomor Admin serta lampiran JPG/PNG/WEBP/PDF.
 * OLT & VLAN pelanggan memakai kolom baru opsional `customers.olt_id` dan `customers.vlan`.
 
 ## 3. Engine Anti-Ban (`services/waAntiBanService.js`)
@@ -65,6 +67,8 @@ Pesan yang tertinggal `processing` saat app restart ditandai `failed` (status ti
   balasan di luar jam kerja. Cooldown 2 menit. Balasan manual admin → mode *Human Intervened* 30 menit.
 * Catatan internal (latar kuning) tidak pernah dikirim ke WhatsApp.
 * Penugasan ke admin / Divisi Keuangan, Helpdesk, Teknis (admin tujuan mendapat notifikasi).
+* Workflow percakapan `Open → Pending → Resolved/Closed`, label bebas, dan pengingat follow-up. Follow-up jatuh tempo membuat notifikasi untuk petugas terkait.
+* Balasan pelanggan dapat ditandai otomatis dengan nama broadcast asal (broadcast terakhir ke nomor tersebut dalam 14 hari).
 * **Collision detection**: indikator "X juga membuka / sedang mengetik" via WebSocket `/ws/wa-inbox`
   (paket `ws`; autentikasi memakai cookie sesi login). Bila WebSocket putus, halaman otomatis memakai polling 12 dtk.
 * Slash command: ketik `/` → `/rekening`, `/proses`, `/isolir`, `/tagihan` (kelola di tab Balasan Cepat).

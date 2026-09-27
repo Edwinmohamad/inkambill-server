@@ -48,7 +48,7 @@ async function ensureV56Schema() {
     filter_json TEXT NULL,
     mode ENUM('direct','scheduled') NOT NULL DEFAULT 'direct',
     scheduled_at DATETIME NULL,
-    status ENUM('scheduled','running','paused','completed','cancelled') NOT NULL DEFAULT 'running',
+    status ENUM('pending_approval','scheduled','running','paused','completed','cancelled') NOT NULL DEFAULT 'running',
     total_recipients INT UNSIGNED NOT NULL DEFAULT 0,
     skipped_blacklist INT UNSIGNED NOT NULL DEFAULT 0,
     skipped_invalid INT UNSIGNED NOT NULL DEFAULT 0,
@@ -57,6 +57,7 @@ async function ensureV56Schema() {
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_wa_broadcast_status(status,scheduled_at)
   )`);
+  await extendEnum('wa_broadcasts', 'status', ['pending_approval', 'scheduled', 'running', 'paused', 'completed', 'cancelled'], 'running');
 
   // ---- Web Inbox ------------------------------------------------------------------------------------
   await db.query(`CREATE TABLE IF NOT EXISTS wa_conversations (
@@ -66,7 +67,7 @@ async function ensureV56Schema() {
     customer_id BIGINT UNSIGNED NULL,
     display_name VARCHAR(180) NULL,
     category ENUM('general','payment','outage') NOT NULL DEFAULT 'general',
-    status ENUM('open','closed') NOT NULL DEFAULT 'open',
+    status ENUM('open','pending','resolved','closed') NOT NULL DEFAULT 'open',
     unread_count INT UNSIGNED NOT NULL DEFAULT 0,
     last_message_at DATETIME NULL,
     last_message_preview VARCHAR(255) NULL,
@@ -76,6 +77,13 @@ async function ensureV56Schema() {
     last_bot_reply_at DATETIME NULL,
     assigned_user_id BIGINT UNSIGNED NULL,
     assigned_department ENUM('finance','helpdesk','technical') NULL,
+    labels_json TEXT NULL,
+    follow_up_at DATETIME NULL,
+    follow_up_user_id BIGINT UNSIGNED NULL,
+    follow_up_notified_at DATETIME NULL,
+    resolved_at DATETIME NULL,
+    resolved_by BIGINT UNSIGNED NULL,
+    origin_broadcast_id BIGINT UNSIGNED NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_wa_conv_chat(chat_id),
@@ -83,6 +91,15 @@ async function ensureV56Schema() {
     INDEX idx_wa_conv_phone(phone),
     INDEX idx_wa_conv_customer(customer_id)
   )`);
+  await extendEnum('wa_conversations', 'status', ['open', 'pending', 'resolved', 'closed'], 'open');
+  await db.query(`ALTER TABLE wa_conversations ADD COLUMN IF NOT EXISTS labels_json TEXT NULL`);
+  await db.query(`ALTER TABLE wa_conversations ADD COLUMN IF NOT EXISTS follow_up_at DATETIME NULL`);
+  await db.query(`ALTER TABLE wa_conversations ADD COLUMN IF NOT EXISTS follow_up_user_id BIGINT UNSIGNED NULL`);
+  await db.query(`ALTER TABLE wa_conversations ADD COLUMN IF NOT EXISTS follow_up_notified_at DATETIME NULL`);
+  await db.query(`ALTER TABLE wa_conversations ADD COLUMN IF NOT EXISTS resolved_at DATETIME NULL`);
+  await db.query(`ALTER TABLE wa_conversations ADD COLUMN IF NOT EXISTS resolved_by BIGINT UNSIGNED NULL`);
+  await db.query(`ALTER TABLE wa_conversations ADD COLUMN IF NOT EXISTS origin_broadcast_id BIGINT UNSIGNED NULL`);
+  await db.query(`ALTER TABLE wa_conversations ADD INDEX IF NOT EXISTS idx_wa_conv_workflow(status,follow_up_at)`);
   await db.query(`CREATE TABLE IF NOT EXISTS wa_chat_messages (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     conversation_id BIGINT UNSIGNED NOT NULL,

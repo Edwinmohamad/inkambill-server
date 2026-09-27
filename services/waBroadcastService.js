@@ -6,6 +6,7 @@ const tpl = require('./waTemplateService');
 const { enqueueWaMessage } = require('./whatsappGatewayService');
 
 const MAX_RECIPIENTS = 1000;
+const APPROVAL_THRESHOLD = 100;
 const BILLING_FILTERS = {
   all: 'Semua pelanggan aktif',
   active: 'Aktif (tanpa tunggakan)',
@@ -37,8 +38,8 @@ function buildWhere(filter = {}) {
     where.push(`(c.name LIKE ? OR c.customer_code LIKE ? OR c.phone LIKE ? OR c.whatsapp_normalized LIKE ? OR c.address LIKE ?)`);
     params.push(like, like, like, like, like);
   }
-  const ids = [].concat(filter.customer_ids || []).map(Number).filter(n => Number.isInteger(n) && n > 0);
-  if (ids.length) { where.push(`c.id IN (${ids.map(() => '?').join(',')})`); params.push(...ids.slice(0, MAX_RECIPIENTS)); }
+  const ids = [].concat(filter.customer_ids || []).map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, MAX_RECIPIENTS);
+  if (ids.length) { where.push(`c.id IN (${ids.map(() => '?').join(',')})`); params.push(...ids); }
   return { sql: where.join(' AND '), params };
 }
 
@@ -80,18 +81,30 @@ function parseSchedule(value) {
   return d;
 }
 
-async function createBroadcast({ name, templateKey = null, message, extra = {}, filter = {}, mode = 'direct', scheduledAt = null, userId = null }) {
+async function createBroadcast({ name, templateKey = null, message, extra = {}, filter = {}, mode = 'direct', scheduledAt = null, userId = null, media = null, mediaFile = null }) {
   const text = String(message || '').trim();
   if (!text) throw new Error('Naskah pesan wajib diisi.');
   if (text.length > 4000) throw new Error('Naskah pesan maksimal 4000 karakter.');
+  if ([].concat(filter.customer_ids || []).length > MAX_RECIPIENTS) throw new Error(`Maksimal ${MAX_RECIPIENTS} pelanggan per broadcast.`);
   const when = mode === 'scheduled' ? parseSchedule(scheduledAt) : null;
   if (mode === 'scheduled' && !when) throw new Error('Tanggal & jam jadwal wajib diisi.');
   const { rows } = await listCandidates(filter, { limit: MAX_RECIPIENTS });
   if (!rows.length) throw new Error('Tidak ada penerima yang cocok dengan filter/pilihan.');
-  const cleanExtra = { detail_gangguan: String(extra.detail_gangguan || '').slice(0, 500) || undefined, estimasi_selesai: String(extra.estimasi_selesai || '').slice(0, 120) || undefined };
+  const eligibleCount = rows.filter(c => c.whatsapp_status !== 'invalid' && c.phone && !Number(c.blacklisted)).length;
+  if (!eligibleCount) throw new Error('Tidak ada penerima dengan nomor WhatsApp valid dan aktif menerima broadcast.');
+  if (mediaFile) media = await require('./waInboxService').saveMediaBuffer(mediaFile.buffer, mediaFile.mimetype, mediaFile.originalname);
+  const cleanExtra = {
+    detail_gangguan: String(extra.detail_gangguan || '').slice(0, 500) || undefined,
+    estimasi_selesai: String(extra.estimasi_selesai || '').slice(0, 120) || undefined,
+    jadwal_pemeliharaan: String(extra.jadwal_pemeliharaan || '').slice(0, 180) || undefined,
+    isi_pengumuman: String(extra.isi_pengumuman || '').slice(0, 1200) || undefined,
+  };
+  const needsApproval = eligibleCount > APPROVAL_THRESHOLD;
   const [r] = await db.execute(`INSERT INTO wa_broadcasts(name,template_key,message_template,extra_vars_json,filter_json,mode,scheduled_at,status,created_by) VALUES(?,?,?,?,?,?,?,?,?)`,
-    [String(name || 'Broadcast').slice(0, 160), templateKey, text, JSON.stringify(cleanExtra), JSON.stringify({ ...filter, customer_ids: undefined, selected: [].concat(filter.customer_ids || []).length }), mode, when, when ? 'scheduled' : 'running', userId]);
+    [String(name || 'Broadcast').slice(0, 160), templateKey, text, JSON.stringify(cleanExtra), JSON.stringify({ ...filter, customer_ids: undefined, selected: [].concat(filter.customer_ids || []).length }), mode, when, needsApproval ? 'pending_approval' : (when ? 'scheduled' : 'running'), userId]);
   const broadcastId = r.insertId;
+  const batchDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
+  const approvalBatch = needsApproval ? `broadcast_${broadcastId}:${batchDate}` : null;
   const bank = await tpl.getDefaultBank();
   let queued = 0, skippedBlacklist = 0, skippedInvalid = 0;
   for (const c of rows) {
@@ -99,12 +112,12 @@ async function createBroadcast({ name, templateKey = null, message, extra = {}, 
     if (Number(c.blacklisted)) { skippedBlacklist++; continue; }
     const row = await tpl.loadCustomerRow(c.id);
     const body = tpl.renderTemplate(text, tpl.buildVars(row || c, bank, cleanExtra));
-    const res = await enqueueWaMessage({ phone: c.phone, message: body, customerId: c.id, invoiceId: row?.invoice_id || null, type: 'broadcast', userId, broadcastId, scheduledAt: when });
-    if (res.status === 'queued') queued++; else if (res.status === 'cancelled') skippedBlacklist++; else skippedInvalid++;
+    const res = await enqueueWaMessage({ phone: c.phone, message: body, customerId: c.id, invoiceId: row?.invoice_id || null, type: 'broadcast', userId, broadcastId, scheduledAt: when, approvalBatch, media });
+    if (res.status === 'queued' || res.status === 'pending_approval') queued++; else if (res.status === 'cancelled') skippedBlacklist++; else skippedInvalid++;
   }
   await db.execute(`UPDATE wa_broadcasts SET total_recipients=?,skipped_blacklist=?,skipped_invalid=? WHERE id=?`, [queued, skippedBlacklist, skippedInvalid, broadcastId]);
   console.log(`WA broadcast #${broadcastId} "${name}": ${queued} antre, ${skippedBlacklist} blacklist, ${skippedInvalid} nomor tidak valid${when ? `, jadwal ${when.toISOString()}` : ''}`);
-  return { id: broadcastId, queued, skippedBlacklist, skippedInvalid, scheduledAt: when };
+  return { id: broadcastId, queued, skippedBlacklist, skippedInvalid, scheduledAt: when, pendingApproval: needsApproval };
 }
 
 async function setBroadcastStatus(id, action, userId = null) {
@@ -121,6 +134,12 @@ async function setBroadcastStatus(id, action, userId = null) {
     if (['completed', 'cancelled'].includes(b.status)) throw new Error('Broadcast sudah selesai/dibatalkan.');
     await db.execute(`UPDATE wa_broadcasts SET status='cancelled' WHERE id=?`, [id]);
     await db.execute(`UPDATE wa_messages SET status='cancelled',error_message='Broadcast dibatalkan Admin.' WHERE broadcast_id=? AND status IN ('queued','pending_approval')`, [id]);
+  } else if (action === 'retry') {
+    if (b.status === 'cancelled') throw new Error('Broadcast yang dibatalkan tidak dapat dikirim ulang.');
+    const [r] = await db.execute(`UPDATE wa_messages SET status='queued',attempts=0,next_attempt_at=NULL,error_message=NULL WHERE broadcast_id=? AND status='failed'`, [id]);
+    if (!r.affectedRows) throw new Error('Tidak ada pesan gagal untuk dikirim ulang.');
+    await db.execute(`UPDATE wa_broadcasts SET status='running' WHERE id=?`, [id]);
+    require('./whatsappGatewayService').processQueue();
   } else throw new Error('Aksi tidak dikenal.');
   return { ok: true };
 }
@@ -142,4 +161,4 @@ async function listBroadcasts(limit = 30) {
   return rows;
 }
 
-module.exports = { BILLING_FILTERS, MAX_RECIPIENTS, buildWhere, listCandidates, filterOptions, createBroadcast, setBroadcastStatus, refreshBroadcastStatuses, listBroadcasts, parseSchedule };
+module.exports = { BILLING_FILTERS, MAX_RECIPIENTS, APPROVAL_THRESHOLD, buildWhere, listCandidates, filterOptions, createBroadcast, setBroadcastStatus, refreshBroadcastStatuses, listBroadcasts, parseSchedule };

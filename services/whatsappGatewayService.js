@@ -353,7 +353,7 @@ function localDateKey(d = new Date()) {
 function approvalBatchKey(source, date = new Date()) { return `${source}:${localDateKey(date)}`; }
 function describeBatch(key) {
   const [source, date] = String(key || '').split(':');
-  return { key, source, date, label: BATCH_LABELS[source] || source };
+  return { key, source, date, label: source.startsWith('broadcast_') ? `Broadcast #${source.slice(10)}` : (BATCH_LABELS[source] || source) };
 }
 
 async function listPendingBatches({ itemLimit = 500 } = {}) {
@@ -384,10 +384,12 @@ async function approveBatch(batch, userId) {
     [userId, batch]
   );
   const [ok] = await db.execute(
-    `UPDATE wa_messages SET status='queued',approved_by=?,approved_at=NOW(),next_attempt_at=NULL WHERE approval_batch=? AND status='pending_approval'`,
+    `UPDATE wa_messages SET status='queued',approved_by=?,approved_at=NOW(),next_attempt_at=scheduled_at WHERE approval_batch=? AND status='pending_approval'`,
     [userId, batch]
   );
   if (ok.affectedRows) processQueue();
+  const source = String(batch).split(':')[0];
+  if (source.startsWith('broadcast_')) await db.execute(`UPDATE wa_broadcasts SET status=IF(scheduled_at IS NOT NULL AND scheduled_at>NOW(),'scheduled','running') WHERE id=? AND status='pending_approval'`, [Number(source.slice(10))]);
   return { approved: Number(ok.affectedRows || 0), skippedPaid: Number(stale.affectedRows || 0) };
 }
 
@@ -396,6 +398,8 @@ async function rejectBatch(batch, userId) {
     `UPDATE wa_messages SET status='rejected',approved_by=?,approved_at=NOW(),error_message='Dibatalkan oleh Admin.' WHERE approval_batch=? AND status='pending_approval'`,
     [userId, batch]
   );
+  const source = String(batch).split(':')[0];
+  if (source.startsWith('broadcast_')) await db.execute(`UPDATE wa_broadcasts SET status='cancelled' WHERE id=? AND status='pending_approval'`, [Number(source.slice(10))]);
   return { rejected: Number(r.affectedRows || 0) };
 }
 
