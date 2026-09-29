@@ -12,8 +12,9 @@ router.post('/webhook', async (req, res) => {
     await handleWahaWebhookEvent(req.body || {});
   } catch (e) {
     console.error('WA Gateway: gagal memproses webhook WAHA:', e.message);
-    // Still answer 200 — we don't want WAHA retrying forever over a body it sent correctly but we
-    // failed to process; the periodic reconcileGatewayStatus() safety net will catch up.
+    // Session reconciliation cannot recover a missed chat message. A non-2xx response
+    // lets WAHA retry; duplicate message IDs are ignored by the inbox insert.
+    return res.status(503).json({ ok: false, error: 'Webhook belum berhasil diproses.' });
   }
   res.json({ ok: true });
 });

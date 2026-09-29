@@ -205,12 +205,24 @@ async function startGateway({ manual = false } = {}) {
       // Bug lama: keputusan diambil dari mirror in-memory yang bisa basi ("connected" padahal WAHA
       // sudah STOPPED) sehingga tombol Connect tidak melakukan apa-apa. Selalu cek WAHA dulu.
       await reconcileGatewayStatus();
-      if (connectionState === 'connected' || connectionState === 'qr_pending') return getGatewayStatus();
+      if (connectionState === 'connected' || connectionState === 'qr_pending') {
+        if (manual) {
+          const config = await getWahaConfig({ fresh: true });
+          const url = callbackUrl(config);
+          if (!url) throw new Error('Callback webhook WAHA belum tersedia. Periksa APP_URL dan token webhook.');
+          const session = await waha.startSession(url, { repairWebhooks: true });
+          if (waha.missingWebhook(session, url) === null) {
+            console.warn('WA Inbox: pastikan webhook message dan message.ack terdaftar di panel WAHA; API sesi tidak menampilkan konfigurasinya.');
+          }
+          await reconcileGatewayStatus();
+        }
+        return getGatewayStatus();
+      }
       if (connectionState === 'connecting' && !(startingSince && Date.now() - startingSince > STARTING_STUCK_MS)) return getGatewayStatus();
       connectionState = 'connecting';
       qrDataUrl = null;
       const config = await getWahaConfig({ fresh: true });
-      await waha.startSession(callbackUrl(config));
+      await waha.startSession(callbackUrl(config), { repairWebhooks: manual });
       await reconcileGatewayStatus();
     } catch (e) {
       connectionState = 'disconnected';

@@ -41,7 +41,7 @@ const { runCashAgingAlert } = require('./services/cashSettlementService');
 const { purgeOldLogs } = require('./services/logRetentionService');
 const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema, ensureV58Schema } = require('./services/schemaService');
 const { requireN8nToken } = require('./middleware/n8n');
-const { initGatewayOnBoot, reconcileGatewayStatus, processQueue, runAutoReminderSweep } = require('./services/whatsappGatewayService');
+const { initGatewayOnBoot, ensureGatewayAlive, processQueue, runAutoReminderSweep } = require('./services/whatsappGatewayService');
 const { requireWahaWebhookToken } = require('./middleware/waha');
 const { ensureV56Schema: ensureWaCrmSchema } = require('./services/waCrmSchema');
 const waRealtime = require('./services/waRealtime');
@@ -393,14 +393,20 @@ async function bootstrap() {
     catch (err) { console.error('NMS snapshot PPP gagal:', err.message); }
   }, { timezone: 'Asia/Jakarta' });
 
-  // WA Gateway watchdog — every 5 minutes: (1) resume the send queue in case it stalled while the
+  // Check the actual WAHA session every minute. The webhook cannot wake the app if WAHA itself
+  // is down, and polling the status alone does not restart a STOPPED or FAILED session.
+  cron.schedule('* * * * *', async () => {
+    try { await ensureGatewayAlive(); }
+    catch (err) { console.error('WA Gateway auto-reconnect gagal:', err.message); }
+  }, { timezone: 'Asia/Jakarta' });
+
+  // WA Gateway queue watchdog — every 5 minutes: (1) resume the send queue in case it stalled while the
   // gateway was briefly disconnected, and (2) check whether it's time to run the once-daily
   // auto-reminder sweep (runAutoReminderSweep itself no-ops unless enabled, past the configured hour,
   // and not already run today, so this can safely fire every 5 minutes without double-sending).
   cron.schedule('*/5 * * * *', async () => {
     // Safety-net resync with WAHA in case a webhook push was ever missed (WAHA restart, network
     // blip, etc.) — the webhook (routes/waha.js) is the fast path, this just keeps things honest.
-    try { await reconcileGatewayStatus(); } catch (err) { console.error('WA Gateway status reconcile gagal:', err.message); }
     try { await processQueue(); } catch (err) { console.error('WA Gateway queue watchdog gagal:', err.message); }
     try {
       const result = await runAutoReminderSweep();
