@@ -44,6 +44,24 @@
     <p class="wab-hint">Nomor opt-out dilewati. Broadcast di luar jam kirim menunggu jam kerja berikutnya.</p>
   </details>
 
+  <section class="wab-card wab-followup" aria-label="Tindak lanjut pelanggan">
+    <div class="wab-card-head"><div><h2>Kontrol Tindak Lanjut</h2><p>Data tagihan aktif diperbarui dari sistem. Klik kelompok untuk melihat pelanggan dan menyiapkan pesan.</p></div></div>
+    <div class="wab-followup-grid">
+      <% [
+        ['due_today','Jatuh tempo hari ini','Ingatkan pembayaran dan verifikasi bukti.'],
+        ['follow_up','Lewat tempo · masa toleransi','Hubungi sebelum batas toleransi berakhir.'],
+        ['isolation_ready','Memenuhi syarat isolir','Tinjau tagihan dan kondisi jaringan sebelum tindakan.'],
+        ['isolated','Sudah terisolir','Tindak lanjuti pembayaran dan pemulihan layanan.']
+      ].forEach(([key,label,detail])=>{ %>
+        <button type="button" class="wab-followup-card" data-follow-up="<%= key %>">
+          <strong data-follow-up-count="<%= key %>"><%= followUp.counts[key]||0 %></strong>
+          <span><%= label %></span><small><%= detail %></small>
+        </button>
+      <% }); %>
+    </div>
+    <p class="wab-hint" id="wabIsolationNote">Isolir otomatis <%= followUp.autoIsolate?'aktif':'nonaktif' %>. Status "memenuhi syarat isolir" mengikuti jatuh tempo, masa toleransi, data PPPoE/router, dan penundaan isolir; ini bukan perintah isolir.</p>
+  </section>
+
   <div class="wab-layout">
     <div class="wab-main">
 

@@ -12,11 +12,20 @@ const BILLING_FILTERS = {
   active: 'Aktif (tanpa tunggakan)',
   due_h3: 'Jatuh tempo H-3',
   due_h1: 'Jatuh tempo H-1',
+  due_today: 'Jatuh tempo hari ini',
+  follow_up: 'Lewat tempo · masa toleransi',
+  isolation_ready: 'Memenuhi syarat isolir',
   overdue: 'Menunggak (lewat jatuh tempo)',
   isolated: 'Terisolir',
 };
 
 const OPEN_INV = `SELECT 1 FROM invoices ix WHERE ix.customer_id=c.id AND ix.status IN ('unpaid','partial','overdue') AND ix.outstanding>0 AND ix.archived_at IS NULL`;
+const GRACE_INV = `SELECT 1 FROM invoices ix JOIN sites sx ON sx.id=c.site_id CROSS JOIN settings st
+  WHERE ix.customer_id=c.id AND ix.status IN ('unpaid','partial','overdue') AND ix.outstanding>0 AND ix.archived_at IS NULL
+  AND ix.due_date<CURDATE() AND CURDATE()<=DATE_ADD(ix.due_date, INTERVAL COALESCE(c.grace_days,sx.default_grace_days,st.default_grace_days,2) DAY)`;
+const READY_INV = `SELECT 1 FROM invoices ix JOIN sites sx ON sx.id=c.site_id CROSS JOIN settings st
+  WHERE ix.customer_id=c.id AND ix.status IN ('unpaid','partial','overdue') AND ix.outstanding>0 AND ix.archived_at IS NULL
+  AND CURDATE()>DATE_ADD(ix.due_date, INTERVAL COALESCE(c.grace_days,sx.default_grace_days,st.default_grace_days,2) DAY)`;
 
 function buildWhere(filter = {}) {
   const where = [`c.archived_at IS NULL`, `c.customer_status='active'`];
@@ -25,6 +34,10 @@ function buildWhere(filter = {}) {
     case 'active': where.push(`NOT EXISTS (${OPEN_INV} AND ix.due_date<CURDATE())`, `c.network_status<>'isolated'`); break;
     case 'due_h3': where.push(`EXISTS (${OPEN_INV} AND ix.due_date=DATE_ADD(CURDATE(),INTERVAL 3 DAY))`); break;
     case 'due_h1': where.push(`EXISTS (${OPEN_INV} AND ix.due_date=DATE_ADD(CURDATE(),INTERVAL 1 DAY))`); break;
+    case 'due_today': where.push(`c.network_status<>'isolated'`, `EXISTS (${OPEN_INV} AND ix.due_date=CURDATE())`); break;
+    case 'follow_up': where.push(`c.network_status<>'isolated'`, `EXISTS (${GRACE_INV})`); break;
+    case 'isolation_ready': where.push(`c.network_status<>'isolated'`, `c.router_id IS NOT NULL`, `c.pppoe_username IS NOT NULL`,
+      `(c.isolate_hold_until IS NULL OR c.isolate_hold_until<CURDATE())`, `EXISTS (${READY_INV})`); break;
     case 'overdue': where.push(`EXISTS (${OPEN_INV} AND ix.due_date<CURDATE())`); break;
     case 'isolated': where.push(`c.network_status='isolated'`); break;
     default: break;
@@ -48,6 +61,9 @@ async function listCandidates(filter = {}, { limit = 500 } = {}) {
   const [rows] = await db.query(`SELECT c.id,c.customer_code,c.name,c.phone,c.whatsapp_status,c.whatsapp_normalized,c.address,c.network_status,c.vlan,
       p.name package_name,p.speed_label,cl.name cluster_name,r.name router_name,s.code site_code,
       (SELECT MIN(ix.due_date) FROM invoices ix WHERE ix.customer_id=c.id AND ix.status IN ('unpaid','partial','overdue') AND ix.outstanding>0 AND ix.archived_at IS NULL) next_due,
+      (SELECT MIN(DATE_ADD(ix.due_date, INTERVAL COALESCE(c.grace_days,s.default_grace_days,(SELECT default_grace_days FROM settings WHERE id=1),2) DAY))
+        FROM invoices ix WHERE ix.customer_id=c.id AND ix.status IN ('unpaid','partial','overdue') AND ix.outstanding>0 AND ix.archived_at IS NULL) grace_until,
+      c.isolate_hold_until,
       (SELECT COALESCE(SUM(ix.outstanding),0) FROM invoices ix WHERE ix.customer_id=c.id AND ix.status IN ('unpaid','partial','overdue') AND ix.outstanding>0 AND ix.archived_at IS NULL) outstanding,
       EXISTS(SELECT 1 FROM wa_blacklist b WHERE b.phone=c.whatsapp_normalized) blacklisted
     FROM customers c LEFT JOIN packages p ON p.id=c.package_id LEFT JOIN clusters cl ON cl.id=c.cluster_id
@@ -67,6 +83,17 @@ async function filterOptions() {
     packages: await q(`SELECT id,name,speed_label FROM packages WHERE archived_at IS NULL ORDER BY name`),
     vlans: (await q(`SELECT DISTINCT vlan FROM customers WHERE vlan IS NOT NULL AND vlan<>'' ORDER BY vlan`)).map(r => r.vlan),
   };
+}
+
+async function followUpSummary() {
+  const keys = ['due_today', 'follow_up', 'isolation_ready', 'isolated'];
+  const counts = await Promise.all(keys.map(async key => {
+    const { sql, params } = buildWhere({ billing: key });
+    const [[row]] = await db.query(`SELECT COUNT(*) total FROM customers c WHERE ${sql}`, params);
+    return [key, Number(row?.total || 0)];
+  }));
+  const [[settings]] = await db.query('SELECT auto_isolate FROM settings WHERE id=1');
+  return { counts: Object.fromEntries(counts), autoIsolate: !!Number(settings?.auto_isolate) };
 }
 
 // scheduledAt: string "YYYY-MM-DDTHH:mm" (waktu WIB dari input datetime-local) atau Date.
@@ -165,4 +192,4 @@ async function listBroadcasts(limit = 30) {
   return rows;
 }
 
-module.exports = { BILLING_FILTERS, MAX_RECIPIENTS, APPROVAL_THRESHOLD, buildWhere, listCandidates, filterOptions, createBroadcast, setBroadcastStatus, refreshBroadcastStatuses, listBroadcasts, parseSchedule };
+module.exports = { BILLING_FILTERS, MAX_RECIPIENTS, APPROVAL_THRESHOLD, buildWhere, listCandidates, filterOptions, followUpSummary, createBroadcast, setBroadcastStatus, refreshBroadcastStatuses, listBroadcasts, parseSchedule };

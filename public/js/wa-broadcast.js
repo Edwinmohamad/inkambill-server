@@ -43,6 +43,23 @@
     const p = readPresets(); p[name.trim().slice(0, 80)] = filterObject(); localStorage.setItem(PRESET_KEY, JSON.stringify(p)); renderPresets(); $('#wabPreset').value = name.trim().slice(0, 80);
   });
   $('#wabPresetDelete').addEventListener('click', () => { const name = $('#wabPreset').value; if (!name || !confirm(`Hapus segmen "${name}"?`)) return; const p = readPresets(); delete p[name]; localStorage.setItem(PRESET_KEY, JSON.stringify(p)); renderPresets(); });
+  async function refreshFollowUp() {
+    try {
+      const data = await api('/wa-gateway/broadcast/api/follow-up');
+      $$('[data-follow-up-count]').forEach(node => { node.textContent = num(data.counts[node.dataset.followUpCount] || 0); });
+      $('#wabIsolationNote').textContent = `Isolir otomatis ${data.autoIsolate ? 'aktif' : 'nonaktif'}. Status "memenuhi syarat isolir" mengikuti jatuh tempo, masa toleransi, data PPPoE/router, dan penundaan isolir; ini bukan perintah isolir.`;
+    } catch (_) { /* angka terakhir tetap tampil sampai halaman dimuat ulang */ }
+  }
+  $$('[data-follow-up]').forEach(card => card.addEventListener('click', () => {
+    $('#wabFilter').reset();
+    $('#wabFilter').elements.billing.value = card.dataset.followUp;
+    selected.clear();
+    $('input[name="target_mode"][value="filter"]').checked = true;
+    $$('[data-follow-up]').forEach(item => item.classList.toggle('active', item === card));
+    updateFilterBadge(); loadCandidates();
+    $('#wabFilter').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }));
+  setInterval(refreshFollowUp, 60000);
   $('#wabPreset').addEventListener('change', e => {
     const data = readPresets()[e.target.value]; if (!data) return;
     for (const field of $('#wabFilter').elements) if (field.name) field.value = data[field.name] || '';
@@ -75,7 +92,11 @@
       const c3 = el('td', null, r.package || '-');
       const c4 = el('td', null, [r.cluster_name, r.router_name].filter(Boolean).join(' · ') || '-');
       const c5 = el('td');
-      if (Number(r.outstanding) > 0) c5.append(el('strong', null, rupiah(r.outstanding)), el('span', 'wab-sub', `Jatuh tempo ${fmtDate(r.next_due)}`));
+      if (Number(r.outstanding) > 0) {
+        c5.append(el('strong', null, rupiah(r.outstanding)), el('span', 'wab-sub', `Jatuh tempo ${fmtDate(r.next_due)}`));
+        if (r.grace_until) c5.appendChild(el('span', 'wab-sub', `Batas toleransi ${fmtDate(r.grace_until)}`));
+        if (r.isolate_hold_until) c5.appendChild(el('span', 'wab-sub', `Tunda isolir sampai ${fmtDate(r.isolate_hold_until)}`));
+      }
       else c5.appendChild(el('span', 'wab-sub', 'Lunas'));
       const n = NET[r.network_status] || ['gray', r.network_status || '-'];
       const c6 = el('td'); c6.appendChild(el('span', `wab-pill ${n[0]}`, n[1]));

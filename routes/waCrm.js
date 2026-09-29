@@ -37,11 +37,14 @@ function back(req, res, tab, flash) { req.session.flash = flash; res.redirect(`/
 router.get('/broadcast', requireBroadcaster, async (req, res) => {
   const [templates] = await db.query(`SELECT template_key,title,body FROM wa_templates ORDER BY FIELD(template_key,'reminder','isolation','outage','receipt'),template_key`);
   res.render('whatsapp-gateway/broadcast', {
-    title: 'Broadcast WhatsApp', options: await bc.filterOptions(), billingFilters: bc.BILLING_FILTERS, templates,
+    title: 'Pusat Pesan WA', options: await bc.filterOptions(), followUp: await bc.followUpSummary(), billingFilters: bc.BILLING_FILTERS, templates,
     variables: tpl.VARIABLES, broadcasts: await bc.listBroadcasts(20), blastEnabled: isBlastEnabled(),
     antiban: await antiBan.getConfig(), pause: antiBan.getPauseState(), gateway: getGatewayStatus(), maxRecipients: bc.MAX_RECIPIENTS,
   });
 });
+router.get('/broadcast/api/follow-up', requireBroadcaster, api(async (req, res) => {
+  res.set('Cache-Control', 'no-store').json({ ok: true, ...(await bc.followUpSummary()) });
+}));
 router.get('/broadcast/api/candidates', requireBroadcaster, api(async (req, res) => {
   const { rows, total } = await bc.listCandidates(filterFrom(req.query), { limit: 500 });
   res.set('Cache-Control', 'no-store').json({ ok: true, total, rows: rows.map(r => ({ ...r, blacklisted: !!Number(r.blacklisted), package: tpl.packageLabel(r.package_name, r.speed_label) })) });
