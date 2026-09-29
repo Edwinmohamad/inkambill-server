@@ -125,7 +125,7 @@
           <a class="sidebar-link <%= currentPath.startsWith('/discounts') ? 'active' : '' %>" href="/discounts"><i class="bi bi-percent"></i><span><%= t('discounts') %></span></a>
           <a class="sidebar-link <%= currentPath.startsWith('/charges') ? 'active' : '' %>" href="/charges"><i class="bi bi-plus-square-fill"></i><span><%= t('charges') %></span></a>
           <% if(can('billing')||can('support')||can('customers')||can('settings')){ %><a class="sidebar-link <%= currentPath.startsWith('/wa-inbox') ? 'active' : '' %>" href="/wa-inbox"><i class="bi bi-chat-dots-fill"></i><span>WA Inbox</span></a><% } %>
-          <% if(isAdmin){ %><a class="sidebar-link <%= currentPath.startsWith('/wa-gateway/broadcast') ? 'active' : '' %>" href="/wa-gateway/broadcast"><i class="bi bi-megaphone-fill"></i><span>Broadcast WA</span></a><% } %>
+          <% if(isAdmin && (can('billing')||can('support')||can('customers'))){ %><a class="sidebar-link <%= currentPath.startsWith('/wa-gateway/broadcast') ? 'active' : '' %>" href="/wa-gateway/broadcast"><i class="bi bi-megaphone-fill"></i><span>Pusat Pesan WA</span></a><% } %>
           <% if(can('settings')){ %><a class="sidebar-link <%= currentPath.startsWith('/wa-gateway') && !currentPath.startsWith('/wa-gateway/broadcast') ? 'active' : '' %>" href="/wa-gateway"><i class="bi bi-whatsapp"></i><span>WA Gateway</span></a><% } %>
         </nav>
         <% } %>

@@ -13,8 +13,8 @@
   <header class="wab-head">
     <div>
       <p class="wab-eyebrow">WhatsApp CRM</p>
-      <h1>Broadcast</h1>
-      <p class="wab-lede">Kirim pesan ke pelanggan terpilih, sekarang atau terjadwal.</p>
+      <h1>Pusat Pesan Pelanggan</h1>
+      <p class="wab-lede">Pilih pelanggan, siapkan pesan layanan, lalu kirim manual atau broadcast terjadwal.</p>
     </div>
     <nav class="wab-head-links">
       <a href="/wa-inbox"><i class="bi bi-chat"></i>Inbox</a>
@@ -106,6 +106,29 @@
           <div><h2>Pesan</h2><p>Variabel diisi otomatis sesuai data tiap pelanggan.</p></div>
         </div>
 
+        <div class="wab-template-box" aria-label="Template komunikasi ISP">
+          <strong>Template komunikasi ISP</strong>
+          <p>Pilih naskah resmi lalu sesuaikan isi dan periksa pratinjau sebelum mengirim.</p>
+          <div class="wab-template-cards">
+            <% [
+              ['isp_reminder','Pengingat tagihan ISP','Menjelang jatuh tempo'],
+              ['isp_overdue','Tunggakan ISP','Lewat jatuh tempo'],
+              ['isp_outage','Gangguan ISP','Penanganan jaringan'],
+              ['isp_recovery','Layanan pulih','Koneksi normal kembali'],
+              ['isp_maintenance','Pemeliharaan ISP','Jadwal pekerjaan'],
+              ['reminder','Pengingat tagihan','Menjelang jatuh tempo'],
+              ['overdue','Tagihan tertunggak','Lewat jatuh tempo'],
+              ['isolation','Pemberitahuan isolir','Status layanan'],
+              ['outage','Informasi gangguan','Penanganan jaringan'],
+              ['maintenance','Pemeliharaan terjadwal','Jadwal pekerjaan'],
+              ['receipt','Konfirmasi pembayaran','Pembayaran diterima'],
+              ['announcement','Pengumuman layanan','Informasi umum']
+            ].forEach(([key,label,detail])=>{ if(templates.some(t=>t.template_key===key)){ %>
+              <button type="button" class="wab-template-card" data-template-pick="<%= key %>"><strong><%= label %></strong><small><%= detail %></small></button>
+            <% } }); %>
+          </div>
+        </div>
+
         <div class="wab-grid-2">
           <label class="wab-field"><span>Nama broadcast</span><input class="wab-input" id="wabName" maxlength="160" placeholder="Info gangguan Cluster A"></label>
           <label class="wab-field"><span>Template</span><select class="wab-select" id="wabTemplate"><option value="">Tulis manual</option><% templates.forEach(t=>{ %><option value="<%= t.template_key %>"><%= t.title %></option><% }) %></select></label>
@@ -158,6 +181,9 @@
 
         <label class="wab-field"><span>Nomor uji Admin</span><input class="wab-input" id="wabTestPhone" inputmode="tel" placeholder="62812…"></label>
         <button type="button" class="wab-btn secondary" id="wabTestSend"><i class="bi bi-phone"></i>Kirim pesan uji</button>
+
+        <button type="button" class="wab-btn secondary" id="wabManualSend"><i class="bi bi-person-check"></i>Kirim manual ke 1 pelanggan</button>
+        <p class="wab-hint">Untuk pesan manual, pilih tepat satu pelanggan dari daftar. Pesan masuk ke antrean pengiriman.</p>
 
         <button type="button" class="wab-btn" id="wabSubmit" <%= blastEnabled?'':'disabled' %>><i class="bi bi-send-fill"></i>Buat broadcast</button>
         <div class="wab-result" id="wabResult" hidden></div>

@@ -131,6 +131,12 @@
     if (!$('#wabName').value && tpl) $('#wabName').value = tpl.title;
     onMessageChange();
   });
+  $$('[data-template-pick]').forEach(button => button.addEventListener('click', () => {
+    const select = $('#wabTemplate');
+    select.value = button.dataset.templatePick;
+    select.dispatchEvent(new Event('change'));
+    $$('[data-template-pick]').forEach(item => item.classList.toggle('active', item === button));
+  }));
   msg.addEventListener('input', onMessageChange);
   $$('[data-insert]').forEach(b => b.addEventListener('click', () => {
     const s = msg.selectionStart ?? msg.value.length; const e = msg.selectionEnd ?? s;
@@ -188,6 +194,22 @@
     try {
       await api('/wa-gateway/broadcast/api/test-send', { method: 'POST', body: { phone, message: msg.value, customer_id: [...selected][0] || rows[0]?.id || null, detail_gangguan: $('#wabDetail').value, estimasi_selesai: $('#wabEta').value, jadwal_pemeliharaan: $('#wabMaintenanceAt').value, isi_pengumuman: $('#wabAnnouncementText').value } });
       showResult('ok', 'Pesan uji masuk antrean khusus ke nomor Admin.');
+    } catch (e) { showResult('err', e.message); } finally { btn.disabled = false; }
+  });
+  $('#wabManualSend').addEventListener('click', async () => {
+    if (selected.size !== 1) return showResult('err', 'Pilih tepat satu pelanggan untuk pengiriman manual.');
+    if (!msg.value.trim()) return showResult('err', 'Naskah pesan wajib diisi.');
+    if ($('#wabFile').files.length) return showResult('err', 'Lampiran tersedia melalui broadcast; kosongkan lampiran untuk pesan manual.');
+    const customer = [...selected][0];
+    if (!confirm('Kirim pesan manual ke satu pelanggan yang dipilih?')) return;
+    const btn = $('#wabManualSend'); btn.disabled = true;
+    try {
+      const d = await api('/wa-gateway/broadcast/api/manual-send', { method: 'POST', body: {
+        customer_id: customer, message: msg.value, detail_gangguan: $('#wabDetail').value,
+        estimasi_selesai: $('#wabEta').value, jadwal_pemeliharaan: $('#wabMaintenanceAt').value,
+        isi_pengumuman: $('#wabAnnouncementText').value,
+      } });
+      showResult('ok', `Pesan manual untuk ${d.customer} masuk antrean (#${d.id}). Pantau status di Log Pengiriman.`);
     } catch (e) { showResult('err', e.message); } finally { btn.disabled = false; }
   });
   $('#wabSubmit').addEventListener('click', async () => {

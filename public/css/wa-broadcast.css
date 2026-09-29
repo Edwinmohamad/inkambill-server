@@ -78,6 +78,12 @@ html[data-theme="dark"] .wab{--wab-seg-on:#3a3a3e;--wab-seg-shadow:0 1px 2px rgb
 .wab-select option{background:var(--panel);color:var(--text)}
 .wab input[type=datetime-local]{color-scheme:light dark}
 .wab-grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.wab-template-box{border:1px solid var(--line);border-radius:var(--wab-r-sm);padding:14px;background:var(--wab-fill-2)}
+.wab-template-box>strong{font-size:14px}.wab-template-box>p{font-size:12px;color:var(--muted);margin:4px 0 12px}
+.wab-template-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:8px}
+.wab-template-card{display:grid;gap:3px;text-align:left;padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--wab-card);color:var(--text);cursor:pointer}
+.wab-template-card strong{font-size:12px}.wab-template-card small{font-size:11px;color:var(--muted)}
+.wab-template-card:hover,.wab-template-card.active{border-color:var(--brand);box-shadow:var(--wab-focus)}
 .wab-outage{padding:14px;border-radius:var(--wab-r-sm);background:var(--warning-tint)}
 
 /* Filter */

@@ -89,6 +89,10 @@ async function createBroadcast({ name, templateKey = null, message, extra = {}, 
   const when = mode === 'scheduled' ? parseSchedule(scheduledAt) : null;
   if (mode === 'scheduled' && !when) throw new Error('Tanggal & jam jadwal wajib diisi.');
   const { rows } = await listCandidates(filter, { limit: MAX_RECIPIENTS });
+  if ([].concat(filter.customer_ids || []).length) {
+    const requested = new Set([].concat(filter.customer_ids).map(Number));
+    if (rows.length !== requested.size) throw new Error('Sebagian pelanggan pilihan tidak aktif atau tidak ditemukan. Perbarui daftar penerima sebelum mengirim.');
+  }
   if (!rows.length) throw new Error('Tidak ada penerima yang cocok dengan filter/pilihan.');
   const eligibleCount = rows.filter(c => c.whatsapp_status !== 'invalid' && c.phone && !Number(c.blacklisted)).length;
   if (!eligibleCount) throw new Error('Tidak ada penerima dengan nomor WhatsApp valid dan aktif menerima broadcast.');

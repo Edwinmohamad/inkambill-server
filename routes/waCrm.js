@@ -75,10 +75,37 @@ router.post('/broadcast', requireBroadcaster, (req, res, next) => broadcastUploa
   const b = req.body || {};
   const filter = filterFrom(b);
   if (b.target_mode === 'selected' && !filter.customer_ids.length) throw new Error('Belum ada pelanggan yang dipilih.');
-  if (b.target_mode !== 'selected') filter.customer_ids = [];
+  if (b.target_mode === 'selected') {
+    // Pilihan dapat dikumpulkan dari beberapa pencarian/site. Filter terakhir hanya
+    // mengatur daftar yang tampil, bukan membatasi penerima yang telah dipilih.
+    Object.assign(filter, { billing: 'all', site_id: null, cluster_id: null, router_id: null,
+      olt_id: null, package_id: null, vlan: '', q: '' });
+  } else filter.customer_ids = [];
   const result = await bc.createBroadcast({ name: b.name, templateKey: b.template_key || null, message: b.message, extra: { detail_gangguan: b.detail_gangguan, estimasi_selesai: b.estimasi_selesai, jadwal_pemeliharaan: b.jadwal_pemeliharaan, isi_pengumuman: b.isi_pengumuman }, filter, mode: b.mode === 'scheduled' ? 'scheduled' : 'direct', scheduledAt: b.scheduled_at, userId: req.session.user.id, mediaFile: req.file || null });
   await audit({ userId: req.session.user.id, action: 'blast', entityType: 'wa_broadcast', entityId: result.id, description: `Broadcast WA "${String(b.name || '').slice(0, 80)}": ${result.queued} penerima${result.scheduledAt ? ` · terjadwal` : ''} (${result.skippedBlacklist} blacklist, ${result.skippedInvalid} nomor tidak valid)`, ip: req.ip });
   res.json({ ok: true, ...result });
+}));
+router.post('/broadcast/api/manual-send', requireBroadcaster, api(async (req, res) => {
+  const id = Number(req.body?.customer_id);
+  if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Pilih satu pelanggan terlebih dahulu.');
+  const { rows } = await bc.listCandidates({ billing: 'all', customer_ids: [id] }, { limit: 1 });
+  const customer = rows[0];
+  if (!customer || customer.whatsapp_status !== 'valid' || !customer.phone || Number(customer.blacklisted)) {
+    throw new Error('Pelanggan tidak aktif, nomor WhatsApp belum valid, atau menolak pesan broadcast.');
+  }
+  const draft = String(req.body?.message || '').trim();
+  if (!draft || draft.length > 4000) throw new Error('Pesan wajib diisi (maksimal 4000 karakter).');
+  const bank = await tpl.getDefaultBank();
+  const row = await tpl.loadCustomerRow(id);
+  const extra = { detail_gangguan: req.body?.detail_gangguan, estimasi_selesai: req.body?.estimasi_selesai,
+    jadwal_pemeliharaan: req.body?.jadwal_pemeliharaan, isi_pengumuman: req.body?.isi_pengumuman };
+  const message = tpl.renderTemplate(draft, tpl.buildVars(row || customer, bank, extra));
+  const { enqueueWaMessage } = require('../services/whatsappGatewayService');
+  const result = await enqueueWaMessage({ phone: customer.phone, message, customerId: id, type: 'manual', userId: req.session.user.id });
+  if (result.status === 'failed') throw new Error(result.reason || 'Nomor WhatsApp tidak valid.');
+  await audit({ userId: req.session.user.id, action: 'send', entityType: 'wa_message', entityId: result.id,
+    description: `Pesan manual ke pelanggan ${customer.customer_code || id}`, ip: req.ip });
+  res.json({ ok: true, id: result.id, customer: customer.name });
 }));
 router.post('/broadcast/:id/:action', requireBroadcaster, api(async (req, res) => {
   if (!['pause', 'resume', 'cancel', 'retry'].includes(req.params.action)) throw new Error('Aksi tidak dikenal.');

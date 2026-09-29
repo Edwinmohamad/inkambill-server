@@ -7,6 +7,65 @@ const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 
 
 const OFFICIAL_TEMPLATES = [
   {
+    key: 'isp_reminder', title: 'ISP · Pengingat Tagihan',
+    body: `Yth. Bapak/Ibu {nama_pelanggan},
+
+Kami dari INKAMNET mengingatkan bahwa tagihan layanan internet Anda untuk periode {periode} akan jatuh tempo pada {tanggal_jatuh_tempo}.
+
+ID Pelanggan: {id_pelanggan}
+Nomor Invoice: {nomor_invoice}
+Total Tagihan: {nominal_tagihan}
+
+Pembayaran dapat dilakukan melalui {nama_bank} nomor {nomor_rekening} atas nama {nama_pemilik_rekening}. Setelah membayar, mohon kirimkan bukti transfer melalui percakapan ini untuk verifikasi.
+
+Jika pembayaran telah dilakukan, mohon abaikan pengingat ini. Terima kasih atas kepercayaan Anda kepada INKAMNET.`
+  },
+  {
+    key: 'isp_overdue', title: 'ISP · Tagihan Lewat Tempo',
+    body: `Yth. Bapak/Ibu {nama_pelanggan},
+
+Berdasarkan catatan kami, tagihan layanan internet dengan nomor invoice {nomor_invoice} sebesar {nominal_tagihan} telah melewati jatuh tempo pada {tanggal_jatuh_tempo}.
+
+Mohon melakukan pembayaran melalui {nama_bank} nomor {nomor_rekening} atas nama {nama_pemilik_rekening}, kemudian mengirimkan bukti transfer melalui percakapan ini. Jika terdapat kendala atau pembayaran sudah dilakukan, silakan balas pesan ini agar tim kami dapat membantu pemeriksaan.
+
+Terima kasih atas perhatian dan kerja sama Anda.
+Tim Layanan Pelanggan INKAMNET`
+  },
+  {
+    key: 'isp_outage', title: 'ISP · Informasi Gangguan',
+    body: `Yth. Bapak/Ibu {nama_pelanggan},
+
+Kami informasikan bahwa saat ini terdapat gangguan layanan internet di area {area_pelanggan}.
+
+Kendala: {detail_gangguan}
+Perkiraan pemulihan: {estimasi_selesai}
+
+Tim teknis INKAMNET sedang melakukan penanganan. Kami akan menyampaikan pembaruan setelah layanan kembali normal. Mohon maaf atas ketidaknyamanan yang terjadi.
+
+Tim Operasional INKAMNET`
+  },
+  {
+    key: 'isp_recovery', title: 'ISP · Layanan Pulih',
+    body: `Yth. Bapak/Ibu {nama_pelanggan},
+
+Penanganan gangguan di area {area_pelanggan} telah selesai dan layanan internet saat ini kembali normal. Silakan mencoba koneksi Anda kembali.
+
+Jika masih mengalami kendala, mohon balas pesan ini dengan informasi kondisi perangkat agar tim kami dapat membantu pengecekan lebih lanjut.
+
+Terima kasih atas kesabaran dan kerja sama Anda.
+Tim Operasional INKAMNET`
+  },
+  {
+    key: 'isp_maintenance', title: 'ISP · Pemeliharaan Jaringan',
+    body: `Yth. Bapak/Ibu {nama_pelanggan},
+
+INKAMNET akan melakukan pemeliharaan jaringan di area {area_pelanggan} pada {jadwal_pemeliharaan}. Selama pekerjaan berlangsung, layanan internet dapat mengalami gangguan sementara.
+
+Kami akan berupaya menyelesaikan pekerjaan sesuai jadwal dan menyampaikan informasi apabila terdapat perubahan. Mohon maaf atas ketidaknyamanan yang mungkin timbul.
+
+Tim Operasional INKAMNET`
+  },
+  {
     key: 'invoice', title: 'Tagihan Baru',
     body: `Yth. Bapak/Ibu {nama_pelanggan} (ID: {id_pelanggan}),
 
