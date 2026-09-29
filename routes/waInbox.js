@@ -57,7 +57,7 @@ router.get('/api/webhook-health', api(async (_req, res) => {
       waha.missingWebhook(session, callback) === true ? 'missing' :
       waha.missingWebhook(session, callback) === false ? 'registered' : 'not_exposed';
   } catch (e) { sessionError = e.message; }
-  res.set('Cache-Control', 'no-store').json({ ok: true, ...webhookHealth.snapshot(), registration,
+  res.set('Cache-Control', 'no-store').json({ ok: true, ...(await webhookHealth.snapshot()), registration,
     callbackConfigured: !!callback, gateway: getGatewayStatus().state, sessionError });
 }));
 router.post('/api/webhook-repair', api(async (req, res) => {

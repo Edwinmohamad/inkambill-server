@@ -28,7 +28,7 @@
   </article>
 
   <div class="nx-stats">
-    <a class="nx-stat green" href="/nms/secrets?tab=synced<%= sq %>&status=online"><small><i></i>Online</small><strong id="kpiOnline"><%= data.customers.online %></strong><em>sesi PPPoE aktif</em></a>
+    <a class="nx-stat green" href="/nms/secrets?tab=synced<%= sq %>&status=online"><small><i></i>Online</small><strong id="kpiOnline"><%= data.customers.online %></strong><em>pelanggan unik dengan sesi aktif</em></a>
     <a class="nx-stat" href="/nms/secrets?tab=synced<%= sq %>&status=offline"><small><i></i>Offline</small><strong id="kpiOffline"><%= data.customers.offline %></strong><em>secret aktif tanpa sesi</em></a>
     <a class="nx-stat red" href="/nms/secrets?tab=synced<%= sq %>&status=isolated"><small><i></i>Diisolir</small><strong id="kpiIsolated"><%= data.customers.isolated %></strong><em>profile isolir / disabled</em></a>
     <a class="nx-stat purple" href="/nms/secrets?tab=unsynced<%= sq %>"><small><i></i>Belum ter-link</small><strong id="kpiUnsynced"><%= data.sync.unsynced %></strong><em>secret tanpa pelanggan</em></a>
@@ -40,6 +40,19 @@
     <section class="nx-w c-12 nx-site-overview-wrap" data-w="sites" data-tv="overview" data-title="Ringkasan 3 Site">
       <div class="nx-section nx-section-row"><div><h2>Ringkasan Site</h2><p>KRW · CLM · KBG dalam satu pandangan: router, pelanggan, status, dan traffic live.</p></div><span class="nx-pill blue" id="nxSiteScope">LIVE · 3 SITE</span></div>
       <div class="nx-site-grid" id="nxSiteOverview"><div class="nx-card"><div class="nx-empty">Memuat ringkasan site…</div></div></div>
+    </section>
+    <section class="nx-w nx-card c-12" data-w="parallel" data-tv="overview" data-title="PPPoE Paralel">
+      <div class="nx-card-head"><h3>PPPoE Paralel</h3><span class="grow"></span><% if(canControl){ %><button type="button" class="nx-btn sm tint" id="nxParallelAdd">Daftarkan paralel</button><% } %></div>
+      <div class="nx-card-body"><div class="nx-parallel-summary" id="nxParallelSummary"></div><div id="nxParallelRows"></div><p class="nx-parallel-note">Registrasi paralel hanya untuk pemantauan NOC. Secret utama pelanggan, tagihan, dan aksi isolir tidak diubah; periksa seluruh secret tambahan ketika pelanggan diisolir.</p>
+        <% if(canControl){ %><form class="nx-parallel-form" id="nxParallelForm" hidden>
+          <label>Secret tambahan aktif<select id="nxParallelSecret" required></select></label>
+          <label>Cari pelanggan utama<input id="nxParallelCustomerSearch" type="search" placeholder="Nama atau ID pelanggan" autocomplete="off" required></label>
+          <div id="nxParallelCustomerOptions" class="nx-parallel-options"></div>
+          <label>Batas total sesi<input id="nxParallelLimit" type="number" min="2" max="8" value="2" required></label>
+          <label>Catatan<input id="nxParallelNote" type="text" maxlength="255" placeholder="Contoh: dua ONT di satu lokasi"></label>
+          <div class="nx-parallel-form-actions"><button type="button" class="nx-btn sm" id="nxParallelCancel">Batal</button><button type="submit" class="nx-btn sm primary">Simpan registrasi</button></div>
+        </form><% } %>
+      </div>
     </section>
     <section class="nx-w c-12" data-w="routers" data-tv="routers" data-title="Router">
       <div class="nx-section"><h2>Router</h2><p>CPU, RAM, disk, dan pelanggan per router. Klik kartu untuk detail.</p></div>

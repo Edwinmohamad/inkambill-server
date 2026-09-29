@@ -266,3 +266,11 @@ html[data-theme="light"] .wab-pill.red{color:#d70015}
 @media(max-width:800px){.wab-followup-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:767.98px){.wab-card{padding:16px}.wab-head-links{flex-wrap:wrap}.wab-followup-card{min-height:110px;padding:12px}.wab-template-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.wab-hist-item{grid-template-columns:minmax(0,1fr) auto}.wab-hist{margin:0 -16px}}
 @media(max-width:420px){.wab-followup-grid,.wab-template-cards{grid-template-columns:1fr 1fr}.wab-followup-card{min-height:130px}.wab-followup-card span{line-height:1.25}}
+
+.wab-recipient-details{grid-column:1/-1;border-top:1px solid var(--line);padding-top:8px}
+.wab-recipient-details summary{width:max-content;max-width:100%;min-height:36px;display:flex;align-items:center;color:var(--accent-text);font-size:13px;font-weight:600;cursor:pointer}
+.wab-recipient-content{max-height:360px;overflow:auto;font-size:12px;color:var(--muted)}
+.wab-recipient-table{width:100%;border-collapse:collapse;min-width:640px;color:var(--text)}
+.wab-recipient-table th,.wab-recipient-table td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+.wab-recipient-table th{position:sticky;top:0;background:var(--panel);font-size:11px;color:var(--muted)}
+.wab-recipient-table td:last-child{max-width:300px;overflow-wrap:anywhere}

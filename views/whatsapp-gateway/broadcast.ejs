@@ -115,7 +115,7 @@
           <label><input type="radio" name="target_mode" value="filter" checked><span>Semua hasil filter<em id="wabTotalLabel">0</em></span></label>
           <label><input type="radio" name="target_mode" value="selected"><span>Hanya yang dipilih<em id="wabSelectedLabel">0</em></span></label>
         </div>
-        <p class="wab-hint">Kolom tagihan menjumlahkan sisa seluruh invoice terbuka, bukan harga paket bulanan. Maksimal <%= maxRecipients %> penerima; nomor opt-out dan tidak valid tidak bisa dipilih.</p>
+        <p class="wab-hint">Kolom tagihan menampilkan sisa invoice terbuka sesuai periode yang dipilih di bagian Pesan. Filter status jatuh tempo tetap mengacu pada seluruh kewajiban pelanggan. Maksimal <%= maxRecipients %> penerima.</p>
       </section>
 
       <section class="wab-card">
@@ -145,6 +145,12 @@
           <label class="wab-field"><span>Nama broadcast</span><input class="wab-input" id="wabName" maxlength="160" placeholder="Info gangguan Cluster A"></label>
           <label class="wab-field"><span>Template</span><select class="wab-select" id="wabTemplate"><option value="">Tulis manual</option><% templates.forEach(t=>{ %><option value="<%= t.template_key %>"><%= t.title %></option><% }) %></select></label>
         </div>
+        <label class="wab-field"><span>Invoice yang dicantumkan dalam pesan tagihan</span><select class="wab-select" id="wabInvoiceScope"><option value="current">Bulan ini saja</option><option value="previous">Bulan sebelumnya saja</option><option value="two_months">Bulan ini + bulan sebelumnya</option><option value="custom">Pilih rentang bulan</option><option value="all_open">Seluruh tunggakan terbuka</option></select></label>
+        <div class="wab-grid-2" id="wabInvoiceRange" hidden>
+          <label class="wab-field"><span>Dari bulan</span><input class="wab-input" type="month" id="wabInvoiceFrom"></label>
+          <label class="wab-field"><span>Sampai bulan</span><input class="wab-input" type="month" id="wabInvoiceTo"></label>
+        </div>
+        <p class="wab-hint">Nominal dijumlahkan dari sisa invoice terbuka milik pelanggan dalam cakupan pilihan. Rentang khusus maksimal 12 bulan. Pelanggan tanpa invoice pada cakupan itu dilewati untuk pesan tagihan.</p>
 
         <div class="wab-grid-2 wab-outage" id="wabOutage" hidden>
           <label class="wab-field"><span>Detail gangguan <code>{detail_gangguan}</code></span><input class="wab-input" id="wabDetail" maxlength="500" placeholder="Putus kabel fiber di jalur utama"></label>

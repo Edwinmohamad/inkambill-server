@@ -20,6 +20,7 @@ const automation = require('../services/nms/automation');
 const nmsSettings = require('../services/nms/settings');
 const widgets = require('../services/nms/widgets');
 const fasum = require('../services/nms/fasum');
+const parallel = require('../services/nms/parallel');
 const excelSync = require('../services/nms/excelSync');
 const nmsExcelUpload = require('../middleware/nmsExcelUpload');
 
@@ -217,6 +218,29 @@ router.get('/api/profiles', api(async req => {
 
 // ---------- PPP Secrets ----------
 router.get('/api/secrets', api(async req => store.listSecrets({ tab: req.query.tab, siteId: siteParam(req), q: String(req.query.q || '').trim().slice(0, 80), status: req.query.status, includeExempt: req.query.exempt === '1', page: req.query.page, limit: req.query.limit })));
+router.get('/api/parallel/candidates', api(async req => ({ rows: await parallel.candidates(siteParam(req)) })));
+router.post('/api/parallel/register', requireNetworkControl, api(async req => {
+  const secretId = Number(req.body.secretId), customerId = Number(req.body.customerId);
+  if (!Number.isSafeInteger(secretId) || secretId <= 0 || !Number.isSafeInteger(customerId) || customerId <= 0) throw new Error('Pilih secret dan pelanggan yang valid.');
+  const result = await parallel.register({ secretId, customerId, limit:req.body.limit, note:req.body.note, userId:req.session.user.id });
+  await audit({ userId:req.session.user.id, action:'nms_parallel_register', entityType:'ppp_secret', entityId:secretId, ip:req.ip, description:`Registrasi PPPoE paralel: secret #${secretId} ke pelanggan #${customerId}, batas ${result.limit} sesi` });
+  return { result };
+}));
+router.post('/api/parallel/customers/:id/limit', requireNetworkControl, api(async req => {
+  const customerId = Number(req.params.id);
+  if (!Number.isSafeInteger(customerId) || customerId <= 0) throw new Error('Pelanggan tidak valid.');
+  const result = await parallel.setLimit(customerId, req.body.limit);
+  await audit({ userId:req.session.user.id, action:'nms_parallel_limit', entityType:'customer', entityId:customerId, ip:req.ip, description:`Batas PPPoE pelanggan #${customerId}: ${result.limit} sesi` });
+  return { result };
+}));
+router.post('/api/parallel/secrets/:id/remove', requireNetworkControl, api(async req => {
+  const secretId = Number(req.params.id);
+  if (!Number.isSafeInteger(secretId) || secretId <= 0) throw new Error('Secret tidak valid.');
+  const result = await parallel.remove(secretId);
+  await audit({ userId:req.session.user.id, action:'nms_parallel_remove', entityType:'ppp_secret', entityId:secretId, ip:req.ip, description:`Registrasi PPPoE paralel secret #${secretId} dihapus` });
+  return { result };
+}));
+
 router.get('/api/counts', api(async req => ({ counts: await store.counts(siteParam(req)) })));
 router.post('/api/secrets/refresh', requireNetworkControl, api(async req => {
   const results = await poller.refreshSecrets(siteParam(req));

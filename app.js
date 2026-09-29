@@ -47,7 +47,7 @@ const { ensureV56Schema: ensureWaCrmSchema } = require('./services/waCrmSchema')
 const waRealtime = require('./services/waRealtime');
 
 const app = express();
-const assetVersion = ['public/css/app.css','public/css/debts.css','public/css/inventory.css','public/css/procurement.css','public/css/nms-wall.css','public/js/nms-wall.js','public/css/mobile-app.css','public/css/monitoring.css','public/css/wa-inbox.css','public/css/wa-broadcast.css','public/js/app.js','public/js/mobile-app.js','public/js/nms.js','public/js/performance.js','public/js/monitoring.js','public/js/wa-inbox.js','public/js/wa-broadcast.js']
+const assetVersion = ['public/css/app.css','public/css/debts.css','public/css/inventory.css','public/css/procurement.css','public/css/nms-wall.css','public/css/nms-noc.css','public/js/nms-wall.js','public/js/nms-noc.js','public/js/nms-layout.js','public/css/mobile-app.css','public/css/monitoring.css','public/css/wa-inbox.css','public/css/wa-broadcast.css','public/js/app.js','public/js/mobile-app.js','public/js/nms.js','public/js/performance.js','public/js/monitoring.js','public/js/wa-inbox.js','public/js/wa-broadcast.js']
   .map(file => Math.floor(fs.statSync(path.join(__dirname,file)).mtimeMs).toString(36))
   .join('-');
 app.set('view engine', 'ejs');

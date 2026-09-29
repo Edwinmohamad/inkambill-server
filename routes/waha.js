@@ -12,9 +12,9 @@ router.post('/webhook', async (req, res) => {
   try {
     const event = req.body || {};
     const result = await handleWahaWebhookEvent(event);
-    health.record(event.event, result);
+    await health.record(event.event, result);
   } catch (e) {
-    health.error(e);
+    await health.error(e);
     console.error('WA Gateway: gagal memproses webhook WAHA:', e.message);
     // Session reconciliation cannot recover a missed chat message. A non-2xx response
     // lets WAHA retry; duplicate message IDs are ignored by the inbox insert.

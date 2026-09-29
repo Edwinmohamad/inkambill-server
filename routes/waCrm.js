@@ -1,6 +1,7 @@
 // WA CRM: Broadcast selektif/terjadwal, pengaturan Anti-Ban, template resmi, balasan cepat, blacklist.
 // Dipasang di /wa-gateway bersama routes/whatsappGateway.js (path berbeda, tidak bentrok).
 const express = require('express');
+const crypto = require('crypto');
 const multer = require('multer');
 const db = require('../config/db');
 const { requireMasterAdmin, isAdminRole } = require('../middleware/auth');
@@ -27,6 +28,7 @@ const api = fn => async (req, res) => {
 function filterFrom(src = {}) {
   return {
     billing: bc.BILLING_FILTERS[src.billing] ? src.billing : 'all',
+    ...bc.invoiceSelection(src), require_invoice: src.require_invoice === '1',
     site_id: src.site_id, cluster_id: src.cluster_id, router_id: src.router_id, olt_id: src.olt_id, package_id: src.package_id,
     vlan: src.vlan || '', q: src.q || '', customer_ids: src.customer_ids ? [].concat(src.customer_ids) : [],
   };
@@ -53,7 +55,8 @@ router.post('/broadcast/api/preview', requireBroadcaster, api(async (req, res) =
   const b = req.body || {};
   const bank = await tpl.getDefaultBank();
   const row = Number(b.customer_id) ? await tpl.loadCustomerRow(Number(b.customer_id)) : { customer_name: 'Budi Santoso', customer_code: 'PLG-0001', package_name: 'Home', speed_label: '10Mbps', outstanding: 150000, due_date: new Date(Date.now() + 3 * 864e5), invoice_number: 'INV-CONTOH-001' };
-  const candidate = Number(b.customer_id) ? (await bc.listCandidates({ customer_ids: [Number(b.customer_id)] }, { limit: 1 })).rows[0] : null;
+  const candidate = Number(b.customer_id) ? (await bc.listCandidates({ customer_ids: [Number(b.customer_id)], ...bc.invoiceSelection(b) }, { limit: 1 })).rows[0] : null;
+  if (candidate && bc.BILLING_VARS.test(String(b.message || '')) && !Number(candidate.open_invoice_count)) throw new Error('Pelanggan ini tidak memiliki invoice terbuka pada periode tagihan pilihan.');
   const vars = bc.broadcastVars(row || {}, candidate, bank, { detail_gangguan: b.detail_gangguan || undefined, estimasi_selesai: b.estimasi_selesai || undefined, jadwal_pemeliharaan: b.jadwal_pemeliharaan || undefined, isi_pengumuman: b.isi_pengumuman || undefined });
   const samples = [0, 1, 2].map(() => tpl.renderTemplate(String(b.message || ''), vars));
   res.json({ ok: true, samples: [...new Set(samples)] });
@@ -64,7 +67,8 @@ router.post('/broadcast/api/test-send', requireBroadcaster, api(async (req, res)
   if (!phone) throw new Error('Nomor WhatsApp tujuan uji wajib diisi.');
   const bank = await tpl.getDefaultBank();
   const row = Number(b.customer_id) ? await tpl.loadCustomerRow(Number(b.customer_id)) : { customer_name: 'Pelanggan Contoh', customer_code: 'TEST', package_name: 'Paket Internet', outstanding: 150000, due_date: new Date(), invoice_number: 'INV-TEST' };
-  const candidate = Number(b.customer_id) ? (await bc.listCandidates({ customer_ids: [Number(b.customer_id)] }, { limit: 1 })).rows[0] : null;
+  const candidate = Number(b.customer_id) ? (await bc.listCandidates({ customer_ids: [Number(b.customer_id)], ...bc.invoiceSelection(b) }, { limit: 1 })).rows[0] : null;
+  if (candidate && bc.BILLING_VARS.test(String(b.message || '')) && !Number(candidate.open_invoice_count)) throw new Error('Pelanggan ini tidak memiliki invoice terbuka pada periode tagihan pilihan.');
   const extra = { detail_gangguan: b.detail_gangguan, estimasi_selesai: b.estimasi_selesai, jadwal_pemeliharaan: b.jadwal_pemeliharaan, isi_pengumuman: b.isi_pengumuman };
   const message = `[PESAN UJI — TIDAK UNTUK PELANGGAN]\n\n${tpl.renderTemplate(String(b.message || ''), bc.broadcastVars(row || {}, candidate, bank, extra))}`;
   if (!String(b.message || '').trim()) throw new Error('Naskah pesan wajib diisi.');
@@ -93,24 +97,50 @@ router.post('/broadcast', requireBroadcaster, (req, res, next) => broadcastUploa
 router.post('/broadcast/api/manual-send', requireBroadcaster, api(async (req, res) => {
   const id = Number(req.body?.customer_id);
   if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Pilih satu pelanggan terlebih dahulu.');
-  const { rows } = await bc.listCandidates({ billing: 'all', customer_ids: [id] }, { limit: 1 });
+  const { rows } = await bc.listCandidates({ billing: 'all', customer_ids: [id], ...bc.invoiceSelection(req.body) }, { limit: 1 });
   const customer = rows[0];
   if (!customer || customer.whatsapp_status !== 'valid' || !customer.phone || Number(customer.blacklisted)) {
     throw new Error('Pelanggan tidak aktif, nomor WhatsApp belum valid, atau menolak pesan broadcast.');
   }
   const draft = String(req.body?.message || '').trim();
   if (!draft || draft.length > 4000) throw new Error('Pesan wajib diisi (maksimal 4000 karakter).');
+  if (bc.BILLING_VARS.test(draft) && !Number(customer.open_invoice_count)) throw new Error('Pelanggan ini tidak memiliki invoice terbuka pada periode tagihan pilihan.');
   const bank = await tpl.getDefaultBank();
   const row = await tpl.loadCustomerRow(id);
   const extra = { detail_gangguan: req.body?.detail_gangguan, estimasi_selesai: req.body?.estimasi_selesai,
     jadwal_pemeliharaan: req.body?.jadwal_pemeliharaan, isi_pengumuman: req.body?.isi_pengumuman };
   const message = tpl.renderTemplate(draft, bc.broadcastVars(row || customer, customer, bank, extra));
+  const requestKey = String(req.body?.request_key || '');
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestKey)) throw new Error('Kunci pengiriman tidak valid. Muat ulang halaman lalu coba lagi.');
+  const payloadHash = crypto.createHash('sha256').update(JSON.stringify([id, message])).digest('hex');
+  try {
+    await db.execute(`INSERT INTO wa_manual_requests(user_id,request_key,customer_id,payload_hash) VALUES(?,?,?,?)`, [req.session.user.id, requestKey, id, payloadHash]);
+  } catch (e) {
+    if (e.code !== 'ER_DUP_ENTRY') throw e;
+    const [[previous]] = await db.execute(`SELECT r.customer_id,r.payload_hash,r.wa_message_id,m.status FROM wa_manual_requests r
+      LEFT JOIN wa_messages m ON m.id=r.wa_message_id WHERE r.user_id=? AND r.request_key=?`, [req.session.user.id, requestKey]);
+    if (!previous || Number(previous.customer_id) !== id || previous.payload_hash !== payloadHash) throw new Error('Isi permintaan berubah. Perbarui halaman sebelum mengirim lagi.');
+    if (!previous.wa_message_id) throw new Error('Status pengiriman sebelumnya belum pasti. Periksa Log Pengiriman sebelum mencoba lagi.');
+    if (previous.status === 'failed') throw new Error('Permintaan sebelumnya gagal. Periksa Log Pengiriman, lalu muat ulang halaman sebelum mencoba lagi.');
+    return res.json({ ok: true, id: previous.wa_message_id, customer: customer.name, duplicate: true, status: previous.status });
+  }
   const { enqueueWaMessage } = require('../services/whatsappGatewayService');
   const result = await enqueueWaMessage({ phone: customer.phone, message, customerId: id, type: 'manual', userId: req.session.user.id });
+  await db.execute(`UPDATE wa_manual_requests SET wa_message_id=? WHERE user_id=? AND request_key=?`, [result.id, req.session.user.id, requestKey]);
   if (result.status === 'failed') throw new Error(result.reason || 'Nomor WhatsApp tidak valid.');
   await audit({ userId: req.session.user.id, action: 'send', entityType: 'wa_message', entityId: result.id,
     description: `Pesan manual ke pelanggan ${customer.customer_code || id}`, ip: req.ip });
   res.json({ ok: true, id: result.id, customer: customer.name });
+}));
+router.get('/broadcast/:id/recipients', requireBroadcaster, api(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) throw new Error('ID broadcast tidak valid.');
+  const [[campaign]] = await db.execute(`SELECT id FROM wa_broadcasts WHERE id=?`, [id]);
+  if (!campaign) return res.status(404).json({ ok: false, message: 'Broadcast tidak ditemukan.' });
+  const [rows] = await db.execute(`SELECT m.id,m.phone,m.status,m.error_message,m.sent_at,m.created_at,
+    c.name customer_name,c.customer_code FROM wa_messages m LEFT JOIN customers c ON c.id=m.customer_id
+    WHERE m.broadcast_id=? ORDER BY m.id ASC LIMIT 1000`, [id]);
+  res.set('Cache-Control', 'no-store').json({ ok: true, recipients: rows });
 }));
 router.post('/broadcast/:id/:action', requireBroadcaster, api(async (req, res) => {
   if (!['pause', 'resume', 'cancel', 'retry'].includes(req.params.action)) throw new Error('Aksi tidak dikenal.');

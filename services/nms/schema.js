@@ -218,6 +218,17 @@ async function ensureNmsV2Schema() {
   await tryQuery(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS service_status VARCHAR(12)
     GENERATED ALWAYS AS (CASE WHEN customer_status='suspended' THEN 'suspended' WHEN network_status='isolated' THEN 'isolated' ELSE 'active' END) VIRTUAL`, 'customers.service_status');
 
+  // Registrasi PPPoE paralel untuk pemantauan NOC. Link billing utama tetap satu secret.
+  await db.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS pppoe_parallel_limit TINYINT UNSIGNED NOT NULL DEFAULT 1`);
+  await db.query(`ALTER TABLE ppp_secrets ADD COLUMN IF NOT EXISTS active_sessions SMALLINT UNSIGNED NOT NULL DEFAULT 0`);
+  await db.query(`CREATE TABLE IF NOT EXISTS nms_parallel_links (
+    secret_id BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+    customer_id BIGINT UNSIGNED NOT NULL,
+    note VARCHAR(255) NULL,
+    created_by BIGINT UNSIGNED NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_nms_parallel_customer(customer_id)
+  )`);
   await tryQuery(`ALTER TABLE ppp_secrets ADD CONSTRAINT fk_ppp_router FOREIGN KEY (router_id) REFERENCES routers(id) ON DELETE CASCADE`, 'fk_ppp_router');
   await tryQuery(`ALTER TABLE ppp_secrets ADD CONSTRAINT fk_ppp_site FOREIGN KEY (site_id) REFERENCES sites(id)`, 'fk_ppp_site');
   await tryQuery(`ALTER TABLE ppp_secrets ADD CONSTRAINT fk_ppp_customer FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL`, 'fk_ppp_customer');

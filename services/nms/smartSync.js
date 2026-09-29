@@ -42,7 +42,7 @@ async function reconcileCustomerMirror(conn, customerId, { source = 'manual' } =
 async function loadInputs(siteId) {
   const sp = siteId ? [Number(siteId)] : [];
   const [rawSecrets] = await db.query(`SELECT id, site_id, router_id, username, comment, profile, caller_id, active_caller_id, remote_address, active_address, is_exempt, cid_ignore
-    FROM ppp_secrets WHERE customer_id IS NULL AND removed_on_router_at IS NULL ${siteId ? 'AND site_id=?' : ''}`, sp);
+    FROM ppp_secrets WHERE customer_id IS NULL AND id NOT IN (SELECT secret_id FROM nms_parallel_links) AND removed_on_router_at IS NULL ${siteId ? 'AND site_id=?' : ''}`, sp);
   // Tag CID yang sengaja dilepas operator (unmap/undo) tidak boleh menautkan ulang.
   const secrets = rawSecrets.map(s => (s.cid_ignore && parseCid(s.comment) === s.cid_ignore ? { ...s, comment: withoutCid(s.comment) } : s));
   // Secret lama yang sudah hilang dari router tidak dihitung "terikat": pelanggannya boleh dicocokkan ke secret baru.
@@ -124,6 +124,8 @@ async function linkSecret(conn, secretId, customerId, method, { manual = false, 
   const [[secret]] = await conn.execute(`SELECT id, site_id, router_id, username, customer_id, removed_on_router_at, is_exempt, is_online, is_isolated, comment
     FROM ppp_secrets WHERE id=? FOR UPDATE`, [secretId]);
   if (!secret) throw new Error('PPP Secret tidak ditemukan.');
+  const [[parallel]] = await conn.execute(`SELECT secret_id FROM nms_parallel_links WHERE secret_id=?`, [secretId]);
+  if (parallel) throw new Error('Secret tercatat sebagai paralel resmi. Hapus registrasi paralel sebelum mengubah link utama.');
   if (secret.removed_on_router_at) throw new Error(`PPP Secret ${secret.username} sudah tidak ada di router.`);
   if (Number(secret.is_exempt) && !manual && !allowExempt) throw new Error(`PPP Secret ${secret.username} dikecualikan dari Smart Sync. Hubungkan manual bila memang milik pelanggan.`);
 
@@ -450,8 +452,8 @@ async function autoRun({ commitHigh = false } = {}) {
   const plan = await preview({ refresh: true });
   let committed = null;
   if (commitHigh && plan.pairs.length) committed = await commit({ planId: plan.planId, secretIds: plan.pairs.map(p => p.secretId), source: 'auto' });
-  const [[{ n }]] = await db.query(`SELECT COUNT(*) n FROM ppp_secrets WHERE customer_id IS NULL AND is_exempt=0 AND removed_on_router_at IS NULL`);
-  const [[{ fresh }]] = await db.query(`SELECT COUNT(*) fresh FROM ppp_secrets WHERE customer_id IS NULL AND is_exempt=0 AND removed_on_router_at IS NULL AND created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)`);
+  const [[{ n }]] = await db.query(`SELECT COUNT(*) n FROM ppp_secrets WHERE customer_id IS NULL AND id NOT IN (SELECT secret_id FROM nms_parallel_links) AND is_exempt=0 AND removed_on_router_at IS NULL`);
+  const [[{ fresh }]] = await db.query(`SELECT COUNT(*) fresh FROM ppp_secrets WHERE customer_id IS NULL AND id NOT IN (SELECT secret_id FROM nms_parallel_links) AND is_exempt=0 AND removed_on_router_at IS NULL AND created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)`);
   return { unsynced: Number(n), newLastHour: Number(fresh), matched: plan.pairs.length, suggested: plan.suggestions.length, conflicts: plan.conflicts.length, linked: committed?.summary.linked || 0 };
 }
 
@@ -561,7 +563,7 @@ const cidJobStatus = () => cache.get('nms:cidjob') || null;
 /** Pulihkan link dari tag [CID:…] (router di-reset / restore backup). Hanya pelanggan yang belum punya secret aktif. */
 async function relinkByCid(routerId) {
   const [rows] = await db.query(`SELECT id, site_id, username, comment, cid_ignore FROM ppp_secrets
-    WHERE router_id=? AND customer_id IS NULL AND removed_on_router_at IS NULL AND comment LIKE '%[CID:%'`, [routerId]);
+    WHERE router_id=? AND customer_id IS NULL AND id NOT IN (SELECT secret_id FROM nms_parallel_links) AND removed_on_router_at IS NULL AND comment LIKE '%[CID:%'`, [routerId]);
   const linked = [];
   for (const r of rows) {
     const code = parseCid(r.comment);
@@ -582,7 +584,7 @@ async function relinkByCid(routerId) {
 async function carryOverLinks(siteId = null) {
   const [rows] = await db.query(`SELECT n.id new_id, n.username, o.id old_id, o.customer_id, o.router_id old_router_id
     FROM ppp_secrets n JOIN ppp_secrets o ON o.site_id=n.site_id AND o.router_id<>n.router_id AND LOWER(o.username)=LOWER(n.username)
-    WHERE n.customer_id IS NULL AND n.removed_on_router_at IS NULL AND o.customer_id IS NOT NULL AND o.removed_on_router_at IS NOT NULL ${siteId ? 'AND n.site_id=?' : ''}
+    WHERE n.customer_id IS NULL AND n.id NOT IN (SELECT secret_id FROM nms_parallel_links) AND n.removed_on_router_at IS NULL AND o.customer_id IS NOT NULL AND o.removed_on_router_at IS NOT NULL ${siteId ? 'AND n.site_id=?' : ''}
     ORDER BY o.removed_on_router_at DESC`, siteId ? [Number(siteId)] : []);
   const seenCustomer = new Set(), seenSecret = new Set(), moved = [];
   for (const r of rows) {

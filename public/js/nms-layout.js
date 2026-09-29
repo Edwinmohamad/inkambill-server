@@ -15,9 +15,9 @@
 
   // Preset siap pakai. Kunci widget yang tidak disebut tetap ikut, di urutan belakang.
   const PRESETS = {
-    noc: { label: 'NOC (lengkap)', order: ['sites', 'routers', 'traffic', 'activity', 'leak', 'attention', 'flapping', 'outages', 'sync', 'agenda', 'log'], hidden: [], sizes: {} },
-    teknisi: { label: 'Teknisi lapangan', order: ['routers', 'outages', 'flapping', 'log', 'traffic', 'attention', 'sites'], hidden: ['leak', 'sync', 'agenda', 'activity'], sizes: { outages: { w: 6 }, flapping: { w: 6 } } },
-    ringkas: { label: 'Ringkas', order: ['sites', 'attention', 'outages', 'traffic', 'routers'], hidden: ['activity', 'leak', 'flapping', 'sync', 'agenda', 'log'], sizes: { attention: { w: 6 }, outages: { w: 6 } } }
+    noc: { label: 'NOC (lengkap)', order: ['sites', 'parallel', 'routers', 'traffic', 'activity', 'leak', 'attention', 'flapping', 'outages', 'sync', 'agenda', 'log'], hidden: [], sizes: {} },
+    teknisi: { label: 'Teknisi lapangan', order: ['parallel', 'routers', 'outages', 'flapping', 'log', 'traffic', 'attention', 'sites'], hidden: ['leak', 'sync', 'agenda', 'activity'], sizes: { outages: { w: 6 }, flapping: { w: 6 } } },
+    ringkas: { label: 'Ringkas', order: ['sites', 'parallel', 'attention', 'outages', 'traffic', 'routers'], hidden: ['activity', 'leak', 'flapping', 'sync', 'agenda', 'log'], sizes: { attention: { w: 6 }, outages: { w: 6 } } }
   };
 
   function init({ app, onApply = () => {} }) {

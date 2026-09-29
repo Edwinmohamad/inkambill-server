@@ -135,6 +135,28 @@ async function ensureV56Schema() {
     INDEX idx_wa_blacklist_customer(customer_id)
   )`);
 
+  // Diagnosis webhook lintas restart, tanpa menyimpan isi pesan atau token callback.
+  await db.query(`CREATE TABLE IF NOT EXISTS wa_webhook_events (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    event_type VARCHAR(40) NOT NULL,
+    outcome ENUM('received','error') NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_wa_webhook_time(created_at),
+    INDEX idx_wa_webhook_outcome(outcome,created_at)
+  )`);
+  // Satu kunci per aksi manual. Status tidak pasti ditahan agar tidak otomatis mengirim ganda.
+  await db.query(`CREATE TABLE IF NOT EXISTS wa_manual_requests (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NOT NULL,
+    request_key CHAR(36) NOT NULL,
+    customer_id BIGINT UNSIGNED NOT NULL,
+    payload_hash CHAR(64) NOT NULL,
+    wa_message_id BIGINT UNSIGNED NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_wa_manual_user_key(user_id,request_key),
+    INDEX idx_wa_manual_message(wa_message_id)
+  )`);
+
   // ---- Template resmi & balasan cepat ---------------------------------------------------------------
   await db.query(`CREATE TABLE IF NOT EXISTS wa_templates (
     template_key VARCHAR(40) NOT NULL PRIMARY KEY,
