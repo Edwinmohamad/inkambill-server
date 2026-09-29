@@ -30,7 +30,7 @@ function jidDigits(jid) {
 
 async function resolveSender(payload) {
   const key = payload?._data?.key || {};
-  for (const c of [payload.from, key.remoteJidAlt, key.senderPn, payload._data?.from]) {
+  for (const c of [payload.from, payload.chatId, key.remoteJidAlt, key.senderPn, payload._data?.from]) {
     const d = jidDigits(c); if (d) return normalizeWhatsapp(d);
   }
   const lid = [payload.from, key.remoteJid].find(c => String(c || '').endsWith('@lid'));
@@ -119,7 +119,7 @@ async function upsertConversation({ chatId, phone, customerId, displayName }) {
 // ---- Pesan masuk dari webhook WAHA --------------------------------------------------------------
 async function ingestInbound(payload = {}) {
   if (!payload || payload.fromMe) return { skipped: 'from_me' };
-  const from = String(payload.from || '');
+  const from = String(payload.from || payload.chatId || payload._data?.key?.remoteJid || '');
   if (!from || /@g\.us$|@broadcast$|@newsletter$/.test(from) || from === 'status@broadcast') return { skipped: 'not_private' };
   const phone = await resolveSender(payload);
   const chatId = phone ? `${phone}@c.us` : from;

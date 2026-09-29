@@ -9,7 +9,7 @@
   const AB = { min: Number(root.dataset.minDelay) || 0, max: Number(root.dataset.maxDelay) || 0, hourly: Number(root.dataset.hourly) || 0 };
   const MAX_CHARS = 4000;
   const selected = new Set();
-  let rows = []; let total = 0;
+  let rows = []; let total = 0; let eligible = 0; let requestKey = null;
 
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = text; return e; };
   const num = v => new Intl.NumberFormat('id-ID').format(Number(v || 0));
@@ -71,7 +71,7 @@
     $('#wabCount').textContent = 'Memuat…';
     try {
       const d = await api(`/wa-gateway/broadcast/api/candidates?${filterParams()}`);
-      rows = d.rows; total = d.total; renderRows();
+      rows = d.rows; total = d.total; eligible = d.eligible; renderRows();
     } catch (e) { $('#wabCount').textContent = `Gagal memuat: ${e.message}`; }
   }
   function renderRows() {
@@ -89,11 +89,14 @@
       const c2 = el('td'); c2.appendChild(el('span', 'wab-mono', r.phone || '-'));
       if (r.blacklisted) c2.appendChild(el('span', 'wab-sub', 'Opt-out'));
       else if (r.whatsapp_status !== 'valid') c2.appendChild(el('span', 'wab-sub', `WA ${r.whatsapp_status || 'belum dicek'}`));
-      const c3 = el('td', null, r.package || '-');
+      const c3 = el('td');
+      c3.appendChild(el('strong', null, r.package || '-'));
+      if (r.package_price != null) c3.appendChild(el('span', 'wab-sub', `Harga paket ${rupiah(r.package_price)}/bulan`));
       const c4 = el('td', null, [r.cluster_name, r.router_name].filter(Boolean).join(' · ') || '-');
       const c5 = el('td');
       if (Number(r.outstanding) > 0) {
-        c5.append(el('strong', null, rupiah(r.outstanding)), el('span', 'wab-sub', `Jatuh tempo ${fmtDate(r.next_due)}`));
+        c5.append(el('strong', null, rupiah(r.outstanding)), el('span', 'wab-sub', `Total belum dibayar · ${num(r.open_invoice_count)} invoice`));
+        c5.appendChild(el('span', 'wab-sub', `Jatuh tempo tertua ${fmtDate(r.next_due)}`));
         if (r.grace_until) c5.appendChild(el('span', 'wab-sub', `Batas toleransi ${fmtDate(r.grace_until)}`));
         if (r.isolate_hold_until) c5.appendChild(el('span', 'wab-sub', `Tunda isolir sampai ${fmtDate(r.isolate_hold_until)}`));
       }
@@ -102,12 +105,17 @@
       const c6 = el('td'); c6.appendChild(el('span', `wab-pill ${n[0]}`, n[1]));
       tr.append(c0, c1, c2, c3, c4, c5, c6); tb.appendChild(tr);
     }
+    const sample = $('#wabTestCustomer'); const previous = sample.value;
+    sample.replaceChildren(el('option', null, 'Gunakan data contoh (bukan pelanggan nyata)'));
+    for (const r of rows.filter(isSelectable)) { const option = el('option', null, `${r.name} · ${r.customer_code}`); option.value = r.id; sample.appendChild(option); }
+    if ([...sample.options].some(o => o.value === previous)) sample.value = previous;
     updateCounts();
   }
   function updateCounts() {
     const cnt = $('#wabCount'); cnt.replaceChildren();
     cnt.append(el('b', null, num(total)), ` pelanggan cocok${total > rows.length ? ` · ${num(rows.length)} ditampilkan` : ''} · `, el('b', null, num(selected.size)), ' dipilih');
-    $('#wabTotalLabel').textContent = num(total);
+    $('#wabTotalLabel').textContent = num(eligible);
+    $('#wabEligibleNote').textContent = `${num(eligible)} dari ${num(total)} pelanggan cocok layak masuk antrean`; 
     $('#wabSelectedLabel').textContent = num(selected.size);
     const selectable = rows.filter(isSelectable);
     const all = $('#wabCheckAll');
@@ -180,7 +188,7 @@
   /* Kirim */
   const mode = () => $('input[name="wab_mode"]:checked').value;
   const targetMode = () => $('input[name="target_mode"]:checked').value;
-  const recipientCount = () => targetMode() === 'selected' ? selected.size : total;
+  const recipientCount = () => targetMode() === 'selected' ? selected.size : eligible;
   function estimate(n) {
     if (!n) return '–';
     const byDelay = n * ((AB.min + AB.max) / 2);
@@ -213,7 +221,7 @@
     if (!msg.value.trim()) return showResult('err', 'Naskah pesan wajib diisi.');
     const btn = $('#wabTestSend'); btn.disabled = true;
     try {
-      await api('/wa-gateway/broadcast/api/test-send', { method: 'POST', body: { phone, message: msg.value, customer_id: [...selected][0] || rows[0]?.id || null, detail_gangguan: $('#wabDetail').value, estimasi_selesai: $('#wabEta').value, jadwal_pemeliharaan: $('#wabMaintenanceAt').value, isi_pengumuman: $('#wabAnnouncementText').value } });
+      await api('/wa-gateway/broadcast/api/test-send', { method: 'POST', body: { phone, message: msg.value, customer_id: Number($('#wabTestCustomer').value) || null, detail_gangguan: $('#wabDetail').value, estimasi_selesai: $('#wabEta').value, jadwal_pemeliharaan: $('#wabMaintenanceAt').value, isi_pengumuman: $('#wabAnnouncementText').value } });
       showResult('ok', 'Pesan uji masuk antrean khusus ke nomor Admin.');
     } catch (e) { showResult('err', e.message); } finally { btn.disabled = false; }
   });
@@ -239,18 +247,21 @@
     if (!count) return showResult('err', 'Belum ada penerima.');
     if (m === 'scheduled' && !$('#wabSchedule').value) { $('#wabSchedule').focus(); return showResult('err', 'Pilih waktu kirim terlebih dahulu.'); }
     if (!confirm(`${m === 'scheduled' ? 'Jadwalkan' : 'Kirim'} broadcast ke ${num(count)} pelanggan? Pesan dikirim bertahap sesuai aturan anti-ban.`)) return;
-    const btn = $('#wabSubmit'); btn.disabled = true; showResult('', 'Menyiapkan antrean…');
+    const btn = $('#wabSubmit'); btn.disabled = true; requestKey ||= (globalThis.crypto?.randomUUID?.() || 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const v = Math.random()*16|0; return (c === 'x' ? v : (v&3|8)).toString(16); })); showResult('', 'Menyiapkan antrean…');
     try {
-      const payload = { ...filterObject(), target_mode: tm, customer_ids: [...selected], name: $('#wabName').value || 'Broadcast', template_key: $('#wabTemplate').value || null, message: msg.value, detail_gangguan: $('#wabDetail').value, estimasi_selesai: $('#wabEta').value, jadwal_pemeliharaan: $('#wabMaintenanceAt').value, isi_pengumuman: $('#wabAnnouncementText').value, mode: m, scheduled_at: $('#wabSchedule').value };
+      const payload = { ...filterObject(), target_mode: tm, customer_ids: [...selected], name: $('#wabName').value || 'Broadcast', template_key: $('#wabTemplate').value || null, message: msg.value, detail_gangguan: $('#wabDetail').value, estimasi_selesai: $('#wabEta').value, jadwal_pemeliharaan: $('#wabMaintenanceAt').value, isi_pengumuman: $('#wabAnnouncementText').value, mode: m, scheduled_at: $('#wabSchedule').value, request_key: requestKey };
       let request = { method: 'POST', body: payload };
       const file = $('#wabFile').files[0];
       if (file) { const form = new FormData(); Object.entries(payload).forEach(([k, v]) => Array.isArray(v) ? v.forEach(x => form.append(k, x)) : form.append(k, v ?? '')); form.append('file', file); request = { method: 'POST', form }; }
       const d = await api('/wa-gateway/broadcast', request);
       showResult('ok', `Broadcast #${d.id} dibuat. ${num(d.queued)} pesan ${d.pendingApproval ? 'menunggu persetujuan Admin di WA Gateway' : 'masuk antrean'}${d.scheduledAt ? `, terjadwal ${fmtDateTime(d.scheduledAt)}` : ''}. ${num(d.skippedBlacklist)} dilewati (opt-out), ${num(d.skippedInvalid)} nomor tidak valid.`);
-      selected.clear(); renderRows(); loadList();
+      requestKey = null; selected.clear(); renderRows(); loadList();
     } catch (e) { showResult('err', e.message); }
     finally { btn.disabled = false; }
   });
+
+  root.addEventListener('input', e => { if (e.target.closest('#wabFilter,#wabMessage,#wabName,#wabTemplate,#wabSchedule,#wabFile')) requestKey = null; });
+  root.addEventListener('change', e => { if (e.target.closest('#wabFilter,#wabFile,#wabTemplate,[name=target_mode],[name=wab_mode]')) requestKey = null; });
 
   /* Riwayat */
   const ACTION_LABEL = { pause: 'Jeda', resume: 'Lanjutkan', cancel: 'Batalkan', retry: 'Kirim ulang gagal' };

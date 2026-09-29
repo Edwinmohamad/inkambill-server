@@ -42,6 +42,7 @@ async function ensureV56Schema() {
   await db.query(`CREATE TABLE IF NOT EXISTS wa_broadcasts (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(160) NOT NULL,
+    request_key VARCHAR(80) NULL,
     template_key VARCHAR(40) NULL,
     message_template TEXT NOT NULL,
     extra_vars_json TEXT NULL,
@@ -57,6 +58,8 @@ async function ensureV56Schema() {
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_wa_broadcast_status(status,scheduled_at)
   )`);
+  await db.query(`ALTER TABLE wa_broadcasts ADD COLUMN IF NOT EXISTS request_key VARCHAR(80) NULL`);
+  await db.query(`ALTER TABLE wa_broadcasts ADD UNIQUE KEY IF NOT EXISTS uq_wa_broadcast_request(request_key)`);
   await extendEnum('wa_broadcasts', 'status', ['pending_approval', 'scheduled', 'running', 'paused', 'completed', 'cancelled'], 'running');
 
   // ---- Web Inbox ------------------------------------------------------------------------------------

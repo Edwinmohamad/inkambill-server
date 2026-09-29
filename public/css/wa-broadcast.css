@@ -226,3 +226,43 @@ html[data-theme="light"] .wab-pill.red{color:#d70015}
 }
 @media (prefers-reduced-motion:reduce){.wab *{transition:none!important}}
 .wab-presets{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0 12px}.wab-presets .wab-select{min-width:200px;flex:1}
+/* Pusat Pesan: hirarki konten dan keadaan interaktif. */
+.wab{max-width:1280px;gap:18px;line-height:1.5}
+.wab-head{align-items:center;padding:4px 0 8px}.wab-head h1{font-size:clamp(26px,2.5vw,34px);letter-spacing:-.035em}
+.wab-head-links a{height:40px;border-radius:10px;padding:0 13px}
+.wab-card{padding:22px;gap:18px;border-radius:16px}
+.wab-card-head h2{font-size:18px;letter-spacing:-.02em}
+.wab-step{background:var(--wab-fill-2);color:var(--text);font-size:12px}
+.wab-followup-grid{gap:8px}
+.wab-followup-card{min-height:122px;padding:16px;background:var(--wab-card);border-radius:12px;transition:border-color .15s,background .15s}
+.wab-followup-card strong{font-size:28px;font-variant-numeric:tabular-nums;letter-spacing:-.04em}
+.wab-followup-card span{font-size:13px}.wab-followup-card small{font-size:12px}
+.wab-followup-card:hover,.wab-followup-card.active{box-shadow:none;border-color:var(--brand);background:var(--brand-tint)}
+.wab-template-box{background:transparent;border:0;border-bottom:1px solid var(--line);border-radius:0;padding:0 0 16px}
+.wab-template-box>strong{font-size:14px}.wab-template-box>p{font-size:13px}
+.wab-template-cards{grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}
+.wab-template-card{min-height:68px;padding:12px;border-radius:11px}
+.wab-template-card strong{font-size:13px}.wab-template-card small{font-size:12px}
+.wab-template-card:hover,.wab-template-card.active{box-shadow:none;border-color:var(--brand);background:var(--brand-tint)}
+.wab-template-box>.wab-hint{margin-top:10px}
+.wab-input,.wab-select,.wab-search{height:44px}
+.wab-more summary{min-height:36px}.wab-link{min-height:34px}
+.wab-toolbar{margin-top:4px}.wab-table-wrap{max-height:440px}
+.wab-table td{padding:12px}.wab-table th{padding:11px 12px}
+.wab-seg span{height:40px}
+.wab-variables{border-bottom:1px solid var(--line)}
+.wab-variables summary{display:flex;align-items:center;justify-content:space-between;list-style:none;min-height:42px;padding:0 13px;cursor:pointer;font-size:12px;font-weight:600;color:var(--muted)}
+.wab-variables summary::-webkit-details-marker{display:none}
+.wab-variables[open] summary i{transform:rotate(180deg)}
+.wab-chips{border-top:1px solid var(--line);border-bottom:0;flex-wrap:wrap;overflow:visible}
+.wab-chip{min-height:30px}.wab-summary{gap:14px}
+.wab-btn.secondary{background:var(--wab-fill-2);color:var(--text);border:1px solid var(--line)}
+.wab-btn.secondary:hover:not(:disabled){filter:none;background:var(--line-2)}
+.wab-send-divider{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px;font-weight:600}
+.wab-send-divider:after{content:"";height:1px;background:var(--line);flex:1}
+.wab-summary .wab-hint{margin-top:-9px}
+.wab-hist-item{grid-template-columns:minmax(0,1.6fr) 160px minmax(180px,1fr) auto}
+.wab :is(button,a,input,textarea,select,summary):focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+@media(max-width:800px){.wab-followup-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:767.98px){.wab-card{padding:16px}.wab-head-links{flex-wrap:wrap}.wab-followup-card{min-height:110px;padding:12px}.wab-template-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.wab-hist-item{grid-template-columns:minmax(0,1fr) auto}.wab-hist{margin:0 -16px}}
+@media(max-width:420px){.wab-followup-grid,.wab-template-cards{grid-template-columns:1fr 1fr}.wab-followup-card{min-height:130px}.wab-followup-card span{line-height:1.25}}

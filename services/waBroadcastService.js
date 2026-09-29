@@ -2,6 +2,7 @@
 // sehingga semua lapisan anti-ban (jam kerja, kuota/jam, jeda acak, long pause, blacklist, auto-pause)
 // berlaku otomatis. Tabel wa_broadcasts hanya menyimpan metadata kampanye + status pause/cancel.
 const db = require('../config/db');
+const crypto = require('crypto');
 const tpl = require('./waTemplateService');
 const { enqueueWaMessage } = require('./whatsappGatewayService');
 
@@ -59,18 +60,24 @@ function buildWhere(filter = {}) {
 async function listCandidates(filter = {}, { limit = 500 } = {}) {
   const { sql, params } = buildWhere(filter);
   const [rows] = await db.query(`SELECT c.id,c.customer_code,c.name,c.phone,c.whatsapp_status,c.whatsapp_normalized,c.address,c.network_status,c.vlan,
-      p.name package_name,p.speed_label,cl.name cluster_name,r.name router_name,s.code site_code,
+      p.name package_name,p.speed_label,p.price package_price,cl.name cluster_name,r.name router_name,s.code site_code,
       (SELECT MIN(ix.due_date) FROM invoices ix WHERE ix.customer_id=c.id AND ix.status IN ('unpaid','partial','overdue') AND ix.outstanding>0 AND ix.archived_at IS NULL) next_due,
       (SELECT MIN(DATE_ADD(ix.due_date, INTERVAL COALESCE(c.grace_days,s.default_grace_days,(SELECT default_grace_days FROM settings WHERE id=1),2) DAY))
         FROM invoices ix WHERE ix.customer_id=c.id AND ix.status IN ('unpaid','partial','overdue') AND ix.outstanding>0 AND ix.archived_at IS NULL) grace_until,
       c.isolate_hold_until,
       (SELECT COALESCE(SUM(ix.outstanding),0) FROM invoices ix WHERE ix.customer_id=c.id AND ix.status IN ('unpaid','partial','overdue') AND ix.outstanding>0 AND ix.archived_at IS NULL) outstanding,
+      (SELECT COUNT(*) FROM invoices ix WHERE ix.customer_id=c.id AND ix.status IN ('unpaid','partial','overdue') AND ix.outstanding>0 AND ix.archived_at IS NULL) open_invoice_count,
+      (SELECT GROUP_CONCAT(ix.invoice_number ORDER BY ix.due_date,ix.id SEPARATOR ', ') FROM invoices ix
+        WHERE ix.customer_id=c.id AND ix.status IN ('unpaid','partial','overdue') AND ix.outstanding>0 AND ix.archived_at IS NULL) open_invoice_numbers,
       EXISTS(SELECT 1 FROM wa_blacklist b WHERE b.phone=c.whatsapp_normalized) blacklisted
     FROM customers c LEFT JOIN packages p ON p.id=c.package_id LEFT JOIN clusters cl ON cl.id=c.cluster_id
       LEFT JOIN routers r ON r.id=c.router_id LEFT JOIN sites s ON s.id=c.site_id
     WHERE ${sql} ORDER BY c.name ASC LIMIT ${Math.min(MAX_RECIPIENTS, Math.max(1, Number(limit) || 500))}`, params);
-  const [[count]] = await db.query(`SELECT COUNT(*) total FROM customers c WHERE ${sql}`, params);
-  return { rows, total: Number(count.total || 0) };
+  const [[count]] = await db.query(`SELECT COUNT(*) total,
+    SUM(CASE WHEN c.phone IS NOT NULL AND c.phone<>'' AND COALESCE(c.whatsapp_status,'')<>'invalid'
+      AND NOT EXISTS(SELECT 1 FROM wa_blacklist b WHERE b.phone=c.whatsapp_normalized) THEN 1 ELSE 0 END) eligible
+    FROM customers c WHERE ${sql}`, params);
+  return { rows, total: Number(count.total || 0), eligible: Number(count.eligible || 0) };
 }
 
 async function filterOptions() {
@@ -83,6 +90,15 @@ async function filterOptions() {
     packages: await q(`SELECT id,name,speed_label FROM packages WHERE archived_at IS NULL ORDER BY name`),
     vlans: (await q(`SELECT DISTINCT vlan FROM customers WHERE vlan IS NOT NULL AND vlan<>'' ORDER BY vlan`)).map(r => r.vlan),
   };
+}
+
+function broadcastVars(row, candidate, bank, extra = {}) {
+  if (!candidate) return tpl.buildVars(row || {}, bank, extra);
+  // The recipient table displays the sum of all open invoices. Render the same sum
+  // and invoice numbers in the preview and outgoing message.
+  return tpl.buildVars({ ...(row || {}), outstanding: candidate.outstanding,
+    invoice_number: candidate.open_invoice_numbers || row?.invoice_number || '-',
+    due_date: candidate.next_due || row?.due_date }, bank, extra);
 }
 
 async function followUpSummary() {
@@ -108,7 +124,7 @@ function parseSchedule(value) {
   return d;
 }
 
-async function createBroadcast({ name, templateKey = null, message, extra = {}, filter = {}, mode = 'direct', scheduledAt = null, userId = null, media = null, mediaFile = null }) {
+async function createBroadcast({ name, templateKey = null, message, extra = {}, filter = {}, mode = 'direct', scheduledAt = null, userId = null, media = null, mediaFile = null, requestKey = null }) {
   const text = String(message || '').trim();
   if (!text) throw new Error('Naskah pesan wajib diisi.');
   if (text.length > 4000) throw new Error('Naskah pesan maksimal 4000 karakter.');
@@ -131,8 +147,17 @@ async function createBroadcast({ name, templateKey = null, message, extra = {}, 
     isi_pengumuman: String(extra.isi_pengumuman || '').slice(0, 1200) || undefined,
   };
   const needsApproval = eligibleCount > APPROVAL_THRESHOLD;
-  const [r] = await db.execute(`INSERT INTO wa_broadcasts(name,template_key,message_template,extra_vars_json,filter_json,mode,scheduled_at,status,created_by) VALUES(?,?,?,?,?,?,?,?,?)`,
-    [String(name || 'Broadcast').slice(0, 160), templateKey, text, JSON.stringify(cleanExtra), JSON.stringify({ ...filter, customer_ids: undefined, selected: [].concat(filter.customer_ids || []).length }), mode, when, needsApproval ? 'pending_approval' : (when ? 'scheduled' : 'running'), userId]);
+  const key = /^[a-f0-9-]{36}$/i.test(String(requestKey || '')) ? `${userId}:${requestKey}` : `${userId}:${crypto.randomUUID()}`;
+  let r;
+  try {
+    [r] = await db.execute(`INSERT INTO wa_broadcasts(request_key,name,template_key,message_template,extra_vars_json,filter_json,mode,scheduled_at,status,created_by) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+      [key, String(name || 'Broadcast').slice(0, 160), templateKey, text, JSON.stringify(cleanExtra), JSON.stringify({ ...filter, customer_ids: undefined, selected: [].concat(filter.customer_ids || []).length }), mode, when, needsApproval ? 'pending_approval' : (when ? 'scheduled' : 'running'), userId]);
+  } catch (e) {
+    if (e.code !== 'ER_DUP_ENTRY') throw e;
+    const [[existing]] = await db.execute(`SELECT id,total_recipients,skipped_blacklist,skipped_invalid,scheduled_at,status FROM wa_broadcasts WHERE request_key=?`, [key]);
+    if (!existing?.total_recipients) throw new Error('Permintaan ini masih disiapkan atau terhenti. Periksa riwayat broadcast sebelum mengirim ulang.');
+    return { id: existing.id, queued: existing.total_recipients, skippedBlacklist: existing.skipped_blacklist, skippedInvalid: existing.skipped_invalid, scheduledAt: existing.scheduled_at, pendingApproval: existing.status === 'pending_approval', duplicate: true };
+  }
   const broadcastId = r.insertId;
   const batchDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
   const approvalBatch = needsApproval ? `broadcast_${broadcastId}:${batchDate}` : null;
@@ -142,7 +167,7 @@ async function createBroadcast({ name, templateKey = null, message, extra = {}, 
     if (c.whatsapp_status === 'invalid' || !c.phone) { skippedInvalid++; continue; }
     if (Number(c.blacklisted)) { skippedBlacklist++; continue; }
     const row = await tpl.loadCustomerRow(c.id);
-    const body = tpl.renderTemplate(text, tpl.buildVars(row || c, bank, cleanExtra));
+    const body = tpl.renderTemplate(text, broadcastVars(row || c, c, bank, cleanExtra));
     const res = await enqueueWaMessage({ phone: c.phone, message: body, customerId: c.id, invoiceId: row?.invoice_id || null, type: 'broadcast', userId, broadcastId, scheduledAt: when, approvalBatch, media });
     if (res.status === 'queued' || res.status === 'pending_approval') queued++; else if (res.status === 'cancelled') skippedBlacklist++; else skippedInvalid++;
   }
@@ -192,4 +217,4 @@ async function listBroadcasts(limit = 30) {
   return rows;
 }
 
-module.exports = { BILLING_FILTERS, MAX_RECIPIENTS, APPROVAL_THRESHOLD, buildWhere, listCandidates, filterOptions, followUpSummary, createBroadcast, setBroadcastStatus, refreshBroadcastStatuses, listBroadcasts, parseSchedule };
+module.exports = { BILLING_FILTERS, MAX_RECIPIENTS, APPROVAL_THRESHOLD, buildWhere, listCandidates, filterOptions, followUpSummary, broadcastVars, createBroadcast, setBroadcastStatus, refreshBroadcastStatuses, listBroadcasts, parseSchedule };

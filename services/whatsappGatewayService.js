@@ -192,7 +192,7 @@ async function handleWahaWebhookEvent(event) {
     const { sessionName } = await getWahaConfig();
     if (event.session && sessionName && String(event.session) !== String(sessionName)) return;
     const inbox = require('./waInboxService');
-    if (type === 'message') await inbox.ingestInbound(event.payload || {});
+    if (type === 'message') return inbox.ingestInbound(event.payload || {});
     else await inbox.handleAck(event.payload || {});
   }
 }

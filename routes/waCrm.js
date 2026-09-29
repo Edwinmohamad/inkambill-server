@@ -46,14 +46,15 @@ router.get('/broadcast/api/follow-up', requireBroadcaster, api(async (req, res) 
   res.set('Cache-Control', 'no-store').json({ ok: true, ...(await bc.followUpSummary()) });
 }));
 router.get('/broadcast/api/candidates', requireBroadcaster, api(async (req, res) => {
-  const { rows, total } = await bc.listCandidates(filterFrom(req.query), { limit: 500 });
-  res.set('Cache-Control', 'no-store').json({ ok: true, total, rows: rows.map(r => ({ ...r, blacklisted: !!Number(r.blacklisted), package: tpl.packageLabel(r.package_name, r.speed_label) })) });
+  const { rows, total, eligible } = await bc.listCandidates(filterFrom(req.query), { limit: 500 });
+  res.set('Cache-Control', 'no-store').json({ ok: true, total, eligible, rows: rows.map(r => ({ ...r, blacklisted: !!Number(r.blacklisted), package: tpl.packageLabel(r.package_name, r.speed_label) })) });
 }));
 router.post('/broadcast/api/preview', requireBroadcaster, api(async (req, res) => {
   const b = req.body || {};
   const bank = await tpl.getDefaultBank();
   const row = Number(b.customer_id) ? await tpl.loadCustomerRow(Number(b.customer_id)) : { customer_name: 'Budi Santoso', customer_code: 'PLG-0001', package_name: 'Home', speed_label: '10Mbps', outstanding: 150000, due_date: new Date(Date.now() + 3 * 864e5), invoice_number: 'INV-CONTOH-001' };
-  const vars = tpl.buildVars(row || {}, bank, { detail_gangguan: b.detail_gangguan || undefined, estimasi_selesai: b.estimasi_selesai || undefined, jadwal_pemeliharaan: b.jadwal_pemeliharaan || undefined, isi_pengumuman: b.isi_pengumuman || undefined });
+  const candidate = Number(b.customer_id) ? (await bc.listCandidates({ customer_ids: [Number(b.customer_id)] }, { limit: 1 })).rows[0] : null;
+  const vars = bc.broadcastVars(row || {}, candidate, bank, { detail_gangguan: b.detail_gangguan || undefined, estimasi_selesai: b.estimasi_selesai || undefined, jadwal_pemeliharaan: b.jadwal_pemeliharaan || undefined, isi_pengumuman: b.isi_pengumuman || undefined });
   const samples = [0, 1, 2].map(() => tpl.renderTemplate(String(b.message || ''), vars));
   res.json({ ok: true, samples: [...new Set(samples)] });
 }));
@@ -63,8 +64,9 @@ router.post('/broadcast/api/test-send', requireBroadcaster, api(async (req, res)
   if (!phone) throw new Error('Nomor WhatsApp tujuan uji wajib diisi.');
   const bank = await tpl.getDefaultBank();
   const row = Number(b.customer_id) ? await tpl.loadCustomerRow(Number(b.customer_id)) : { customer_name: 'Pelanggan Contoh', customer_code: 'TEST', package_name: 'Paket Internet', outstanding: 150000, due_date: new Date(), invoice_number: 'INV-TEST' };
+  const candidate = Number(b.customer_id) ? (await bc.listCandidates({ customer_ids: [Number(b.customer_id)] }, { limit: 1 })).rows[0] : null;
   const extra = { detail_gangguan: b.detail_gangguan, estimasi_selesai: b.estimasi_selesai, jadwal_pemeliharaan: b.jadwal_pemeliharaan, isi_pengumuman: b.isi_pengumuman };
-  const message = `[PESAN UJI — TIDAK UNTUK PELANGGAN]\n\n${tpl.renderTemplate(String(b.message || ''), tpl.buildVars(row || {}, bank, extra))}`;
+  const message = `[PESAN UJI — TIDAK UNTUK PELANGGAN]\n\n${tpl.renderTemplate(String(b.message || ''), bc.broadcastVars(row || {}, candidate, bank, extra))}`;
   if (!String(b.message || '').trim()) throw new Error('Naskah pesan wajib diisi.');
   const result = await require('../services/whatsappGatewayService').enqueueWaMessage({ phone, message, customerId: row?.customer_id || null, type: 'manual', userId: req.session.user.id });
   if (result.status === 'failed') throw new Error(result.reason || 'Nomor uji tidak valid.');
@@ -84,8 +86,8 @@ router.post('/broadcast', requireBroadcaster, (req, res, next) => broadcastUploa
     Object.assign(filter, { billing: 'all', site_id: null, cluster_id: null, router_id: null,
       olt_id: null, package_id: null, vlan: '', q: '' });
   } else filter.customer_ids = [];
-  const result = await bc.createBroadcast({ name: b.name, templateKey: b.template_key || null, message: b.message, extra: { detail_gangguan: b.detail_gangguan, estimasi_selesai: b.estimasi_selesai, jadwal_pemeliharaan: b.jadwal_pemeliharaan, isi_pengumuman: b.isi_pengumuman }, filter, mode: b.mode === 'scheduled' ? 'scheduled' : 'direct', scheduledAt: b.scheduled_at, userId: req.session.user.id, mediaFile: req.file || null });
-  await audit({ userId: req.session.user.id, action: 'blast', entityType: 'wa_broadcast', entityId: result.id, description: `Broadcast WA "${String(b.name || '').slice(0, 80)}": ${result.queued} penerima${result.scheduledAt ? ` · terjadwal` : ''} (${result.skippedBlacklist} blacklist, ${result.skippedInvalid} nomor tidak valid)`, ip: req.ip });
+  const result = await bc.createBroadcast({ name: b.name, templateKey: b.template_key || null, message: b.message, extra: { detail_gangguan: b.detail_gangguan, estimasi_selesai: b.estimasi_selesai, jadwal_pemeliharaan: b.jadwal_pemeliharaan, isi_pengumuman: b.isi_pengumuman }, filter, mode: b.mode === 'scheduled' ? 'scheduled' : 'direct', scheduledAt: b.scheduled_at, userId: req.session.user.id, mediaFile: req.file || null, requestKey: b.request_key });
+  if (!result.duplicate) await audit({ userId: req.session.user.id, action: 'blast', entityType: 'wa_broadcast', entityId: result.id, description: `Broadcast WA "${String(b.name || '').slice(0, 80)}": ${result.queued} penerima${result.scheduledAt ? ` · terjadwal` : ''} (${result.skippedBlacklist} blacklist, ${result.skippedInvalid} nomor tidak valid)`, ip: req.ip });
   res.json({ ok: true, ...result });
 }));
 router.post('/broadcast/api/manual-send', requireBroadcaster, api(async (req, res) => {
@@ -102,7 +104,7 @@ router.post('/broadcast/api/manual-send', requireBroadcaster, api(async (req, re
   const row = await tpl.loadCustomerRow(id);
   const extra = { detail_gangguan: req.body?.detail_gangguan, estimasi_selesai: req.body?.estimasi_selesai,
     jadwal_pemeliharaan: req.body?.jadwal_pemeliharaan, isi_pengumuman: req.body?.isi_pengumuman };
-  const message = tpl.renderTemplate(draft, tpl.buildVars(row || customer, bank, extra));
+  const message = tpl.renderTemplate(draft, bc.broadcastVars(row || customer, customer, bank, extra));
   const { enqueueWaMessage } = require('../services/whatsappGatewayService');
   const result = await enqueueWaMessage({ phone: customer.phone, message, customerId: id, type: 'manual', userId: req.session.user.id });
   if (result.status === 'failed') throw new Error(result.reason || 'Nomor WhatsApp tidak valid.');

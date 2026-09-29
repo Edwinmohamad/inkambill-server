@@ -84,9 +84,10 @@ async function startSession(webhookCallbackUrl, { repairWebhooks = false } = {})
   const status = String(existing.status || '').toUpperCase();
   if (['WORKING', 'STARTING', 'SCAN_QR_CODE'].includes(status)) {
     const missing = missingWebhook(existing, webhookCallbackUrl);
-    if (missing === true && repairWebhooks) {
-      // Explicit admin action; WAHA may briefly restart the session on PUT.
-      await request('PUT', `/api/sessions/${name}`, { name: config.sessionName, config: sessionConfig }, config);
+    if ((missing === true || missing === null) && repairWebhooks && sessionConfig) {
+      // Explicit admin repair. WAHA may hide global/session webhook configuration in GET.
+      // Preserve unrelated engine/store settings when replacing session webhooks.
+      await request('PUT', `/api/sessions/${name}`, { name: config.sessionName, config: { ...(existing.config || {}), ...sessionConfig } }, config);
       return getSession(config);
     }
     if (missing === true) console.warn('WA Inbox: webhook pesan belum terdaftar pada sesi WAHA. Klik Connect pada WA Gateway untuk memperbaiki.');

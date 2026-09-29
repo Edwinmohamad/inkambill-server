@@ -1,6 +1,7 @@
 const express = require('express');
 const { handleWahaWebhookEvent } = require('../services/whatsappGatewayService');
 const router = express.Router();
+const health = require('../services/waWebhookHealth');
 
 // Inbound webhook FROM WAHA — session status changes (qr_pending/connected/disconnected) and
 // incoming messages get pushed here so the WA Gateway page updates in real time instead of
@@ -9,8 +10,11 @@ const router = express.Router();
 // middleware/csrf.js the same way /api/n8n/ already is.
 router.post('/webhook', async (req, res) => {
   try {
-    await handleWahaWebhookEvent(req.body || {});
+    const event = req.body || {};
+    const result = await handleWahaWebhookEvent(event);
+    health.record(event.event, result);
   } catch (e) {
+    health.error(e);
     console.error('WA Gateway: gagal memproses webhook WAHA:', e.message);
     // Session reconciliation cannot recover a missed chat message. A non-2xx response
     // lets WAHA retry; duplicate message IDs are ignored by the inbox insert.

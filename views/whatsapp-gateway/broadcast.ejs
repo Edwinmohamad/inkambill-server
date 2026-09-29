@@ -14,10 +14,10 @@
     <div>
       <p class="wab-eyebrow">WhatsApp CRM</p>
       <h1>Pusat Pesan Pelanggan</h1>
-      <p class="wab-lede">Pilih pelanggan, siapkan pesan layanan, lalu kirim manual atau broadcast terjadwal.</p>
+      <p class="wab-lede">Siapkan komunikasi layanan dan kirim kepada pelanggan yang tepat.</p>
     </div>
     <nav class="wab-head-links">
-      <a href="/wa-inbox"><i class="bi bi-chat"></i>Inbox</a>
+      <a href="/wa-inbox"><i class="bi bi-chat"></i>Inbox WhatsApp</a>
       <a href="/wa-gateway#antiban"><i class="bi bi-shield"></i>Anti-ban</a>
     </nav>
   </header>
@@ -110,12 +110,12 @@
           </table>
         </div>
 
-        <div class="wab-row-label">Kirim ke</div>
+        <div class="wab-row-label">Kirim ke <span id="wabEligibleNote"></span></div>
         <div class="wab-seg" role="radiogroup" aria-label="Target penerima">
           <label><input type="radio" name="target_mode" value="filter" checked><span>Semua hasil filter<em id="wabTotalLabel">0</em></span></label>
           <label><input type="radio" name="target_mode" value="selected"><span>Hanya yang dipilih<em id="wabSelectedLabel">0</em></span></label>
         </div>
-        <p class="wab-hint">Maksimal <%= maxRecipients %> penerima per broadcast. Nomor opt-out dan tidak valid tidak bisa dipilih.</p>
+        <p class="wab-hint">Kolom tagihan menjumlahkan sisa seluruh invoice terbuka, bukan harga paket bulanan. Maksimal <%= maxRecipients %> penerima; nomor opt-out dan tidak valid tidak bisa dipilih.</p>
       </section>
 
       <section class="wab-card">
@@ -125,8 +125,8 @@
         </div>
 
         <div class="wab-template-box" aria-label="Template komunikasi ISP">
-          <strong>Template komunikasi ISP</strong>
-          <p>Pilih naskah resmi lalu sesuaikan isi dan periksa pratinjau sebelum mengirim.</p>
+          <strong>Mulai dari template</strong>
+          <p>Pilih naskah layanan, lalu sesuaikan sebelum mengirim.</p>
           <div class="wab-template-cards">
             <% [
               ['isp_reminder','Pengingat tagihan ISP','Menjelang jatuh tempo'],
@@ -134,17 +134,11 @@
               ['isp_outage','Gangguan ISP','Penanganan jaringan'],
               ['isp_recovery','Layanan pulih','Koneksi normal kembali'],
               ['isp_maintenance','Pemeliharaan ISP','Jadwal pekerjaan'],
-              ['reminder','Pengingat tagihan','Menjelang jatuh tempo'],
-              ['overdue','Tagihan tertunggak','Lewat jatuh tempo'],
-              ['isolation','Pemberitahuan isolir','Status layanan'],
-              ['outage','Informasi gangguan','Penanganan jaringan'],
-              ['maintenance','Pemeliharaan terjadwal','Jadwal pekerjaan'],
-              ['receipt','Konfirmasi pembayaran','Pembayaran diterima'],
-              ['announcement','Pengumuman layanan','Informasi umum']
             ].forEach(([key,label,detail])=>{ if(templates.some(t=>t.template_key===key)){ %>
               <button type="button" class="wab-template-card" data-template-pick="<%= key %>"><strong><%= label %></strong><small><%= detail %></small></button>
             <% } }); %>
           </div>
+          <p class="wab-hint">Template lainnya tersedia pada pilihan Template di bawah.</p>
         </div>
 
         <div class="wab-grid-2">
@@ -164,7 +158,7 @@
         </div>
 
         <div class="wab-compose">
-          <div class="wab-chips" aria-label="Sisipkan variabel"><% variables.forEach(([k,label])=>{ %><button type="button" class="wab-chip" data-insert="{<%= k %>}" title="<%= label %>">{<%= k %>}</button><% }) %></div>
+          <details class="wab-variables"><summary>Sisipkan data pelanggan <i class="bi bi-chevron-down"></i></summary><div class="wab-chips" aria-label="Sisipkan variabel"><% variables.forEach(([k,label])=>{ %><button type="button" class="wab-chip" data-insert="{<%= k %>}" title="<%= label %>">{<%= k %>}</button><% }) %></div></details>
           <textarea id="wabMessage" rows="9" maxlength="4000" placeholder="Tulis pesan…" aria-label="Naskah pesan"></textarea>
           <div class="wab-compose-foot">
             <span id="wabChars">0 / 4000</span>
@@ -197,11 +191,13 @@
           <div><dt>Naskah</dt><dd id="wabSumMsg">Belum diisi</dd></div>
         </dl>
 
+        <label class="wab-field"><span>Pelanggan contoh untuk pesan uji</span><select class="wab-select" id="wabTestCustomer"><option value="">Gunakan data contoh (bukan pelanggan nyata)</option></select></label>
         <label class="wab-field"><span>Nomor uji Admin</span><input class="wab-input" id="wabTestPhone" inputmode="tel" placeholder="62812…"></label>
         <button type="button" class="wab-btn secondary" id="wabTestSend"><i class="bi bi-phone"></i>Kirim pesan uji</button>
 
-        <button type="button" class="wab-btn secondary" id="wabManualSend"><i class="bi bi-person-check"></i>Kirim manual ke 1 pelanggan</button>
-        <p class="wab-hint">Untuk pesan manual, pilih tepat satu pelanggan dari daftar. Pesan masuk ke antrean pengiriman.</p>
+        <div class="wab-send-divider"><span>Pengiriman pelanggan</span></div>
+        <button type="button" class="wab-btn secondary" id="wabManualSend"><i class="bi bi-person-check"></i>Kirim ke 1 pelanggan</button>
+        <p class="wab-hint">Pilih tepat satu pelanggan untuk pengiriman manual.</p>
 
         <button type="button" class="wab-btn" id="wabSubmit" <%= blastEnabled?'':'disabled' %>><i class="bi bi-send-fill"></i>Buat broadcast</button>
         <div class="wab-result" id="wabResult" hidden></div>
