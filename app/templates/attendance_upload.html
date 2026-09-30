@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div><span class="eyebrow">DOCUMENT OPERATIONS</span><h1>Upload Attendance PDFs</h1><p>Upload one or many PDF attendance files. Originals stay preserved and every valid file goes straight to the signing workspace.</p></div>
+  <a class="btn" href="/attendance">Back to Attendance</a>
+</div>
+<div class="panel upload-hero premium-upload-card">
+  <form class="stack" id="attendanceUploadForm" method="post" enctype="multipart/form-data" action="/attendance/upload" data-upload-form>
+    <label class="dropzone modern-drop" id="attendanceDropzone">
+      <input id="attendancePdfInput" type="file" name="pdfs" accept="application/pdf,.pdf" multiple required>
+      <div class="drop-icon"><svg viewBox="0 0 24 24"><path d="M12 16V5m0 0-4 4m4-4 4 4M5 15v4h14v-4"/></svg></div>
+      <b>Drop attendance PDFs here</b>
+      <span>or click to choose multiple PDF files</span>
+      <small>Maximum 50 MB per file • PDF only</small>
+    </label>
+    <div id="uploadFileList" class="upload-file-list" hidden></div>
+    <div id="uploadError" class="alert danger" hidden></div>
+    <div class="form-grid upload-meta-grid">
+      <label>Period<input name="period" placeholder="September 2026" required></label>
+      <label>Site<input name="location" value="{{settings.get('site','TBS')}}" required></label>
+      <label>Division<input name="division" value="{{settings.get('division','FMT')}}" required></label>
+      <label>Notes<input name="notes" placeholder="Optional batch note"></label>
+    </div>
+    <div class="upload-progress" id="uploadProgress" hidden><div><span id="uploadProgressBar"></span></div><small id="uploadProgressText">Preparing upload...</small></div>
+    <div class="form-actions"><a class="btn" href="/attendance">Cancel</a><button id="attendanceUploadBtn" class="btn primary" type="submit">Upload & Open Signing Workspace</button></div>
+  </form>
+</div>
+{% endblock %}

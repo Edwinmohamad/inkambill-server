@@ -1,56 +1,24 @@
 services:
-  db:
-    container_name: INKAMBILLING-DB
-    image: mariadb:11.8
-    restart: unless-stopped
-    environment:
-      MARIADB_DATABASE: ${DB_NAME}
-      MARIADB_USER: ${DB_USER}
-      MARIADB_PASSWORD: ${DB_PASSWORD}
-      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-      TZ: Asia/Jakarta
-    volumes:
-      - db_data:/var/lib/mysql
-      - ./database/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
-      - ./database/migration_v04.sql:/docker-entrypoint-initdb.d/004-migration-v04.sql:ro
-      - ./database/migration_v05.sql:/docker-entrypoint-initdb.d/005-migration-v05.sql:ro
-      - ./database/migration_v051.sql:/docker-entrypoint-initdb.d/006-migration-v051.sql:ro
-      - ./database/migration_v11.sql:/docker-entrypoint-initdb.d/007-migration-v11.sql:ro
-      - ./database/migration_v14.sql:/docker-entrypoint-initdb.d/008-migration-v14.sql:ro
-      - ./database/migration_v15.sql:/docker-entrypoint-initdb.d/009-migration-v15.sql:ro
-      - ./database/migration_v16.sql:/docker-entrypoint-initdb.d/010-migration-v16.sql:ro
-      - ./database/migration_v18.sql:/docker-entrypoint-initdb.d/011-migration-v18.sql:ro
-    healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
-  app:
-    container_name: INKAMBILLING-APP
+  fmt-tbs-dashboard:
     build: .
+    container_name: fmt-tbs-dashboard
     restart: unless-stopped
-    env_file: .env
-    depends_on:
-      db:
-        condition: service_healthy
     ports:
-      - "3301:${PORT:-3200}"
-    # Lets the app container resolve host.docker.internal -> this host's own IP, needed so the
-    # WA Gateway module can reach WAHA when WAHA runs directly on the host (not in this compose
-    # project). No effect if WAHA_BASE_URL in .env points somewhere else instead. Docker Desktop
-    # (Mac/Windows) already provides this mapping natively; this line is what makes it work on
-    # Linux too.
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "${FMT_PORT:-8096}:8096"
     volumes:
-      - ./storage:/app/storage
+      - ./data:/app/data
+      - ./uploads:/app/uploads
+    environment:
+      TZ: Asia/Jakarta
+      PYTHONDONTWRITEBYTECODE: "1"
+      FMT_ADMIN_USER: "${FMT_ADMIN_USER:-admin}"
+      FMT_ADMIN_PASSWORD: "${FMT_ADMIN_PASSWORD:-admin}"
+      FMT_SESSION_HOURS: "${FMT_SESSION_HOURS:-12}"
+      FMT_MAX_UPLOAD_MB: "${FMT_MAX_UPLOAD_MB:-50}"
+      FMT_COOKIE_SECURE: "${FMT_COOKIE_SECURE:-0}"
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:'+(process.env.PORT||3200)+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
-      interval: 15s
-      timeout: 5s
-      retries: 10
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8096/health', timeout=4).read()"]
+      interval: 30s
+      timeout: 6s
+      retries: 4
       start_period: 20s
-
-volumes:
-  db_data:

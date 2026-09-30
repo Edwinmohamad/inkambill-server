@@ -1,7 +1,8 @@
-FROM node:24-alpine
+FROM python:3.12-slim
 WORKDIR /app
-COPY package*.json ./
-RUN npm install --omit=dev --no-audit --no-fund
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
-EXPOSE 3200
-CMD ["npm","start"]
+EXPOSE 8096
+CMD ["python","-m","uvicorn","app.main:app","--host","0.0.0.0","--port","8096","--workers","1"]

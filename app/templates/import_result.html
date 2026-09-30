@@ -1,0 +1,5 @@
+{% extends "base.html" %}{% block content %}
+<div class="page-head"><div><span class="eyebrow">DATA IMPORT • COMPLETE</span><h1>Import Completed — {{title}}</h1><p>The staged file has been validated and committed.</p></div><a class="btn primary" href="{{back_url}}">Back to {{title}}</a></div>
+<div class="cards four"><div class="metric"><span>Total Rows</span><b>{{result.total}}</b></div><div class="metric"><span>Created</span><b>{{result.created}}</b></div><div class="metric"><span>Updated</span><b>{{result.updated}}</b></div><div class="metric {% if result.failed %}warn{% endif %}"><span>Failed</span><b>{{result.failed}}</b></div></div>
+<div class="panel"><div class="kv"><span>Skipped</span><b>{{result.skipped}}</b><span>Failed</span><b>{{result.failed}}</b></div>{% if result.errors %}<hr><h2>Validation Errors</h2>{% for e in result.errors %}<div class="list-row"><span>Row {{e.row}}</span><b>{{e.error}}</b></div>{% endfor %}{% else %}<div class="alert success">✓ Import finished without row errors.</div>{% endif %}</div>
+{% endblock %}
