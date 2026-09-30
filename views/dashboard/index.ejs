@@ -1,4 +1,4 @@
-<% const monthNames=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember']; const siteQuery=selectedSiteCode?`&site=${encodeURIComponent(selectedSiteCode)}`:''; const customerSiteQuery=selectedSiteCode?`site=${encodeURIComponent(selectedSiteCode)}`:''; const kpiSiteQuery=kpiSiteCode?`&site=${encodeURIComponent(kpiSiteCode)}`:''; const networkTarget=can('network')?'/nms/secrets':`/customers?${customerSiteQuery}${customerSiteQuery?'&':''}status=active&network=problem`; const ticketTarget=can('support')?`/tickets?status=active${siteQuery}`:'/'; const cashTarget=isAdmin?'/payments/reconciliation':(can('billing')?'/payments':'/'); %>
+<% const monthNames=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember']; const siteQuery=selectedSiteCode?`&site=${encodeURIComponent(selectedSiteCode)}`:''; const customerSiteQuery=selectedSiteCode?`site=${encodeURIComponent(selectedSiteCode)}`:''; const kpiSiteQuery=kpiSiteCode?`&site=${encodeURIComponent(kpiSiteCode)}`:''; const networkTarget=can('network')?'/nms/secrets':`/customers?${customerSiteQuery}${customerSiteQuery?'&':''}status=active&network=problem`; const ticketTarget=can('support')?`/tickets?status=active${siteQuery}`:'/'; const cashTarget=isAdmin?'/payments/reconciliation':(can('billing')?'/payments':'/'); const bm=billingMonitor; const bmTiming=selectedCycle==='all'?bm.timing:bm.timing.cycles[selectedCycle]; const bmMonthlyIncome=(bm.revenueSeries?.income||[]).reduce((a,v)=>a+Number(v||0),0); const bmDueBucket=c=>String(c)==='15'?'due15':'due30'; const bmHLabel=d=>Number(d)>0?`H+${Number(d)}`:Number(d)<0?`H${Number(d)}`:'Hari H'; %>
 <section class="command-dashboard dashboard-v19 dashboard-v112 dashboard-v114 dashboard-v115 dashboard-v116 dashboard-v117 dashboard-v119">
   <div class="command-hero">
     <div class="command-hero-copy">
@@ -12,10 +12,12 @@
       </div>
     </div>
     <div class="command-hero-actions">
-      <form class="command-period" method="get" action="/" data-auto-filter>
-        <select name="site"><option value="">Semua Site</option><% siteOptions.forEach(s=>{ %><option value="<%= s.code %>" <%= selectedSiteCode===s.code?'selected':'' %>><%= s.code %> · <%= s.name %></option><% }) %></select>
-        <select name="month"><% monthNames.forEach((m,i)=>{ %><option value="<%= i+1 %>" <%= selectedMonth===i+1?'selected':'' %>><%= m %></option><% }) %></select>
-        <select name="year"><% years.forEach(y=>{ %><option value="<%= y %>" <%= selectedYear===y?'selected':'' %>><%= y %></option><% }) %></select>
+      <form class="command-period command-period-v126" method="get" action="/" data-auto-filter aria-label="Filter Dashboard Billing">
+        <select name="site" aria-label="Filter site"><option value="">Semua Site</option><% siteOptions.forEach(s=>{ %><option value="<%= s.code %>" <%= selectedSiteCode===s.code?'selected':'' %>><%= s.code %> · <%= s.name %></option><% }) %></select>
+        <select name="month" aria-label="Filter bulan"><% monthNames.forEach((m,i)=>{ %><option value="<%= i+1 %>" <%= selectedMonth===i+1?'selected':'' %>><%= m %></option><% }) %></select>
+        <select name="year" aria-label="Filter tahun"><% years.forEach(y=>{ %><option value="<%= y %>" <%= selectedYear===y?'selected':'' %>><%= y %></option><% }) %></select>
+        <select name="cycle" aria-label="Filter siklus tagihan"><option value="all" <%= selectedCycle==='all'?'selected':'' %>>Siklus 15 + 30</option><option value="15" <%= selectedCycle==='15'?'selected':'' %>>Jatuh Tempo 15</option><option value="30" <%= selectedCycle==='30'?'selected':'' %>>Jatuh Tempo 30</option></select>
+        <select name="trend" aria-label="Rentang tren"><option value="3" <%= trendMonths===3?'selected':'' %>>Tren 3 Bulan</option><option value="6" <%= trendMonths===6?'selected':'' %>>Tren 6 Bulan</option><option value="12" <%= trendMonths===12?'selected':'' %>>Tren 12 Bulan</option></select>
       </form>
       <a href="/customers/new" class="command-add"><i class="bi bi-person-plus-fill"></i>Tambah Pelanggan</a>
     </div>
@@ -34,20 +36,92 @@
     <a href="/customers?<%= customerSiteQuery %><%= customerSiteQuery?'&':'' %>status=inactive" class="command-kpi orange"><span class="command-kpi-icon"><i class="bi bi-person-dash-fill"></i></span><div><small>TIDAK AKTIF</small><strong><%= Number(customer.inactive||0) %></strong><em>Ditangguhkan / berhenti</em></div></a>
     <a href="/customers?<%= customerSiteQuery %><%= customerSiteQuery?'&':'' %>status=active&network=isolated" class="command-kpi red"><span class="command-kpi-icon"><i class="bi bi-wifi-off"></i></span><div><small>TERISOLIR</small><strong><%= Number(customer.isolated||0) %></strong><em>Network isolated</em></div></a>
     <% if(isAdmin){ %>
-    <a href="/payments?month=<%= selectedMonth %>&year=<%= selectedYear %><%= siteQuery %>" class="command-kpi green"><span class="command-kpi-icon"><i class="bi bi-cash-coin"></i></span><div><small>PEMBAYARAN</small><strong><%= formatRupiah(revenue.total||0) %></strong><em><%= monthNames[selectedMonth-1] %> <%= selectedYear %></em></div></a>
+    <a href="/payments?month=<%= selectedMonth %>&year=<%= selectedYear %><%= siteQuery %>" class="command-kpi green"><span class="command-kpi-icon"><i class="bi bi-cash-coin"></i></span><div><small>KAS MASUK</small><strong><%= formatRupiah(bmMonthlyIncome) %></strong><em>Approved · <%= monthNames[selectedMonth-1] %> <%= selectedYear %></em></div></a>
     <a href="/invoices?month=<%= kpiMonth %>&year=<%= kpiYear %>&status=open<%= kpiSiteQuery %>" class="command-kpi red"><span class="command-kpi-icon"><i class="bi bi-exclamation-diamond-fill"></i></span><div><small>OUTSTANDING</small><strong><%= formatRupiah(unpaid.total||0) %></strong><em><%= Number(unpaid.count||0) %> tagihan · <%= kpiSiteCode||'Semua Site' %></em></div></a>
     <% } %>
   </div>
+
+  <% if(can('billing')){ %>
+  <section class="billing-monitor-v126" aria-labelledby="billingMonitorTitle">
+    <header class="billing-monitor-head">
+      <div>
+        <span class="billing-monitor-kicker"><i class="bi bi-graph-up-arrow"></i> BILLING COLLECTION MONITOR</span>
+        <h2 id="billingMonitorTitle">Pendapatan & progres tagihan <%= monthNames[selectedMonth-1] %> <%= selectedYear %></h2>
+        <p><%= selectedSiteCode||'Semua Site' %> · <%= selectedCycle==='all'?'Siklus 15 & 30':`Siklus ${selectedCycle}` %> · pendapatan dihitung hanya setelah masuk Data Kas.</p>
+      </div>
+      <div class="billing-monitor-links">
+        <a href="/payments?approval=pending<%= selectedSiteCode?`&site=${encodeURIComponent(selectedSiteCode)}`:'' %>"><i class="bi bi-shield-check"></i> Approval</a>
+        <a href="/invoices?month=<%= selectedMonth %>&year=<%= selectedYear %><%= siteQuery %>"><i class="bi bi-receipt"></i> Tagihan</a>
+        <% if(isAdmin){ %><a href="/cash?month=<%= selectedMonth %>&year=<%= selectedYear %><%= siteQuery %>"><i class="bi bi-wallet2"></i> Data Kas</a><% } %>
+      </div>
+    </header>
+
+    <div class="billing-monitor-top-grid">
+      <article class="bm-card bm-revenue-card">
+        <div class="bm-card-top"><span><i class="bi bi-arrow-down-left-circle-fill"></i> PENDAPATAN HARI INI</span><em><i></i> LIVE</em></div>
+        <% if(isAdmin){ %><strong class="bm-big-money"><%= formatRupiah(bm.today.amount) %></strong><% }else{ %><strong class="bm-big-money"><%= bm.today.count %> transaksi</strong><% } %>
+        <div class="bm-revenue-meta"><span><b><%= bm.today.count %></b> pembayaran masuk kas</span><span class="<%= bm.today.deltaPct!=null&&bm.today.deltaPct>=0?'up':bm.today.deltaPct!=null?'down':'' %>"><% if(bm.today.deltaPct!=null){ %><i class="bi <%= bm.today.deltaPct>=0?'bi-arrow-up-right':'bi-arrow-down-right' %>"></i><%= Math.abs(bm.today.deltaPct) %>% vs kemarin<% }else{ %>Belum ada pembanding kemarin<% } %></span></div>
+        <% if(isAdmin){ %><div class="bm-method-grid"><span><small>Transfer</small><b><%= formatRupiah(bm.today.transfer) %></b></span><span><small>QRIS</small><b><%= formatRupiah(bm.today.qris) %></b></span><span><small>Cash disetor</small><b><%= formatRupiah(bm.today.cash) %></b></span></div><% } %>
+        <a class="bm-pending-strip" href="/payments?approval=pending<%= selectedSiteCode?`&site=${encodeURIComponent(selectedSiteCode)}`:'' %>"><span><i class="bi bi-hourglass-split"></i><b><%= bm.today.pendingCount %> pending approval</b></span><% if(isAdmin){ %><strong><%= formatRupiah(bm.today.pendingAmount) %></strong><% } %><i class="bi bi-chevron-right"></i></a>
+      </article>
+
+      <% ['15','30'].forEach(cycle=>{ const c=bm.cycles[cycle]; const dueBucket=bmDueBucket(cycle); %>
+      <article class="bm-card bm-cycle-card <%= selectedCycle===cycle?'is-selected':'' %>">
+        <div class="bm-cycle-title"><span><small>JATUH TEMPO</small><strong><%= cycle %></strong></span><% if(selectedCycle===cycle){ %><em>FILTER AKTIF</em><% } %><i class="bi bi-calendar2-check"></i></div>
+        <div class="bm-cycle-rate"><strong><%= c.customerRate.toFixed(1) %>%</strong><span><b><%= c.paidCount %> / <%= c.invoiceCount %></b> pelanggan lunas</span></div>
+        <div class="bm-progress-track" aria-label="Progress pelanggan lunas <%= c.customerRate %> persen"><i style="--bm-progress:<%= c.customerRate %>%"></i></div>
+        <% if(isAdmin){ %><div class="bm-cycle-money"><span><small>Tertagih</small><b><%= formatRupiah(c.collected) %></b></span><span><small>Total</small><b><%= formatRupiah(c.billed) %></b></span></div><% } %>
+        <div class="bm-cycle-status">
+          <a class="ok" href="/invoices?month=<%= selectedMonth %>&year=<%= selectedYear %>&status=paid&due_bucket=<%= dueBucket %><%= siteQuery %>"><i></i><span><b><%= c.paidCount %> Lunas</b><small><%= c.nominalRate.toFixed(1) %>% nominal</small></span></a>
+          <a class="pending" href="/invoices?month=<%= selectedMonth %>&year=<%= selectedYear %>&status=pending_approval&due_bucket=<%= dueBucket %><%= siteQuery %>"><i></i><span><b><%= c.pendingCount %> Pending</b><small>menunggu approval</small></span></a>
+          <button class="danger" type="button" data-bs-toggle="modal" data-bs-target="#billingUnpaidModal" data-bm-cycle="<%= cycle %>"><i></i><span><b><%= c.openCount %> Belum bayar</b><small><% if(isAdmin){ %><%= formatRupiah(c.outstanding) %><% }else{ %>perlu follow-up<% } %></small></span><i class="bi bi-chevron-right"></i></button>
+        </div>
+        <div class="bm-cycle-foot"><span><% if(c.deltaCustomerRate!=null){ %><i class="bi <%= c.deltaCustomerRate>=0?'bi-arrow-up-right':'bi-arrow-down-right' %>"></i><%= Math.abs(c.deltaCustomerRate).toFixed(1) %> pt vs bulan lalu<% }else{ %>Belum ada pembanding bulan lalu<% } %></span><a href="/invoices?month=<%= selectedMonth %>&year=<%= selectedYear %>&due_bucket=<%= dueBucket %><%= siteQuery %>">Detail <i class="bi bi-arrow-right"></i></a></div>
+      </article>
+      <% }) %>
+    </div>
+
+    <div class="billing-monitor-chart-grid">
+      <article class="bm-card bm-chart-card bm-collection-chart-card">
+        <div class="bm-chart-head"><div><span>PROGRESS COLLECTION</span><h3>Kecepatan pelunasan siklus 15 / 30</h3><small>Progress bergerak saat pembayaran di-approve.</small></div><div class="bm-chart-controls"><div class="bm-segment"><button type="button" class="active" data-bm-progress-view="progress">Harian</button><button type="button" data-bm-progress-view="trend">Tren <%= trendMonths %> bln</button></div><div class="bm-segment"><button type="button" class="active" data-bm-progress-metric="customer">Pelanggan</button><button type="button" data-bm-progress-metric="nominal" <%= !isAdmin?'disabled':'' %>>Nominal</button></div></div></div>
+        <div class="bm-chart-canvas"><canvas id="billingCollectionProgressChart"></canvas></div>
+        <div class="bm-chart-legend"><span class="cycle15"><i></i>Siklus 15</span><span class="cycle30"><i></i>Siklus 30</span><small><i></i>garis putus = jatuh tempo</small></div>
+      </article>
+
+      <article class="bm-card bm-chart-card bm-income-chart-card">
+        <div class="bm-chart-head"><div><span>PENDAPATAN HARIAN</span><h3>Kas masuk · <%= monthNames[selectedMonth-1] %></h3><small>Transfer/QRIS saat approval, cash saat setoran masuk kas.</small></div><a href="/cash?month=<%= selectedMonth %>&year=<%= selectedYear %><%= siteQuery %>">Data Kas <i class="bi bi-arrow-right"></i></a></div>
+        <div class="bm-chart-canvas"><canvas id="billingDailyIncomeChart"></canvas></div>
+      </article>
+    </div>
+
+    <div class="billing-monitor-lower-grid">
+      <article class="bm-card bm-timing-card">
+        <div class="bm-chart-head"><div><span>POLA PEMBAYARAN</span><h3>Kapan pelanggan membayar?</h3><small>Berdasarkan tanggal pembayaran aktual terhadap jatuh tempo.</small></div><b><%= Number(bmTiming?.total||0) %> lunas</b></div>
+        <% const timingTotal=Math.max(1,Number(bmTiming?.total||0)); [['early','Lebih awal','bi-fast-forward-circle'],['on_time','Tepat waktu','bi-check2-circle'],['h1_3','H+1 s/d H+3','bi-clock-history'],['late','Lewat H+3','bi-exclamation-circle']].forEach(([key,label,icon])=>{ const count=Number(bmTiming?.[key]||0); const rate=Math.round(count/timingTotal*100); %>
+        <div class="bm-timing-row"><i class="bi <%= icon %>"></i><span><b><%= label %></b><small><%= count %> pelanggan</small></span><div><i style="width:<%= rate %>%"></i></div><strong><%= rate %>%</strong></div>
+        <% }) %>
+      </article>
+
+      <article class="bm-card bm-recent-income-card">
+        <div class="bm-chart-head"><div><span>MASUK KAS TERBARU</span><h3>Siapa yang baru masuk?</h3><small>Transaksi billing yang sudah resmi masuk Data Kas.</small></div><a href="/payments<%= selectedSiteCode?`?site=${encodeURIComponent(selectedSiteCode)}`:'' %>">Semua <i class="bi bi-arrow-right"></i></a></div>
+        <div class="bm-recent-list">
+          <% bm.recent.forEach(row=>{ const recognized=row.recognized_at?new Date(row.recognized_at):null; const methodLabel=row.method==='cash'?'Cash disetor':row.method==='qris'?'QRIS':'Transfer'; %><a href="/customers/<%= row.customer_id %>"><span class="bm-avatar"><%= String(row.customer_name||'?').charAt(0).toUpperCase() %></span><div><b><%= row.customer_name %></b><small><%= row.site_code %> · Siklus <%= row.cycle %> · <%= methodLabel %></small></div><% if(isAdmin){ %><strong>+<%= formatRupiah(row.amount) %></strong><% } %><time><%= recognized?recognized.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Jakarta'}):'-' %></time></a><% }) %>
+          <% if(!bm.recent.length){ %><div class="bm-empty"><i class="bi bi-inbox"></i><span><b>Belum ada kas masuk</b><small>Transaksi approved akan muncul otomatis di sini.</small></span></div><% } %>
+        </div>
+      </article>
+    </div>
+  </section>
+  <% } %>
 
   <article class="psb-hero-v119">
     <div class="psb-hero-copy"><span class="psb-hero-icon"><i class="bi bi-person-plus-fill"></i></span><div><small>TRAFFIC PSB · PEMASANGAN BARU</small><h2>Pertumbuhan pelanggan hari ini dan bulan berjalan</h2><p><%= psbSiteCode||'Semua Site' %> · <%= monthNames[psbMonth-1] %> <%= psbYear %></p></div></div>
     <div class="psb-hero-metrics"><button type="button" data-bs-toggle="modal" data-bs-target="#psbCustomerModal"><span>Traffic PSB Hari Ini</span><strong><%= Number(psbToday.total||0) %></strong><small>aktivasi / registrasi hari ini</small></button><button type="button" data-bs-toggle="modal" data-bs-target="#psbCustomerModal"><span>Total PSB Bulan Ini</span><strong><%= Number(newCustomers.total||0) %></strong><small><%= monthNames[psbMonth-1] %> <%= psbYear %></small></button></div>
     <div class="psb-hero-chart"><canvas id="commandPsbChart"></canvas></div>
-    <div class="psb-hero-side"><form method="get" class="dashboard-section-filter psb-hero-filter" data-auto-filter><input type="hidden" name="site" value="<%= selectedSiteCode %>"><input type="hidden" name="month" value="<%= selectedMonth %>"><input type="hidden" name="year" value="<%= selectedYear %>"><select name="psb_site"><option value="">Semua Site</option><% siteOptions.forEach(s=>{ %><option value="<%= s.code %>" <%= psbSiteCode===s.code?'selected':'' %>><%= s.code %></option><% }) %></select><select name="psb_month"><% monthNames.forEach((m,i)=>{ %><option value="<%= i+1 %>" <%= psbMonth===i+1?'selected':'' %>><%= m %></option><% }) %></select><select name="psb_year"><% years.forEach(y=>{ %><option value="<%= y %>" <%= psbYear===y?'selected':'' %>><%= y %></option><% }) %></select></form><div class="psb-hero-latest"><span>PSB TERBARU</span><% psbCustomers.slice(0,4).forEach(c=>{ %><a href="/customers/<%= c.id %>"><i><%= c.name.charAt(0).toUpperCase() %></i><div><b><%= c.name %></b><small><%= c.customer_code %> · <%= c.site_code %></small></div><span class="bi bi-chevron-right"></span></a><% }) %><% if(!psbCustomers.length){ %><small class="ink-empty">Belum ada PSB periode ini.</small><% } %></div></div>
+    <div class="psb-hero-side"><form method="get" class="dashboard-section-filter psb-hero-filter" data-auto-filter><input type="hidden" name="site" value="<%= selectedSiteCode %>"><input type="hidden" name="month" value="<%= selectedMonth %>"><input type="hidden" name="year" value="<%= selectedYear %>"><input type="hidden" name="cycle" value="<%= selectedCycle %>"><input type="hidden" name="trend" value="<%= trendMonths %>"><select name="psb_site"><option value="">Semua Site</option><% siteOptions.forEach(s=>{ %><option value="<%= s.code %>" <%= psbSiteCode===s.code?'selected':'' %>><%= s.code %></option><% }) %></select><select name="psb_month"><% monthNames.forEach((m,i)=>{ %><option value="<%= i+1 %>" <%= psbMonth===i+1?'selected':'' %>><%= m %></option><% }) %></select><select name="psb_year"><% years.forEach(y=>{ %><option value="<%= y %>" <%= psbYear===y?'selected':'' %>><%= y %></option><% }) %></select></form><div class="psb-hero-latest"><span>PSB TERBARU</span><% psbCustomers.slice(0,4).forEach(c=>{ %><a href="/customers/<%= c.id %>"><i><%= c.name.charAt(0).toUpperCase() %></i><div><b><%= c.name %></b><small><%= c.customer_code %> · <%= c.site_code %></small></div><span class="bi bi-chevron-right"></span></a><% }) %><% if(!psbCustomers.length){ %><small class="ink-empty">Belum ada PSB periode ini.</small><% } %></div></div>
   </article>
 
   <div class="command-pulse-grid dashboard-ops-pulse-v119">
-    <% if(can('billing')){ %><a class="command-pulse collection-pulse" href="/collection-analysis?site=<%= selectedSiteCode %>&month=<%= selectedMonth %>&year=<%= selectedYear %>"><div><span>COLLECTION RATE</span><strong><%= collectionRate %>%</strong><em>Buka analisa pelanggan →</em></div><i class="bi bi-graph-up-arrow"></i></a><% }else{ %><article class="command-pulse"><div><span>COLLECTION RATE</span><strong><%= collectionRate %>%</strong></div><i class="bi bi-graph-up-arrow"></i></article><% } %>
+    <% if(can('billing')){ %><a class="command-pulse <%= Number(bm.today.pendingCount||0)>0?'warn':'ok' %>" href="/payments?approval=pending<%= selectedSiteCode?`&site=${encodeURIComponent(selectedSiteCode)}`:'' %>"><div><span>PENDING APPROVAL</span><strong><%= Number(bm.today.pendingCount||0) %></strong><em><% if(isAdmin){ %><%= formatRupiah(bm.today.pendingAmount||0) %> · <% } %>Buka approval →</em></div><i class="bi bi-shield-exclamation"></i></a><% }else{ %><article class="command-pulse"><div><span>BILLING</span><strong><%= collectionRate %>%</strong></div><i class="bi bi-graph-up-arrow"></i></article><% } %>
     <a href="<%= ticketTarget %>" class="command-pulse <%= Number(noc.tickets_open||0)>0?'warn':'ok' %>"><div><span>TICKET AKTIF</span><strong><%= Number(noc.tickets_open||0) %></strong><em>Buka daftar tiket →</em></div><i class="bi bi-life-preserver"></i></a>
   </div>
 
@@ -57,16 +131,7 @@
        UI/UX audit (rarely needed daily / duplicated elsewhere). Distribusi Paket now lives on the Paket
        Internet page (views/packages/index.ejs) using data it already had. WA Gateway status is still one
        click away via its own menu; Server Monitor is a NOC/technical concern, not a daily billing-staff one. -->
-  <div class="dashboard-widgets-v121">
-    <article class="command-panel widget-collection-target">
-      <div class="command-panel-head"><div><span>TARGET PENAGIHAN</span><h3>Collection Rate Bulan Ini</h3></div><i class="bi bi-bullseye"></i></div>
-      <div class="collection-target-body">
-        <div class="collection-target-bar"><i style="--rate:<%= collectionRate %>%"></i></div>
-        <div class="collection-target-figures"><strong><%= collectionRate %>%</strong><% if(isAdmin){ %><span><%= formatRupiah(collectionCollected) %> / <%= formatRupiah(collectionBilled) %></span><% } %></div>
-        <div class="collection-target-countdown"><i class="bi bi-hourglass-split"></i><span>Closing kas/isolir dalam</span><b><%= closing.daysLeft %> hari</b><small><%= formatDate(closing.closingDate) %></small></div>
-      </div>
-    </article>
-
+  <div class="dashboard-widgets-v121 single-widget">
     <article class="command-panel widget-quick-launch">
       <div class="command-panel-head"><div><span>QUICK ACTION</span><h3>Launchpad</h3></div><i class="bi bi-lightning-charge-fill"></i></div>
       <div class="quick-launch-row">
@@ -80,7 +145,7 @@
 
   <div class="dashboard-dense-core">
   <article class="command-panel invoice-kpi-panel">
-    <div class="command-panel-head dashboard-filter-head"><div><span>KPI TAGIHAN PELANGGAN</span><h3>Status Billing <%= monthNames[kpiMonth-1] %> <%= kpiYear %> · <%= kpiSiteCode||'Semua Site' %></h3></div><form method="get" class="dashboard-section-filter" data-auto-filter><input type="hidden" name="site" value="<%= selectedSiteCode %>"><input type="hidden" name="month" value="<%= selectedMonth %>"><input type="hidden" name="year" value="<%= selectedYear %>"><input type="hidden" name="psb_month" value="<%= psbMonth %>"><input type="hidden" name="psb_year" value="<%= psbYear %>"><input type="hidden" name="psb_site" value="<%= psbSiteCode %>"><select name="kpi_site" aria-label="Filter site KPI"><option value="">Semua Site</option><% siteOptions.forEach(s=>{ %><option value="<%= s.code %>" <%= kpiSiteCode===s.code?'selected':'' %>><%= s.code %></option><% }) %></select><select name="kpi_month" aria-label="Filter bulan KPI"><% monthNames.forEach((m,i)=>{ %><option value="<%= i+1 %>" <%= kpiMonth===i+1?'selected':'' %>><%= m %></option><% }) %></select><select name="kpi_year" aria-label="Filter tahun KPI"><% years.forEach(y=>{ %><option value="<%= y %>" <%= kpiYear===y?'selected':'' %>><%= y %></option><% }) %></select><span class="auto-filter-hint"><i class="bi bi-lightning-charge-fill"></i>Auto</span></form><a href="/invoices?month=<%= kpiMonth %>&year=<%= kpiYear %><%= kpiSiteQuery %>" class="ink-text-link">Buka Semua <i class="bi bi-arrow-right"></i></a></div>
+    <div class="command-panel-head dashboard-filter-head"><div><span>KPI TAGIHAN PELANGGAN</span><h3>Status Billing <%= monthNames[kpiMonth-1] %> <%= kpiYear %> · <%= kpiSiteCode||'Semua Site' %></h3></div><form method="get" class="dashboard-section-filter" data-auto-filter><input type="hidden" name="site" value="<%= selectedSiteCode %>"><input type="hidden" name="month" value="<%= selectedMonth %>"><input type="hidden" name="year" value="<%= selectedYear %>"><input type="hidden" name="cycle" value="<%= selectedCycle %>"><input type="hidden" name="trend" value="<%= trendMonths %>"><input type="hidden" name="psb_month" value="<%= psbMonth %>"><input type="hidden" name="psb_year" value="<%= psbYear %>"><input type="hidden" name="psb_site" value="<%= psbSiteCode %>"><select name="kpi_site" aria-label="Filter site KPI"><option value="">Semua Site</option><% siteOptions.forEach(s=>{ %><option value="<%= s.code %>" <%= kpiSiteCode===s.code?'selected':'' %>><%= s.code %></option><% }) %></select><select name="kpi_month" aria-label="Filter bulan KPI"><% monthNames.forEach((m,i)=>{ %><option value="<%= i+1 %>" <%= kpiMonth===i+1?'selected':'' %>><%= m %></option><% }) %></select><select name="kpi_year" aria-label="Filter tahun KPI"><% years.forEach(y=>{ %><option value="<%= y %>" <%= kpiYear===y?'selected':'' %>><%= y %></option><% }) %></select><span class="auto-filter-hint"><i class="bi bi-lightning-charge-fill"></i>Auto</span></form><a href="/invoices?month=<%= kpiMonth %>&year=<%= kpiYear %><%= kpiSiteQuery %>" class="ink-text-link">Buka Semua <i class="bi bi-arrow-right"></i></a></div>
     <div class="invoice-kpi-layout">
       <div class="invoice-kpi-chart"><canvas id="invoiceKpiChart"></canvas><div><strong><%= invoiceKpi.total %></strong><small>TOTAL</small></div></div>
       <div class="invoice-kpi-links">
@@ -99,7 +164,7 @@
 
   <div class="dashboard-customer-watch-grid">
     <article class="command-panel customer-state-panel">
-      <div class="command-panel-head dashboard-filter-head"><div><span>MONITOR STATUS PELANGGAN</span><h3>Isolir & Tidak Aktif · <%= monthNames[offMonth-1] %> <%= offYear %></h3></div><form method="get" class="dashboard-section-filter compact" data-auto-filter><input type="hidden" name="site" value="<%= selectedSiteCode %>"><input type="hidden" name="month" value="<%= selectedMonth %>"><input type="hidden" name="year" value="<%= selectedYear %>"><input type="hidden" name="kpi_month" value="<%= kpiMonth %>"><input type="hidden" name="kpi_year" value="<%= kpiYear %>"><input type="hidden" name="kpi_site" value="<%= kpiSiteCode %>"><input type="hidden" name="psb_month" value="<%= psbMonth %>"><input type="hidden" name="psb_year" value="<%= psbYear %>"><input type="hidden" name="psb_site" value="<%= psbSiteCode %>"><select name="off_site"><option value="">Semua Site</option><% siteOptions.forEach(s=>{ %><option value="<%= s.code %>" <%= offSiteCode===s.code?'selected':'' %>><%= s.code %></option><% }) %></select><select name="off_month"><% monthNames.forEach((m,i)=>{ %><option value="<%= i+1 %>" <%= offMonth===i+1?'selected':'' %>><%= m %></option><% }) %></select><select name="off_year"><% years.forEach(y=>{ %><option value="<%= y %>" <%= offYear===y?'selected':'' %>><%= y %></option><% }) %></select><span class="auto-filter-hint"><i class="bi bi-lightning-charge-fill"></i></span></form></div>
+      <div class="command-panel-head dashboard-filter-head"><div><span>MONITOR STATUS PELANGGAN</span><h3>Isolir & Tidak Aktif · <%= monthNames[offMonth-1] %> <%= offYear %></h3></div><form method="get" class="dashboard-section-filter compact" data-auto-filter><input type="hidden" name="site" value="<%= selectedSiteCode %>"><input type="hidden" name="month" value="<%= selectedMonth %>"><input type="hidden" name="year" value="<%= selectedYear %>"><input type="hidden" name="cycle" value="<%= selectedCycle %>"><input type="hidden" name="trend" value="<%= trendMonths %>"><input type="hidden" name="kpi_month" value="<%= kpiMonth %>"><input type="hidden" name="kpi_year" value="<%= kpiYear %>"><input type="hidden" name="kpi_site" value="<%= kpiSiteCode %>"><input type="hidden" name="psb_month" value="<%= psbMonth %>"><input type="hidden" name="psb_year" value="<%= psbYear %>"><input type="hidden" name="psb_site" value="<%= psbSiteCode %>"><select name="off_site"><option value="">Semua Site</option><% siteOptions.forEach(s=>{ %><option value="<%= s.code %>" <%= offSiteCode===s.code?'selected':'' %>><%= s.code %></option><% }) %></select><select name="off_month"><% monthNames.forEach((m,i)=>{ %><option value="<%= i+1 %>" <%= offMonth===i+1?'selected':'' %>><%= m %></option><% }) %></select><select name="off_year"><% years.forEach(y=>{ %><option value="<%= y %>" <%= offYear===y?'selected':'' %>><%= y %></option><% }) %></select><span class="auto-filter-hint"><i class="bi bi-lightning-charge-fill"></i></span></form></div>
       <div class="customer-state-columns"><section><div class="customer-state-title isolated"><i class="bi bi-wifi-off"></i><span><b><%= isolatedCustomers.length %> Pelanggan Isolir</b><small>Bulan mulai isolir/off tercatat oleh sistem</small></span></div><div class="customer-state-list"><% isolatedCustomers.forEach(c=>{ %><a href="/customers/<%= c.id %>"><span><b><%= c.name %></b><small><%= c.customer_code %> · <%= c.site_code %></small></span><em><%= formatDate(c.status_changed_at) %></em></a><% }) %><% if(!isolatedCustomers.length){ %><div class="ink-empty">Tidak ada pelanggan isolir pada periode ini.</div><% } %></div></section><section><div class="customer-state-title inactive"><i class="bi bi-person-dash-fill"></i><span><b><%= inactiveCustomers.length %> Pelanggan Tidak Aktif</b><small>Ditangguhkan / berhenti pada periode terpilih</small></span></div><div class="customer-state-list"><% inactiveCustomers.forEach(c=>{ %><a href="/customers/<%= c.id %>"><span><b><%= c.name %></b><small><%= c.customer_code %> · <%= c.site_code %> · <%= statusLabel(c.customer_status) %></small></span><em><%= formatDate(c.status_changed_at) %></em></a><% }) %><% if(!inactiveCustomers.length){ %><div class="ink-empty">Tidak ada pelanggan nonaktif pada periode ini.</div><% } %></div></section></div>
     </article>
     <article class="command-panel hard-overdue-panel <%= hardOverdueCustomers.length?'has-alert':'' %>"><div class="command-panel-head"><div><span>PERINGATAN KERAS</span><h3>Lewat Jatuh Tempo &gt; 2 Hari</h3></div><b><%= hardOverdueCustomers.length %></b></div><div class="hard-overdue-list"><% hardOverdueCustomers.forEach(c=>{ %><a href="/invoices?customer=<%= c.id %>&month=<%= c.period_month %>&year=<%= c.period_year %>&status=open"><i class="bi bi-exclamation-octagon-fill"></i><span><b><%= c.name %></b><small><%= c.customer_code %> · <%= c.site_code %> · <%= c.days_overdue %> hari</small></span><% if(isAdmin){ %><strong><%= formatRupiah(c.outstanding) %></strong><% } %></a><% }) %><% if(!hardOverdueCustomers.length){ %><div class="ink-empty"><i class="bi bi-shield-check"></i> Tidak ada tagihan lewat lebih dari 2 hari.</div><% } %></div></article>
@@ -158,6 +223,32 @@
 </aside>
 <% } %>
 
+<% if(can('billing')){ %>
+<div class="modal fade bm-unpaid-modal" id="billingUnpaidModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header bm-modal-head">
+        <div><span class="module-kicker">COLLECTION ACTION LIST</span><h5 class="modal-title" data-bm-modal-title>Belum Bayar · Siklus 15</h5><small data-bm-modal-subtitle><%= monthNames[selectedMonth-1] %> <%= selectedYear %> · <%= selectedSiteCode||'Semua Site' %></small></div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+      </div>
+      <div class="modal-body">
+        <div class="bm-modal-toolbar"><label><i class="bi bi-search"></i><input type="search" placeholder="Cari nama / kode pelanggan / site..." data-bm-unpaid-search></label><span data-bm-search-count></span></div>
+        <% ['15','30'].forEach(cycle=>{ const dueBucket=bmDueBucket(cycle); const pendingRows=bm.pending[cycle]||[]; const unpaidRows=bm.unpaid[cycle]||[]; %>
+        <section class="bm-cycle-list" data-bm-cycle-panel="<%= cycle %>" <%= cycle==='15'?'':'hidden' %>>
+          <div class="bm-cycle-list-summary"><span><b><%= Number(bm.cycles[cycle]?.openCount||0) %></b><small>belum bayar</small></span><span><b><%= Number(bm.cycles[cycle]?.pendingCount||0) %></b><small>pending approval</small></span><a href="/invoices?month=<%= selectedMonth %>&year=<%= selectedYear %>&status=open&due_bucket=<%= dueBucket %><%= siteQuery %>">Buka daftar lengkap <i class="bi bi-arrow-right"></i></a></div>
+          <% if(pendingRows.length){ %><div class="bm-list-section-title"><span>MENUNGGU APPROVAL</span><small>Sudah diinput admin, belum dihitung lunas</small></div><div class="bm-unpaid-list"><% pendingRows.forEach(row=>{ %><a class="bm-unpaid-row" data-bm-search-row data-search-text="<%= `${row.customer_name} ${row.customer_code} ${row.site_code} ${row.cluster_name||''}`.toLowerCase() %>" href="/invoices?month=<%= selectedMonth %>&year=<%= selectedYear %>&customer=<%= row.customer_id %>&due_bucket=<%= dueBucket %><%= siteQuery %>"><span class="bm-avatar"><%= String(row.customer_name||'?').charAt(0).toUpperCase() %></span><div><b><%= row.customer_name %></b><small><%= row.customer_code %> · <%= row.site_code %><%= row.cluster_name?` · ${row.cluster_name}`:'' %></small></div><span class="bm-row-status pending">Pending</span><% if(isAdmin){ %><strong><%= formatRupiah(row.pending_amount) %></strong><% } %><i class="bi bi-chevron-right"></i></a><% }) %></div><% } %>
+          <div class="bm-list-section-title"><span>BELUM BAYAR</span><small>Belum ada pembayaran pending</small></div>
+          <div class="bm-unpaid-list"><% unpaidRows.forEach(row=>{ const dayLabel=bmHLabel(row.days_late); %><a class="bm-unpaid-row" data-bm-search-row data-search-text="<%= `${row.customer_name} ${row.customer_code} ${row.site_code} ${row.cluster_name||''}`.toLowerCase() %>" href="/invoices?month=<%= selectedMonth %>&year=<%= selectedYear %>&customer=<%= row.customer_id %>&due_bucket=<%= dueBucket %><%= siteQuery %>"><span class="bm-avatar"><%= String(row.customer_name||'?').charAt(0).toUpperCase() %></span><div><b><%= row.customer_name %></b><small><%= row.customer_code %> · <%= row.site_code %><%= row.cluster_name?` · ${row.cluster_name}`:'' %></small></div><span class="bm-row-status <%= Number(row.days_late)>3?'late':Number(row.days_late)>0?'warn':'early' %>"><%= dayLabel %></span><% if(isAdmin){ %><strong><%= formatRupiah(row.outstanding) %></strong><% } %><i class="bi bi-chevron-right"></i></a><% }) %><% if(!unpaidRows.length){ %><div class="bm-empty"><i class="bi bi-check2-circle"></i><span><b>Tidak ada pelanggan belum bayar</b><small>Semua tagihan terbuka pada siklus ini sudah tertangani.</small></span></div><% } %></div>
+          <div class="bm-search-empty" data-bm-search-empty hidden><i class="bi bi-search"></i><span>Tidak ada pelanggan yang cocok dengan pencarian.</span></div>
+        </section>
+        <% }) %>
+      </div>
+      <div class="modal-footer"><a class="btn-tech" data-bm-modal-invoice-link href="/invoices?month=<%= selectedMonth %>&year=<%= selectedYear %>&status=open&due_bucket=due15<%= siteQuery %>"><i class="bi bi-receipt"></i>Buka Tagihan</a><button type="button" class="btn-tech primary" data-bs-dismiss="modal">Tutup</button></div>
+    </div>
+  </div>
+</div>
+<% } %>
+
 <div class="modal fade" id="psbCustomerModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content psb-modal-content">
@@ -177,14 +268,44 @@
   const data=<%- safeJson(monthly) %>;
   const invoiceKpi=<%- safeJson(invoiceKpi) %>;
   const siteDistribution=<%- safeJson(siteCustomerRows.map(s=>({code:s.code,name:s.name,total:Number(s.total||0),active:Number(s.active||0),inactive:Number(s.inactive||0),isolated:Number(s.isolated||0),offline:Number(s.offline||0)}))) %>;
+  const billingData=<%- safeJson({selectedCycle,progress:bm.progress,trend:bm.trend,revenueSeries:isAdmin?bm.revenueSeries:{labels:bm.revenueSeries.labels,income:bm.revenueSeries.income.map(()=>0),count:bm.revenueSeries.count}}) %>;
+  const canSeeBillingMoney=<%= isAdmin?'true':'false' %>;
   const money=v=>'Rp '+new Intl.NumberFormat('id-ID',{maximumFractionDigits:0}).format(v||0);
+  const moneyCompact=v=>{const n=Number(v||0);if(n>=1e9)return 'Rp '+(n/1e9).toFixed(n>=1e10?0:1)+' M';if(n>=1e6)return 'Rp '+(n/1e6).toFixed(n>=1e7?0:1)+' jt';if(n>=1e3)return 'Rp '+Math.round(n/1e3)+' rb';return money(n);};
   const popup=document.getElementById('dashboardImportantPopup');
   if(popup){const close=()=>{popup.classList.add('leaving');setTimeout(()=>popup.remove(),280)};popup.querySelector('[data-important-close]')?.addEventListener('click',close);setTimeout(close,9000);
     const moreBtn=popup.querySelector('[data-important-more]'),list=popup.querySelector('.dashboard-alert-list'),label=popup.querySelector('[data-important-more-label]');
     if(moreBtn&&list&&label){const hiddenCount=label.textContent.match(/\d+/)?.[0]||'';moreBtn.addEventListener('click',()=>{const expanded=list.classList.toggle('expanded');label.textContent=expanded?'Sembunyikan':`Lihat ${hiddenCount} Lainnya`;});}
   }
+  const billingUnpaidModal=document.getElementById('billingUnpaidModal');
+  if(billingUnpaidModal){
+    const search=billingUnpaidModal.querySelector('[data-bm-unpaid-search]');
+    const count=billingUnpaidModal.querySelector('[data-bm-search-count]');
+    const title=billingUnpaidModal.querySelector('[data-bm-modal-title]');
+    const invoiceLink=billingUnpaidModal.querySelector('[data-bm-modal-invoice-link]');
+    const applySearch=()=>{const panel=billingUnpaidModal.querySelector('[data-bm-cycle-panel]:not([hidden])');if(!panel)return;const q=String(search?.value||'').trim().toLocaleLowerCase('id-ID');let visible=0;panel.querySelectorAll('[data-bm-search-row]').forEach(row=>{const show=!q||String(row.dataset.searchText||'').includes(q);row.hidden=!show;if(show)visible++;});const empty=panel.querySelector('[data-bm-search-empty]');if(empty)empty.hidden=visible!==0;if(count)count.textContent=q?`${visible} hasil`:'';};
+    billingUnpaidModal.addEventListener('show.bs.modal',event=>{const cycle=String(event.relatedTarget?.dataset?.bmCycle||'15');billingUnpaidModal.querySelectorAll('[data-bm-cycle-panel]').forEach(panel=>panel.hidden=panel.dataset.bmCyclePanel!==cycle);if(title)title.textContent=`Belum Bayar · Siklus ${cycle}`;if(invoiceLink){const u=new URL(invoiceLink.href,location.origin);u.searchParams.set('due_bucket',cycle==='15'?'due15':'due30');invoiceLink.href=u.pathname+'?'+u.searchParams.toString();}if(search)search.value='';applySearch();setTimeout(()=>search?.focus(),250);});
+    search?.addEventListener('input',applySearch);
+  }
   if(typeof Chart==='undefined')return;
   const common={responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},animation:{duration:850,easing:'easeOutQuart'},plugins:{legend:{display:false},tooltip:{backgroundColor:'#0b1020',borderColor:'rgba(255,255,255,.10)',borderWidth:1,padding:12}},scales:{x:{grid:{display:false},ticks:{color:'#77839a'}},y:{beginAtZero:true,border:{display:false},grid:{color:'rgba(148,163,184,.09)'},ticks:{color:'#77839a'}}}};
+  const rootStyle=getComputedStyle(document.documentElement);
+  const chartText=rootStyle.getPropertyValue('--muted').trim()||'#8e8e93';
+  const chartLine=rootStyle.getPropertyValue('--line').trim()||'rgba(127,127,127,.16)';
+  const dueMarkerPlugin={id:'billingDueMarkers',afterDraw(chart,_args,opts){if(!opts?.enabled)return;const x=chart.scales.x,y=chart.scales.y;if(!x||!y)return;const labels=chart.data.labels||[];const days=Array.isArray(opts.days)?opts.days:[];const ctx=chart.ctx;ctx.save();ctx.setLineDash([4,5]);ctx.lineWidth=1;ctx.strokeStyle='rgba(142,142,147,.42)';ctx.fillStyle=chartText;ctx.font='10px -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif';days.forEach(day=>{let index=labels.findIndex(label=>String(label)===String(day));if(index<0&&Number(day)===30){index=labels.findIndex(label=>Number.parseInt(label,10)>=28&&Number.parseInt(label,10)<=31);if(index>=0){for(let i=index;i<labels.length;i++){const n=Number.parseInt(labels[i],10);if(n>=28&&n<=31)index=i;else break;}}}if(index<0)return;const px=x.getPixelForValue(index);ctx.beginPath();ctx.moveTo(px,y.top);ctx.lineTo(px,y.bottom);ctx.stroke();ctx.fillText(`Due ${day}`,Math.min(px+5,x.right-42),y.top+12);});ctx.restore();}};
+
+  const collectionCanvas=document.getElementById('billingCollectionProgressChart');
+  let collectionChart=null,progressView='progress',progressMetric='customer';
+  const activeCycles=()=>billingData.selectedCycle==='all'?['15','30']:[String(billingData.selectedCycle)];
+  const collectionPayload=()=>{const source=progressView==='trend'?billingData.trend:billingData.progress;const colors={'15':'#0a84ff','30':'#af52de'};return {labels:source.labels,datasets:activeCycles().map(cycle=>({label:`Siklus ${cycle}`,data:source.cycles?.[cycle]?.[progressMetric]||[],borderColor:colors[cycle],backgroundColor:cycle==='15'?'rgba(10,132,255,.10)':'rgba(175,82,222,.10)',borderWidth:2.4,tension:.34,pointRadius:progressView==='trend'?3:0,pointHoverRadius:4,fill:false}))};};
+  const refreshCollectionChart=()=>{if(!collectionChart)return;const payload=collectionPayload();collectionChart.data.labels=payload.labels;collectionChart.data.datasets=payload.datasets;collectionChart.options.plugins.billingDueMarkers.enabled=progressView==='progress';collectionChart.update();};
+  if(collectionCanvas){collectionChart=new Chart(collectionCanvas,{type:'line',data:collectionPayload(),plugins:[dueMarkerPlugin],options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},animation:{duration:500},plugins:{legend:{display:false},billingDueMarkers:{enabled:true,days:activeCycles().map(Number)},tooltip:{backgroundColor:'#111113',padding:11,callbacks:{label:c=>`${c.dataset.label}: ${Number(c.raw||0).toFixed(1)}%`}}},scales:{x:{grid:{display:false},ticks:{color:chartText,maxTicksLimit:12}},y:{min:0,max:100,border:{display:false},grid:{color:chartLine},ticks:{color:chartText,callback:v=>v+'%'}}}}});}
+  document.querySelectorAll('[data-bm-progress-view]').forEach(btn=>btn.addEventListener('click',()=>{progressView=btn.dataset.bmProgressView;document.querySelectorAll('[data-bm-progress-view]').forEach(x=>x.classList.toggle('active',x===btn));refreshCollectionChart();}));
+  document.querySelectorAll('[data-bm-progress-metric]').forEach(btn=>btn.addEventListener('click',()=>{if(btn.disabled)return;progressMetric=btn.dataset.bmProgressMetric;document.querySelectorAll('[data-bm-progress-metric]').forEach(x=>x.classList.toggle('active',x===btn));refreshCollectionChart();}));
+
+  const incomeCanvas=document.getElementById('billingDailyIncomeChart');
+  if(incomeCanvas){const source=billingData.revenueSeries;new Chart(incomeCanvas,{type:'bar',data:{labels:source.labels,datasets:[{label:'Kas masuk',data:source.income,backgroundColor:'rgba(52,199,89,.72)',hoverBackgroundColor:'#34c759',borderRadius:6,borderSkipped:false,maxBarThickness:24}]},plugins:[dueMarkerPlugin],options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},billingDueMarkers:{enabled:true,days:activeCycles().map(Number)},tooltip:{backgroundColor:'#111113',padding:11,callbacks:{title:items=>`Tanggal ${items[0]?.label||'-'}`,label:c=>canSeeBillingMoney?`${money(c.raw)} · ${Number(source.count?.[c.dataIndex]||0)} transaksi`:`${Number(source.count?.[c.dataIndex]||0)} transaksi`}}},scales:{x:{grid:{display:false},ticks:{color:chartText,maxTicksLimit:12}},y:{beginAtZero:true,border:{display:false},grid:{color:chartLine},ticks:{color:chartText,callback:v=>canSeeBillingMoney?moneyCompact(v):''}}}}});}
+
   const billingCanvas=document.getElementById('commandBillingChart');
   if(billingCanvas){
     const ctx=billingCanvas.getContext('2d');const purple=ctx.createLinearGradient(0,0,0,300);purple.addColorStop(0,'rgba(96,58,234,.38)');purple.addColorStop(1,'rgba(96,58,234,0)');const red=ctx.createLinearGradient(0,0,0,300);red.addColorStop(0,'rgba(255,67,62,.20)');red.addColorStop(1,'rgba(255,67,62,0)');

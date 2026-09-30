@@ -1084,6 +1084,11 @@ async function ensureV53Schema() {
     INDEX idx_cash_settlement_cancel_settlement (settlement_id)
   )`);
   await db.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS settlement_id BIGINT UNSIGNED NULL AFTER settlement_status`);
+  // v1.26 dashboard reads the actual cash-recognition timestamp directly. Make these
+  // columns part of the normal startup schema instead of relying on the reconciliation
+  // page to create them lazily, otherwise a fresh/older install could 500 on Dashboard.
+  await db.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS settled_by BIGINT UNSIGNED NULL AFTER settlement_id`);
+  await db.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS settled_at DATETIME NULL AFTER settled_by`);
   await db.query(`ALTER TABLE payments ADD INDEX IF NOT EXISTS idx_payments_settlement (settlement_id)`);
   await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS cash_aging_alert_days TINYINT UNSIGNED NOT NULL DEFAULT 3`);
   await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS cash_aging_last_alert_date DATE NULL`);
