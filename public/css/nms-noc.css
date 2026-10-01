@@ -757,23 +757,3 @@ html[data-theme="dark"] .mx{--mx-body:var(--x-card3)}
 @media (prefers-reduced-motion:reduce){.mx *,.mx{animation:none!important;transition:none!important}}
 .nx-editing #nxWidgets>.nx-w{padding-top:40px}
 .nx-editing #nxWidgets>.nx-w.nx-card{padding-top:36px}
-
-/* Registrasi sesi PPPoE paralel pada NOC. */
-.nx-parallel-summary{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
-.nx-parallel-summary span{padding:9px 12px;border-radius:10px;background:var(--panel-2,var(--panel));font-size:12px}
-.nx-parallel-summary b{font-size:18px;margin-right:4px;font-variant-numeric:tabular-nums}
-.nx-parallel-summary .attention{color:var(--warning);background:var(--warning-tint)}
-.nx-parallel-list{display:grid;gap:0}
-.nx-parallel-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
-.nx-parallel-row>div:first-child{min-width:0;display:grid;gap:4px}
-.nx-parallel-row strong{font-size:13px}.nx-parallel-row strong small,.nx-parallel-row span{font-size:12px;color:var(--muted);font-weight:400}
-.nx-parallel-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-.nx-parallel-actions label{font-size:12px;color:var(--muted)}.nx-parallel-actions input{width:50px;margin-left:4px;border:1px solid var(--line);border-radius:7px;background:var(--input);color:var(--text);padding:5px}
-.nx-parallel-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:14px;margin-top:12px;border:1px solid var(--line);border-radius:12px}
-.nx-parallel-form[hidden]{display:none}.nx-parallel-form label{display:grid;gap:5px;font-size:12px;color:var(--muted)}
-.nx-parallel-form input,.nx-parallel-form select{width:100%;min-height:38px;border:1px solid var(--line);border-radius:8px;background:var(--input);color:var(--text);padding:6px 9px}
-.nx-parallel-options{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px;font-size:12px}
-.nx-parallel-form-actions{grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px}
-@media(max-width:700px){.nx-parallel-row{align-items:flex-start;flex-direction:column}.nx-parallel-actions{justify-content:flex-start}.nx-parallel-form{grid-template-columns:1fr}}
-
-.nx-parallel-note{margin:12px 0 0;color:var(--muted);font-size:12px;line-height:1.5}

@@ -13,8 +13,6 @@ function requireToken(token){if(!css.includes(token))throw new Error(`Responsive
   '.infra-hub-shell{display:block',
   '.infra-frame-wrap,.infra-frame-wrap iframe{min-height:560px}',
   '.cash-approval-item{grid-template-columns:1fr}',
-  '.dashboard-user-ticker{grid-template-columns:1fr}',
-  '.cluster-filter-grid{grid-template-columns:1fr}',
-  '.module-actions>.btn-tech,.module-actions>a.btn-tech,.module-actions>form{flex-basis:100%}'
+  '.dashboard-user-ticker{grid-template-columns:1fr}'
 ].forEach(requireToken);
-console.log('Responsive CSS validation OK: desktop/tablet/mobile breakpoints and critical Dashboard/Analytics/Infrastructure/Approval/action stacking rules are present.');
+console.log('Responsive CSS validation OK: desktop/tablet/mobile breakpoints and critical Dashboard/Analytics/Infrastructure/Approval stacking rules are present.');

@@ -3,7 +3,6 @@ const db = require('../../config/db');
 const cache = require('./cache');
 const store = require('./secretStore');
 const poller = require('./poller');
-const parallel = require('./parallel');
 
 const FLAP_THRESHOLD = Number(process.env.NMS_FLAP_THRESHOLD || 5);
 
@@ -37,12 +36,16 @@ async function getDashboard(siteId = null) {
   return cache.wrap(key, 5000, async () => {
     const params = siteId ? [Number(siteId)] : [];
     const siteWhere = siteId ? 'AND p.site_id=?' : '';
-    const [routers, counts, alerts, flaps, events, freshnessRows, todayRows, impactRows, parallelData] = await Promise.all([
+    const [routers, counts, alerts, flaps, events, freshnessRows, todayRows, impactRows] = await Promise.all([
       poller.routerSnapshots(siteId), store.counts(siteId), openAlerts(siteId), flapping(siteId), recentEvents(siteId),
       db.query(`SELECT MIN(p.last_seen_on_router_at) oldest, MAX(p.last_seen_on_router_at) newest FROM ppp_secrets p WHERE p.removed_on_router_at IS NULL ${siteWhere}`, params).then(([r]) => r[0] || {}),
       db.query(`SELECT COALESCE(SUM(linked_count),0) linked, COUNT(*) batches FROM nms_sync_batches WHERE created_at >= CURDATE() ${siteId ? 'AND site_id=?' : ''}`, params).then(([r]) => r[0] || {}),
-      db.query(`SELECT p.router_id, COUNT(*) linked, SUM(p.is_online=1) online, SUM(p.is_isolated=1) isolated, SUM(p.is_online=0 AND p.is_isolated=0 AND p.disabled=0) offline FROM ppp_secrets p WHERE p.removed_on_router_at IS NULL ${siteWhere} GROUP BY p.router_id`, params).then(([r]) => r || []),
-      parallel.summary(siteId)
+      db.query(`SELECT p.router_id,
+          SUM(p.customer_id IS NOT NULL) linked,
+          SUM(p.customer_id IS NOT NULL AND p.is_online=1 AND p.is_isolated=0) online,
+          SUM(p.customer_id IS NOT NULL AND p.is_isolated=1) isolated,
+          SUM(p.customer_id IS NOT NULL AND p.is_online=0 AND p.is_isolated=0 AND p.disabled=0) offline
+        FROM ppp_secrets p WHERE p.removed_on_router_at IS NULL ${siteWhere} GROUP BY p.router_id`, params).then(([r]) => r || [])
     ]);
     const impact = new Map(impactRows.map(r => [Number(r.router_id), { linked: Number(r.linked || 0), online: Number(r.online || 0), isolated: Number(r.isolated || 0), offline: Number(r.offline || 0) }]));
     routers.forEach(router => { router.impact = impact.get(Number(router.routerId)) || { linked: 0, online: 0, isolated: 0, offline: 0 }; });
@@ -51,7 +54,7 @@ async function getDashboard(siteId = null) {
       generatedAt: new Date().toISOString(), siteId: siteId ? Number(siteId) : null,
       degraded: routers.length > 0 && reachable < routers.length,
       allOffline: routers.length > 0 && reachable === 0,
-      routers, customers: { online: parallelData.onlineCustomers, sessions: parallelData.activeSessions, offline: counts.offline, isolated: counts.isolated, total: counts.total }, parallel: parallelData,
+      routers, customers: { online: counts.linkedOnline, offline: counts.linkedOffline, isolated: counts.linkedIsolated, total: counts.linkedTotal },
       sync: { synced: counts.synced, unsynced: counts.unsynced, exempt: counts.exempt, syncedPct: counts.syncedPct, linkedToday: Number(todayRows.linked || 0), batchesToday: Number(todayRows.batches || 0) },
       freshness: { oldest: freshnessRows.oldest || null, newest: freshnessRows.newest || null, stale: !freshnessRows.newest || Date.now() - new Date(freshnessRows.newest).getTime() > 10 * 60000 },
       healthScore: Math.max(0, Math.round((routers.length ? reachable / routers.length * 45 : 45) + counts.syncedPct * .45 + (alerts.filter(a => a.severity === 'critical').length ? 0 : 10))),

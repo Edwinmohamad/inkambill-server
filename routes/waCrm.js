@@ -26,7 +26,6 @@ function filterFrom(src = {}) {
   return {
     billing: bc.BILLING_FILTERS[src.billing] ? src.billing : 'all',
     site_id: src.site_id, cluster_id: src.cluster_id, router_id: src.router_id, olt_id: src.olt_id, package_id: src.package_id,
-    period_month: src.period_month, period_year: src.period_year, due_day: src.due_day,
     vlan: src.vlan || '', q: src.q || '', customer_ids: src.customer_ids ? [].concat(src.customer_ids) : [],
   };
 }
@@ -63,7 +62,7 @@ router.post('/broadcast', requireBroadcaster, api(async (req, res) => {
   if (b.target_mode === 'selected' && !filter.customer_ids.length) throw new Error('Belum ada pelanggan yang dipilih.');
   if (b.target_mode !== 'selected') filter.customer_ids = [];
   const result = await bc.createBroadcast({ name: b.name, templateKey: b.template_key || null, message: b.message, extra: { detail_gangguan: b.detail_gangguan, estimasi_selesai: b.estimasi_selesai }, filter, mode: b.mode === 'scheduled' ? 'scheduled' : 'direct', scheduledAt: b.scheduled_at, userId: req.session.user.id });
-  await audit({ userId: req.session.user.id, action: 'blast', entityType: 'wa_broadcast', entityId: result.id, description: `Broadcast WA "${String(b.name || '').slice(0, 80)}": ${result.queued} penerima${result.scheduledAt ? ` · terjadwal` : ''} (${result.skippedBlacklist} blacklist, ${result.skippedInvalid} nomor tidak valid, ${result.skippedPending || 0} pending pembayaran)`, ip: req.ip });
+  await audit({ userId: req.session.user.id, action: 'blast', entityType: 'wa_broadcast', entityId: result.id, description: `Broadcast WA "${String(b.name || '').slice(0, 80)}": ${result.queued} penerima${result.scheduledAt ? ` · terjadwal` : ''} (${result.skippedBlacklist} blacklist, ${result.skippedInvalid} nomor tidak valid)`, ip: req.ip });
   res.json({ ok: true, ...result });
 }));
 router.post('/broadcast/:id/:action', requireBroadcaster, api(async (req, res) => {

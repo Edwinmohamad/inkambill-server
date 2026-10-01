@@ -3,8 +3,7 @@ const db = require('../config/db');
 const { requirePermission } = require('../middleware/auth');
 const { getServerResourceSnapshot } = require('../services/serverMonitorService');
 const { getGatewayStatus, getQueueStats } = require('../services/whatsappGatewayService');
-const { getBillingControlData } = require('../services/dashboardBillingControlService');
-const { loadDashboardBillingMonitor } = require('../services/dashboardBillingMonitorService');
+const { loadDashboardBillingMonitor, normalizeCycle, normalizeTrendMonths } = require('../services/dashboardBillingMonitorService');
 const router = express.Router();
 
 // v1.21.0 — Dashboard Section 1, item 1: countdown to the next billing "closing" (isolir) date, derived
@@ -84,8 +83,8 @@ router.get('/', async (req, res) => {
   const selectedMonth = safeInt(req.query.month, now.getMonth() + 1, 1, 12);
   const selectedYear = safeInt(req.query.year, now.getFullYear(), 2020, 2100);
   const selectedSiteCode = String(req.query.site || '').trim().toUpperCase();
-  const selectedCycle=['15','30'].includes(String(req.query.cycle)) ? String(req.query.cycle) : 'all';
-  const trendMonths=[3,6,12].includes(Number(req.query.trend)) ? Number(req.query.trend) : 6;
+  const selectedCycle = normalizeCycle(req.query.cycle);
+  const trendMonths = normalizeTrendMonths(req.query.trend);
   const kpiMonth=safeInt(req.query.kpi_month,selectedMonth,1,12),kpiYear=safeInt(req.query.kpi_year,selectedYear,2020,2100);
   const kpiSiteCode=String(req.query.kpi_site||'').trim().toUpperCase();
   const psbMonth=safeInt(req.query.psb_month,selectedMonth,1,12),psbYear=safeInt(req.query.psb_year,selectedYear,2020,2100),psbSiteCode=String(req.query.psb_site??selectedSiteCode).trim().toUpperCase();
@@ -99,49 +98,9 @@ router.get('/', async (req, res) => {
   const kpiSite=kpiSiteCode?siteOptions.find(s=>s.code===kpiSiteCode):null,kpiScope=kpiSite?` AND c.site_id=?`:'',kpiParams=kpiSite?[kpiSite.id]:[];
   const psbSite=psbSiteCode?siteOptions.find(s=>s.code===psbSiteCode):null,psbScope=psbSite?` AND c.site_id=?`:'',psbParams=psbSite?[psbSite.id]:[];
   const offSite=offSiteCode?siteOptions.find(s=>s.code===offSiteCode):null,offScope=offSite?` AND c.site_id=?`:'',offParams=offSite?[offSite.id]:[];
-
-  // Billing Control Center: independent month/site monitor so billing staff can inspect one site
-  // without changing the rest of the dashboard filters.
-  const billingMonth=safeInt(req.query.billing_month,selectedMonth,1,12);
-  const billingYear=safeInt(req.query.billing_year,selectedYear,2020,2100);
-  const billingSiteCode=String(req.query.billing_site??selectedSiteCode).trim().toUpperCase();
-  const billingSite=billingSiteCode?siteOptions.find(s=>s.code===billingSiteCode):null;
-  // Data di panel Billing Monitor dipakai langsung oleh view Dashboard. Tetap
-  // sediakan struktur kosong bila instalasi lama belum memiliki kolom pendukung,
-  // sehingga Dashboard utama tidak berubah menjadi halaman error.
-  const emptyBillingMonitor=()=>({
-    filters:{cycle:selectedCycle,trendMonths},
-    today:{amount:0,count:0,transfer:0,qris:0,cash:0,yesterdayAmount:0,deltaPct:null,pendingCount:0,pendingAmount:0},
-    cycles:{'15':{invoiceCount:0,paidCount:0,pendingCount:0,openCount:0,billed:0,collected:0,outstanding:0,pendingAmount:0,customerRate:0,nominalRate:0,deltaCustomerRate:null},'30':{invoiceCount:0,paidCount:0,pendingCount:0,openCount:0,billed:0,collected:0,outstanding:0,pendingAmount:0,customerRate:0,nominalRate:0,deltaCustomerRate:null}},
-    unpaid:{'15':[],'30':[]},pending:{'15':[],'30':[]},recent:[],
-    progress:{labels:[],dates:[],cycles:{'15':{customer:[],nominal:[]},'30':{customer:[],nominal:[]}}},
-    trend:{labels:[],periods:[],cycles:{'15':{customer:[],nominal:[]},'30':{customer:[],nominal:[]}}},
-    revenueSeries:{labels:[],income:[],count:[]},
-    timing:{early:0,on_time:0,h1_3:0,late:0,total:0,cycles:{'15':{early:0,on_time:0,h1_3:0,late:0,total:0},'30':{early:0,on_time:0,h1_3:0,late:0,total:0}}}
-  });
-  let billingMonitor;
-  try {
-    billingMonitor=await loadDashboardBillingMonitor({month:selectedMonth,year:selectedYear,siteId:siteId||null,cycle:selectedCycle,trendMonths,now});
-  } catch (error) {
-    console.error('Dashboard Billing Monitor tidak dapat dimuat:', error?.message || error);
-    billingMonitor=emptyBillingMonitor();
-  }
-  // Billing Control Center is an enhancement panel.  Older installations may not
-  // have every optional billing column yet, so its query must never make the
-  // whole Dashboard unavailable.  Keep the shell usable and leave the exact
-  // database detail in the server log for the next migration run.
-  let billingControl;
-  try{
-    billingControl=await getBillingControlData({month:billingMonth,year:billingYear,siteId:billingSite?.id||null});
-  }catch(error){
-    console.error('Dashboard Billing Control tidak dapat dimuat:',error?.message||error);
-    billingControl={
-      month:billingMonth,year:billingYear,
-      summary:{billedCustomers:0,billedAmount:0,collectedAmount:0,outstandingAmount:0,paidCustomers:0,openCustomers:0,paymentCount:0,confirmedAmount:0},
-      actionCounts:{must_isolate:0,follow_up:0,isolated:0,pending:0,due_today:0,not_due:0},
-      customers:[],siteStats:[],unavailable:true
-    };
-  }
+  // Start the billing monitor queries immediately; the service runs its independent reads in parallel.
+  // We await it near render time so existing dashboard queries can continue unchanged.
+  const billingMonitorPromise=loadDashboardBillingMonitor({month:selectedMonth,year:selectedYear,siteId,cycle:selectedCycle,trendMonths,now});
 
   const [[customerStats]] = await db.execute(`SELECT
     COUNT(*) total,
@@ -265,15 +224,15 @@ router.get('/', async (req, res) => {
   const todayKey=isoDate(now),todayDuty=weekDuty.filter(row=>row.duty_date_key===todayKey);
   const jakartaHour=Number(new Intl.DateTimeFormat('en-GB',{hour:'2-digit',hourCycle:'h23',timeZone:'Asia/Jakarta'}).format(now));
   const greeting=jakartaHour<11?'Selamat pagi':jakartaHour<15?'Selamat siang':jakartaHour<18?'Selamat sore':'Selamat malam';
-  const years=Array.from({length:5},(_,i)=>now.getFullYear()-2+i);for(const year of [selectedYear,kpiYear,psbYear,offYear,billingYear])if(!years.includes(year))years.push(year);years.sort((a,b)=>a-b);
+  const years=Array.from({length:5},(_,i)=>now.getFullYear()-2+i);for(const year of [selectedYear,kpiYear,psbYear,offYear])if(!years.includes(year))years.push(year);years.sort((a,b)=>a-b);
+  const billingMonitor=await billingMonitorPromise;
 
   res.render('dashboard/index',{
     title:'Dashboard',customer,revenue,billed,unpaid,newCustomers,psbToday,psbCustomers,network,noc,recent,loginTicker,siteOptions,siteCustomerRows,weekDuty,todayDuty,week,invoiceKpi,hardOverdueCustomers,inactiveCustomers,isolatedCustomers,
     selectedSiteCode:selectedSite?.code||'',selectedSiteName:selectedSite?.name||'Semua Site',collectionRate,routerRate,
-    selectedMonth,selectedYear,selectedCycle,trendMonths,years,kpiMonth,kpiYear,kpiSiteCode:kpiSite?.code||'',psbMonth,psbYear,psbSiteCode:psbSite?.code||'',offMonth,offYear,offSiteCode:offSite?.code||'',
-    greeting,monthly:{labels:monthLabels,invoices:monthlyInvoices,payments:monthlyPayments,psbLabels,psb:dailyPsb},
+    selectedMonth,selectedYear,years,selectedCycle,trendMonths,kpiMonth,kpiYear,kpiSiteCode:kpiSite?.code||'',psbMonth,psbYear,psbSiteCode:psbSite?.code||'',offMonth,offYear,offSiteCode:offSite?.code||'',
+    greeting,billingMonitor,monthly:{labels:monthLabels,invoices:monthlyInvoices,payments:monthlyPayments,psbLabels,psb:dailyPsb},
     closing,waOverview,serverResource,odpAvailableCount,
-    billingControl,billingMonitor,billingMonth,billingYear,billingSiteCode:billingSite?.code||'',
     collectionBilled:nz(collectionBilling.total),collectionCollected:nz(collectionBilling.collected)
   });
 });

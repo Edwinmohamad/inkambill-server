@@ -451,30 +451,6 @@ async function markChatMessage(row, patch) {
   } catch (e) { console.error('WA queue: gagal update status chat:', e.message); }
 }
 
-async function cancelStaleFinancialBroadcast(row) {
-  if (!row?.broadcast_id || !row?.customer_id || !row?.invoice_id || row.message_type !== 'broadcast') return false;
-  try {
-    const [[b]] = await db.execute(`SELECT filter_json FROM wa_broadcasts WHERE id=? LIMIT 1`, [row.broadcast_id]);
-    let filter = {};
-    try { filter = b?.filter_json ? JSON.parse(b.filter_json) : {}; } catch (_) { filter = {}; }
-    if (!['open','due_h3','due_h1','due_today','overdue','isolation_due'].includes(filter.billing)) return false;
-    const [[state]] = await db.execute(`SELECT i.status,i.outstanding,
-        EXISTS(SELECT 1 FROM payments p WHERE p.invoice_id=i.id AND p.status='pending') pending_payment
-      FROM invoices i WHERE i.id=? AND i.customer_id=? LIMIT 1`, [row.invoice_id, row.customer_id]);
-    const stale = !state || !['unpaid','partial','overdue'].includes(state.status) || Number(state.outstanding || 0) <= 0 || Number(state.pending_payment || 0) > 0;
-    if (!stale) return false;
-    const reason = Number(state?.pending_payment || 0) > 0
-      ? 'Broadcast dibatalkan otomatis: pembayaran sedang menunggu approval.'
-      : 'Broadcast dibatalkan otomatis: tagihan sudah tidak outstanding.';
-    await db.execute(`UPDATE wa_messages SET status='cancelled',error_message=? WHERE id=? AND status='queued'`, [reason, row.id]);
-    if (row.broadcast_id) realtime().emit('broadcast.progress', { broadcastId: row.broadcast_id });
-    return true;
-  } catch (e) {
-    console.error(`WA queue: gagal final-check broadcast #${row.broadcast_id}:`, e.message);
-    return false; // fail-open agar gangguan query tambahan tidak menghentikan seluruh queue.
-  }
-}
-
 async function nextQueuedRow(bulkAllowed) {
   const bulkList = antiBan.BULK_TYPES.map(() => '?').join(',');
   const [[row]] = await db.execute(
@@ -505,9 +481,6 @@ async function processQueue() {
       const row = await nextQueuedRow(gate.allowed);
       if (!row) break;
       const isBulk = antiBan.BULK_TYPES.includes(row.message_type);
-      // Scheduled financial broadcasts are checked again immediately before send.
-      // If the invoice was paid or a payment entered pending approval after scheduling, skip safely.
-      if (await cancelStaleFinancialBroadcast(row)) continue;
       if (isBulk && await antiBan.isBlacklisted(row.phone)) {
         await db.execute(`UPDATE wa_messages SET status='cancelled',error_message='Dibatalkan: nomor opt-out (blacklist broadcast).' WHERE id=?`, [row.id]);
         continue;

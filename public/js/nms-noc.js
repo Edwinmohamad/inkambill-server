@@ -163,90 +163,18 @@
   // Router yang baru saja down diberi tanda berkedip singkat (bukan terus-menerus).
   const downAt = new Map();
 
-  // Otorisasi PPPoE paralel dipisah dari binding billing utama.
-  let parallelPick = null;
-  async function refreshParallel() {
-    try { const out = await api(`/nms/api/dashboard${N.withSite()}`); data = out.data; renderSync(); }
-    catch (e) { toast(e.message, 'err'); }
-  }
-  function renderParallel() {
-    const p = data.parallel || {};
-    const summary = $('nxParallelSummary'), list = $('nxParallelRows');
-    if (!summary || !list) return;
-    summary.innerHTML = `<span><b>${p.onlineCustomers || 0}</b> pelanggan online</span><span><b>${p.activeSessions || 0}</b> sesi aktif</span><span><b>${p.official || 0}</b> paralel resmi</span><span class="${p.needsReview ? 'attention' : ''}"><b>${p.needsReview || 0}</b> perlu diperiksa</span>`;
-    const groups = p.groups || [];
-    if (list.contains(document.activeElement) && document.activeElement.matches('[data-limit]')) return;
-    list.innerHTML = groups.length ? `<div class="nx-parallel-list">${groups.map(g => {
-      const alarm = g.sessions > g.limit || g.networkStatus === 'isolated' || !g.hasPrimary;
-      return `<div class="nx-parallel-row"><div><strong>${esc(g.customerName)} <small>${esc(g.customerCode)}</small></strong><span>${esc(g.siteCode)} · ${g.secrets.map(x => `${esc(x.username)} (${Number(x.sessions)} sesi${x.registered ? ', tambahan' : ''})`).join(' · ')}</span></div><div class="nx-parallel-actions"><b class="nx-pill ${alarm ? 'orange' : 'green'}">${g.sessions}/${g.limit} sesi${g.networkStatus === 'isolated' ? ' · pelanggan diisolir' : ''}${!g.hasPrimary ? ' · secret utama tidak ditemukan' : ''}</b>${N.canControl ? `<label>Batas <input type="number" min="1" max="8" value="${g.limit}" data-limit="${g.customerId}" aria-label="Batas sesi ${esc(g.customerName)}"></label>${g.secrets.filter(x => x.registered).map(x => `<button type="button" class="nx-btn sm" data-parallel-remove="${x.id}">Lepas ${esc(x.username)}</button>`).join('')}` : ''}</div></div>`;
-    }).join('')}</div>` : '<div class="nx-empty">Belum ada pelanggan dengan sesi paralel aktif.</div>';
-  }
-  $('nxParallelRows')?.addEventListener('change', async e => {
-    if (!e.target.matches('[data-limit]')) return;
-    try { await api(`/nms/api/parallel/customers/${e.target.dataset.limit}/limit`, { method:'POST', body:{ limit:Number(e.target.value) } }); await refreshParallel(); }
-    catch (err) { toast(err.message, 'err'); await refreshParallel(); }
-  });
-  $('nxParallelRows')?.addEventListener('click', async e => {
-    const button = e.target.closest('[data-parallel-remove]'); if (!button) return;
-    if (!confirm('Hapus registrasi paralel ini? Secret kembali tampil sebagai belum terhubung.')) return;
-    button.disabled = true;
-    try { await api(`/nms/api/parallel/secrets/${button.dataset.parallelRemove}/remove`, { method:'POST' }); await refreshParallel(); }
-    catch (err) { toast(err.message, 'err'); button.disabled = false; }
-  });
-  $('nxParallelAdd')?.addEventListener('click', async () => {
-    const form = $('nxParallelForm'); form.hidden = false; parallelPick = null;
-    $('nxParallelCustomerSearch').value = ''; $('nxParallelCustomerOptions').replaceChildren();
-    try {
-      const out = await api(`/nms/api/parallel/candidates${N.withSite()}`), select = $('nxParallelSecret');
-      select.replaceChildren();
-      for (const row of out.rows) { const opt = document.createElement('option'); opt.value = row.id; opt.dataset.site = row.site_id; opt.textContent = `${row.site_code} · ${row.username} (${row.router_name}, ${row.active_sessions} sesi)`; select.appendChild(opt); }
-      if (!out.rows.length) { toast('Tidak ada secret aktif tanpa pelanggan untuk didaftarkan.', 'err'); form.hidden = true; }
-    } catch (e) { toast(e.message, 'err'); form.hidden = true; }
-  });
-  $('nxParallelCancel')?.addEventListener('click', () => { $('nxParallelForm').hidden = true; });
-  $('nxParallelSecret')?.addEventListener('change', () => { parallelPick = null; $('nxParallelCustomerSearch').value = ''; $('nxParallelCustomerOptions').replaceChildren(); });
-  let parallelSearchTimer;
-  $('nxParallelCustomerSearch')?.addEventListener('input', e => {
-    clearTimeout(parallelSearchTimer); parallelPick = null;
-    const q = e.target.value.trim(), box = $('nxParallelCustomerOptions'); box.replaceChildren();
-    if (q.length < 2) return;
-    parallelSearchTimer = setTimeout(async () => {
-      try {
-        const site = $('nxParallelSecret').selectedOptions[0]?.dataset.site;
-        const out = await api(`/nms/api/customers/search${N.qs({ site, q })}`);
-        box.replaceChildren();
-        for (const c of (out.rows || []).filter(x => x.linked_username && x.customer_status === 'active').slice(0,20)) {
-          const b = document.createElement('button'); b.type='button'; b.className='nx-btn sm';
-          b.textContent = `${c.customer_code} · ${c.name} · utama: ${c.linked_username}`;
-          b.addEventListener('click', () => { parallelPick = c.id; $('nxParallelCustomerSearch').value = `${c.customer_code} · ${c.name}`; box.replaceChildren(); }); box.appendChild(b);
-        }
-        if (!box.childElementCount) box.textContent = 'Pelanggan aktif dengan secret utama tidak ditemukan di site ini.';
-      } catch (err) { box.textContent = err.message; }
-    }, 250);
-  });
-  $('nxParallelForm')?.addEventListener('submit', async e => {
-    e.preventDefault(); if (!parallelPick) return toast('Pilih pelanggan dari hasil pencarian.', 'err');
-    const button = e.currentTarget.querySelector('[type=submit]'); button.disabled = true;
-    try {
-      await api('/nms/api/parallel/register', { method:'POST', body:{ secretId:Number($('nxParallelSecret').value), customerId:Number(parallelPick), limit:Number($('nxParallelLimit').value), note:$('nxParallelNote').value } });
-      $('nxParallelForm').hidden = true; await refreshParallel(); toast('Paralel tercatat untuk monitoring NOC.', 'ok');
-    } catch (err) { toast(err.message, 'err'); }
-    finally { button.disabled = false; }
-  });
-
   // ---------- Sync ring + KPI ----------
   function renderSync() {
     const s = data.sync || {}, c = data.customers || {}, col = COLORS();
     setNum($('kpiOnline'), c.online); setNum($('kpiOffline'), c.offline); setNum($('kpiIsolated'), c.isolated); setNum($('kpiUnsynced'), s.unsynced);
     setNum($('kpiHealth'), data.healthScore);
-    renderParallel();
     $('kpiFreshness').textContent = data.freshness?.newest ? `${data.freshness.stale ? '⚠ mirror basi ' : 'mirror '}${N.ago(data.freshness.newest)}` : '⚠ belum ada mirror';
-    const total = (s.synced || 0) + (s.unsynced || 0) + (s.exempt || 0) + (s.parallel || 0);
-    const seg = [[s.synced || 0, col.green], [s.unsynced || 0, col.purple], [s.exempt || 0, col.gray], [s.parallel || 0, col.blue]];
+    const total = (s.synced || 0) + (s.unsynced || 0) + (s.exempt || 0);
+    const seg = [[s.synced || 0, col.green], [s.unsynced || 0, col.purple], [s.exempt || 0, col.gray]];
     const R = 70, len = 2 * Math.PI * R; let off = 0;
     const arcs = total ? seg.filter(([v]) => v > 0).map(([v, color]) => { const l = v / total * len; const gap = seg.filter(([x]) => x > 0).length > 1 ? 3 : 0; const a = `<circle cx="85" cy="85" r="${R}" fill="none" stroke="${color}" stroke-width="16" stroke-dasharray="${Math.max(0, l - gap)} ${len}" stroke-dashoffset="${-off}" stroke-linecap="butt"/>`; off += l; return a; }).join('') : '';
     $('nxSyncRing').innerHTML = `<svg viewBox="0 0 170 170"><circle cx="85" cy="85" r="${R}" fill="none" stroke="${col.track}" stroke-width="16"/>${arcs}</svg><div class="c"><b>${s.syncedPct ?? 0}%</b><small>ter-link</small></div>`;
-    $('nxSyncLegend').innerHTML = `<span><i style="background:${col.green}"></i>Ter-link <b>${s.synced ?? 0}</b></span><span><i style="background:${col.purple}"></i>Belum <b>${s.unsynced ?? 0}</b></span><span><i style="background:${col.gray}"></i>Exempt <b>${s.exempt ?? 0}</b></span><span><i style="background:${col.blue}"></i>Paralel <b>${s.parallel ?? 0}</b></span><span>Hari ini <b>${s.linkedToday ?? 0}</b> · ${s.batchesToday ?? 0} batch</span>`;
+    $('nxSyncLegend').innerHTML = `<span><i style="background:${col.green}"></i>Ter-link <b>${s.synced ?? 0}</b></span><span><i style="background:${col.purple}"></i>Belum <b>${s.unsynced ?? 0}</b></span><span><i style="background:${col.gray}"></i>Exempt <b>${s.exempt ?? 0}</b></span><span>Hari ini <b>${s.linkedToday ?? 0}</b> · ${s.batchesToday ?? 0} batch</span>`;
   }
 
   // ---------- Perlu perhatian (dari rekonsiliasi) ----------

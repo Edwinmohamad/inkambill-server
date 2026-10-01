@@ -65,52 +65,12 @@ function currentInvoiceAmounts(customer, year, monthIndex) {
 // package or a heavy discount on the first invoice) — better to fall back to normal billing + a manual
 // follow-up than to silently record a zero/negative technician commission.
 async function settleNewInstallCommission(conn, { invoiceId, customer, total, actorUserId }) {
-  const [[settingsRow]] = await conn.execute(`SELECT install_sales_flat_commission FROM settings WHERE id=1 LIMIT 1`);
-  const salesCommission = Number(settingsRow?.install_sales_flat_commission ?? 50000);
-  if (!(Number(total) > salesCommission)) {
-    const message = `Customer ${customer.id} (${customer.customer_code||''}) ditandai Pemasangan Baru tapi total tagihan pertama (Rp${Number(total).toLocaleString('id-ID')}) tidak lebih besar dari Komisi Sales flat saat ini (Rp${salesCommission.toLocaleString('id-ID')}) — invoice #${invoiceId} dibiarkan normal (belum lunas), perlu ditangani manual.`;
-    await db.execute(`INSERT INTO automation_logs (job_name, status, message) VALUES ('install_commission','skipped',?)`, [message]).catch(() => {});
-    await db.execute(
-      `INSERT INTO system_notifications(recipient_id,type,tone,icon,title,detail,href,entity_type,entity_id)
-       SELECT u.id,'install_commission_skipped','warning','bi-exclamation-triangle-fill',?,?,?,'customer',? FROM users u
-       WHERE u.is_active=1 AND LOWER(TRIM(u.role)) IN ('admin','master_admin')
-         AND NOT EXISTS (SELECT 1 FROM system_notifications WHERE type='install_commission_skipped' AND entity_type='customer' AND entity_id=?)`,
-      [`Komisi Pemasangan Baru tidak otomatis: ${customer.name}`, message, `/customers?q=${encodeURIComponent(customer.customer_code||customer.name)}`, customer.id, customer.id]
-    ).catch(() => {});
-    return;
-  }
-  const technicianCommission = Number(total) - salesCommission;
-  const techName = String(customer.install_technician_name || '').trim() || 'Teknisi (tidak diisi)';
-  const salesName = String(customer.install_sales_name || '').trim() || 'Sales (tidak diisi)';
-
-  const [payRes] = await conn.execute(
-    `INSERT INTO payments (invoice_id,amount,method,reference,status,settlement_status,paid_at,received_by,verified_by,verified_at,notes)
-     VALUES (?,?,?,?,?,?,NOW(),?,?,NOW(),?)`,
-    [invoiceId, total, 'cash', 'Pemasangan Baru', 'confirmed', 'settled', actorUserId, actorUserId,
-      `Dibayar tunai saat pemasangan (otomatis lunas) — dibagi komisi teknisi (${techName}) & sales (${salesName}).`]
-  );
-  const paymentId = payRes.insertId;
-  await refreshInvoiceStatus(conn, invoiceId);
-
-  const catIds = {};
-  for (const code of ['PSB-IN', 'KOMISI-TEK', 'KOMISI-SLS']) {
-    const [[row]] = await conn.execute(`SELECT id FROM cash_categories WHERE code=? LIMIT 1`, [code]);
-    catIds[code] = row?.id || null;
-  }
-  const entries = [
-    catIds['PSB-IN'] && { code: 'PSB-IN', amount: total, label: `Pemasangan Baru ${customer.name}`, sourceType: 'install_income' },
-    catIds['KOMISI-TEK'] && { code: 'KOMISI-TEK', amount: technicianCommission, label: `Komisi Teknisi ${techName} - ${customer.name}`, sourceType: 'install_commission_technician' },
-    catIds['KOMISI-SLS'] && { code: 'KOMISI-SLS', amount: salesCommission, label: `Komisi Sales ${salesName} - ${customer.name}`, sourceType: 'install_commission_sales' },
-  ].filter(Boolean);
-  for (const entry of entries) {
-    const [exists] = await conn.execute(`SELECT id FROM cash_transactions WHERE source_type=? AND source_id=? LIMIT 1`, [entry.sourceType, paymentId]);
-    if (exists.length) continue;
-    const [r] = await conn.execute(
-      `INSERT INTO cash_transactions(transaction_date,name,category_id,site_id,amount,notes,source_type,source_id,created_by) VALUES(CURDATE(),?,?,?,?,?,?,?,?)`,
-      [entry.label, catIds[entry.code], customer.site_id, entry.amount, `Faktur pemasangan pelanggan ${customer.customer_code||customer.id}`, entry.sourceType, paymentId, actorUserId]
-    );
-    await assignCashTransactionCode(conn, r.insertId, catIds[entry.code], new Date());
-  }
+  // FINANCIAL-INTEGRITY FINAL: PSB registration/invoice generation MUST NOT create a payment
+  // or cash journal. Revenue is realized only through the normal payment flow.
+  await conn.execute(`INSERT INTO automation_logs (job_name,status,message) VALUES ('install_commission','deferred',?)`,[
+    `PSB ${customer.customer_code||customer.id} invoice #${invoiceId}: jurnal pemasukan/komisi ditunda sampai pembayaran benar-benar direalisasi.`
+  ]).catch(()=>{});
+  return { deferred: true, invoiceId, total: Number(total)||0, actorUserId };
 }
 
 async function nextInvoiceNumber(conn, siteCode, year, monthIndex) {

@@ -71,9 +71,9 @@ async function syncRouterSecrets(router) {
     }
     // Import link billing existing (pppoe_username) yang belum tercermin di ppp_secrets.
     await conn.execute(`UPDATE ppp_secrets p JOIN customers c ON c.site_id=p.site_id AND LOWER(TRIM(c.pppoe_username))=LOWER(p.username) AND (c.router_id IS NULL OR c.router_id=p.router_id)
-        LEFT JOIN ppp_secrets other ON other.customer_id=c.id AND other.removed_on_router_at IS NULL
+        LEFT JOIN ppp_secrets other ON other.customer_id=c.id
       SET p.customer_id=c.id, p.sync_status='synced', p.match_method='pppoe_username', p.last_synced_at=NOW()
-      WHERE p.router_id=? AND p.customer_id IS NULL AND NOT EXISTS(SELECT 1 FROM nms_parallel_links pl WHERE pl.secret_id=p.id) AND other.id IS NULL AND c.archived_at IS NULL`, [router.id]);
+      WHERE p.router_id=? AND p.customer_id IS NULL AND other.id IS NULL AND c.archived_at IS NULL`, [router.id]);
     await conn.commit();
   } catch (err) { await conn.rollback(); throw err; }
   finally { conn.release(); }
@@ -94,8 +94,6 @@ async function syncRouterSecrets(router) {
 async function applyActive(router, active) {
   const clean = active.filter(a => a && String(a.name || '').trim());
   const names = clean.map(a => String(a.name).trim());
-  const activeByName = new Map();
-  for (const name of names) activeByName.set(name.toLowerCase(), (activeByName.get(name.toLowerCase()) || 0) + 1);
   const lowerNames = [...new Set(names.map(n => n.toLowerCase()))];
 
   // Reconcile active -> secret mirror. Ini menutup kasus "terlihat online di Winbox tetapi hilang di NMS".
@@ -133,18 +131,17 @@ async function applyActive(router, active) {
     await db.execute(`UPDATE nms_ppp_anomalies SET resolved_at=NOW(), last_seen_at=NOW() WHERE router_id=? AND anomaly_type='active_without_secret' AND resolved_at IS NULL`, [router.id]).catch(() => {});
   }
 
-  await db.execute(`UPDATE ppp_secrets SET is_online=0, active_sessions=0, active_address=NULL, active_uptime=NULL WHERE router_id=? AND (is_online=1 OR active_sessions>0)`, [router.id]);
+  await db.execute(`UPDATE ppp_secrets SET is_online=0, active_address=NULL, active_uptime=NULL WHERE router_id=? AND is_online=1`, [router.id]);
   for (let i = 0; i < clean.length; i += 200) {
     const chunk = clean.slice(i, i + 200);
     if (!chunk.length) continue;
     const cases = () => chunk.map(() => 'WHEN ? THEN ?').join(' ');
     const p = f => chunk.flatMap(a => [String(a.name).toLowerCase(), a[f] || null]);
     await db.query(`UPDATE ppp_secrets SET is_online=1,
-        active_sessions=CASE LOWER(username) ${chunk.map(() => 'WHEN ? THEN ?').join(' ')} END,
         active_address=CASE LOWER(username) ${cases()} END,
         active_caller_id=CASE LOWER(username) ${cases()} END,
         active_uptime=CASE LOWER(username) ${cases()} END
-      WHERE router_id=? AND LOWER(username) IN (?)`, [...chunk.flatMap(a => [String(a.name).toLowerCase(), activeByName.get(String(a.name).toLowerCase()) || 0]), ...p('address'), ...p('caller-id'), ...p('uptime'), router.id, chunk.map(a => String(a.name).toLowerCase())]);
+      WHERE router_id=? AND LOWER(username) IN (?)`, [...p('address'), ...p('caller-id'), ...p('uptime'), router.id, chunk.map(a => String(a.name).toLowerCase())]);
   }
   // Sinkronkan network_status pelanggan terhubung (dipakai modul billing/dashboard lama).
   await db.execute(`UPDATE customers c JOIN ppp_secrets p ON p.customer_id=c.id
@@ -166,7 +163,6 @@ async function listSecrets({ tab = 'synced', siteId = null, q = '', status = '',
   if (siteId) { where.push('p.site_id=?'); params.push(Number(siteId)); }
   if (status === 'fasum') where.push(`p.is_exempt=1 AND p.exempt_type='fasum'`);
   else if (tab === 'unsynced' && !includeExempt) where.push('p.is_exempt=0');
-  if (tab === 'unsynced') where.push('NOT EXISTS(SELECT 1 FROM nms_parallel_links pl WHERE pl.secret_id=p.id)');
   if (status === 'online') where.push('p.is_online=1 AND p.is_isolated=0');
   if (status === 'offline') where.push('p.is_online=0 AND p.is_isolated=0');
   if (status === 'isolated') where.push('p.is_isolated=1');
@@ -192,20 +188,22 @@ async function secretById(id) {
 async function counts(siteId = null) {
   const params = siteId ? [Number(siteId)] : [];
   const [[row]] = await db.query(`SELECT COUNT(*) total,
-      SUM(p.customer_id IS NOT NULL) synced,
-      SUM(p.customer_id IS NULL AND pl.secret_id IS NULL AND p.is_exempt=0) unsynced,
-      SUM(p.customer_id IS NULL AND pl.secret_id IS NOT NULL) parallel,
-      SUM(p.customer_id IS NULL AND p.is_exempt=1) exempt,
-      SUM(p.customer_id IS NULL AND p.is_exempt=1 AND p.exempt_type='fasum') fasum,
-      SUM(p.customer_id IS NULL AND p.is_exempt=1 AND p.exempt_type='fasum' AND p.is_online=0 AND p.disabled=0) fasum_offline,
-      SUM(p.is_online=1 AND p.is_isolated=0) online,
-      SUM(p.is_online=0 AND p.is_isolated=0 AND p.disabled=0) offline,
-      SUM(p.is_isolated=1) isolated
-    FROM ppp_secrets p LEFT JOIN nms_parallel_links pl ON pl.secret_id=p.id
-    WHERE p.removed_on_router_at IS NULL ${siteId ? 'AND p.site_id=?' : ''}`, params);
+      SUM(customer_id IS NOT NULL) synced, SUM(customer_id IS NULL AND is_exempt=0) unsynced, SUM(customer_id IS NULL AND is_exempt=1) exempt, SUM(customer_id IS NULL AND is_exempt=1 AND exempt_type='fasum') fasum,
+      SUM(customer_id IS NULL AND is_exempt=1 AND exempt_type='fasum' AND is_online=0 AND disabled=0) fasum_offline,
+      SUM(is_online=1 AND is_isolated=0) online, SUM(is_online=0 AND is_isolated=0 AND disabled=0) offline, SUM(is_isolated=1) isolated,
+      SUM(customer_id IS NOT NULL AND is_online=1 AND is_isolated=0) linked_online,
+      SUM(customer_id IS NOT NULL AND is_online=0 AND is_isolated=0 AND disabled=0) linked_offline,
+      SUM(customer_id IS NOT NULL AND is_isolated=1) linked_isolated
+    FROM ppp_secrets WHERE removed_on_router_at IS NULL ${siteId ? 'AND site_id=?' : ''}`, params);
   const n = k => Number(row?.[k] || 0);
   const billable = n('synced') + n('unsynced');
-  return { total: n('total'), synced: n('synced'), unsynced: n('unsynced'), exempt: n('exempt'), parallel: n('parallel'), fasum: n('fasum'), fasumOffline: n('fasum_offline'), online: n('online'), offline: n('offline'), isolated: n('isolated'), syncedPct: billable ? Math.round(n('synced') / billable * 1000) / 10 : 0 };
+  return {
+    total: n('total'), synced: n('synced'), unsynced: n('unsynced'), exempt: n('exempt'),
+    fasum: n('fasum'), fasumOffline: n('fasum_offline'),
+    online: n('online'), offline: n('offline'), isolated: n('isolated'),
+    linkedTotal: n('synced'), linkedOnline: n('linked_online'), linkedOffline: n('linked_offline'), linkedIsolated: n('linked_isolated'),
+    syncedPct: billable ? Math.round(n('synced') / billable * 1000) / 10 : 0
+  };
 }
 
 module.exports = { activeRouters, routerById, syncRouterSecrets, applyActive, listSecrets, secretById, counts, isIsolirProfile, ISOLIR_PROFILE, normalizeKey };

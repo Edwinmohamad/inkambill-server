@@ -67,14 +67,7 @@ function buildSessionConfig(config, webhookCallbackUrl) {
 // Starts (or resumes) the WAHA session WITHOUT ever restarting a session that is already alive.
 // Bug lama: `/start` selalu dipanggil walau sesi sudah WORKING — WAHA menolak (422) sehingga app
 // menandai gateway "disconnected", dan pada versi WAHA tertentu sesi justru di-restart (putus sesaat).
-function missingWebhook(existing, url) {
-  if (!url) return false;
-  const hooks = existing?.config?.webhooks;
-  if (!Array.isArray(hooks)) return null;
-  return !hooks.some(h => h.url === url && ['message', 'message.ack'].every(e => h.events?.includes(e)));
-}
-
-async function startSession(webhookCallbackUrl, { repairWebhooks = false } = {}) {
+async function startSession(webhookCallbackUrl) {
   const config = await getWahaConfig({ fresh: true });
   const name = encodeURIComponent(config.sessionName);
   const sessionConfig = buildSessionConfig(config, webhookCallbackUrl);
@@ -82,18 +75,7 @@ async function startSession(webhookCallbackUrl, { repairWebhooks = false } = {})
   if (!existing) return request('POST', '/api/sessions', { name: config.sessionName, start: true, config: sessionConfig }, config, { timeoutMs: 30000 });
 
   const status = String(existing.status || '').toUpperCase();
-  if (['WORKING', 'STARTING', 'SCAN_QR_CODE'].includes(status)) {
-    const missing = missingWebhook(existing, webhookCallbackUrl);
-    if ((missing === true || missing === null) && repairWebhooks && sessionConfig) {
-      // Explicit admin repair. WAHA may hide global/session webhook configuration in GET.
-      // Preserve unrelated engine/store settings when replacing session webhooks.
-      await request('PUT', `/api/sessions/${name}`, { name: config.sessionName, config: { ...(existing.config || {}), ...sessionConfig } }, config);
-      return getSession(config);
-    }
-    if (missing === true) console.warn('WA Inbox: webhook pesan belum terdaftar pada sesi WAHA. Klik Connect pada WA Gateway untuk memperbaiki.');
-    if (missing === null) console.warn('WA Inbox: konfigurasi webhook tidak tersedia pada respons sesi WAHA. Periksa konfigurasi webhook di WAHA.');
-    return existing;
-  }
+  if (['WORKING', 'STARTING', 'SCAN_QR_CODE'].includes(status)) return existing; // sudah hidup — jangan diganggu
 
   // STOPPED / FAILED: perbarui daftar webhook selagi sesi mati (PUT pada sesi yang berjalan akan
   // me-restart sesi, makanya hanya dilakukan di sini), lalu nyalakan lagi.
@@ -199,4 +181,4 @@ async function downloadMedia(mediaUrl) {
   return { buffer, mimetype: String(response.headers.get('content-type') || '').split(';')[0].trim() };
 }
 
-module.exports = { request, testConnection, getSession, startSession, stopAndLogoutSession, getQrDataUrl, sendText, sendToChat, resolveLidToPhone, downloadMedia, startTyping, stopTyping, sendSeen, sendMedia, missingWebhook };
+module.exports = { request, testConnection, getSession, startSession, stopAndLogoutSession, getQrDataUrl, sendText, sendToChat, resolveLidToPhone, downloadMedia, startTyping, stopTyping, sendSeen, sendMedia };

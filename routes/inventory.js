@@ -435,9 +435,6 @@ router.post('/suppliers',async(req,res)=>{const b=req.body;await db.execute(`INS
 router.post('/suppliers/:id/edit',async(req,res)=>{const b=req.body;const name=String(b.name||'').trim();if(!name){req.session.flash={type:'danger',message:'Nama supplier wajib diisi.'};return res.redirect('/inventory/suppliers');}await db.execute(`UPDATE suppliers SET name=?,phone=?,email=?,address=?,notes=? WHERE id=?`,[name,b.phone||null,b.email||null,b.address||null,b.notes||null,req.params.id]);req.session.flash={type:'success',message:'Supplier berhasil diperbarui.'};res.redirect('/inventory/suppliers');});
 router.post('/suppliers/:id/toggle',async(req,res)=>{await db.execute(`UPDATE suppliers SET is_active=IF(is_active=1,0,1) WHERE id=?`,[req.params.id]);res.redirect('/inventory/suppliers');});
 
-// Pengadaan, Shopping List permanen, faktur penerimaan, dan transfer antar-site.
-router.use('/procurement', require('./procurement'));
-
 // v1.26 — Detail barang: grafik saldo 90 hari + riwayat pergerakan & pemakaian. Ditaruh paling akhir
 // supaya tidak menelan path literal lain (/movements, /usage, dst). Express 5 tidak mendukung regex
 // di param, jadi id non-angka diteruskan ke handler berikutnya (404).

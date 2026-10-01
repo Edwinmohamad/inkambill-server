@@ -109,8 +109,7 @@
         const remaining = Number(row.remaining_amount || 0), paid = Number(row.paid_amount || 0), principal = Number(row.principal_amount || 0);
         const progress = principal > 0 ? Math.min(100, Math.round(paid / principal * 100)) : 0;
         const statusKey = row.payment_status.toLowerCase().replace(/\s+/g, '-');
-        const name = row.employee_name || row.party_name;
-        const nextInstallment = row.next_installment || null; %>
+        const name = row.employee_name || row.party_name; %>
       <div class="hp-row <%= row.is_overdue ? 'is-overdue' : '' %>" data-debt-search="<%= [name, row.party_name, row.employee_code, row.purpose, row.responsible_name, row.site_code].filter(Boolean).join(' ') %>">
         <button type="button" class="hp-row-main" data-bs-toggle="modal" data-bs-target="#debtDetailModal<%= row.id %>" aria-label="Detail <%= name %>">
           <span class="hp-avatar tone-<%= kindClass(row) %>"><% if (row.scope === 'INTERNAL') { %><%= initials(name) %><% } else { %><i class="bi <%= row.record_type === 'DEBT' ? 'bi-building' : 'bi-person' %>"></i><% } %></span>
@@ -121,8 +120,7 @@
               <span class="hp-chip tone-<%= kindClass(row) %>"><%= kindLabel(row) %></span>
               <span class="hp-chip status-<%= statusKey %>"><%= row.payment_status %></span>
               <span class="hp-chip plain"><%= row.site_code %></span>
-              <% if (nextInstallment && row.payment_method === 'INSTALLMENT') { %><span class="hp-chip installment"><i class="bi bi-calendar-check"></i>Cicilan <%= nextInstallment.number %>/<%= row.installments.length %> · <%= rp(nextInstallment.remaining) %> · <%= formatDate(nextInstallment.dueDate) %></span><% } %>
-              <% if (row.payment_method !== 'INSTALLMENT' && !row.is_overdue && row.days_to_due !== null && row.days_to_due >= 0 && row.status === 'ACTIVE') { %><span class="hp-chip plain"><i class="bi bi-calendar2"></i><%= row.days_to_due === 0 ? 'Jatuh tempo hari ini' : `${row.days_to_due} hari lagi` %></span><% } %>
+              <% if (!row.is_overdue && row.days_to_due !== null && row.days_to_due >= 0 && row.status === 'ACTIVE') { %><span class="hp-chip plain"><i class="bi bi-calendar2"></i><%= row.days_to_due === 0 ? 'Jatuh tempo hari ini' : `${row.days_to_due} hari lagi` %></span><% } %>
             </span>
           </span>
           <span class="hp-row-amount">
@@ -132,7 +130,7 @@
           </span>
         </button>
         <% if (row.status === 'ACTIVE') { %>
-        <button type="button" class="hp-icon-btn" title="<%= nextInstallment ? `Catat cicilan ke-${nextInstallment.number}` : 'Catat pembayaran' %>" aria-label="Catat pembayaran <%= name %>" data-bs-toggle="modal" data-bs-target="#debtPayModal" data-debt-id="<%= row.id %>" data-debt-type-label="<%= kindLabel(row) %>" data-debt-party="<%= name %>" data-debt-purpose="<%= row.purpose %>" data-debt-site="<%= row.site_code %>" data-debt-principal="<%= principal %>" data-debt-paid="<%= paid %>" data-debt-remaining="<%= Math.floor(remaining) %>" data-installment-number="<%= nextInstallment ? nextInstallment.number : '' %>" data-installment-total="<%= row.installments.length %>" data-installment-amount="<%= nextInstallment ? Math.floor(nextInstallment.remaining) : '' %>" data-installment-due="<%= nextInstallment ? nextInstallment.dueDate : '' %>"><i class="bi bi-plus-circle-fill"></i></button>
+        <button type="button" class="hp-icon-btn" title="Catat pembayaran" aria-label="Catat pembayaran <%= name %>" data-bs-toggle="modal" data-bs-target="#debtPayModal" data-debt-id="<%= row.id %>" data-debt-type-label="<%= kindLabel(row) %>" data-debt-party="<%= name %>" data-debt-purpose="<%= row.purpose %>" data-debt-site="<%= row.site_code %>" data-debt-principal="<%= principal %>" data-debt-paid="<%= paid %>" data-debt-remaining="<%= Math.floor(remaining) %>"><i class="bi bi-plus-circle-fill"></i></button>
         <% } %>
         <i class="bi bi-chevron-right hp-chevron" aria-hidden="true"></i>
       </div>
@@ -148,8 +146,7 @@
 <% records.forEach((row) => {
   const remaining = Number(row.remaining_amount || 0), paid = Number(row.paid_amount || 0), principal = Number(row.principal_amount || 0);
   const progress = principal > 0 ? Math.min(100, Math.round(paid / principal * 100)) : 0;
-  const name = row.employee_name || row.party_name;
-  const nextInstallment = row.next_installment || null; %>
+  const name = row.employee_name || row.party_name; %>
 <div class="modal fade hp-modal" id="debtDetailModal<%= row.id %>" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-scrollable modal-dialog-centered modal-lg">
     <div class="modal-content hp-sheet">
@@ -178,7 +175,7 @@
           <div class="hp-group-row"><span>Arah</span><strong><%= row.record_type === 'RECEIVABLE' ? 'Teknisi berhutang ke kantor' : 'Kantor berhutang ke teknisi (talangan)' %></strong></div>
           <% } %>
           <div class="hp-group-row"><span>Tanggal dicatat</span><strong><%= formatDate(row.issue_date) %></strong></div>
-          <div class="hp-group-row"><span><%= row.payment_method === 'INSTALLMENT' ? 'Cicilan pertama' : 'Jatuh tempo' %></span><strong><%= row.due_date ? formatDate(row.due_date) : 'Tanpa jatuh tempo' %></strong></div>
+          <div class="hp-group-row"><span>Jatuh tempo</span><strong><%= row.due_date ? formatDate(row.due_date) : 'Tanpa jatuh tempo' %></strong></div>
           <div class="hp-group-row"><span>Metode</span><strong><%= row.payment_method === 'INSTALLMENT' ? `Cicilan ${row.installment_months} bulan` : 'Sekali bayar' %></strong></div>
           <% if (row.responsible_name) { %><div class="hp-group-row"><span>Penanggung jawab</span><strong><%= row.responsible_name %></strong></div><% } %>
           <% if (row.notes) { %><div class="hp-group-row"><span>Catatan</span><strong><%= row.notes %></strong></div><% } %>
@@ -200,7 +197,7 @@
           <div class="tab-pane fade" id="debtTabSchedule<%= row.id %>">
             <div class="hp-group">
               <% if (!(row.installments || []).length) { %><div class="hp-group-row muted">Tidak ada jadwal cicilan.</div><% } %>
-              <% (row.installments || []).forEach((item) => { const s = item.status.toLowerCase(); %><div class="hp-group-row sched-<%= s %>"><span><b class="hp-num"><%= item.number %></b><span>Cicilan <%= item.number %><small>Jatuh tempo <%= formatDate(item.dueDate) %></small></span></span><strong><%= rp(item.target) %><small><%= item.status === 'PAID' ? 'Lunas' : item.status === 'PARTIAL' ? `Sisa ${rp(item.remaining)}` : item.status === 'OVERDUE' ? 'Terlambat' : 'Menunggu jadwal' %></small></strong></div><% }) %>
+              <% (row.installments || []).forEach((item) => { const s = item.status.toLowerCase(); %><div class="hp-group-row sched-<%= s %>"><span><b class="hp-num"><%= item.number %></b><%= formatDate(item.dueDate) %></span><strong><%= rp(item.target) %><small><%= item.status === 'PAID' ? 'Lunas' : item.status === 'PARTIAL' ? `Sisa ${rp(item.remaining)}` : item.status === 'OVERDUE' ? 'Terlambat' : 'Akan datang' %></small></strong></div><% }) %>
             </div>
           </div>
           <div class="tab-pane fade" id="debtTabHistory<%= row.id %>">
@@ -227,7 +224,7 @@
         <% if (row.status !== 'ARCHIVED') { %><form method="post" action="/debts/<%= row.id %>/archive" onsubmit="return confirm('Arsipkan data ini? Riwayat pembayaran tetap tersimpan.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="hp-btn hp-btn-plain danger" type="submit"><i class="bi bi-archive"></i>Arsipkan</button></form><% } else { %><span></span><% } %>
         <div class="hp-sheet-foot-actions">
           <button type="button" class="hp-btn hp-btn-secondary" data-bs-dismiss="modal">Tutup</button>
-          <% if (row.status === 'ACTIVE') { %><button type="button" class="hp-btn hp-btn-primary" data-bs-toggle="modal" data-bs-target="#debtPayModal" data-debt-id="<%= row.id %>" data-debt-type-label="<%= kindLabel(row) %>" data-debt-party="<%= name %>" data-debt-purpose="<%= row.purpose %>" data-debt-site="<%= row.site_code %>" data-debt-principal="<%= principal %>" data-debt-paid="<%= paid %>" data-debt-remaining="<%= Math.floor(remaining) %>" data-installment-number="<%= nextInstallment ? nextInstallment.number : '' %>" data-installment-total="<%= row.installments.length %>" data-installment-amount="<%= nextInstallment ? Math.floor(nextInstallment.remaining) : '' %>" data-installment-due="<%= nextInstallment ? nextInstallment.dueDate : '' %>"><i class="bi bi-cash-coin"></i><%= nextInstallment ? `Bayar Cicilan ${nextInstallment.number}` : 'Catat Pembayaran' %></button><% } %>
+          <% if (row.status === 'ACTIVE') { %><button type="button" class="hp-btn hp-btn-primary" data-bs-toggle="modal" data-bs-target="#debtPayModal" data-debt-id="<%= row.id %>" data-debt-type-label="<%= kindLabel(row) %>" data-debt-party="<%= name %>" data-debt-purpose="<%= row.purpose %>" data-debt-site="<%= row.site_code %>" data-debt-principal="<%= principal %>" data-debt-paid="<%= paid %>" data-debt-remaining="<%= Math.floor(remaining) %>"><i class="bi bi-cash-coin"></i>Catat Pembayaran</button><% } %>
         </div>
       </div>
     </div>
@@ -285,10 +282,9 @@
           <label class="hp-field"><span>Keperluan</span><input name="purpose" maxlength="255" placeholder="Contoh: ambil kabel dropcore 2 roll" required></label>
           <label class="hp-field"><span>Lokasi</span><select name="site_code" required><option value="GLOBAL">Global</option><option value="CDS">CDS</option><option value="KBG">KBG</option></select></label>
           <label class="hp-field"><span>Tanggal dicatat</span><input type="date" name="issue_date" value="<%= today %>" required></label>
-          <label class="hp-field"><span id="debtDueDateLabel">Jatuh tempo</span><input type="date" name="due_date" id="debtDueDate"></label>
+          <label class="hp-field"><span>Jatuh tempo</span><input type="date" name="due_date"></label>
           <label class="hp-field"><span>Pembayaran</span><select name="payment_method" id="debtPaymentMethod"><option value="ONCE">Sekali bayar</option><option value="INSTALLMENT">Cicilan / potong gaji bertahap</option></select></label>
           <label class="hp-field" id="debtInstallmentMonths" hidden><span>Durasi cicilan</span><select name="installment_months"><option value="2">2 bulan</option><option value="3">3 bulan</option><option value="6">6 bulan</option><option value="12">12 bulan</option><option value="18">18 bulan</option><option value="24">24 bulan</option></select></label>
-          <div class="hp-field-hint" id="debtInstallmentPreview" hidden></div>
           <label class="hp-field"><span>Penanggung jawab</span><input name="responsible_name" maxlength="160" placeholder="Opsional · Edwin / Jon / Bopung"></label>
           <label class="hp-field"><span>Catatan</span><input name="notes" maxlength="2000" placeholder="Opsional"></label>
         </div>
@@ -334,7 +330,6 @@
           <div><span>Sisa</span><strong class="neg" id="debtPaySummaryRemaining">Rp 0</strong></div>
         </div>
         <span class="d-none" id="debtPaySummarySite"></span>
-        <div class="hp-installment-note" id="debtPayInstallmentNote" hidden></div>
 
         <div class="hp-amount-input">
           <span>Rp</span>
@@ -369,13 +364,13 @@
 <script>(()=>{
 const rupiah=value=>`Rp ${Math.round(value||0).toLocaleString('id-ID')}`;
 // ---- Form catat baru: rincian item + total otomatis ----
-const method=document.getElementById('debtPaymentMethod'),months=document.getElementById('debtInstallmentMonths'),rows=document.getElementById('debtItemRows'),template=document.getElementById('debtItemTemplate'),total=document.getElementById('debtItemsTotal'),dueDate=document.getElementById('debtDueDate'),dueDateLabel=document.getElementById('debtDueDateLabel'),installmentPreview=document.getElementById('debtInstallmentPreview');
+const method=document.getElementById('debtPaymentMethod'),months=document.getElementById('debtInstallmentMonths'),rows=document.getElementById('debtItemRows'),template=document.getElementById('debtItemTemplate'),total=document.getElementById('debtItemsTotal');
 if(rows){
-  const calculate=()=>{let sum=0;rows.querySelectorAll('.hp-item').forEach(row=>{const subtotal=(Number(row.querySelector('.debt-item-qty')?.value)||0)*(Number(row.querySelector('.debt-item-price')?.value)||0);row.querySelector('.debt-item-subtotal').textContent=rupiah(subtotal);sum+=subtotal;});total.textContent=rupiah(sum);const count=Number(months?.querySelector('select')?.value)||1;if(method?.value==='INSTALLMENT'){const perMonth=Math.floor(sum/count);const finalMonth=sum-(perMonth*(count-1));installmentPreview.hidden=false;installmentPreview.textContent=sum>0?`Jadwal terkunci: ${count} kali cicilan. Cicilan 1–${Math.max(1,count-1)} ${rupiah(perMonth)}, cicilan terakhir ${rupiah(finalMonth)}.`:'Masukkan rincian dan harga untuk melihat nominal tiap cicilan.';}};
+  const calculate=()=>{let sum=0;rows.querySelectorAll('.hp-item').forEach(row=>{const subtotal=(Number(row.querySelector('.debt-item-qty')?.value)||0)*(Number(row.querySelector('.debt-item-price')?.value)||0);row.querySelector('.debt-item-subtotal').textContent=rupiah(subtotal);sum+=subtotal;});total.textContent=rupiah(sum);};
   const bind=row=>{row.querySelectorAll('input').forEach(input=>input.addEventListener('input',calculate));row.querySelector('.debt-remove-item')?.addEventListener('click',()=>{if(rows.children.length>1)row.remove();else row.querySelectorAll('input').forEach((input,index)=>input.value=index===1?'1':'');calculate();});};
   rows.querySelectorAll('.hp-item').forEach(bind);
   document.getElementById('addDebtItem')?.addEventListener('click',()=>{const row=template.content.firstElementChild.cloneNode(true);rows.appendChild(row);bind(row);row.querySelector('input')?.focus();});
-  const toggleMethod=()=>{const isInstallment=method.value==='INSTALLMENT';months.hidden=!isInstallment;installmentPreview.hidden=!isInstallment;dueDate.required=isInstallment;dueDateLabel.textContent=isInstallment?'Tanggal cicilan pertama':'Jatuh tempo';if(isInstallment&&!dueDate.value){const issue=document.querySelector('#debtCreateForm [name="issue_date"]')?.value;dueDate.value=issue||'';}calculate();};method?.addEventListener('change',toggleMethod);months?.querySelector('select')?.addEventListener('change',calculate);toggleMethod();calculate();
+  const toggleMethod=()=>{months.hidden=method.value!=='INSTALLMENT';};method?.addEventListener('change',toggleMethod);toggleMethod();calculate();
 }
 // ---- Internal / Eksternal: hanya input di section yang terlihat yang ikut terkirim ----
 const createForm=document.getElementById('debtCreateForm');
@@ -399,10 +394,10 @@ search?.addEventListener('input',()=>{const words=search.value.toLocaleLowerCase
 // ---- Sheet catat pembayaran ----
 const payModal=document.getElementById('debtPayModal');
 if(payModal){
-  const form=document.getElementById('debtPayForm'),amountInput=document.getElementById('debtPayAmount'),dateInput=document.getElementById('debtPayDate'),liveBox=document.getElementById('debtPayLive'),liveRemaining=document.getElementById('debtPayLiveRemaining'),warning=document.getElementById('debtPayWarning'),maxHint=document.getElementById('debtPayMaxHint'),submitBtn=document.getElementById('debtPaySubmit'),installmentNote=document.getElementById('debtPayInstallmentNote'),quick=document.getElementById('debtPayQuick');
-  let currentRemaining=0,expectedInstallment=0;
+  const form=document.getElementById('debtPayForm'),amountInput=document.getElementById('debtPayAmount'),dateInput=document.getElementById('debtPayDate'),liveBox=document.getElementById('debtPayLive'),liveRemaining=document.getElementById('debtPayLiveRemaining'),warning=document.getElementById('debtPayWarning'),maxHint=document.getElementById('debtPayMaxHint'),submitBtn=document.getElementById('debtPaySubmit');
+  let currentRemaining=0;
   const money=value=>rupiah(Math.max(0,Math.round(Number(value)||0)));
-  const recalc=()=>{const value=Number(amountInput.value)||0;const after=currentRemaining-value;liveRemaining.textContent=money(after);const overLimit=value>currentRemaining;const invalidInstallment=expectedInstallment>0&&value!==expectedInstallment;warning.hidden=!(overLimit||invalidInstallment);if(invalidInstallment){warning.innerHTML=`<i class="bi bi-exclamation-triangle-fill"></i>Nominal cicilan harus tepat <b>${money(expectedInstallment)}</b>.`;}else{warning.innerHTML=`<i class="bi bi-exclamation-triangle-fill"></i>Nominal melebihi sisa. Maksimal <b id="debtPayMaxHint">${money(currentRemaining)}</b>.`;}liveBox.classList.toggle('is-over',after<0);liveBox.classList.toggle('is-done',value>0&&after===0);submitBtn.disabled=value<=0||overLimit||invalidInstallment;};
+  const recalc=()=>{const value=Number(amountInput.value)||0;const after=currentRemaining-value;liveRemaining.textContent=money(after);const overLimit=value>currentRemaining;warning.hidden=!overLimit;liveBox.classList.toggle('is-over',after<0);liveBox.classList.toggle('is-done',value>0&&after===0);submitBtn.disabled=value<=0||overLimit;};
   amountInput.addEventListener('input',recalc);
   document.getElementById('debtPayQuick')?.addEventListener('click',e=>{const b=e.target.closest('button[data-fill]');if(!b)return;amountInput.value=b.dataset.fill==='all'?currentRemaining:Math.floor(currentRemaining/2);recalc();});
   payModal.addEventListener('show.bs.modal',event=>{
@@ -414,17 +409,16 @@ if(payModal){
     document.getElementById('debtPaySummaryPurpose').textContent=d.debtPurpose||'-';
     document.getElementById('debtPaySummaryPrincipal').textContent=money(d.debtPrincipal);
     document.getElementById('debtPaySummaryPaid').textContent=money(d.debtPaid);
-    currentRemaining=Number(d.debtRemaining)||0;expectedInstallment=Number(d.installmentAmount)||0;
+    currentRemaining=Number(d.debtRemaining)||0;
     document.getElementById('debtPaySummaryRemaining').textContent=money(currentRemaining);
     maxHint.textContent=money(currentRemaining);
-    amountInput.value=expectedInstallment||'';amountInput.max=String(expectedInstallment||currentRemaining);dateInput.value='<%= today %>';
-    installmentNote.hidden=!expectedInstallment;quick.hidden=Boolean(expectedInstallment);if(expectedInstallment){installmentNote.textContent=`Cicilan ${d.installmentNumber}/${d.installmentTotal} · wajib dibayar tepat ${money(expectedInstallment)}${d.installmentDue?` · jatuh tempo ${d.installmentDue}`:''}.`;}
+    amountInput.value='';amountInput.max=String(currentRemaining);dateInput.value='<%= today %>';
     const notesInput=form.querySelector('input[name="notes"]');if(notesInput)notesInput.value='';
     form.querySelectorAll('input[name="payment_method"]').forEach((radio,index)=>radio.checked=index===0);
     const fileInput=form.querySelector('input[name="proof_file"]');if(fileInput)fileInput.value='';
     recalc();
   });
   payModal.addEventListener('shown.bs.modal',()=>amountInput.focus());
-  form.addEventListener('submit',event=>{const value=Number(amountInput.value)||0;if(value<=0||value>currentRemaining||(expectedInstallment>0&&value!==expectedInstallment)){event.preventDefault();recalc();}});
+  form.addEventListener('submit',event=>{const value=Number(amountInput.value)||0;if(value<=0||value>currentRemaining){event.preventDefault();recalc();}});
 }
 })();</script>

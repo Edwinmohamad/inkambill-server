@@ -3,7 +3,6 @@ const dict={
   en:{dashboard:'Dashboard',customers:'Customers',packages:'Internet Packages',network:'Network',sites:'Sites / POP',routers:'MikroTik Routers',clusters:'Clusters & ODP',monitor:'MikroTik NMS',support:'Support',tickets:'Tickets',techSchedule:'Technician Schedule',serverDuty:'Server Duty',warehouse:'Warehouse',stock:'Inventory',movements:'Stock Movements',material:'Material Usage',supplier:'Suppliers',billing:'Billing',invoices:'Invoices',payments:'Payments',customInvoices:'Custom Invoices',discounts:'Discounts',charges:'Additional Charges',finance:'Finance',reconciliation:'Reconciliation',cash:'Cash Flow',cashCategories:'Cash Categories',cashData:'Cash Data',reports:'Reports',system:'System',activityLog:'Activity Log',settings:'Settings',profile:'My Profile',logout:'Logout',quickCommand:'Quick Command',signedInAs:'SIGNED IN AS',systemLive:'SYSTEM LIVE',language:'Language'}
 };
 const { isAdminRole, isMasterAdminRole }=require('./auth');
-const { sidebarMenu }=require('../services/sidebarMenu');
 const { getGatewayStatus, isBlastEnabled }=require('../services/whatsappGatewayService');
 const statusLabels={
   id:{active:'Aktif',inactive:'Tidak Aktif',suspended:'Ditangguhkan',terminated:'Berhenti',online:'Online',offline:'Offline',isolated:'Terisolir',router_unreachable:'Router Tidak Terjangkau',paid:'Lunas',unpaid:'Belum Lunas',partial:'Bayar Sebagian',overdue:'Terlambat',pending:'Menunggu',confirmed:'Dikonfirmasi',cancelled:'Dibatalkan',refunded:'Dikembalikan',open:'Terbuka',progress:'Diproses',closed:'Selesai',present:'Hadir',absent:'Tidak Hadir',swapped:'Ditukar',scheduled:'Terjadwal',on_the_way:'Dalam Perjalanan',working:'Dikerjakan',done:'Selesai',testing:'Pengujian',maintenance:'Pemeliharaan',draft:'Draf',sent:'Terkirim',success:'Berhasil',failed:'Gagal',settled:'Sudah Disetor',held_by_staff:'Cash di Staf',not_applicable:'Tidak Berlaku',valid:'Valid',invalid:'Tidak Valid',unverified:'Belum Diverifikasi',cash:'Tunai',transfer:'Transfer',qris:'QRIS',gateway:'Gateway',other:'Lainnya',income:'Pemasukan',expense:'Pengeluaran',hour:'Jam',day:'Hari',low:'Rendah',medium:'Sedang',high:'Tinggi',critical:'Kritis',admin:'Admin',master_admin:'Master Admin',staff:'Staf',ontrack:'Sesuai SLA',atrisk:'Mendekati Tenggat',breached:'Lewat SLA',met:'Terpenuhi'},
@@ -23,7 +22,6 @@ function commonLocals(req,res,next){
   // while installations may rename it or use another Master Admin account.
   res.locals.canClosing=res.locals.isMasterAdmin;
   res.locals.actualRole=sessionUser?.role||null;
-  res.locals.sidebarFocus=sidebarMenu(sessionUser?.role,req.permissions||[],res.locals.isAdmin);
   res.locals.defaultTheme=req.session?.uiTheme||'dark';
   res.locals.defaultUiPalette=req.session?.uiPalette||'nebula';
   // v1.23 — global flag so any view can offer a real WA Gateway send instead of (or alongside) a

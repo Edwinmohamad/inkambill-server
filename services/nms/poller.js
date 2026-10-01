@@ -240,6 +240,7 @@ async function refreshSecrets(siteId = null) {
     catch (err) { results.push({ ok: false, routerId: r.id, error: err.message }); }
   }
   cache.del('nms:dash');
+  cache.del('nms:widgets');
   return results;
 }
 
@@ -257,7 +258,12 @@ function start() {
   started = true;
   const every = (ms, fn) => setInterval(fn, ms).unref();
   const telemetryTick = guard('telemetry', async () => { await Promise.all(routers.map(telemetryRouter)); });
-  const activeTick = guard('active', async () => { await Promise.all(routers.map(activeRouter)); await evaluateMassDisconnect(); });
+  const activeTick = guard('active', async () => {
+    await Promise.all(routers.map(activeRouter));
+    cache.del('nms:dash');
+    cache.del('nms:widgets');
+    await evaluateMassDisconnect();
+  });
   const secretsTick = guard('secrets', async () => { for (const r of routers) { if (stateFor(r).status === 'online') await store.syncRouterSecrets(r).catch(err => console.error(`NMS secret sync ${r.name}:`, err.message)); } });
   const logsTick = guard('logs', async () => { await Promise.all(routers.map(pollLogs)); });
   loadRouters().then(async () => { await telemetryTick(); await secretsTick(); await activeTick(); }).catch(err => console.error('NMS poller init:', err.message));

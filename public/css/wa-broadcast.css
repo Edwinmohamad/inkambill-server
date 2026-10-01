@@ -214,30 +214,3 @@ html[data-theme="light"] .wab-pill.red{color:#d70015}
   .wab-seg span{font-size:12.5px;padding:0 6px}
 }
 @media (prefers-reduced-motion:reduce){.wab *{transition:none!important}}
-
-/* Smart Audience — filter utama dibuat selalu terlihat agar admin cepat membaca scope broadcast. */
-.wab-audience-presets{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:2px 0 4px}
-.wab-audience-presets>span{font-size:12px;font-weight:650;color:var(--muted);margin-right:2px}
-.wab-preset{appearance:none;border:1px solid var(--line);background:var(--wab-fill);color:var(--text);height:30px;padding:0 11px;border-radius:999px;font:inherit;font-size:12.5px;font-weight:550;cursor:pointer;transition:background .15s,border-color .15s,color .15s,transform .1s}
-.wab-preset:hover{background:var(--wab-fill-2);border-color:var(--line-2)}
-.wab-preset:active{transform:scale(.98)}
-.wab-preset.is-active{background:var(--brand-tint);border-color:rgba(var(--brand-rgb),.25);color:var(--accent-text)}
-.wab-preset.ghost{color:var(--muted)}
-.wab-filter-primary{display:grid;grid-template-columns:minmax(260px,1.5fr) minmax(150px,.8fr) minmax(130px,.65fr) minmax(130px,.65fr) 105px;gap:10px;align-items:end}
-.wab-filter-primary>label,.wab-filter-status>label{display:grid;gap:6px;min-width:0}
-.wab-filter-primary>label>span,.wab-filter-status>label>span{font-size:12px;font-weight:500;color:var(--muted)}
-.wab-filter-primary .wab-search{align-self:end}
-.wab-filter-status{display:grid;grid-template-columns:minmax(180px,240px) minmax(0,1fr);gap:10px;align-items:end}
-.wab-safety-note{min-height:40px;display:flex;align-items:center;gap:8px;padding:9px 11px;border:1px solid var(--line);border-radius:10px;background:var(--success-tint);font-size:12px;color:var(--muted)}
-.wab-safety-note i{color:var(--success);font-size:14px;flex:0 0 auto}
-
-@media (max-width:1100px){
-  .wab-filter-primary{grid-template-columns:minmax(240px,1.5fr) repeat(2,minmax(140px,1fr))}
-  .wab-filter-primary>label:nth-child(4),.wab-filter-primary>label:nth-child(5){grid-column:auto}
-}
-@media (max-width:767.98px){
-  .wab-filter-primary,.wab-filter-status{grid-template-columns:minmax(0,1fr)}
-  .wab-audience-presets{flex-wrap:nowrap;overflow-x:auto;padding-bottom:6px;scrollbar-width:none}
-  .wab-audience-presets::-webkit-scrollbar{display:none}
-  .wab-audience-presets>*{flex:0 0 auto}
-}

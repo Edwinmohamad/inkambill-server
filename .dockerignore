@@ -1,51 +1,13 @@
-# Git
-.git
-.gitignore
-.github
-
-# GitHub self-hosted runner
-actions-runner/
-actions-runner/**
-
-# Backup
-backups/
-backups/**
-
-# Node
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Environment
+node_modules
+npm-debug.log
 .env
-.env.*
-!.env.example
+.git
+storage/payment-proofs/*
+storage/profile-photos/*
+backups/
+*.sql
+*.sql.gz
 
-# Runtime InkamBilling - mounted volume
-storage/
-
-# FMT Dashboard tidak boleh masuk CT220 image
-app/
-data/
-uploads/
-import_templates/
-requirements.txt
-install_casaos.sh
-run.sh
-
-# Legacy / temporary
-_to_delete/
-Claude outputs/
-
-*.log
-*.tmp
-*.bak
-*.zip
-*.tar
-*.tar.gz
-
-.vscode/
-.idea/
-.DS_Store
-Thumbs.db
+storage/cash-proofs/*
+storage/ticket-attachments/*
+storage/server-duty-proofs/*

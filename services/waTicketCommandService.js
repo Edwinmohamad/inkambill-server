@@ -14,8 +14,6 @@ const { normalizeWhatsapp } = require('./whatsappService');
 const { savePhoto, removePhoto } = require('./photoAttachmentService');
 const { parseCommand, parseReplyCommand, HELP_TEXT } = require('./waTicketParser');
 const notify = require('./ticketWaNotifyService');
-const { handleNaturalMessage } = require('./waOpsNaturalLanguageService');
-const { setStage, ensureSupervisorState } = require('./ticketSupervisorService');
 
 const TICKET_DIR = path.join(__dirname, '..', 'storage', 'ticket-attachments');
 const PREFIX = String(process.env.WA_TICKET_PREFIX || '#').trim() || '#';
@@ -188,7 +186,6 @@ async function runCommand(cmd, ctx) {
           [code, customer?.id || null, cmd.subject, 'Gangguan Internet', cmd.priority, cmd.description, photo?.filename || null, photo?.originalName || null, photo?.mime || null, photo?.size || null, employee.user_id || await fallbackUserId()]);
         insertId = r.insertId;
       } catch (e) { if (photo) await removePhoto(TICKET_DIR, photo.filename); throw e; }
-      await ensureSupervisorState(insertId);
       await logAudit(employee, 'create', { id: insertId }, `Buat tiket ${code} via WhatsApp`);
       notify.notifyTicketEventAsync('created', insertId, notifyOpts);
       return `✅ Tiket *${code}* dibuat [${PRIORITY_LABEL[cmd.priority]}]\n${customer ? `Pelanggan: ${customer.customer_code} — ${customer.name}\n` : ''}Keluhan: ${cmd.subject}${photo ? '\nFoto terlampir.' : ''}${warning ? `\n⚠️ ${warning}` : ''}\n\nAmbil: #ambil ${shortRef(code)}`;
@@ -215,7 +212,6 @@ async function runCommand(cmd, ctx) {
       const nextStatus = t.status === 'open' ? 'progress' : t.status;
       const note = cmd.command === 'take' ? `Tiket diambil oleh ${actor} via WhatsApp` : `Ditugaskan ke ${target.name} oleh ${actor} via WhatsApp`;
       await addProgress(t, employee, { status: nextStatus, note });
-      await setStage(t.id, cmd.command === 'take' ? 'WORKING' : 'ASSIGNED', { note, source: 'whatsapp', user_id: employee.user_id, employee_id: target.id });
       await logAudit(employee, 'assign', t, `${note} (${t.ticket_code})`);
       notify.notifyTicketEventAsync('assigned', t.id, notifyOpts);
       return cmd.command === 'take'
@@ -236,8 +232,6 @@ async function runCommand(cmd, ctx) {
       catch (e) { if (photo) await removePhoto(TICKET_DIR, photo.filename); throw e; }
       // Whoever closes/updates an unassigned ticket becomes its PIC, so KPI/SLA reports have an owner.
       if (!t.assigned_employee_id) await db.execute(`UPDATE tickets SET assigned_employee_id=?,assigned_to=? WHERE id=? AND assigned_employee_id IS NULL`, [employee.id, employee.user_id || null, t.id]);
-      const stage = cmd.command === 'close' ? 'CLOSED' : cmd.command === 'pending' ? 'WORKING' : 'WORKING';
-      await setStage(t.id, stage, { note, source: 'whatsapp', user_id: employee.user_id, employee_id: employee.id });
       await logAudit(employee, cmd.command === 'close' ? 'close' : 'progress', t, `Progress ${pct}% - ${status}${photo ? ' + foto' : ''} (${t.ticket_code})`);
       if (status === 'closed' || status === 'pending') notify.notifyTicketEventAsync(status, t.id, { ...notifyOpts, note });
       const icon = status === 'closed' ? '✅' : status === 'pending' ? '⏸️' : '📝';
@@ -247,7 +241,6 @@ async function runCommand(cmd, ctx) {
     case 'reopen': {
       if (t.status !== 'closed') return `Tiket ${t.ticket_code} belum closed (status: ${STATUS_LABEL[t.status]}).`;
       await addProgress(t, employee, { status: 'open', note: cmd.note });
-      await setStage(t.id, 'OPEN', { note: cmd.note, source: 'whatsapp', user_id: employee.user_id, employee_id: employee.id });
       await logAudit(employee, 'reopen', t, `Buka kembali ${t.ticket_code}: ${cmd.note}`);
       notify.notifyTicketEventAsync('reopened', t.id, { ...notifyOpts, note: cmd.note });
       return `🔁 *${t.ticket_code}* dibuka kembali (Open).`;
@@ -269,16 +262,17 @@ async function handleWaTicketMessage(input) {
   if (payload.fromMe) return { handled: false, reason: 'from_me', replies: [] };
   const text = String(payload.body || payload.caption || '').trim();
   const cmd = parseCommand(text, PREFIX) || parseReplyCommand(text, repliedTicketRef(payload));
+  if (!cmd) return { handled: false, reason: 'not_command', replies: [] };
 
   const chatId = String(payload.from || '');
   const isGroup = chatId.endsWith('@g.us');
-  const reply = message => ({ handled: true, command: cmd?.command || 'natural', replies: [{ chatId, text: message, reply_to: payload.id || null }] });
+  const reply = message => ({ handled: true, command: cmd.command, replies: [{ chatId, text: message, reply_to: payload.id || null }] });
   const sender = await resolveSender(payload, isGroup);
   const employee = await findEmployeeByPhone(sender.phone);
 
   if (isGroup && !notify.ticketGroupIds().includes(chatId)) {
     // Lets an admin discover the group id to put in WA_TICKET_GROUP_IDS.
-    if (cmd?.command === 'groupid' && employee) return reply(`ID grup ini: ${chatId}\nTambahkan ke WA_TICKET_GROUP_IDS di .env server lalu restart app.`);
+    if (cmd.command === 'groupid' && employee) return reply(`ID grup ini: ${chatId}\nTambahkan ke WA_TICKET_GROUP_IDS di .env server lalu restart app.`);
     return { handled: false, reason: 'group_not_allowed', replies: [] };
   }
   // In groups stay quiet for strangers and for ordinary hashtags (#semangat etc.) to avoid spam.
@@ -287,14 +281,6 @@ async function handleWaTicketMessage(input) {
     return reply(sender.phone
       ? `Nomor ${sender.phone} belum terdaftar sebagai karyawan aktif. Minta admin mengisi nomor HP Anda di Pengaturan → Karyawan.`
       : `Nomor pengirim tidak dapat dibaca (ID: ${sender.rawId || '-'}). Hubungi admin.`);
-  }
-  if (!cmd) {
-    // In allowed operations groups, ordinary Indonesian conversation can be interpreted as
-    // incident/activity/update context. The natural-language layer stays quiet when confidence is low.
-    if (!isGroup) return { handled: false, reason: 'not_command', replies: [] };
-    const natural = await handleNaturalMessage({ text, payload, employee, chatId, senderPhone: sender.phone });
-    if (!natural?.handled) return { handled: false, reason: 'not_operational', replies: [] };
-    return reply(natural.text);
   }
   if (cmd.command === 'unknown') {
     if (isGroup) return { handled: false, reason: 'unknown_command', replies: [] };

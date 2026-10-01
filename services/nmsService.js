@@ -1,8 +1,6 @@
 const db = require('../config/db');
 const mt = require('./mikrotikRest');
 const { normalize, exemptOf, matchScore, smartSyncPlanFromInventory } = require('./pppoeSyncPlanner');
-const secretStore = require('./nms/secretStore');
-const smartSync = require('./nms/smartSync');
 
 const EDITABLE_FIELDS = ['name','password','service','profile','local-address','remote-address','caller-id','comment','disabled'];
 function bool(value) { return value === true || ['true','yes','on','1'].includes(String(value)); }
@@ -86,45 +84,28 @@ async function allSnapshots(){
 async function routerById(id){const [rows]=await db.execute(`SELECT r.*,s.code site_code,s.name site_name FROM routers r JOIN sites s ON s.id=r.site_id WHERE r.id=? AND r.is_active=1`,[id]);if(!rows.length)throw new Error('Router tidak ditemukan atau tidak aktif');return rows[0];}
 async function customerForRouter(router,customerId){const [rows]=await db.execute(`SELECT id,site_id,router_id,name,customer_code,pppoe_username,network_status FROM customers WHERE id=? AND customer_status='active'`,[customerId]);if(!rows.length)throw new Error('Pelanggan billing tidak ditemukan');if(Number(rows[0].site_id)!==Number(router.site_id))throw new Error('Site pelanggan dan router harus sama');return rows[0];}
 
-async function saveSecret(routerId,secretId,input,customerId,options={}){
-  const router=await routerById(routerId),payload=cleanPayload(input);
-  if(!payload.name)throw new Error('Username PPPoE wajib diisi');
-  const customer=customerId?await customerForRouter(router,customerId):null;
-  let savedSecretId=secretId;
-  if(secretId)await mt.updateSecret(router,secretId,payload);
-  else{
-    if(!payload.password)throw new Error('Password wajib diisi untuk secret baru');
-    await mt.createSecret(router,payload);
-    const created=(await mt.listSecrets(router)).find(row=>normalize(row.name)===normalize(payload.name));
-    savedSecretId=created?.['.id'];
-    if(!savedSecretId)throw new Error('Secret berhasil dibuat di MikroTik, tetapi ID secret tidak dapat dibaca untuk menyimpan link pelanggan.');
-  }
-  if(customer){
-    try{await syncSecret(router.id,savedSecretId,customer.id,{source:'secret_form',userId:options.userId});}
-    catch(error){throw new Error(`Secret MikroTik sudah diperbarui, tetapi link pelanggan gagal disimpan: ${error.message}`);}
-  }
-  return {router,payload,customer};
-}
+async function saveSecret(routerId,secretId,input,customerId,options={}){const router=await routerById(routerId),payload=cleanPayload(input);if(!payload.name)throw new Error('Username PPPoE wajib diisi');const customer=customerId?await customerForRouter(router,customerId):null;if(secretId)await mt.updateSecret(router,secretId,payload);else{if(!payload.password)throw new Error('Password wajib diisi untuk secret baru');await mt.createSecret(router,payload);}if(customer){const status=bool(payload.disabled)?'isolated':'offline',conn=await db.getConnection();try{await conn.beginTransaction();const [duplicate]=await conn.execute(`SELECT id,name FROM customers WHERE router_id=? AND LOWER(TRIM(pppoe_username))=LOWER(TRIM(?)) AND id<>? AND customer_status='active' LIMIT 1 FOR UPDATE`,[router.id,payload.name,customer.id]);if(duplicate.length)throw new Error(`Username PPPoE sudah terhubung ke ${duplicate[0].name} pada router ini.`);await conn.execute(`UPDATE customers SET status_changed_at=IF(network_status<>?,NOW(),status_changed_at),router_id=?,pppoe_username=?,pppoe_synced_at=NOW(),pppoe_sync_source='secret_form',network_status=? WHERE id=?`,[status,router.id,payload.name,status,customer.id]);await conn.execute(`INSERT INTO pppoe_sync_logs(customer_id,router_id,secret_id,secret_name,previous_router_id,previous_username,sync_source,status,created_by) VALUES(?,?,?,?,?,?, 'secret_form','success',?)`,[customer.id,router.id,secretId||null,payload.name,customer.router_id||null,customer.pppoe_username||null,options.userId||null]);await conn.commit();}catch(error){await conn.rollback();throw new Error(`Secret MikroTik sudah diperbarui, tetapi link pelanggan gagal disimpan: ${error.message}`);}finally{conn.release();}}return {router,payload,customer};}
 async function syncSecret(routerId,secretId,customerId,options={}){
   const source=['manual','smart','secret_form','status_refresh'].includes(options.source)?options.source:'manual';
   const router=await routerById(routerId),customer=await customerForRouter(router,customerId),secret=await mt.getSecret(router,secretId);
   if(!secret?.name)throw new Error('PPPoE secret tidak ditemukan');
   const active=await mt.findActive(router,secret.name);
-  // Endpoint Network lama tetap dipakai oleh klien lama. Delegasikan mapping ke
-  // engine NMS agar aturan timpa, lock, mirror pelanggan, dan verifikasi tidak
-  // berbeda dari UI NMS utama.
-  await secretStore.syncRouterSecrets(router);
-  const [[mirrored]]=await db.execute(`SELECT id FROM ppp_secrets WHERE router_id=? AND (ros_id=? OR LOWER(username)=LOWER(?)) AND removed_on_router_at IS NULL ORDER BY ros_id=? DESC LIMIT 1`,[router.id,String(secretId),secret.name,String(secretId)]);
-  if(!mirrored)throw new Error('PPP Secret belum masuk mirror NMS. Coba sinkronkan ulang.');
+  const lockName=`inkam_pppoe_site_${router.site_id}`;
+  const conn=await db.getConnection();let locked=false;
   try{
-    await smartSync.manualMap(mirrored.id,customer.id,source==='manual'?'manual':'smart');
-    const [[persisted]]=await db.execute(`SELECT router_id,pppoe_username,pppoe_synced_at,pppoe_sync_source,network_status FROM customers WHERE id=?`,[customer.id]);
-    if(!persisted||Number(persisted.router_id)!==Number(router.id)||normalize(persisted.pppoe_username)!==normalize(secret.name))throw new Error('Verifikasi penyimpanan link PPPoE gagal.');
-    return {router,secret,customer,persisted,active:!!active};
-  }catch(error){
-    try{await db.execute(`INSERT INTO pppoe_sync_logs(customer_id,router_id,secret_id,secret_name,previous_router_id,previous_username,sync_source,match_score,status,error_message,created_by) VALUES(?,?,?,?,?,?,?,?, 'failed',?,?)`,[customer.id,router.id,String(secretId),secret.name,customer.router_id||null,customer.pppoe_username||null,source,options.score==null?null:Math.max(0,Math.min(100,Number(options.score))),String(error.message||error).slice(0,1000),options.userId||null]);}catch(_){}
-    throw error;
-  }
+    const [[lock]]=await conn.execute(`SELECT GET_LOCK(?,8) locked`,[lockName]);locked=Number(lock?.locked)===1;if(!locked)throw new Error('Sinkronisasi secret sedang diproses pengguna lain. Coba lagi.');
+    await conn.beginTransaction();
+    const [freshRows]=await conn.execute(`SELECT id,name,customer_code,site_id,router_id,pppoe_username FROM customers WHERE id=? AND customer_status='active' FOR UPDATE`,[customer.id]);
+    const fresh=freshRows[0];if(!fresh)throw new Error('Pelanggan sudah tidak aktif.');if(Number(fresh.site_id)!==Number(router.site_id))throw new Error('Site pelanggan dan router tidak sama.');
+    const [existing]=await conn.execute(`SELECT id,name FROM customers WHERE router_id=? AND LOWER(TRIM(pppoe_username))=LOWER(TRIM(?)) AND id<>? AND customer_status='active' LIMIT 1 FOR UPDATE`,[router.id,secret.name,fresh.id]);
+    if(existing.length)throw new Error(`Username PPPoE sudah terhubung ke ${existing[0].name} pada router yang sama.`);
+    const status=statusOf(secret,active);
+    await conn.execute(`UPDATE customers SET status_changed_at=IF(network_status<>?,NOW(),status_changed_at),router_id=?,pppoe_username=?,pppoe_synced_at=NOW(),pppoe_sync_source=?,network_status=? WHERE id=?`,[status,router.id,secret.name,source,status,fresh.id]);
+    const [verified]=await conn.execute(`SELECT router_id,pppoe_username,pppoe_synced_at,pppoe_sync_source,network_status FROM customers WHERE id=? FOR UPDATE`,[fresh.id]);
+    if(!verified.length||Number(verified[0].router_id)!==Number(router.id)||normalize(verified[0].pppoe_username)!==normalize(secret.name))throw new Error('Verifikasi penyimpanan link PPPoE gagal.');
+    await conn.execute(`INSERT INTO pppoe_sync_logs(customer_id,router_id,secret_id,secret_name,previous_router_id,previous_username,sync_source,match_score,status,created_by) VALUES(?,?,?,?,?,?,?,?, 'success',?)`,[fresh.id,router.id,String(secretId),secret.name,fresh.router_id||null,fresh.pppoe_username||null,source,options.score==null?null:Math.max(0,Math.min(100,Number(options.score))),options.userId||null]);
+    await conn.commit();return {router,secret,customer:{...customer,...fresh},persisted:verified[0],active:!!active};
+  }catch(error){try{await conn.rollback();}catch(_){}try{await conn.execute(`INSERT INTO pppoe_sync_logs(customer_id,router_id,secret_id,secret_name,previous_router_id,previous_username,sync_source,match_score,status,error_message,created_by) VALUES(?,?,?,?,?,?,?,?, 'failed',?,?)`,[customer.id,router.id,String(secretId),secret.name,customer.router_id||null,customer.pppoe_username||null,source,options.score==null?null:Math.max(0,Math.min(100,Number(options.score))),String(error.message||error).slice(0,1000),options.userId||null]);}catch(_){}throw error;}finally{if(locked){try{await conn.execute(`SELECT RELEASE_LOCK(?)`,[lockName]);}catch(_){}}conn.release();}
 }
 
 async function removeSecret(routerId,secretId){const router=await routerById(routerId),result=await mt.deleteSecret(router,secretId);const [linked]=await db.execute(`SELECT id,customer_code,name FROM customers WHERE router_id=? AND pppoe_username=?`,[router.id,result.secret.name]);await db.execute(`UPDATE customers SET status_changed_at=IF(network_status<>'offline',NOW(),status_changed_at),pppoe_username=NULL,network_status='offline' WHERE router_id=? AND pppoe_username=?`,[router.id,result.secret.name]);return {router,...result,linkedCustomers:linked};}

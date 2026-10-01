@@ -14,8 +14,6 @@ const required=[
   [layout,"class=\"<%= isMobileApp?'inkamnet-go-app':'' %>\"",'app body class'],
   [layout,'go-bottom-nav','bottom navigation'],[layout,'goQuickSheet','quick action sheet'],
   [layout,'goMenu','full menu'],[layout,"if(can('billing'))",'permission-aware billing'],
-  [layout,'hasGoQuickAction','quick action is only shown when it has permitted actions'],
-  [layout,"else if(can('network'))",'network users receive an allowed bottom-nav destination'],
   [css,'env(safe-area-inset-bottom)','safe-area support'],[css,'.go-menu-grid','menu grid'],
   [css,'@media(max-width:374px)','small-phone layout'],[css,'.go-primary-filter','visible list filter'],[js,"sessionStorage.setItem('inkamnet-go-cash-action'",'cash quick action'],[js,"heading.insertAdjacentElement('afterend',primaryFilter)",'filter moved above list content'],
   [app,"'public/css/mobile-app.css'",'mobile asset cache version'],
@@ -27,8 +25,6 @@ const required=[
   ,[css,'body.inkamnet-go-app .modal-body{min-height:0','all APK modal bodies scroll']
   ,[css,'.go-menu-scroll{flex:1 1 auto;min-height:0','full menu has a bounded scroll area']
   ,[js,"window.addEventListener('popstate'",'Android back closes active overlays']
-  ,[js,"event.key!=='Tab'",'overlay focus stays within the open dialog']
-  ,[js,"aria-expanded','true'",'overlay trigger state is announced']
   ,[js,"window.addEventListener('pageshow'",'back-forward cache overlay recovery']
   ,[js,"window.visualViewport?.addEventListener('resize'",'keyboard-aware viewport sizing']
   ,[invoiceView,'class="invoice-row','invoice rows have APK card hooks']

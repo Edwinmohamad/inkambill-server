@@ -8,6 +8,7 @@ const { generateMonthlyInvoices, applyInvoiceDiscount, refreshInvoiceStatus, nex
 const { requireAdmin, requireMasterAdmin, isMasterAdminRole }=require('../middleware/auth');
 const { createCorporateInvoicePdf }=require('../services/reportPdf');
 const { audit }=require('../services/auditService');
+const { assertDateOpen }=require('../services/financialControlService');
 const router=express.Router();
 const invoiceLogoDir=path.join(__dirname,'..','storage','invoice-branding');
 
@@ -598,7 +599,7 @@ router.post('/:id/reset-unpaid',requireAdmin,async(req,res)=>{
     const [invoiceRows]=await conn.execute(`SELECT id,invoice_number,period_year,period_month,total,paid_amount,outstanding,status,due_date FROM invoices WHERE id=? FOR UPDATE`,[req.params.id]);
     invoice=invoiceRows[0];
     if(!invoice)throw new Error('Tagihan tidak ditemukan.');
-    const [payments]=await conn.execute(`SELECT id,amount,status,method,reference,notes FROM payments WHERE invoice_id=? AND status IN ('confirmed','pending') FOR UPDATE`,[invoice.id]);
+    const [payments]=await conn.execute(`SELECT id,amount,status,method,reference,notes,paid_at,booked_at,settled_at FROM payments WHERE invoice_id=? AND status IN ('confirmed','pending') FOR UPDATE`,[invoice.id]);
     const ids=payments.map(x=>Number(x.id));
     reversedTotal=payments.filter(x=>x.status==='confirmed').reduce((a,x)=>a+Number(x.amount||0),0);
     reversedCount=payments.length;
@@ -606,7 +607,9 @@ router.post('/:id/reset-unpaid',requireAdmin,async(req,res)=>{
       const marks=ids.map(()=>'?').join(',');
       // Semua jurnal otomatis yang bersumber dari payment harus ikut dibalik. Ini termasuk
       // pendapatan billing biasa serta jurnal pemasangan baru/komisi yang memakai payment id sama.
-      await conn.execute(`DELETE FROM cash_transactions WHERE source_id IN (${marks}) AND source_type IN ('payment','install_income','install_commission_technician','install_commission_sales')`,ids);
+      const [cashRows]=await conn.execute(`SELECT id,transaction_date FROM cash_transactions WHERE source_id IN (${marks}) AND source_type IN ('payment','install_income','install_commission_technician','install_commission_sales','payment_commission_technician','payment_commission_sales') FOR UPDATE`,ids);
+      for(const row of cashRows)await assertDateOpen(conn,row.transaction_date);
+      await conn.execute(`DELETE FROM cash_transactions WHERE source_id IN (${marks}) AND source_type IN ('payment','install_income','install_commission_technician','install_commission_sales','payment_commission_technician','payment_commission_sales')`,ids);
       const correction=`[KOREKSI ADMIN ${new Date().toISOString().slice(0,19).replace('T',' ')}] Pembayaran dibatalkan agar tagihan kembali belum lunas.`;
       await conn.execute(`UPDATE payments SET status='failed',settlement_status='not_applicable',notes=CONCAT_WS('\\n',NULLIF(notes,''),?) WHERE id IN (${marks})`,[correction,...ids]);
     }
@@ -673,26 +676,19 @@ router.post('/:id/delete',requireAdmin,async(req,res)=>{
 // client-side (retype the invoice number, see views/partials/layout.ejs #forceDeleteModal) and the route
 // itself re-checks nothing except that the invoice exists, since the whole point is to bypass the guard.
 router.post('/:id/force-delete',requireMasterAdmin,async(req,res)=>{
-  const conn=await db.getConnection();
-  let invoice=null;
+  const conn=await db.getConnection();let invoice=null;
   try{
     await conn.beginTransaction();
     const [rows]=await conn.execute(`SELECT id,invoice_number,period_year,period_month FROM invoices WHERE id=? LIMIT 1 FOR UPDATE`,[req.params.id]);
-    if(!rows.length){await conn.rollback();req.session.flash={type:'danger',message:'Tagihan tidak ditemukan.'};return res.redirect('/invoices');}
-    invoice=rows[0];
+    if(!rows.length)throw new Error('Tagihan tidak ditemukan.');invoice=rows[0];
     const [linkedPayments]=await conn.execute(`SELECT id FROM payments WHERE invoice_id=? FOR UPDATE`,[invoice.id]);
-    const payCount={n:linkedPayments.length};
-    if(linkedPayments.length){
-      const marks=linkedPayments.map(()=>'?').join(',');
-      await conn.execute(`DELETE FROM cash_transactions WHERE source_id IN (${marks}) AND source_type IN ('payment','install_income','install_commission_technician','install_commission_sales')`,linkedPayments.map(p=>p.id));
-    }
-    await conn.execute(`DELETE FROM payments WHERE invoice_id=?`,[invoice.id]);
+    if(linkedPayments.length)throw new Error('Tagihan memiliki histori pembayaran. Hapus Paksa dinonaktifkan untuk dokumen finansial terkait; gunakan Reset ke Belum Lunas/koreksi agar jurnal tetap konsisten.');
     await conn.execute(`DELETE FROM invoices WHERE id=?`,[invoice.id]);
     await conn.commit();
-    await audit({userId:req.session.user.id,action:'force_delete',entityType:'invoice',entityId:invoice.id,description:`HAPUS PAKSA tagihan ${invoice.invoice_number} beserta ${payCount.n} riwayat pembayarannya (Master Admin override).`,ip:req.ip});
-    req.session.flash={type:'success',message:`Tagihan ${invoice.invoice_number} dan ${payCount.n} riwayat pembayarannya dihapus permanen (Hapus Paksa).`};
-  }catch(e){await conn.rollback();throw e;}finally{conn.release();}
-  res.redirect(localReturn(req.body.return_to,`/invoices?month=${invoice.period_month}&year=${invoice.period_year}`));
+    await audit({userId:req.session.user.id,action:'force_delete',entityType:'invoice',entityId:invoice.id,description:`Hapus permanen tagihan tanpa pembayaran ${invoice.invoice_number}.`,ip:req.ip});
+    req.session.flash={type:'success',message:`Tagihan ${invoice.invoice_number} tanpa histori pembayaran dihapus.`};
+  }catch(e){try{await conn.rollback();}catch(_){}req.session.flash={type:'danger',message:`Hapus tagihan gagal: ${e.message}`};}finally{conn.release();}
+  res.redirect(localReturn(req.body.return_to,invoice?`/invoices?month=${invoice.period_month}&year=${invoice.period_year}`:'/invoices'));
 });
 
 // v1.21.0 — Section 4 (global delete-button audit): Tagihan already had fully transaction-safe individual
@@ -752,32 +748,7 @@ router.post('/bulk',requireAdmin,async(req,res)=>{
   // is otherwise gated at `requireAdmin`, one level below Master Admin). Deletes payments + invoice for
   // every selected row unconditionally, same cascade as the single-row /force-delete above.
   if(action==='force_delete'){
-    if(!isMasterAdminRole(req.session.user.role)){
-      req.session.flash={type:'danger',message:'Hapus Paksa hanya dapat dilakukan oleh Master Admin.'};
-      return res.redirect(returnTo);
-    }
-    const done=[];
-    for(const id of ids){
-      const conn=await db.getConnection();
-      try{
-        await conn.beginTransaction();
-        const [rows]=await conn.execute(`SELECT id,invoice_number FROM invoices WHERE id=? LIMIT 1 FOR UPDATE`,[id]);
-        if(!rows.length){await conn.rollback();continue;}
-        const invoice=rows[0];
-        const [linkedPayments]=await conn.execute(`SELECT id FROM payments WHERE invoice_id=? FOR UPDATE`,[invoice.id]);
-        if(linkedPayments.length){
-          const marks=linkedPayments.map(()=>'?').join(',');
-          await conn.execute(`DELETE FROM cash_transactions WHERE source_id IN (${marks}) AND source_type IN ('payment','install_income','install_commission_technician','install_commission_sales')`,linkedPayments.map(p=>p.id));
-        }
-        await conn.execute(`DELETE FROM payments WHERE invoice_id=?`,[invoice.id]);
-        await conn.execute(`DELETE FROM invoices WHERE id=?`,[invoice.id]);
-        await conn.commit();
-        done.push(invoice);
-      }catch(e){await conn.rollback();}finally{conn.release();}
-    }
-    if(!done.length){req.session.flash={type:'warning',message:'Tagihan terpilih tidak ditemukan.'};return res.redirect(returnTo);}
-    await audit({userId:req.session.user.id,action:'bulk_force_delete',entityType:'invoice',entityId:null,description:`HAPUS PAKSA massal ${done.length} tagihan beserta seluruh riwayat pembayarannya (Master Admin override): ${done.map(r=>r.invoice_number).slice(0,20).join(', ')}${done.length>20?', ...':''}`,ip:req.ip});
-    req.session.flash={type:'success',message:`${done.length} tagihan dihapus paksa beserta seluruh riwayat pembayarannya.`};
+    req.session.flash={type:'danger',message:'Hapus Paksa massal tagihan dinonaktifkan untuk menjaga integritas invoice-payment-kas. Koreksi dokumen finansial harus dilakukan melalui Reset ke Belum Lunas atau pembatalan per tagihan.'};
     return res.redirect(returnTo);
   }
   req.session.flash={type:'danger',message:'Aksi massal tidak dikenali.'};

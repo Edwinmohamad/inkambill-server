@@ -296,7 +296,9 @@
       items.push({ label: 'Tunda isolir (janji bayar)…', icon: 'bi-hourglass-split', run: () => act(r, 'hold') });
       items.push({ label: 'Ganti paket…', icon: 'bi-speedometer', run: () => act(r, 'package') });
       items.push({ label: 'Buat tiket gangguan', icon: 'bi-ticket-perforated', run: () => act(r, 'ticket') });
-      items.push('-', { label: 'Lepas link pelanggan', icon: 'bi-x-circle', danger: true, run: () => act(r, 'unmap') });
+      items.push('-',
+        { label: 'Ganti / timpa pelanggan…', icon: 'bi-arrow-left-right', run: () => act(r, 'map') },
+        { label: 'Lepas link pelanggan', icon: 'bi-x-circle', danger: true, run: () => act(r, 'unmap') });
     } else {
       items.push('-', { label: 'Hubungkan ke pelanggan…', icon: 'bi-link-45deg', run: () => act(r, 'map') }, { label: 'Buat pelanggan dari secret…', icon: 'bi-person-plus', run: () => act(r, 'create-customer') });
       if (r.is_exempt && r.exempt_type === 'fasum') items.push({ label: 'Ubah catatan Fasum…', icon: 'bi-building', run: () => act(r, 'fasum') }, { label: 'Bukan Fasum (ikut Smart Sync)', icon: 'bi-building-x', run: () => act(r, 'unfasum') });
@@ -315,8 +317,9 @@
   const sitesList = [...(siteSelect?.options || [])].filter(o => o.value).map(o => ({ id: o.value, label: o.textContent }));
 
   function openMap(r, { onDone } = {}) {
-    const s = sheet({ title: 'Hubungkan ke pelanggan', subtitle: `<span class="mono">${esc(r.username)}</span> · ${esc(r.site_code || '')}${r.router_name ? ' / ' + esc(r.router_name) : ''}`, size: 'sm',
-      body: `<div class="nx-field"><label>Site</label><select data-site>${sitesList.map(o => `<option value="${o.id}" ${Number(o.id) === Number(r.site_id) ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></div>
+    const replacing = !!r.customer_id;
+    const s = sheet({ title: replacing ? 'Ganti / timpa pelanggan' : 'Hubungkan ke pelanggan', subtitle: `<span class="mono">${esc(r.username)}</span> · ${esc(r.site_code || '')}${r.router_name ? ' / ' + esc(r.router_name) : ''}`, size: 'sm',
+      body: `<div class="nx-field"><label>Site</label><select data-site disabled><option value="${esc(r.site_id)}" selected>${esc(r.site_code || 'Site secret')}</option></select><small class="dim">Mapping hanya boleh ke pelanggan pada site yang sama dengan secret.</small></div>
         <div class="nx-field nx-ac"><label>Pelanggan</label><input type="search" data-q placeholder="Ketik nama, Customer ID, atau HP" autocomplete="off" autofocus><div class="nx-ac-list" data-list hidden></div></div><div class="nx-unl" data-unl><div class="nx-unl-head"><span>Pelanggan belum terhubung</span><small class="dim" data-unl-n>memuat…</small></div><div class="nx-unl-list" data-unl-list><div class="nx-empty" style="padding:12px">Memuat…</div></div></div><div class="nx-note" data-picked hidden></div><div class="nx-field" style="margin-top:14px"><label>Catatan <span class="dim" style="font-weight:500">(opsional)</span></label><input type="text" data-reason maxlength="255" placeholder="Contoh: dicek teknisi di lokasi"></div>`,
       foot: `<button type="button" class="nx-btn" data-close>Batal</button><button type="button" class="nx-btn primary" data-save disabled>Hubungkan</button>` });
     let rows = [], pick = null, idx = -1, timer = null, unl = [];
@@ -347,7 +350,7 @@
         rows = (res.rows || []).filter(c => c.linked_username || !unlinkedIds.has(Number(c.id)));
         idx = -1;
         list.innerHTML = rows.length ? rows.map((c, i) => {
-          const self = c.linked_username && String(c.linked_username).trim().toLowerCase() === String(r.username).trim().toLowerCase();
+          const self = Number(c.linked_secret_id) === Number(r.id);
           const off = self || !['active', 'suspended'].includes(String(c.customer_status || 'active'));
           const note = self ? 'sudah terhubung ke secret ini' : off ? esc(c.customer_status) : c.linked_username ? `terhubung ke ${esc(c.linked_username)} · akan dipindahkan` : esc(c.site_code);
           return `<button type="button" data-i="${i}" ${off ? 'disabled' : ''}><b class="mono">${esc(c.customer_code)}</b><span class="grow">${esc(c.name)}</span><small class="dim">${note}</small></button>`;
@@ -359,22 +362,35 @@
     s.$('[data-q]').addEventListener('input', () => { clearTimeout(timer); pick = null; s.$('[data-save]').disabled = true; s.$('[data-picked]').hidden = true; renderUnl(); timer = setTimeout(search, 200); });
     s.$('[data-q]').addEventListener('keydown', e => { const items = [...list.querySelectorAll('button:not(:disabled)')]; if (['ArrowDown', 'ArrowUp'].includes(e.key)) { e.preventDefault(); idx = Math.max(0, Math.min(items.length - 1, idx + (e.key === 'ArrowDown' ? 1 : -1))); items.forEach((b, i) => b.classList.toggle('on', i === idx)); } if (e.key === 'Enter') { e.preventDefault(); if (items[idx]) choose(Number(items[idx].dataset.i)); } });
     list.addEventListener('click', e => { const b = e.target.closest('[data-i]'); if (b) choose(Number(b.dataset.i)); });
-    s.$('[data-site]').addEventListener('change', () => { pick = null; s.$('[data-save]').disabled = true; s.$('[data-picked]').hidden = true; loadUnl(); search(); });
     s.$('[data-save]').addEventListener('click', async e => {
       if (!pick) return;
-      const moving = pick.linked_username && String(pick.linked_username).trim().toLowerCase() !== String(r.username).trim().toLowerCase();
-      if (moving) {
+      const moving = pick.linked_secret_id && Number(pick.linked_secret_id) !== Number(r.id);
+      const replacingTarget = r.customer_id && Number(r.customer_id) !== Number(pick.id);
+      if (moving || replacingTarget) {
+        const parts = [];
+        if (replacingTarget) parts.push(`Secret <span class="mono">${esc(r.username)}</span> saat ini terhubung ke <b>${esc(r.customer_name || 'pelanggan lain')}</b> dan akan ditimpa.`);
+        if (moving) parts.push(`<b>${esc(pick.name)}</b> saat ini terhubung ke <span class="mono">${esc(pick.linked_username)}</span>; link lama itu akan dilepas.`);
+        parts.push('Sesi PPPoE lama yang terdampak akan diputus agar status tidak menggantung.');
         const yes = await confirmBox({
-          title: 'Pindahkan link pelanggan?',
-          okText: 'Pindahkan',
-          message: `<b>${esc(pick.name)}</b> saat ini terhubung ke <span class="mono">${esc(pick.linked_username)}</span>.<br>Link lama akan dilepas dan dipindahkan ke <span class="mono">${esc(r.username)}</span>.`
+          title: replacingTarget ? 'Timpa link pelanggan?' : 'Pindahkan link pelanggan?',
+          danger: !!replacingTarget,
+          okText: replacingTarget ? 'Timpa & putus sesi lama' : 'Pindahkan',
+          message: parts.join('<br><br>')
         });
         if (!yes) return;
       }
       const btn = e.currentTarget; btn.classList.add('busy');
       try {
         const out = await api(`/nms/api/secrets/${r.id}/map`, { method: 'POST', body: { customerId: pick.id, reason: s.$('[data-reason]').value } });
-        toast(`${r.username} → ${pick.name}${out.released?.length ? ` (link lama ${out.released.join(', ')} dilepas)` : ''}`, 'ok');
+        const extra = [
+          out.replacedCustomer ? `menimpa ${out.replacedCustomer.name || out.replacedCustomer.code}` : '',
+          out.released?.length ? `melepas ${out.released.join(', ')}` : '',
+          out.disconnectedSessions ? `${out.disconnectedSessions} sesi lama diputus` : ''
+        ].filter(Boolean).join(' · ');
+        toast(`${r.username} → ${pick.name}${extra ? ` · ${extra}` : ''}`, 'ok');
+        if (out.disconnectFailures?.length) {
+          toast(`Mapping sudah tersimpan, tetapi ${out.disconnectFailures.length} sesi lama belum bisa diputus. Cek koneksi router lalu lakukan Kick bila masih online.`, 'err');
+        }
         s.close(); onDone?.(); changed();
       } catch (err) { toast(err.message, 'err'); btn.classList.remove('busy'); }
     });

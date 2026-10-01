@@ -1,4 +1,4 @@
-<div class="closing-page closing-manual-only closing-apple-v2">
+<div class="closing-page closing-manual-only">
   <header class="closing-head page-header" id="closing-step-periode">
     <div>
       <div class="closing-eyebrow"><%= closing.mode === 'AUTO' ? 'INKAMNET CONTROL CENTER \u00b7 KALKULATOR OTOMATIS' : 'INKAMNET CONTROL CENTER \u00b7 KALKULATOR MANUAL' %></div>
@@ -208,7 +208,7 @@
 
   <section class="card closing-card closing-input-card" id="closing-step-input">
     <div class="card-body">
-      <div class="closing-section-head"><div><span class="closing-card-kicker">OPERASIONAL · INPUT</span><h2>Pendapatan dan pengeluaran</h2><small class="text-muted">Isi nominal per lokasi. Pengeluaran CDS boleh diberi cluster hanya sebagai keterangan.</small></div><span class="closing-count"><%= lineItems.length %> baris</span></div>
+      <div class="closing-section-head"><div><span class="closing-card-kicker">LANGKAH 2 · INPUT UTAMA</span><h2>Pendapatan dan pengeluaran</h2><small class="text-muted">Isi nominal per lokasi. Pengeluaran CDS boleh diberi cluster hanya sebagai keterangan.</small></div><span class="closing-count"><%= lineItems.length %> baris</span></div>
         <div class="closing-entry-grid">
           <form class="closing-entry-box closing-entry-form" method="post" action="/closing/entries">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="entry_type" value="INCOME"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>">
@@ -310,7 +310,7 @@
 
   <section class="card closing-card" id="closing-step-adjustments">
     <div class="card-body">
-      <div class="closing-section-head"><div><span class="closing-card-kicker">PENYESUAIAN</span><h2>Potongan dan tambahan per orang</h2><small class="text-muted">Cash belum setor otomatis mengurangi hak penerima.</small></div><span class="closing-count"><%= adjustments.length %> baris</span></div>
+      <div class="closing-section-head"><div><span class="closing-card-kicker">LANGKAH 3 · PENYESUAIAN</span><h2>Potongan dan tambahan per orang</h2><small class="text-muted">Cash belum setor otomatis mengurangi hak penerima.</small></div><span class="closing-count"><%= adjustments.length %> baris</span></div>
         <form class="closing-adjustment-grid mt-3" method="post" action="/closing/adjustments">
           <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>">
           <label><span>Penerima</span><select class="form-select form-select-sm" name="recipient_name"><option>Edwin</option><option>Jon</option><option>Bopung</option><option>Mang Ali</option></select></label>
@@ -347,7 +347,7 @@
 
   <section class="card closing-card" id="closing-step-hasil">
     <div class="card-body">
-      <div class="closing-section-head"><div><span class="closing-card-kicker">HASIL CLOSING</span><h2>Pembagian hasil per lokasi</h2><small class="text-muted">Persentase berikut digunakan untuk menghitung laba bersih setelah pengeluaran lokasi.</small></div><span class="closing-count">Kalkulator</span></div>
+      <div class="closing-section-head"><div><span class="closing-card-kicker">LANGKAH 4 · HASIL PEMBAGIAN</span><h2>Pembagian hasil per lokasi</h2><small class="text-muted">Persentase berikut digunakan untuk menghitung laba bersih setelah pengeluaran lokasi.</small></div><span class="closing-count">Kalkulator</span></div>
       <div class="closing-share-rules mt-3">
         <article class="closing-share-rule">
           <div class="closing-share-rule-head"><div><span class="closing-share-site">CDS</span><h3>Gabungan KRW dan CLM</h3></div><strong class="closing-total-pill">Total 100%</strong></div>
@@ -377,7 +377,7 @@
   </section>
 
   <div class="closing-lower-grid">
-    <section class="card closing-card"><div class="card-body"><div class="closing-section-head"><div><span class="closing-card-kicker">KOMPONEN PENDUKUNG</span><h2>Gaji</h2></div><span class="closing-count">Total Rp <%= money(salaryTotal).toLocaleString('id-ID') %></span></div>
+    <section class="card closing-card"><div class="card-body"><div class="closing-section-head"><div><span class="closing-card-kicker">POTONGAN DARI INPUT</span><h2>Gaji</h2></div><span class="closing-count">Total Rp <%= money(salaryTotal).toLocaleString('id-ID') %></span></div>
       <p class="text-muted mb-2" style="font-size:.6rem;font-weight:700;letter-spacing:.03em;text-transform:uppercase;margin-top:10px">Sumber gaji</p>
       <div class="closing-salary-list"><% salaryRows.forEach(row => { %><div><span><%= row.name %></span><strong>Rp <%= money(row.amount).toLocaleString('id-ID') %></strong></div><% }) %></div>
       <p class="text-muted mb-2" style="font-size:.6rem;font-weight:700;letter-spacing:.03em;text-transform:uppercase;margin-top:14px">Dipotong dari bagian (CDS)</p>
@@ -389,7 +389,7 @@
       <small class="text-muted">Mang Ali tidak dibebani gaji Agung/Padilah.</small>
     </div></section>
 
-    <section class="card closing-card"><div class="card-body"><div class="closing-section-head"><div><span class="closing-card-kicker">INFORMASI PENDUKUNG</span><h2>Pelanggan belum lunas</h2><small class="text-muted">Sekadar pengingat penagihan untuk periode ini — tidak dihitung ke Pendapatan/Bersih di atas.</small></div><% if (typeof unpaidSummary !== 'undefined' && unpaidSummary) { %><span class="closing-count"><%= unpaidSummary.count %> pelanggan</span><% } %></div>
+    <section class="card closing-card"><div class="card-body"><div class="closing-section-head"><div><span class="closing-card-kicker">INFORMASI · TIDAK MEMENGARUHI PERHITUNGAN</span><h2>Pelanggan belum lunas</h2><small class="text-muted">Sekadar pengingat penagihan untuk periode ini — tidak dihitung ke Pendapatan/Bersih di atas.</small></div><% if (typeof unpaidSummary !== 'undefined' && unpaidSummary) { %><span class="closing-count"><%= unpaidSummary.count %> pelanggan</span><% } %></div>
       <% if (typeof unpaidCustomers === 'undefined' || !unpaidCustomers.length) { %>
         <div class="closing-locked-note"><i class="bi bi-check-circle"></i>Tidak ada pelanggan belum lunas untuk periode ini (atau data tagihan belum tersedia).</div>
       <% } else { %>
@@ -400,7 +400,7 @@
     </div></section>
 
     <% if (typeof internalDebt !== 'undefined' && internalDebt) { const ids = internalDebt.summary; %>
-    <section class="card closing-card closing-internal-debt"><div class="card-body"><div class="closing-section-head"><div><span class="closing-card-kicker">INFORMASI PENDUKUNG</span><h2>Hutang internal teknisi</h2><small class="text-muted">Saldo per <%= end %> dari menu Hutang &amp; Piutang (Internal). Ikut dicetak rinci di PDF Closing.</small></div><span class="closing-count"><%= ids.people %> orang</span></div>
+    <section class="card closing-card closing-internal-debt"><div class="card-body"><div class="closing-section-head"><div><span class="closing-card-kicker">INFORMASI · TIDAK MEMENGARUHI PERHITUNGAN</span><h2>Hutang internal teknisi</h2><small class="text-muted">Saldo per <%= end %> dari menu Hutang &amp; Piutang (Internal). Ikut dicetak rinci di PDF Closing.</small></div><span class="closing-count"><%= ids.people %> orang</span></div>
       <% if (!internalDebt.people.length) { %>
         <div class="closing-locked-note"><i class="bi bi-check-circle"></i>Tidak ada hutang internal teknisi yang aktif pada periode ini.</div>
       <% } else { %>

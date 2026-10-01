@@ -6,36 +6,25 @@
 <section class="wai" id="waInbox"
   data-initial="<%= initialConversationId||'' %>" data-user-id="<%= user.id %>" data-master="<%= isMasterAdmin?'1':'0' %>">
   <header class="wai-top">
-    <div><div class="module-kicker">KOMUNIKASI PELANGGAN</div><h1>Inbox WhatsApp</h1><p class="wai-top-sub">Percakapan, tindak lanjut, dan riwayat layanan dalam satu tempat.</p></div>
+    <div><div class="module-kicker">WHATSAPP CRM</div><h1>Web Inbox</h1></div>
     <div class="wai-top-right">
-      <% if(canBroadcast){ %><a class="wai-broadcast-link" href="/wa-gateway/broadcast"><i class="bi bi-megaphone"></i><span>Pusat Pesan</span></a><% } %>
       <div class="wai-pause <%= pause.paused?'':'d-none' %>" id="waiPauseBanner"><i class="bi bi-pause-circle-fill"></i><span id="waiPauseText"><%= pause.paused?`Antrean dijeda: ${pause.label||pause.kind}`:'' %></span><a href="/wa-gateway#antiban">Kelola</a></div>
       <span class="wai-gw <%= gwTone %>" id="waiGateway"><span class="dot"></span><span id="waiGatewayLabel">WA <%= gwLabel %></span></span>
       <span class="wai-rt" id="waiRealtime" title="Koneksi realtime"><i class="bi bi-broadcast"></i><span>Realtime</span></span>
     </div>
   </header>
 
-  <div class="wai-webhook" id="waiWebhookHealth" role="status" aria-live="polite">
-    <span id="waiWebhookText">Memeriksa penerimaan pesan WAHA…</span>
-    <% if(isMasterAdmin){ %><button type="button" id="waiWebhookRepair" hidden>Perbaiki webhook</button><% } %>
-  </div>
   <div class="wai-grid" id="waiGrid" data-view="list">
     <!-- KOLOM 1: daftar & filter percakapan -->
     <aside class="wai-col wai-list" aria-label="Daftar percakapan">
-      <label class="wai-search"><i class="bi bi-search"></i><input type="search" id="waiSearch" placeholder="Cari pelanggan atau nomor" aria-label="Cari percakapan" autocomplete="off"></label>
-      <nav class="wai-tabs" id="waiTabs" aria-label="Filter percakapan">
-        <div class="wai-tabs-main">
+      <div class="wai-search"><i class="bi bi-search"></i><input type="search" id="waiSearch" placeholder="Cari nama, ID, no. HP, alamat…" autocomplete="off"></div>
+      <nav class="wai-tabs" id="waiTabs">
         <button type="button" data-filter="all" class="active">Semua <em data-count="total"></em></button>
-        <button type="button" data-filter="unread">Belum dibaca <em data-count="unread"></em></button>
+        <button type="button" data-filter="unread">Belum Dibaca <em data-count="unread"></em></button>
         <button type="button" data-filter="payment">Pembayaran <em data-count="payment"></em></button>
         <button type="button" data-filter="outage">Gangguan <em data-count="outage"></em></button>
-        </div>
-        <details class="wai-tabs-more" id="waiMoreFilters"><summary>Filter lainnya <i class="bi bi-chevron-down"></i></summary><div class="wai-tabs-extra">
         <button type="button" data-filter="isolated">Terisolir <em data-count="isolated"></em></button>
-        <button type="button" data-filter="pending">Pending <em data-count="pending"></em></button>
-        <button type="button" data-filter="followup">Follow-up <em data-count="followup"></em></button>
         <button type="button" data-filter="mine">Tugas Saya</button>
-        </div></details>
       </nav>
       <ul class="wai-conv-list" id="waiConvList"><li class="wai-empty">Memuat percakapan…</li></ul>
     </aside>
@@ -49,7 +38,7 @@
           <div class="wai-avatar" id="waiHeadAvatar"></div>
           <div class="wai-head-meta"><strong id="waiHeadName"></strong><small id="waiHeadSub"></small></div>
           <span class="wai-mode" id="waiHeadMode"></span>
-          <label class="wai-switch" title="Balasan otomatis"><input type="checkbox" id="waiBotToggle"><span></span><small>Bot</small></label>
+          <label class="wai-switch" title="Auto-responder bot"><input type="checkbox" id="waiBotToggle"><span></span><small>Bot</small></label>
           <button type="button" class="wai-icon-btn wai-info-btn" data-back="info" aria-label="Info pelanggan"><i class="bi bi-person-vcard"></i></button>
         </header>
         <div class="wai-collision d-none" id="waiCollision"><i class="bi bi-exclamation-triangle-fill"></i><span></span></div>
@@ -82,13 +71,6 @@
           <ul id="waiLinkResults" class="wai-link-results"></ul>
         </div>
         <div id="waiInfoCards"></div>
-        <section class="wai-workflow">
-          <strong>Kelola percakapan</strong>
-          <div class="wai-status-pick" id="waiStatusPick" aria-label="Status percakapan"><button type="button" data-status="open">Baru</button><button type="button" data-status="pending">Menunggu</button><button type="button" data-status="resolved">Selesai</button><button type="button" data-status="closed">Ditutup</button></div>
-          <label><span>Label (pisahkan dengan koma)</span><input type="text" id="waiLabels" maxlength="300" placeholder="Tagihan, Prioritas, Follow-up"></label>
-          <label><span>Ingatkan / follow-up</span><input type="datetime-local" id="waiFollowUp"></label>
-          <button type="button" class="btn-tech" id="waiWorkflowSave"><i class="bi bi-check2"></i>Simpan kontrol</button>
-        </section>
         <div class="wai-actions" id="waiActions">
           <button type="button" class="btn-tech primary" id="waiActVerify"><i class="bi bi-check2-circle"></i>Verifikasi &amp; Buka Isolir</button>
           <button type="button" class="btn-tech" id="waiActTicket"><i class="bi bi-plus-circle"></i>Buat Tiket Gangguan</button>

@@ -37,11 +37,7 @@
     $('#wabCount').textContent = 'Memuat…';
     try {
       const d = await api(`/wa-gateway/broadcast/api/candidates?${filterParams()}`);
-      rows = d.rows; total = d.total;
-      // Pilihan manual selalu mengikuti hasil filter terbaru agar jumlah penerima di UI tidak menipu.
-      const liveIds = new Set(rows.map(r => Number(r.id)));
-      for (const id of [...selected]) if (!liveIds.has(Number(id))) selected.delete(id);
-      renderRows();
+      rows = d.rows; total = d.total; renderRows();
     } catch (e) { $('#wabCount').textContent = `Gagal memuat: ${e.message}`; }
   }
   function renderRows() {
@@ -60,8 +56,7 @@
       if (r.blacklisted) c2.appendChild(el('span', 'wab-sub', 'Opt-out'));
       else if (r.whatsapp_status !== 'valid') c2.appendChild(el('span', 'wab-sub', `WA ${r.whatsapp_status || 'belum dicek'}`));
       const c3 = el('td', null, r.package || '-');
-      const c4 = el('td');
-      c4.append(el('strong', null, r.site_code || '-'), el('span', 'wab-sub', [r.cluster_name, r.router_name].filter(Boolean).join(' · ') || 'Tanpa cluster'));
+      const c4 = el('td', null, [r.cluster_name, r.router_name].filter(Boolean).join(' · ') || '-');
       const c5 = el('td');
       if (Number(r.outstanding) > 0) c5.append(el('strong', null, rupiah(r.outstanding)), el('span', 'wab-sub', `Jatuh tempo ${fmtDate(r.next_due)}`));
       else c5.appendChild(el('span', 'wab-sub', 'Lunas'));
@@ -94,30 +89,6 @@
     const n = $$('.wab-more select').filter(s => s.value).length;
     const b = $('#wabFilterCount'); b.hidden = !n; b.textContent = n;
   }
-
-  // Preset audience hanya mengisi filter; user tetap melihat daftar penerima sebelum mengirim.
-  const setField = (name, value) => {
-    const node = $(`[name="${name}"]`, $('#wabFilter'));
-    if (!node) return;
-    const str = String(value ?? '');
-    if (node.tagName === 'SELECT' && str && ![...node.options].some(o => o.value === str)) {
-      const opt = document.createElement('option'); opt.value = str; opt.textContent = str; node.appendChild(opt);
-    }
-    node.value = str;
-  };
-  const currentPeriod = () => { const d = new Date(); return { month: d.getMonth() + 1, year: d.getFullYear() }; };
-  $$('.wab-preset').forEach(btn => btn.addEventListener('click', () => {
-    const p = btn.dataset.preset; const now = currentPeriod();
-    if (p === 'reset') { $('#wabFilter').reset(); selected.clear(); }
-    else {
-      setField('period_month', now.month); setField('period_year', now.year);
-      setField('due_day', p === 'due15' ? 15 : p === 'due30' ? 30 : '');
-      setField('billing', p === 'due15' || p === 'due30' ? 'open' : p);
-    }
-    $$('.wab-preset').forEach(x => x.classList.toggle('is-active', x === btn && p !== 'reset'));
-    updateFilterBadge(); loadCandidates();
-  }));
-
   let t = null;
   $('#wabFilter').addEventListener('input', () => { clearTimeout(t); t = setTimeout(loadCandidates, 300); });
   $('#wabFilter').addEventListener('change', () => { updateFilterBadge(); clearTimeout(t); t = setTimeout(loadCandidates, 50); });
@@ -198,7 +169,7 @@
     const btn = $('#wabSubmit'); btn.disabled = true; showResult('', 'Menyiapkan antrean…');
     try {
       const d = await api('/wa-gateway/broadcast', { method: 'POST', body: { ...filterObject(), target_mode: tm, customer_ids: [...selected], name: $('#wabName').value || 'Broadcast', template_key: $('#wabTemplate').value || null, message: msg.value, detail_gangguan: $('#wabDetail').value, estimasi_selesai: $('#wabEta').value, mode: m, scheduled_at: $('#wabSchedule').value } });
-      showResult('ok', `Broadcast #${d.id} dibuat setelah audience dicek ulang. ${num(d.queued)} pesan masuk antrean${d.scheduledAt ? `, terjadwal ${fmtDateTime(d.scheduledAt)}` : ''}. ${num(d.skippedBlacklist)} opt-out, ${num(d.skippedInvalid)} nomor tidak valid${d.skippedPending ? `, ${num(d.skippedPending)} pembayaran pending dilewati` : ''}.`);
+      showResult('ok', `Broadcast #${d.id} dibuat. ${num(d.queued)} pesan masuk antrean${d.scheduledAt ? `, terjadwal ${fmtDateTime(d.scheduledAt)}` : ''}. ${num(d.skippedBlacklist)} dilewati (opt-out), ${num(d.skippedInvalid)} nomor tidak valid.`);
       selected.clear(); renderRows(); loadList();
     } catch (e) { showResult('err', e.message); }
     finally { btn.disabled = false; }

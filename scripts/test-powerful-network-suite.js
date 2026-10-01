@@ -4,7 +4,7 @@ const app=read('app.js'),ui=read('public/js/app.js'),schema=read('services/schem
 assert(ui.includes('input.dataset.universalInstantSearch')&&ui.includes("word=>word.startsWith(q)"),'Universal instant search belum aktif');
 assert(ui.includes("if(event.key==='Enter'){event.preventDefault()"),'Enter masih memicu reload');
 assert(app.includes("app.use('/nms'")&&layout.includes('NOC Dashboard')&&!app.includes("app.use('/noc'"),'NOC Dashboard (NMS v2) belum terdaftar / NOC Terpadu belum dihapus');
-assert(nmsView.includes('Router Health')&&nmsView.includes('Live Log Streamer')&&nmsView.includes('nmsAlerts'),'NOC Dashboard belum lengkap');
+assert(nmsView.includes('Ringkasan Site')&&nmsView.includes('Traffic WAN')&&nmsView.includes('Log PPP')&&nmsView.includes('nmsAlerts'),'NOC Dashboard belum lengkap');
 assert(schema.includes('network_map_nodes')&&schema.includes('network_map_links')&&schema.includes('ensureV43Schema'),'Skema geographic map belum lengkap');
 assert(!acs.includes("'/map/nodes'")&&!acs.includes("'/map/links'")&&!fs.existsSync('views/acs/map.ejs'),'Network Map seharusnya sudah dihapus');
 assert(nmsRoute.includes("'/api/stream'")&&nmsRoute.includes('requireNetworkControl'),'NMS stream / RBAC belum ada');

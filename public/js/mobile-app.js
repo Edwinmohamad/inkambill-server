@@ -2,14 +2,12 @@
   'use strict';
   const body=document.body, menu=document.getElementById('goMenu'), quick=document.getElementById('goQuickSheet');
   const overlays=[menu,quick].filter(Boolean);
-  const overlayTrigger=node=>document.querySelector(node===menu?'[data-go-menu-open]':'[data-go-quick-open]');
   const layerState=()=>history.state?.inkamnetGoLayer||null;
   const syncBody=()=>body.classList.toggle('go-overlay-open',overlays.some(node=>node.classList.contains('open')));
   const clearLayerState=()=>{const state={...(history.state||{})};delete state.inkamnetGoLayer;history.replaceState(state,'',location.href);};
   const closeOverlay=(node,{consumeHistory=true,restoreFocus=true}={})=>{
     if(!node?.classList.contains('open'))return;
     node.classList.remove('open');node.setAttribute('aria-hidden','true');syncBody();
-    overlayTrigger(node)?.setAttribute('aria-expanded','false');
     const focus=node._goReturnFocus;delete node._goReturnFocus;
     if(restoreFocus&&focus?.isConnected)focus.focus({preventScroll:true});
     if(consumeHistory&&layerState()?.kind==='overlay'&&layerState()?.id===node.id)history.back();
@@ -19,7 +17,6 @@
     if(!node||node.classList.contains('open'))return;
     closeAllOverlays({consumeHistory:false,restoreFocus:false});
     node._goReturnFocus=document.activeElement;node.classList.add('open');node.setAttribute('aria-hidden','false');syncBody();
-    overlayTrigger(node)?.setAttribute('aria-expanded','true');
     const focus=node.querySelector('[data-go-menu-close],[data-go-sheet-close],a,button');focus?.focus({preventScroll:true});
     history.pushState({...(history.state||{}),inkamnetGoLayer:{kind:'overlay',id:node.id}},'',location.href);
   };
@@ -28,17 +25,6 @@
   document.querySelector('[data-go-quick-open]')?.addEventListener('click',()=>openOverlay(quick));
   document.querySelectorAll('[data-go-sheet-close]').forEach(el=>el.addEventListener('click',()=>closeOverlay(quick)));
   document.addEventListener('keydown',event=>{if(event.key==='Escape')closeAllOverlays();});
-  document.addEventListener('keydown',event=>{
-    if(event.key!=='Tab')return;
-    const overlay=overlays.find(node=>node.classList.contains('open'));
-    if(!overlay)return;
-    const focusable=[...overlay.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')]
-      .filter(node=>node.getClientRects().length);
-    if(!focusable.length){event.preventDefault();return;}
-    const first=focusable[0],last=focusable[focusable.length-1];
-    if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}
-    else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
-  });
   window.addEventListener('popstate',()=>{
     closeAllOverlays({consumeHistory:false});
     const shown=document.querySelector('.modal.show');

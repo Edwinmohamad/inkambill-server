@@ -48,7 +48,7 @@ const RECON = {
     hint: 'Ada yang memakai internet tapi tidak tertagih. Hubungkan ke pelanggan yang ada, atau buat pelanggan baru dari secret.',
     sql: (siteId, p) => `SELECT p.id secret_id, p.username, p.is_online, p.profile, p.comment, p.active_address, s.code site_code, r.name router_name, p.last_login_at
       FROM ppp_secrets p JOIN sites s ON s.id=p.site_id JOIN routers r ON r.id=p.router_id
-      WHERE p.removed_on_router_at IS NULL AND p.customer_id IS NULL AND NOT EXISTS(SELECT 1 FROM nms_parallel_links pl WHERE pl.secret_id=p.id) AND p.is_exempt=0 AND p.disabled=0 AND p.is_isolated=0
+      WHERE p.removed_on_router_at IS NULL AND p.customer_id IS NULL AND p.is_exempt=0 AND p.disabled=0 AND p.is_isolated=0
         AND (p.is_online=1 OR p.last_login_at >= DATE_SUB(NOW(), INTERVAL 7 DAY))
         ${siteWhere('p.site_id', siteId, p)} ORDER BY p.is_online DESC, p.username LIMIT ${LIMIT}`
   },
@@ -294,7 +294,7 @@ async function createFlapTicket({ secretId, userId }) {
 async function morningSummaryText() {
   const [[c]] = await db.query(`SELECT SUM(is_online=1 AND is_isolated=0) online, SUM(is_isolated=1) isolated,
       SUM(is_online=0 AND is_isolated=0 AND disabled=0 AND customer_id IS NOT NULL AND (last_logout_at IS NULL OR last_logout_at < DATE_SUB(NOW(), INTERVAL 24 HOUR))) off24,
-      SUM(customer_id IS NULL AND id NOT IN (SELECT secret_id FROM nms_parallel_links) AND is_exempt=0) unsynced,
+      SUM(customer_id IS NULL AND is_exempt=0) unsynced,
       SUM(customer_id IS NULL AND is_exempt=1 AND exempt_type='fasum') fasum, SUM(customer_id IS NULL AND is_exempt=1 AND exempt_type='fasum' AND is_online=0 AND disabled=0) fasum_off
     FROM ppp_secrets WHERE removed_on_router_at IS NULL`);
   const [[paid]] = await db.query(`SELECT COUNT(DISTINCT i.customer_id) n, COALESCE(SUM(py.amount),0) total FROM payments py JOIN invoices i ON i.id=py.invoice_id WHERE py.status='confirmed' AND py.paid_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)`).catch(() => [[{ n: 0, total: 0 }]]);

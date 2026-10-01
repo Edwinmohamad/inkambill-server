@@ -54,32 +54,14 @@
         </div>
 
         <form class="wab-filter" id="wabFilter">
-          <div class="wab-audience-presets" aria-label="Smart Audience">
-            <span>Smart Audience</span>
-            <button type="button" class="wab-preset" data-preset="due15">JT 15 belum bayar</button>
-            <button type="button" class="wab-preset" data-preset="due30">JT 30 belum bayar</button>
-            <button type="button" class="wab-preset" data-preset="overdue">Menunggak</button>
-            <button type="button" class="wab-preset" data-preset="isolation_due">Wajib isolir</button>
-            <button type="button" class="wab-preset" data-preset="isolated">Sudah isolir</button>
-            <button type="button" class="wab-preset ghost" data-preset="reset">Reset</button>
-          </div>
-
-          <div class="wab-filter-primary">
+          <div class="wab-filter-top">
             <label class="wab-search"><i class="bi bi-search"></i><input name="q" placeholder="Cari nama, ID, no. HP, alamat" aria-label="Cari pelanggan" autocomplete="off"></label>
-            <label><span>Site</span><select class="wab-select" name="site_id"><option value="">Semua Site</option><% options.sites.forEach(o=>{ %><option value="<%= o.id %>"><%= o.code %> · <%= o.name %></option><% }) %></select></label>
-            <label><span>Jatuh tempo</span><select class="wab-select" name="due_day"><option value="">Semua JT</option><option value="15">Tanggal 15</option><option value="30">Tanggal 30</option></select></label>
-            <label><span>Bulan tagihan</span><select class="wab-select" name="period_month"><option value="">Semua bulan</option><% const mn=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des']; mn.forEach((m,i)=>{ %><option value="<%= i+1 %>"><%= m %></option><% }) %></select></label>
-            <label><span>Tahun</span><select class="wab-select" name="period_year"><option value="">Semua tahun</option><% const years=[...new Set((options.periods||[]).map(x=>Number(x.year)).filter(Boolean))]; if(!years.length){ const y=new Date().getFullYear(); years.push(y,y-1); } years.forEach(y=>{ %><option value="<%= y %>"><%= y %></option><% }) %></select></label>
+            <select class="wab-select" name="billing" aria-label="Status tagihan"><% Object.entries(billingFilters).forEach(([k,v])=>{ %><option value="<%= k %>"><%= v %></option><% }) %></select>
           </div>
-
-          <div class="wab-filter-status">
-            <label><span>Status audience</span><select class="wab-select" name="billing" aria-label="Status tagihan"><% Object.entries(billingFilters).forEach(([k,v])=>{ %><option value="<%= k %>"><%= v %></option><% }) %></select></label>
-            <div class="wab-safety-note"><i class="bi bi-shield-check"></i><span>Audience finansial otomatis mengecualikan pembayaran yang masih menunggu approval.</span></div>
-          </div>
-
           <details class="wab-more">
             <summary>Filter jaringan &amp; paket <span class="wab-badge" id="wabFilterCount" hidden></span><i class="bi bi-chevron-down"></i></summary>
             <div class="wab-filter-grid">
+              <label><span>Site</span><select class="wab-select" name="site_id"><option value="">Semua</option><% options.sites.forEach(o=>{ %><option value="<%= o.id %>"><%= o.code %> · <%= o.name %></option><% }) %></select></label>
               <label><span>Cluster / Node</span><select class="wab-select" name="cluster_id"><option value="">Semua</option><% options.clusters.forEach(o=>{ %><option value="<%= o.id %>"><%= o.name %></option><% }) %></select></label>
               <label><span>Router POP</span><select class="wab-select" name="router_id"><option value="">Semua</option><% options.routers.forEach(o=>{ %><option value="<%= o.id %>"><%= o.name %></option><% }) %></select></label>
               <label><span>OLT</span><select class="wab-select" name="olt_id"><option value="">Semua</option><% options.olts.forEach(o=>{ %><option value="<%= o.id %>"><%= o.name %></option><% }) %></select></label>
@@ -109,7 +91,7 @@
           <label><input type="radio" name="target_mode" value="filter" checked><span>Semua hasil filter<em id="wabTotalLabel">0</em></span></label>
           <label><input type="radio" name="target_mode" value="selected"><span>Hanya yang dipilih<em id="wabSelectedLabel">0</em></span></label>
         </div>
-        <p class="wab-hint">Maksimal <%= maxRecipients %> penerima per broadcast. Nomor opt-out/tidak valid dilewati. Saat Kirim ditekan, audience dicek ulang terhadap status pembayaran terbaru.</p>
+        <p class="wab-hint">Maksimal <%= maxRecipients %> penerima per broadcast. Nomor opt-out dan tidak valid tidak bisa dipilih.</p>
       </section>
 
       <section class="wab-card">

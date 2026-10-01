@@ -44,89 +44,48 @@ function paymentReference(paymentId, date=new Date()){
 }
 
 async function paymentCashMeta(conn,invoiceId){
-  const [rows]=await conn.execute(`SELECT c.site_id,c.name customer_name,c.customer_code,i.invoice_number FROM invoices i JOIN customers c ON c.id=i.customer_id WHERE i.id=?`,[invoiceId]);
+  const [rows]=await conn.execute(`SELECT c.site_id,c.name customer_name,c.customer_code,c.is_new_install,c.install_technician_name,c.install_sales_name,i.id invoice_id,i.invoice_number, CASE WHEN c.is_new_install=1 AND i.id=(SELECT MIN(i2.id) FROM invoices i2 WHERE i2.customer_id=c.id) THEN 1 ELSE 0 END is_psb FROM invoices i JOIN customers c ON c.id=i.customer_id WHERE i.id=?`,[invoiceId]);
   return rows[0]||null;
 }
 async function billingCategory(conn,name='Pendapatan Billing'){
-  // System categories used to be resolved only by their display name.  That made
-  // the payment approval appear successful while silently skipping its cash
-  // journal whenever an older database had a renamed/missing category.
-  const code=name==='Setoran Cash Pelanggan'?'SETOR':'BILL';
-  const [rows]=await conn.execute(`SELECT id FROM cash_categories
-    WHERE type='income' AND (code=? OR name=?)
-    ORDER BY (code=?) DESC,COALESCE(is_system,0) DESC,id ASC LIMIT 1`,[code,name,code]);
+  const [rows]=await conn.execute(`SELECT id FROM cash_categories WHERE name=? AND type='income' LIMIT 1`,[name]);
   return rows[0]?.id||null;
 }
 async function postCashTransaction(conn,{paymentId,invoiceId,amount,reference,bookDate,categoryName='Pendapatan Billing',prefix='Pembayaran',actorUserId=null}){
-  const meta=await paymentCashMeta(conn,invoiceId);
-  if(!meta)throw new Error('Data faktur/pelanggan untuk jurnal kas tidak ditemukan.');
-  const catId=await billingCategory(conn,categoryName);
-  if(!catId)throw new Error(`Kategori jurnal kas "${categoryName}" tidak tersedia. Approval dibatalkan agar pembayaran tidak hilang dari Data Kas.`);
-  const [exists]=await conn.execute(`SELECT id FROM cash_transactions WHERE source_type='payment' AND source_id=? LIMIT 1`,[paymentId]);
-  if(exists.length)return;
-  // Pembayaran sudah melalui approval Master Admin. Jurnal otomatisnya harus langsung
-  // resmi juga, supaya Data Kas dan saldo selalu sama dengan pembayaran yang disetujui.
-  const [r]=await conn.execute(`INSERT INTO cash_transactions(transaction_date,name,category_id,site_id,amount,notes,source_type,source_id,approval_status,reviewed_by,reviewed_at,created_by) VALUES(?,?,?,?,?,?,'payment',?,'APPROVED',?,NOW(),?)`,[
-    bookDate,`${prefix} ${meta.customer_name}`,catId,meta.site_id,amount,`Faktur ${meta.invoice_number}${reference?` · ${reference}`:''}`,paymentId,actorUserId,actorUserId
-  ]);
-  await assignCashTransactionCode(conn,r.insertId,catId,new Date(`${bookDate}T12:00:00`));
+  const meta=await paymentCashMeta(conn,invoiceId);if(!meta)return;
+  const isPsb=Number(meta.is_psb)===1;
+  const incomeCategory=isPsb?'Pendapatan Pemasangan Baru':categoryName;
+  const catId=await billingCategory(conn,incomeCategory);if(!catId)return;
+  // Cross-source idempotency: legacy install_income and the new payment journal represent the same money.
+  const [exists]=await conn.execute(`SELECT id FROM cash_transactions WHERE source_id=? AND source_type IN ('payment','install_income') LIMIT 1`,[paymentId]);
+  if(!exists.length){
+    const label=isPsb?`Pemasangan Baru ${meta.customer_name}`:`${prefix} ${meta.customer_name}`;
+    const [r]=await conn.execute(`INSERT INTO cash_transactions(transaction_date,name,category_id,site_id,amount,notes,source_type,source_id,approval_status,created_by) VALUES(?,?,?,?,?,?,'payment',?,'APPROVED',?)`,[
+      bookDate,label,catId,meta.site_id,amount,`Faktur ${meta.invoice_number}${reference?` · ${reference}`:''}`,paymentId,actorUserId
+    ]);
+    await assignCashTransactionCode(conn,r.insertId,catId,new Date(`${bookDate}T12:00:00`));
+  }
+  if(!isPsb)return;
+  const [[settingsRow]]=await conn.execute(`SELECT install_sales_flat_commission FROM settings WHERE id=1 LIMIT 1`);
+  const salesCommission=Number(settingsRow?.install_sales_flat_commission??50000);
+  if(!(Number(amount)>salesCommission))return;
+  const technicianCommission=Number(amount)-salesCommission;
+  const techName=String(meta.install_technician_name||'').trim()||'Teknisi (tidak diisi)';
+  const salesName=String(meta.install_sales_name||'').trim()||'Sales (tidak diisi)';
+  const commissionRows=[
+    {code:'KOMISI-TEK',type:'payment_commission_technician',amount:technicianCommission,name:`Komisi Teknisi ${techName} - ${meta.customer_name}`},
+    {code:'KOMISI-SLS',type:'payment_commission_sales',amount:salesCommission,name:`Komisi Sales ${salesName} - ${meta.customer_name}`}
+  ];
+  for(const item of commissionRows){
+    const [[cat]]=await conn.execute(`SELECT id FROM cash_categories WHERE code=? AND type='expense' LIMIT 1`,[item.code]);
+    if(!cat?.id)continue;
+    const [dup]=await conn.execute(`SELECT id FROM cash_transactions WHERE source_type IN (?,REPLACE(?,'payment_','install_')) AND source_id=? LIMIT 1`,[item.type,item.type,paymentId]);
+    if(dup.length)continue;
+    const [r]=await conn.execute(`INSERT INTO cash_transactions(transaction_date,name,category_id,site_id,amount,notes,source_type,source_id,approval_status,created_by) VALUES(?,?,?,?,?,?,?,?,'APPROVED',?)`,[bookDate,item.name,cat.id,meta.site_id,item.amount,`Komisi PSB · Faktur ${meta.invoice_number}`,item.type,paymentId,actorUserId]);
+    await assignCashTransactionCode(conn,r.insertId,cat.id,new Date(`${bookDate}T12:00:00`));
+  }
 }
 
-// Repairs the historical gap caused by the old silent return above.  Only
-// confirmed transfer/QRIS payments and cash payments that have actually been
-// deposited are eligible. Cash held by a collector remains in Rekonsiliasi and
-// must never enter the company balance before the setoran is confirmed.
-async function reconcileMissingPaymentCashTransactions(){
-  const conn=await db.getConnection();let created=0;
-  try{
-    await conn.beginTransaction();
-    const [rows]=await conn.execute(`SELECT p.id,p.invoice_id,p.amount,p.reference,p.method,p.verified_by,
-      COALESCE(cs.settlement_date,p.booked_at,DATE(p.paid_at)) book_date
-      FROM payments p
-      LEFT JOIN cash_settlements cs ON cs.id=p.settlement_id
-      LEFT JOIN cash_transactions ct ON ct.source_type='payment' AND ct.source_id=p.id
-      WHERE p.status='confirmed' AND ct.id IS NULL
-        AND (p.method IN ('transfer','qris') OR (p.method='cash' AND p.settlement_status='settled'))
-      ORDER BY p.id ASC`);
-    for(const payment of rows){
-      const isCash=payment.method==='cash';
-      await postCashTransaction(conn,{
-        paymentId:payment.id,invoiceId:payment.invoice_id,amount:payment.amount,reference:payment.reference,
-        bookDate:payment.book_date,categoryName:isCash?'Setoran Cash Pelanggan':'Pendapatan Billing',
-        prefix:isCash?'Setoran Cash':'Pembayaran',actorUserId:payment.verified_by||null
-      });
-      created++;
-    }
-    await conn.commit();
-    return created;
-  }catch(e){await conn.rollback();throw e;}finally{conn.release();}
-}
-
-// Rebuild the three-way invariant used by Billing and Finance:
-// confirmed payment -> invoice amount/status -> one APPROVED cash journal.
-// It also neutralizes a legacy journal whose source was rejected, deleted, or
-// changed into cash still held by a collector.  Rejected journals remain as an
-// auditable record but no longer contribute to the real balance.
-async function repairPaymentCashIntegrity({ reviewerId=null }={}){
-  const conn=await db.getConnection();let rejected=0,refreshed=0;
-  try{
-    await conn.beginTransaction();
-    const [stale]=await conn.execute(`SELECT ct.id FROM cash_transactions ct
-      LEFT JOIN payments p ON ct.source_type='payment' AND p.id=ct.source_id
-      WHERE ct.source_type='payment' AND COALESCE(ct.approval_status,'APPROVED')='APPROVED'
-        AND (p.id IS NULL OR p.status<>'confirmed' OR (p.method='cash' AND p.settlement_status<>'settled'))
-      FOR UPDATE`);
-    for(const row of stale){
-      await conn.execute(`UPDATE cash_transactions SET approval_status='REJECTED',approval_reason='Jurnal dinonaktifkan otomatis: pembayaran sumber tidak lagi terkonfirmasi atau cash belum disetor.',reviewed_by=?,reviewed_at=NOW() WHERE id=?`,[reviewerId,row.id]);
-      rejected++;
-    }
-    const [invoices]=await conn.execute(`SELECT DISTINCT invoice_id FROM payments WHERE status='confirmed' AND invoice_id IS NOT NULL FOR UPDATE`);
-    for(const invoice of invoices){await refreshInvoiceStatus(conn,invoice.invoice_id);refreshed++;}
-    await conn.commit();
-  }catch(error){await conn.rollback();throw error;}finally{conn.release();}
-  const created=await reconcileMissingPaymentCashTransactions();
-  return {created,rejected,refreshed};
-}
 async function maybeAutoUnisolate(invoiceId){
   const [paidRows]=await db.execute(`SELECT i.status,c.id customer_id,c.network_status,c.isolation_reason FROM invoices i JOIN customers c ON c.id=i.customer_id WHERE i.id=?`,[invoiceId]);
   if(paidRows[0]?.status==='paid'&&paidRows[0]?.network_status==='isolated'&&paidRows[0]?.isolation_reason==='billing'){
@@ -201,4 +160,4 @@ async function createPendingTransferPayments({invoiceIds,bankId,file,userId,note
   return created;
 }
 
-module.exports={PROOF_DIR,proofExtension,proofSignatureMatches,saveProofFile,removeProofFile,paymentReference,paymentCashMeta,billingCategory,postCashTransaction,reconcileMissingPaymentCashTransactions,repairPaymentCashIntegrity,maybeAutoUnisolate,verifyPendingPayment,createPendingTransferPayments};
+module.exports={PROOF_DIR,proofExtension,proofSignatureMatches,saveProofFile,removeProofFile,paymentReference,paymentCashMeta,billingCategory,postCashTransaction,maybeAutoUnisolate,verifyPendingPayment,createPendingTransferPayments};

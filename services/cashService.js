@@ -1,3 +1,10 @@
+async function assertCashDateOpen(conn,value){
+  const d=value instanceof Date?`${value.getFullYear()}-${String(value.getMonth()+1).padStart(2,'0')}-${String(value.getDate()).padStart(2,'0')}`:String(value||'').slice(0,10);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d))throw new Error('Tanggal transaksi tidak valid.');
+  const [rows]=await conn.execute(`SELECT id,period_start,period_end FROM closing_periods WHERE status='LOCKED' AND ? BETWEEN period_start AND period_end LIMIT 1`,[d]);
+  if(rows.length)throw new Error(`Periode ${String(rows[0].period_start).slice(0,10)} s/d ${String(rows[0].period_end).slice(0,10)} sudah dikunci. Buka kembali Closing terlebih dahulu.`);
+  return d;
+}
 function normalizeCategoryCode(value, fallback='TX'){
   const code=String(value||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,10);
   return code||fallback;
@@ -22,20 +29,22 @@ async function assignCashTransactionCode(conn, transactionId, categoryId, transa
 // them to PENDING_APPROVAL just like manual rows, so Master Admin must be able to approve/reject them
 // here too — otherwise an edited AUTO BILLING row would get stuck in PENDING_APPROVAL forever.
 async function approveCashTransaction(conn,transactionId,reviewerId){
-  const [rows]=await conn.execute(`SELECT ct.id,ct.transaction_code,ct.name,ct.amount,ct.source_type,ct.internal_transfer_key,COALESCE(ct.approval_status,'PENDING_APPROVAL') approval_status,cc.type category_type FROM cash_transactions ct JOIN cash_categories cc ON cc.id=ct.category_id WHERE ct.id=? FOR UPDATE`,[transactionId]);
+  const [rows]=await conn.execute(`SELECT ct.id,ct.transaction_code,ct.transaction_date,ct.name,ct.amount,ct.source_type,COALESCE(ct.approval_status,'PENDING_APPROVAL') approval_status,cc.type category_type FROM cash_transactions ct JOIN cash_categories cc ON cc.id=ct.category_id WHERE ct.id=? FOR UPDATE`,[transactionId]);
   const tx=rows[0];
   if(!tx)throw new Error('Transaksi kas tidak ditemukan.');
   if(tx.approval_status!=='PENDING_APPROVAL')throw new Error('Hanya transaksi PENDING_APPROVAL yang dapat disetujui.');
+  if(tx.transaction_date)await assertCashDateOpen(conn,tx.transaction_date);
   await conn.execute(`UPDATE cash_transactions SET approval_status='APPROVED',approval_reason=NULL,reviewed_by=?,reviewed_at=NOW() WHERE id=?`,[reviewerId,transactionId]);
   return tx;
 }
 async function rejectCashTransaction(conn,transactionId,reviewerId,reason){
   const clean=normalizeApprovalReason(reason);
   if(clean.length<3)throw new Error('Alasan penolakan wajib diisi minimal 3 karakter.');
-  const [rows]=await conn.execute(`SELECT ct.id,ct.transaction_code,ct.name,ct.amount,ct.source_type,ct.internal_transfer_key,COALESCE(ct.approval_status,'PENDING_APPROVAL') approval_status,cc.type category_type FROM cash_transactions ct JOIN cash_categories cc ON cc.id=ct.category_id WHERE ct.id=? FOR UPDATE`,[transactionId]);
+  const [rows]=await conn.execute(`SELECT ct.id,ct.transaction_code,ct.transaction_date,ct.name,ct.amount,ct.source_type,COALESCE(ct.approval_status,'PENDING_APPROVAL') approval_status,cc.type category_type FROM cash_transactions ct JOIN cash_categories cc ON cc.id=ct.category_id WHERE ct.id=? FOR UPDATE`,[transactionId]);
   const tx=rows[0];
   if(!tx)throw new Error('Transaksi kas tidak ditemukan.');
   if(tx.approval_status!=='PENDING_APPROVAL')throw new Error('Hanya transaksi PENDING_APPROVAL yang dapat ditolak.');
+  if(tx.transaction_date)await assertCashDateOpen(conn,tx.transaction_date);
   await conn.execute(`UPDATE cash_transactions SET approval_status='REJECTED',approval_reason=?,reviewed_by=?,reviewed_at=NOW() WHERE id=?`,[clean,reviewerId,transactionId]);
   return {...tx,approval_reason:clean};
 }

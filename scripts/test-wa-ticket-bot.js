@@ -65,8 +65,6 @@ mock('services/wahaClient.js', fakeWaha);
 // Keep attachments out of the real storage folder during the test.
 const savedPhotos = [];
 mock('services/photoAttachmentService.js', { async savePhoto(file, dir, prefix) { savedPhotos.push({ prefix, mime: file.mimetype }); return { filename: `${prefix}-test.jpg`, originalName: 'x', mime: file.mimetype, size: file.size }; }, async removePhoto() {}, sendPhoto() {} });
-mock('services/ticketSupervisorService.js', { async ensureSupervisorState(){ return { stage:'OPEN' }; }, async setStage(){ return { changed:true }; } });
-mock('services/waOpsNaturalLanguageService.js', { async handleNaturalMessage(){ return { handled:false }; } });
 process.env.WA_TICKET_GROUP_IDS = '120363000000000001@g.us';
 
 const { parseCommand } = require(path.join(root, 'services/waTicketParser'));

@@ -8,10 +8,7 @@ const { audit } = require('../services/auditService');
 const inbox = require('../services/waInboxService');
 const power = require('../services/waPowerActionService');
 const antiBan = require('../services/waAntiBanService');
-const { getGatewayStatus, startGateway } = require('../services/whatsappGatewayService');
-const { getWahaConfig, callbackUrl } = require('../services/wahaConfigService');
-const waha = require('../services/wahaClient');
-const webhookHealth = require('../services/waWebhookHealth');
+const { getGatewayStatus } = require('../services/whatsappGatewayService');
 const { checkCustomer } = require('../services/networkService');
 const router = express.Router();
 
@@ -42,33 +39,9 @@ router.get('/', async (req, res) => {
   res.render('wa-inbox/index', {
     title: 'WA Inbox', admins, banks, departments: inbox.DEPARTMENTS,
     isMasterAdmin: isMasterAdminRole(req.session.user.role), isAdminUser: isAdminRole(req.session.user.role),
-    canBroadcast: isAdminRole(req.session.user.role) && ['billing', 'support', 'customers'].some(p => (req.permissions || []).includes(p)),
     initialConversationId: Number(req.query.c) || null, gateway: getGatewayStatus(), pause: antiBan.getPauseState(),
   });
 });
-
-router.get('/api/webhook-health', api(async (_req, res) => {
-  const config = await getWahaConfig();
-  const callback = callbackUrl(config);
-  let registration = 'unknown', sessionError = null;
-  try {
-    const session = await waha.getSession(config);
-    registration = !callback ? 'missing_callback' : !session ? 'missing_session' :
-      waha.missingWebhook(session, callback) === true ? 'missing' :
-      waha.missingWebhook(session, callback) === false ? 'registered' : 'not_exposed';
-  } catch (e) { sessionError = e.message; }
-  res.set('Cache-Control', 'no-store').json({ ok: true, ...(await webhookHealth.snapshot()), registration,
-    callbackConfigured: !!callback, gateway: getGatewayStatus().state, sessionError });
-}));
-router.post('/api/webhook-repair', api(async (req, res) => {
-  if (!isMasterAdminRole(req.session.user.role)) return res.status(403).json({ ok: false, message: 'Hanya Master Admin yang dapat memperbaiki webhook WAHA.' });
-  const config = await getWahaConfig({ fresh: true });
-  if (!callbackUrl(config)) throw new Error('Atur URL callback dan token webhook terlebih dahulu di WA Gateway.');
-  const state = await startGateway({ manual: true });
-  if (state.state === 'disconnected') throw new Error(state.lastDisconnectReason || 'Gagal memperbarui webhook WAHA.');
-  await audit({ userId: req.session.user.id, action: 'repair', entityType: 'wa_gateway', entityId: null, description: 'Perbaikan webhook pesan WAHA dari Inbox', ip: req.ip });
-  res.json({ ok: true, state: state.state });
-}));
 
 router.get('/api/conversations', api(async (req, res) => {
   const data = await inbox.listConversations({ filter: String(req.query.filter || 'all'), q: String(req.query.q || ''), userId: req.session.user.id });
@@ -103,13 +76,6 @@ router.post('/api/conversations/:id/bot', api(async (req, res) => {
 
 router.post('/api/conversations/:id/assign', api(async (req, res) => {
   const conversation = await inbox.assign({ conversationId: convId(req), assigneeUserId: req.body?.user_id, department: req.body?.department, actorName: req.session.user.name });
-  res.json({ ok: true, conversation });
-}));
-
-router.post('/api/conversations/:id/workflow', api(async (req, res) => {
-  const id = convId(req); const b = req.body || {};
-  const conversation = await inbox.updateWorkflow({ conversationId: id, status: String(b.status || 'open'), labels: b.labels, followUpAt: b.follow_up_at || null, userId: req.session.user.id });
-  await audit({ userId: req.session.user.id, action: 'update', entityType: 'wa_conversation', entityId: id, description: `Workflow WA Inbox: ${conversation.status}`, ip: req.ip });
   res.json({ ok: true, conversation });
 }));
 

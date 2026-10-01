@@ -1,52 +1,87 @@
-# INKAMBILL Financial Integrity Final Patch
+# INKAMNET Control Center FINAL v1.2.1.1
 
-Tujuan utama:
-- PSB / generate invoice tidak lagi otomatis menciptakan payment atau pendapatan kas.
-- Pendapatan hanya direalisasi dari payment yang benar-benar confirmed dan sudah masuk perusahaan.
-- PSB memakai satu income journal saja (`source_type=payment`), sehingga tidak bisa dobel dengan `install_income`.
-- Komisi PSB baru dijurnal saat payment direalisasi, bukan saat invoice dibuat.
-- Cash `held_by_staff` tetap bukan pendapatan sampai settlement.
-- Jurnal otomatis/payment-linked immutable dari Data Kas; koreksi wajib dari Payment/Tagihan.
-- Period Closing LOCKED melindungi approval/reject/edit/delete transaksi.
-- Force-delete jurnal payment-linked/APPROVED diblokir.
-- Force-delete invoice yang memiliki histori payment diblokir.
-- Ditambahkan financial integrity audit + legacy PSB duplicate repair.
+Staging build untuk PT INKAMNET NEXERA TECHNOLOGY.
 
-## Instalasi
+## Fokus v1.2.1
+
+- Branding mengikuti warna logo resmi INKAMNET: purple `#603AEA` + red `#FF433E`.
+- Logo web menggunakan asset transparan HQ untuk sidebar, loader, mobile login, dan cover login.
+- Cover login memiliki floating logo, signal ring, moving scan/data lines, dan status system animation.
+- Dark Mode / Light Mode dengan preferensi tersimpan di browser.
+- Dashboard mendukung filter **Semua Site / per Site**, bulan, dan tahun.
+- Dashboard menambahkan grafik **Pelanggan & PSB per bulan**:
+  - PSB bulanan (bar)
+  - Total base aktivasi kumulatif (line)
+  - PSB YTD
+  - bulan PSB tertinggi
+  - rata-rata PSB per bulan
+- Dashboard tetap menampilkan billing trend, pembayaran, outstanding, router health, ticket, low stock, cash di tim, cashflow, dan distribusi POP.
+- Global technology polish: live WIB clock, animated topbar scan, subtle signal stream, tech corner, page progress, card reveal, cursor spotlight, and command palette `Ctrl+K`.
+- Semua fitur v1.1 tetap dipertahankan: XLSX pelanggan, server duty/piket, payment proof, cash reconciliation, network, ticketing, warehouse, billing, finance, reports, staff/settings.
+
+## Menu
+
+- Control Center: Dashboard
+- Pelanggan: Pelanggan, Paket Internet
+- Network: Site/POP, Router MikroTik, Cluster & ODP, MikroTik NMS
+- Support: Ticketing, Jadwal Teknisi, Piket Server
+- Gudang: Stock Barang, Pergerakan Stock, Pemakaian Material, Supplier
+- Billing: Tagihan, Pembayaran, Faktur Custom, Diskon, Biaya Tambahan
+- Keuangan: Rekonsiliasi, Arus Kas, Kategori Kas, Laporan
+- System: Activity Log, Pengaturan
+
+## Instalasi staging baru
+
 ```bash
-cd /root
-unzip INKAMBILL-FINANCIAL-INTEGRITY-FINAL.zip -d inkambill-financial-integrity-final
-cd inkambill-financial-integrity-final
-APP=/opt/inkambilling bash APPLY_FINANCIAL_INTEGRITY_FINAL.sh
+cp .env.example .env
+nano .env
+chmod +x install.sh
+./install.sh
 ```
 
-## Audit data sebelum repair
+Wajib ganti `SESSION_SECRET`, `ROUTER_CREDENTIAL_KEY`, password database, password admin, dan `APP_URL`.
+
+## Upgrade dari staging v1.1
+
+**Jangan ganti `.env` existing dan jangan hapus volume database.** Backup dulu, lalu replace source v1.1 dengan source v1.2.1 sambil mempertahankan `.env` dan folder `storage`.
+
+Setelah source v1.2.1 aktif:
+
 ```bash
-cd /opt/inkambilling
-node scripts/financial-integrity-audit.js
+chmod +x upgrade-v1.2.1.sh
+./upgrade-v1.2.1.sh
 ```
 
-## Repair legacy double PSB
-Backup database terlebih dahulu, lalu:
+v1.2.1 tidak membutuhkan migration database baru. Script hanya melakukan validation + rebuild aplikasi.
+
+Setelah rebuild:
+
 ```bash
-node scripts/repair-legacy-psb-double-income.js
-node scripts/financial-integrity-audit.js
+curl -I http://127.0.0.1:3200/healthz
 ```
 
-Repair hanya menargetkan payment yang memiliki lebih dari satu income journal `payment/install_income` untuk `source_id` yang sama. Ia mempertahankan satu jurnal (memprioritaskan kategori `PSB-IN`) dan menormalisasi source type komisi legacy.
+Lalu hard refresh browser: `Ctrl + F5`.
 
-## Deploy
-```bash
-cd /opt/inkambilling
-docker compose build
-docker compose up -d
-docker compose ps
-curl -fsS http://127.0.0.1:3301/healthz && echo
-```
+## Catatan grafik PSB
 
-## Validasi yang sudah PASS pada baseline source audit
-- `npm run check`
-- `npm run validate:final`
-- `node scripts/test-financial-integrity-static.js`
+PSB dihitung dari `activation_date`; jika kosong sistem menggunakan tanggal `created_at`. Grafik mengikuti filter Site dan tahun yang dipilih. Total Base pada grafik adalah total aktivasi kumulatif, sedangkan KPI Pelanggan Aktif tetap menggunakan status pelanggan aktif saat ini.
 
-Catatan: patch dibangun dari clean source InkamBill v1.26.0 yang tersedia pada workspace audit. Installer menggunakan `patch --dry-run`; bila source production berbeda pada baris yang disentuh, installer berhenti sebelum mengubah file, sehingga tidak memaksa patch yang salah.
+## Keamanan & data
+
+- Bukti transfer tersimpan di private storage dan membutuhkan login untuk dibuka.
+- Pembayaran transfer staff menggunakan verifikasi admin.
+- Cash yang diterima staff masuk `held_by_staff` sampai direkonsiliasi.
+- POST form menggunakan CSRF token.
+- Credential router tersimpan terenkripsi menggunakan `ROUTER_CREDENTIAL_KEY`.
+- Production menolak secret/password placeholder.
+- Backup mencakup database dan storage bukti pembayaran.
+
+## Status validasi
+
+Lihat `FINAL-VALIDATION.md`. Runtime Docker/MariaDB/Cloudflare/MikroTik tetap wajib dites di staging sebelum promosi ke live.
+
+
+## v1.2.1 UI hotfix
+- Asset URLs are versioned to prevent browser cache mixing releases.
+- Loader has critical inline sizing, fades safely, then is removed from the DOM.
+- HQ logo dimensions are hard-capped to prevent oversized splash rendering.

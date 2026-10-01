@@ -92,19 +92,25 @@
     $('pgPrev').disabled = st.page <= 1; $('pgNext').disabled = st.page >= st.pages;
     syncBulkBar();
   }
+  let loadSeq = 0;
+  let countSeq = 0;
   async function load() {
+    const seq = ++loadSeq;
     const params = { tab: st.tab, page: st.page, limit: 50, site: N.site || undefined, q: st.q || undefined, status: st.status || undefined, exempt: st.exempt || undefined };
     const u = new URL(location.href); ['tab', 'status', 'q'].forEach(k => { if (params[k]) u.searchParams.set(k, params[k]); else u.searchParams.delete(k); }); u.searchParams.delete('sync'); u.searchParams.delete('focus'); history.replaceState(null, '', u);
     try {
       const res = await api(`/nms/api/secrets${qs(params)}`);
+      if (seq !== loadSeq) return; // response lama tidak boleh menimpa hasil aksi/sync terbaru
       Object.assign(st, { rows: res.rows, pages: res.pages, total: res.total, page: res.page });
       if (focusIdx >= st.rows.length) focusIdx = st.rows.length - 1;
       render(); N.markUpdated();
-    } catch (err) { $('tBody').innerHTML = `<tr><td colspan="9" class="nx-empty">Gagal memuat: ${esc(err.message)}</td></tr>`; }
+    } catch (err) { if (seq === loadSeq) $('tBody').innerHTML = `<tr><td colspan="9" class="nx-empty">Gagal memuat: ${esc(err.message)}</td></tr>`; }
   }
   async function loadCounts() {
+    const seq = ++countSeq;
     try {
       const { counts: c } = await api(`/nms/api/counts${N.withSite()}`);
+      if (seq !== countSeq) return;
       $('cOnline').textContent = c.online; $('cOffline').textContent = c.offline; $('cIsolated').textContent = c.isolated;
       $('cSyncPct').textContent = `${c.syncedPct}%`; $('cSynced').textContent = c.synced; $('cExempt').textContent = c.exempt - (c.fasum || 0);
       if ($('cFasum')) { $('cFasum').textContent = c.fasum || 0; $('cFasumOff').textContent = c.fasumOffline || 0; }
@@ -452,6 +458,10 @@
         toast(`${sum.linked} secret terhubung${sum.failed ? `, ${sum.failed} gagal` : ''}${sum.skipped ? `, ${sum.skipped} dilewati karena data berubah` : ''}.`, sum.failed ? 'err' : 'ok', sum.batchId ? { action: 'Undo', duration: 10000, onAction: async () => { try { const u = await api(`/nms/api/sync/batches/${sum.batchId}/undo`, { method: 'POST', body: {} }); toast(`${u.released} link dibatalkan.`, 'ok'); N.changed(); } catch (err) { toast(err.message, 'err'); } } } : {});
         const bad = out.results.filter(r => !r.ok).slice(0, 4);
         if (bad.length) toast(bad.map(f => `${f.username || '#' + f.secretId}: ${f.error}`).join(' · '), 'err');
+        const kickFailed = out.results.flatMap(r => r.disconnectFailures || []);
+        const kicked = out.results.reduce((n, r) => n + Number(r.disconnectedSessions || 0), 0);
+        if (kicked) toast(`${kicked} sesi PPPoE lama diputus setelah relasi dipindahkan/ditimpa.`, 'ok');
+        if (kickFailed.length) toast(`Sync sudah tersimpan, tetapi ${kickFailed.length} sesi lama belum bisa diputus. Cek router yang offline lalu Kick sesi bila masih aktif.`, 'err');
         s.close(); selected.clear(); N.changed();
       } catch (err) { toast(err.message, 'err'); btn.classList.remove('busy'); }
     });
