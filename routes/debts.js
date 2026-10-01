@@ -55,6 +55,12 @@ function installmentSchedule(record) {
   });
 }
 
+// Cicilan selalu ditagihkan berurutan. Ini adalah sumber kebenaran yang sama
+// untuk tampilan jadwal dan validasi ketika pembayaran dicatat.
+function nextInstallment(record, paidAmount) {
+  return installmentSchedule({ ...record, paid_amount: paidAmount }).find((item) => item.status !== 'PAID') || null;
+}
+
 // v1.26 -- payment channel options for a cicilan/payment entry. Mirrors the cash/transfer/qris/other
 // vocabulary already used by Payments & Cash so `statusLabel()` (middleware/common.js) renders the
 // same Indonesian labels (Tunai/Transfer/QRIS/Lainnya) without any extra translation table here.
@@ -199,19 +205,24 @@ router.get('/', async (req, res, next) => {
           : (record.is_overdue ? 'TERLAMBAT' : (paidAmount > 0 ? 'DICICIL' : 'BELUM DIBAYAR'));
       });
     }
-    const [summaryRows] = await db.query(`SELECT d.scope,d.record_type,
-      SUM(GREATEST(d.principal_amount-COALESCE(x.paid,0),0)) remaining,
-      SUM(CASE WHEN d.due_date<CURDATE() THEN GREATEST(d.principal_amount-COALESCE(x.paid,0),0) ELSE 0 END) overdue,
-      COUNT(*) total
-      FROM finance_debts d LEFT JOIN (SELECT debt_id,SUM(amount) paid FROM finance_debt_payments GROUP BY debt_id) x ON x.debt_id=d.id
-      WHERE d.status='ACTIVE' GROUP BY d.scope,d.record_type`);
     const blank = () => ({ remaining: 0, overdue: 0, total: 0 });
     const summary = { DEBT: blank(), RECEIVABLE: blank(), INTERNAL: { DEBT: blank(), RECEIVABLE: blank() }, EXTERNAL: { DEBT: blank(), RECEIVABLE: blank() } };
+    // Jangan memakai `due_date` tunggal untuk ringkasan cicilan: setelah cicilan
+    // pertama lunas, yang dipantau adalah termin berikutnya, bukan tanggal pertama.
+    const [summaryRows] = await db.query(`SELECT d.*,COALESCE(x.paid,0) paid_amount
+      FROM finance_debts d LEFT JOIN (SELECT debt_id,SUM(amount) paid FROM finance_debt_payments GROUP BY debt_id) x ON x.debt_id=d.id
+      WHERE d.status='ACTIVE'`);
     summaryRows.forEach((row) => {
-      const v = { remaining: Number(row.remaining || 0), overdue: Number(row.overdue || 0), total: Number(row.total || 0) };
+      const remaining = Math.max(0, amount(row.principal_amount) - amount(row.paid_amount));
+      const installments = installmentSchedule(row);
+      const overdue = installments.filter((item) => item.status === 'OVERDUE').reduce((total, item) => total + item.remaining, 0);
+      const v = { remaining, overdue, total: 1 };
       const agg = summary[row.record_type];
       agg.remaining += v.remaining; agg.overdue += v.overdue; agg.total += v.total;
-      if (summary[row.scope]) summary[row.scope][row.record_type] = v;
+      if (summary[row.scope]) {
+        const scoped = summary[row.scope][row.record_type];
+        scoped.remaining += v.remaining; scoped.overdue += v.overdue; scoped.total += v.total;
+      }
     });
     // v1.30 -- ringkasan per teknisi: siapa saja yang masih punya hutang ke kantor.
     const [techRows] = await db.query(`SELECT d.employee_id,COALESCE(e.name,d.party_name) name,e.employee_code,pos.name position_name,
@@ -264,6 +275,7 @@ router.post('/', async (req, res, next) => {
     if (!['DEBT', 'RECEIVABLE'].includes(type) || !['GLOBAL', 'CDS', 'KBG'].includes(site) || !['ONCE', 'INSTALLMENT'].includes(method)) return res.status(400).send('Jenis, lokasi, atau metode pembayaran tidak valid.');
     if (!party || !purpose || principal <= 0 || !issueDate || !items.length) return res.status(400).send('Pihak, keperluan, tanggal, dan minimal satu rincian pembelian wajib diisi.');
     if (dueDate && dueDate < issueDate) return res.status(400).send('Jatuh tempo tidak boleh sebelum tanggal pencatatan.');
+    if (method === 'INSTALLMENT' && !dueDate) return res.status(400).send('Tanggal cicilan pertama wajib diisi agar jadwal cicilan dapat dipantau.');
     conn = await db.getConnection();
     await conn.beginTransaction();
     const [created] = await conn.execute(`INSERT INTO finance_debts(record_type,scope,party_name,employee_id,user_id,purpose,site_code,principal_amount,issue_date,due_date,payment_method,installment_months,responsible_name,notes,created_by)
@@ -289,12 +301,22 @@ router.post('/:id/payments', async (req, res, next) => {
     if (!Number.isInteger(id) || id < 1 || paid <= 0 || !paymentDate) return res.status(400).send('Pembayaran tidak valid.');
     conn = await db.getConnection();
     await conn.beginTransaction();
-    const [[record]] = await conn.execute('SELECT id,status,principal_amount FROM finance_debts WHERE id=? FOR UPDATE', [id]);
+    const [[record]] = await conn.execute('SELECT id,status,principal_amount,payment_method,installment_months,issue_date,due_date FROM finance_debts WHERE id=? FOR UPDATE', [id]);
     if (!record) { await conn.rollback(); return res.status(404).send('Data tidak ditemukan.'); }
     const [[totals]] = await conn.execute('SELECT COALESCE(SUM(amount),0) paid_amount FROM finance_debt_payments WHERE debt_id=?', [id]);
     const remaining = Number(record.principal_amount) - Number(totals.paid_amount);
     if (record.status === 'ARCHIVED') { await conn.rollback(); return res.status(409).send('Data yang diarsipkan tidak dapat menerima pembayaran.'); }
     if (paid > remaining) { await conn.rollback(); return res.status(400).send(`Pembayaran melebihi sisa Rp ${Math.max(0, remaining).toLocaleString('id-ID')}.`); }
+    if (record.payment_method === 'INSTALLMENT') {
+      const installment = nextInstallment(record, Number(totals.paid_amount));
+      if (!installment) { await conn.rollback(); return res.status(409).send('Semua cicilan sudah lunas.'); }
+      // Satu transaksi menyelesaikan tepat satu termin. Dengan demikian cicilan
+      // 3 × Rp1.000.000 tidak dapat tercatat sebagai nominal acak atau langsung lunas.
+      if (paid !== installment.remaining) {
+        await conn.rollback();
+        return res.status(400).send(`Cicilan ke-${installment.number} harus tepat Rp ${installment.remaining.toLocaleString('id-ID')}.`);
+      }
+    }
     // Attachment is saved only after every business-rule check has passed, so a rejected
     // payment (over the remaining balance, archived record, ...) never leaves an orphan file.
     if (req.file) saved = await saveDebtProof(req.file);

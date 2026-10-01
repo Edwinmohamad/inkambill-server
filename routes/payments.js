@@ -230,6 +230,9 @@ router.post('/:id/method-to-cash',requireMasterAdmin,async(req,res)=>{
     if(!['pending','confirmed'].includes(payment.status))throw new Error('Pembayaran yang ditolak tidak dapat dikoreksi.');
     const [staffRows]=await conn.execute('SELECT id,name FROM users WHERE id=? AND is_active=1 LIMIT 1',[collectorId]);
     if(!staffRows.length)throw new Error('Admin/collector tidak ditemukan atau sudah tidak aktif.');
+    // Cash yang masih dipegang collector belum boleh masuk saldo perusahaan.
+    // Jika pembayaran confirmed dikoreksi menjadi cash, hapus jurnal transfer
+    // agar nilainya kembali eksklusif berada di Rekonsiliasi.
     if(payment.status==='confirmed'){
       await conn.execute("DELETE FROM cash_transactions WHERE source_type='payment' AND source_id=?",[payment.id]);
     }
@@ -762,9 +765,8 @@ router.get('/settlements/:id/receipt.pdf',requireAdmin,async(req,res)=>{
   return streamSettlementReceipt(res,req.params.id,{disposition:req.query.download==='1'?'attachment':'inline'});
 });
 
-// v1.28 — Batalkan setoran (Master Admin, wajib alasan). Jurnal "Setoran Cash" di Data Kas dihapus,
-// baris Closing hasil sinkron di-exclude, dan pembayaran kembali ke "Belum Disetor". Ditolak jika
-// tanggal jurnalnya berada di periode Closing yang sudah dikunci.
+// Pembatalan setoran mengembalikan uang ke status dipegang collector; jurnal
+// kas dan dampak saldo harus ikut dibatalkan sampai setoran dikonfirmasi lagi.
 async function cancelSettledPayment(conn,paymentId,{reason,actorId,ip}){
   const [rows]=await conn.execute(`SELECT * FROM payments WHERE id=? FOR UPDATE`,[paymentId]);
   const p=rows[0];

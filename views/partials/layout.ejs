@@ -52,12 +52,13 @@
   </div>
 
   <% if(isMobileApp){ %>
+  <% const hasGoQuickAction=can('customers')||can('billing')||can('finance')||can('support'); const goMenuActive=!(currentPath==='/'||currentPath.startsWith('/invoices')||currentPath.startsWith('/customers')||currentPath.startsWith('/payments')||currentPath.startsWith('/tickets')||currentPath.startsWith('/nms')||currentPath.startsWith('/monitoring')||currentPath.startsWith('/inventory')||currentPath.startsWith('/profile')); %>
   <nav class="go-bottom-nav" aria-label="Navigasi utama aplikasi">
     <a href="/" class="<%= currentPath==='/'?'active':'' %>"><i class="bi bi-house-door-fill"></i><span>Beranda</span></a>
-    <% if(can('billing')){ %><a href="/invoices" class="<%= currentPath.startsWith('/invoices')?'active':'' %>"><i class="bi bi-receipt-cutoff"></i><span>Tagihan</span></a><% }else{ %><a href="/customers" class="<%= currentPath.startsWith('/customers')?'active':'' %>"><i class="bi bi-people-fill"></i><span>Pelanggan</span></a><% } %>
-    <button type="button" class="go-add-button" data-go-quick-open aria-label="Tambah data"><i class="bi bi-plus-lg"></i></button>
-    <% if(can('billing')||can('finance')){ %><a href="/payments" class="<%= currentPath==='/payments'?'active':'' %>"><i class="bi bi-shield-check"></i><span>Approval</span></a><% }else{ %><a href="/tickets" class="<%= currentPath.startsWith('/tickets')?'active':'' %>"><i class="bi bi-life-preserver"></i><span>Tiket</span></a><% } %>
-    <button type="button" class="<%= currentPath!=='/'&&!currentPath.startsWith('/invoices')&&currentPath!=='/payments'?'active':'' %>" data-go-menu-open><i class="bi bi-grid-fill"></i><span>Menu</span></button>
+    <% if(can('billing')){ %><a href="/invoices" class="<%= currentPath.startsWith('/invoices')?'active':'' %>"><i class="bi bi-receipt-cutoff"></i><span>Tagihan</span></a><% }else if(can('customers')){ %><a href="/customers" class="<%= currentPath.startsWith('/customers')?'active':'' %>"><i class="bi bi-people-fill"></i><span>Pelanggan</span></a><% }else if(can('network')){ %><a href="/monitoring" class="<%= currentPath.startsWith('/monitoring')?'active':'' %>"><i class="bi bi-router-fill"></i><span>Perangkat</span></a><% }else if(can('warehouse')){ %><a href="/inventory" class="<%= currentPath.startsWith('/inventory')?'active':'' %>"><i class="bi bi-box-seam-fill"></i><span>Gudang</span></a><% }else if(can('support')){ %><a href="/tickets" class="<%= currentPath.startsWith('/tickets')?'active':'' %>"><i class="bi bi-life-preserver"></i><span>Tiket</span></a><% }else{ %><a href="/profile" class="<%= currentPath.startsWith('/profile')?'active':'' %>"><i class="bi bi-person-circle"></i><span>Profil</span></a><% } %>
+    <% if(hasGoQuickAction){ %><button type="button" class="go-add-button" data-go-quick-open aria-label="Tambah data" aria-controls="goQuickSheet" aria-haspopup="dialog" aria-expanded="false"><i class="bi bi-plus-lg"></i></button><% }else{ %><a href="/profile" class="<%= currentPath.startsWith('/profile')?'active':'' %>"><i class="bi bi-person-circle"></i><span>Profil</span></a><% } %>
+    <% if(can('billing')||can('finance')){ %><a href="/payments" class="<%= currentPath==='/payments'?'active':'' %>"><i class="bi bi-shield-check"></i><span>Approval</span></a><% }else if(can('support')){ %><a href="/tickets" class="<%= currentPath.startsWith('/tickets')?'active':'' %>"><i class="bi bi-life-preserver"></i><span>Tiket</span></a><% }else if(can('network')){ %><a href="/nms" class="<%= currentPath.startsWith('/nms')?'active':'' %>"><i class="bi bi-activity"></i><span>NOC</span></a><% }else if(can('warehouse')){ %><a href="/inventory" class="<%= currentPath.startsWith('/inventory')?'active':'' %>"><i class="bi bi-box-seam-fill"></i><span>Gudang</span></a><% }else{ %><a href="/profile" class="<%= currentPath.startsWith('/profile')?'active':'' %>"><i class="bi bi-person-circle"></i><span>Profil</span></a><% } %>
+    <button type="button" class="<%= goMenuActive?'active':'' %>" data-go-menu-open aria-controls="goMenu" aria-haspopup="dialog" aria-expanded="false"><i class="bi bi-grid-fill"></i><span>Menu</span></button>
   </nav>
 
   <div class="go-sheet" id="goQuickSheet" aria-hidden="true">
@@ -138,7 +139,7 @@
         <% if(can('finance')||can('reports')){ %>
         <div class="sidebar-section-label"><%= language==='en'?'FINANCE':'KEUANGAN' %></div>
         <nav class="sidebar-nav">
-          <% if(can('finance')){ %><div class="sidebar-nav-group <%= currentPath.startsWith('/cash') ? 'open' : '' %>
+          <% if(can('finance')){ %><div class="sidebar-nav-group <%= currentPath.startsWith('/cash') ? 'open' : '' %>">
             <a class="sidebar-link <%= currentPath.startsWith('/cash') ? 'active' : '' %>" href="/cash"><i class="bi bi-cash-stack"></i><span><%= t('cash') %></span><em><i class="bi bi-chevron-down"></i></em></a>
             <div class="sidebar-subnav"><a class="<%= currentPath.startsWith('/cash/categories') ? 'active' : '' %>" href="/cash/categories"><%= t('cashCategories') %></a><a class="<%= currentPath === '/cash' ? 'active' : '' %>" href="/cash"><%= t('cashData') %></a></div>
           </div><% } %>
