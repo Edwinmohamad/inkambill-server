@@ -1,13 +1,22 @@
-PATCH HISTORI REKONSILIASI
+INKAMBILL - WA Broadcast Final Patch
 
-Replace file:
-routes/payments.js
+Cara pakai:
+1. Extract ZIP ini.
+2. Copy folder "scripts" ke root repository inkambill-server.
+3. Buka terminal di root repository.
+4. Jalankan:
+   node scripts/apply-wa-broadcast-filter-final.js
 
-Perbaikan:
-- Tidak lagi menjalankan ensureV53Schema() penuh ketika tab Histori dibuka.
-- Schema settlement minimum dibuat/dicek secara kompatibel MySQL/MariaDB.
-- Index settlement dicek dengan SHOW INDEX sebelum ALTER TABLE.
-- Kolom settlement_id, settled_by, settled_at dibuat hanya jika belum ada.
-- Query grafik Histori dibuat non-fatal; jika chart gagal, tabel Histori tetap terbuka.
+5. Validasi:
+   node --check routes/waCrm.js
+   node --check services/waBroadcastService.js
+   node --check public/js/wa-broadcast.js
+   npm run validate:final
 
-Setelah replace, restart aplikasi Node.js/container.
+6. Jika semua PASS, buka GitHub Desktop.
+7. Review perubahan file.
+8. Commit, contoh:
+   feat: improve WhatsApp broadcast filters and audience segmentation
+9. Push origin.
+
+Patch akan membuat backup file otomatis dengan suffix .bak-TIMESTAMP.
