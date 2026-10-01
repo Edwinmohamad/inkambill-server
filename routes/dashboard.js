@@ -103,7 +103,22 @@ router.get('/', async (req, res) => {
   const billingYear=safeInt(req.query.billing_year,selectedYear,2020,2100);
   const billingSiteCode=String(req.query.billing_site??selectedSiteCode).trim().toUpperCase();
   const billingSite=billingSiteCode?siteOptions.find(s=>s.code===billingSiteCode):null;
-  const billingControl=await getBillingControlData({month:billingMonth,year:billingYear,siteId:billingSite?.id||null});
+  // Billing Control Center is an enhancement panel.  Older installations may not
+  // have every optional billing column yet, so its query must never make the
+  // whole Dashboard unavailable.  Keep the shell usable and leave the exact
+  // database detail in the server log for the next migration run.
+  let billingControl;
+  try{
+    billingControl=await getBillingControlData({month:billingMonth,year:billingYear,siteId:billingSite?.id||null});
+  }catch(error){
+    console.error('Dashboard Billing Control tidak dapat dimuat:',error?.message||error);
+    billingControl={
+      month:billingMonth,year:billingYear,
+      summary:{billedCustomers:0,billedAmount:0,collectedAmount:0,outstandingAmount:0,paidCustomers:0,openCustomers:0,paymentCount:0,confirmedAmount:0},
+      actionCounts:{must_isolate:0,follow_up:0,isolated:0,pending:0,due_today:0,not_due:0},
+      customers:[],siteStats:[],unavailable:true
+    };
+  }
 
   const [[customerStats]] = await db.execute(`SELECT
     COUNT(*) total,
