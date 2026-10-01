@@ -3,11 +3,11 @@
 .gitignore
 .github
 
-# Self-hosted GitHub runner
+# GitHub self-hosted runner
 actions-runner/
 actions-runner/**
 
-# Backups
+# Backup
 backups/
 backups/**
 
@@ -17,15 +17,15 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Secrets
+# Environment
 .env
 .env.*
 !.env.example
 
-# Runtime InkamBilling
+# Runtime InkamBilling - mounted volume
 storage/
 
-# Sisa FMT yang tidak boleh masuk image CT220
+# FMT Dashboard tidak boleh masuk CT220 image
 app/
 data/
 uploads/
@@ -34,9 +34,10 @@ requirements.txt
 install_casaos.sh
 run.sh
 
-# Temporary / old files
+# Legacy / temporary
 _to_delete/
 Claude outputs/
+
 *.log
 *.tmp
 *.bak
