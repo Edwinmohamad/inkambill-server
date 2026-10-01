@@ -1,0 +1,10 @@
+const fs=require('fs');const assert=require('assert');
+const invoice=fs.readFileSync('services/invoiceService.js','utf8');const pay=fs.readFileSync('services/paymentVerificationService.js','utf8');const fin=fs.readFileSync('routes/finance.js','utf8');const cash=fs.readFileSync('services/cashService.js','utf8');
+assert(!/INSERT INTO payments[\s\S]{0,500}Pemasangan Baru/.test(invoice),'PSB invoice generation must not create payment');
+assert(pay.includes("source_type IN ('payment','install_income')"),'cross-source dedupe missing');
+assert(pay.includes("payment_commission_technician")&&pay.includes("payment_commission_sales"),'PSB commissions must be tied to realized payment');
+assert(fin.includes('cash_journal_suppressed_at=NOW()'),'manual auto-journal delete must create suppression tombstone');
+assert(pay.includes('cash_journal_suppressed_at'),'postCashTransaction must honor manual suppression tombstone');
+assert(fin.includes('await assertDateOpen(conn,rows[0].transaction_date)'),'old-date lock guard missing');
+assert(cash.includes('if(tx.transaction_date)await assertCashDateOpen(conn,tx.transaction_date)'),'approval/reject locked-period guard missing');
+console.log('financial-integrity-static: PASS');

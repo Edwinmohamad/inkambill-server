@@ -1,0 +1,11 @@
+const fs=require('fs');const assert=require('assert');
+const fin=fs.readFileSync('routes/finance.js','utf8');
+const pay=fs.readFileSync('services/paymentVerificationService.js','utf8');
+const schema=fs.readFileSync('services/schemaService.js','utf8');
+assert(fin.includes("['payment','install_income'].includes"),'force-delete must recognize payment/install_income auto journals');
+assert(fin.includes('cash_journal_suppressed_at=NOW()'),'force-delete must persist suppression');
+assert(fin.includes('await assertDateOpen(conn,tx.transaction_date)'),'single force-delete must respect closing lock');
+assert(fin.includes('for(const row of rows)await assertDateOpen(conn,row.transaction_date)'),'bulk force-delete must respect closing lock');
+assert(pay.includes('if(suppressed?.cash_journal_suppressed_at)return;'),'auto journal recreation must stop after manual suppression');
+assert(schema.includes('cash_journal_suppressed_reason'),'schema must contain suppression metadata');
+console.log('manual-auto-journal-delete: PASS');
