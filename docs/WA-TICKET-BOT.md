@@ -1,6 +1,6 @@
 # Bot Tiket WhatsApp (WAHA + n8n)
 
-Teknisi/staff bisa membuat, mengambil, meng-update, dan menutup tiket langsung dari WhatsApp. Semua perubahan langsung tersimpan di tabel `tickets` / `ticket_updates` yang sama dengan menu **Ticketing** di web, jadi SLA, KPI tim, dan timeline progress tetap satu sumber data. Setiap tiket baru langsung dikirim ke seluruh karyawan teknis aktif yang memiliki nomor WhatsApp; tidak menunggu konfirmasi atau PIC.
+Teknisi/staff bisa membuat, mengambil, meng-update, dan menutup tiket langsung dari WhatsApp. Versi SPV Operations juga membaca percakapan natural dari grup operasional (contoh: “rumah Evi LOS”, “Jon OTW”, “sudah normal”) tanpa mewajibkan command. Semua perubahan langsung tersimpan di tabel `tickets` / `ticket_updates` yang sama dengan menu **Ticketing** di web, jadi SLA, KPI tim, dan timeline progress tetap satu sumber data. Setiap tiket baru langsung dikirim ke seluruh karyawan teknis aktif yang memiliki nomor WhatsApp; tidak menunggu konfirmasi atau PIC.
 
 ## Alur
 
@@ -9,7 +9,7 @@ Teknisi kirim "#update 123456 60% ganti konektor"
       │
       ▼
 WAHA ──webhook (event: message)──► n8n  (workflow 06-wa-ticket-bot.json)
-                                     │  cek token URL + pesan diawali "#"
+                                     │  cek token URL + semua pesan grup non-bot
                                      ▼
                      POST {INKAMBILLING_URL}/api/n8n/wa/command   (X-N8N-TOKEN)
                                      │  backend: cek nomor = karyawan aktif, jalankan perintah
@@ -118,7 +118,7 @@ Tidak perlu environment variable n8n, jadi aman juga di n8n 2.x yang memblokir `
 
 Token di URL wajib: webhook n8n bisa diakses publik, dan tanpa token siapa pun bisa mengirim payload palsu seolah-olah dari nomor teknisi. Pesan dengan token salah berhenti di node **Valid?**.
 
-Isi workflow: WAHA Webhook → Config → Valid? (token, event `message`, bukan dari bot sendiri, diawali `#`) → INKAMBILLING Command → Pisah Balasan → Kirim via WAHA. Kalau server INKAMBILLING error atau timeout, jalur **Balasan Gangguan** tetap memberi tahu pengirim. Pengiriman diberi jeda 0,8 detik per pesan dan diulang maksimal 3x kalau WAHA gagal.
+Isi workflow: WAHA Webhook → Config → Valid? (token, event `message`, bukan dari bot sendiri, pesan non-kosong) → INKAMBILLING Command → Pisah Balasan → Kirim via WAHA. Kalau server INKAMBILLING error atau timeout, jalur **Balasan Gangguan** tetap memberi tahu pengirim. Pengiriman diberi jeda 0,8 detik per pesan dan diulang maksimal 3x kalau WAHA gagal.
 
 ### 5. Grup teknisi
 

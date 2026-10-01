@@ -1,0 +1,527 @@
+{
+  "name": "INKAMBILLING - SPV Operations Supervisor",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Jakarta"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "mode": "everyX",
+              "value": 15,
+              "unit": "minutes"
+            }
+          ]
+        }
+      },
+      "id": "cron-cycle",
+      "name": "Supervisor Cycle 15m",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        0,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config SPV Cycle').first().json.inkambillingUrl.replace(/\\/+$/, '') }}/api/n8n/operations/spv-cycle",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Idempotency-Key",
+              "value": "=spv-cycle:{{$now.toFormat('yyyyMMddHHmm')}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { run_at: $now.toISO() } }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "id": "api-cycle",
+      "name": "Cek Tiket Belum Close",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        120
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "inkambilling-n8n-token",
+          "name": "INKAMBILLING n8n Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const out=[]; for (const item of $input.all()) { for (const m of (item.json.messages||[])) { for (const chatId of (m.chat_ids||[])) if(chatId&&m.text) out.push({json:{chatId,text:m.text}}); } } return out;"
+      },
+      "id": "split-cycle",
+      "name": "Pisah Reminder",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config SPV Cycle').first().json.wahaUrl.replace(/\\/+$/, '') }}/api/sendText",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { session: $('Config SPV Cycle').first().json.wahaSession || 'default', chatId: $json.chatId, text: $json.text } }}",
+        "options": {
+          "timeout": 20000
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "id": "send-cycle",
+      "name": "Kirim Reminder Grup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        120
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "waha-api-key",
+          "name": "WAHA API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "mode": "everyDay",
+              "hour": 8,
+              "minute": 0
+            }
+          ]
+        }
+      },
+      "id": "cron-morning",
+      "name": "Morning 08:00",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        0,
+        330
+      ]
+    },
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "mode": "everyDay",
+              "hour": 13,
+              "minute": 0
+            }
+          ]
+        }
+      },
+      "id": "cron-midday",
+      "name": "Midday 13:00",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        0,
+        470
+      ]
+    },
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "mode": "everyDay",
+              "hour": 18,
+              "minute": 0
+            }
+          ]
+        }
+      },
+      "id": "cron-evening",
+      "name": "Evening 18:00",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        0,
+        610
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config SPV Summary').first().json.inkambillingUrl.replace(/\\/+$/, '') }}/api/n8n/operations/daily-summary",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Idempotency-Key",
+              "value": "=spv-daily:{{$json.period}}:{{$now.toFormat('yyyy-MM-dd')}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { period: $json.period } }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "id": "api-summary",
+      "name": "Ambil Daily Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        470
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "inkambilling-n8n-token",
+          "name": "INKAMBILLING n8n Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const out=[]; for (const item of $input.all()) for(const m of (item.json.messages||[])) if(m.chatId&&m.text) out.push({json:m}); return out;"
+      },
+      "id": "split-summary",
+      "name": "Pisah Daily Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        920,
+        470
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config SPV Summary').first().json.wahaUrl.replace(/\\/+$/, '') }}/api/sendText",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { session: $('Config SPV Summary').first().json.wahaSession || 'default', chatId: $json.chatId, text: $json.text } }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "id": "send-summary",
+      "name": "Kirim Daily Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1160,
+        470
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "waha-api-key",
+          "name": "WAHA API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "p",
+              "name": "period",
+              "value": "morning",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "set-morning",
+      "name": "Set Morning",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        330
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "p",
+              "name": "period",
+              "value": "midday",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "set-midday",
+      "name": "Set Midday",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        470
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "p",
+              "name": "period",
+              "value": "evening",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "set-evening",
+      "name": "Set Evening",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        610
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c1",
+              "name": "inkambillingUrl",
+              "value": "http://192.168.100.10:3301",
+              "type": "string"
+            },
+            {
+              "id": "c2",
+              "name": "wahaUrl",
+              "value": "http://192.168.100.10:3000",
+              "type": "string"
+            },
+            {
+              "id": "c3",
+              "name": "wahaSession",
+              "value": "default",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "cfg-cycle",
+      "name": "Config SPV Cycle",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c1",
+              "name": "inkambillingUrl",
+              "value": "http://192.168.100.10:3301",
+              "type": "string"
+            },
+            {
+              "id": "c2",
+              "name": "wahaUrl",
+              "value": "http://192.168.100.10:3000",
+              "type": "string"
+            },
+            {
+              "id": "c3",
+              "name": "wahaSession",
+              "value": "default",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "cfg-summary",
+      "name": "Config SPV Summary",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        430,
+        470
+      ]
+    }
+  ],
+  "connections": {
+    "Supervisor Cycle 15m": {
+      "main": [
+        [
+          {
+            "node": "Config SPV Cycle",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cek Tiket Belum Close": {
+      "main": [
+        [
+          {
+            "node": "Pisah Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pisah Reminder": {
+      "main": [
+        [
+          {
+            "node": "Kirim Reminder Grup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Morning 08:00": {
+      "main": [
+        [
+          {
+            "node": "Set Morning",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Midday 13:00": {
+      "main": [
+        [
+          {
+            "node": "Set Midday",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evening 18:00": {
+      "main": [
+        [
+          {
+            "node": "Set Evening",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Morning": {
+      "main": [
+        [
+          {
+            "node": "Config SPV Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Midday": {
+      "main": [
+        [
+          {
+            "node": "Config SPV Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Evening": {
+      "main": [
+        [
+          {
+            "node": "Config SPV Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ambil Daily Summary": {
+      "main": [
+        [
+          {
+            "node": "Pisah Daily Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pisah Daily Summary": {
+      "main": [
+        [
+          {
+            "node": "Kirim Daily Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config SPV Cycle": {
+      "main": [
+        [
+          {
+            "node": "Cek Tiket Belum Close",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config SPV Summary": {
+      "main": [
+        [
+          {
+            "node": "Ambil Daily Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

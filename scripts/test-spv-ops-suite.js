@@ -1,0 +1,27 @@
+const assert=require('assert');
+const fs=require('fs');
+const path=require('path');
+const root=path.resolve(__dirname,'..');
+const dbPath=path.join(root,'config','db.js');
+require.cache[dbPath]={id:dbPath,filename:dbPath,loaded:true,exports:{execute:async()=>[[]],query:async()=>[[]]}};
+const { detectType,detectStage,issueLabel }=require('../services/waOpsNaturalLanguageService');
+let passed=0;
+function t(name,fn){try{fn();passed++;console.log('  ok  '+name);}catch(e){console.error('  FAIL '+name+'\n       '+e.message);process.exitCode=1;}}
+const read=f=>fs.readFileSync(path.join(root,f),'utf8');
+console.log('Natural language parser');
+t('gangguan random dikenali',()=>assert.strictEqual(detectType('rumah evi KBG los merah dari tadi'),'incident'));
+t('PSB random dikenali',()=>assert.strictEqual(detectType('besok ada pasang baru di KBG'),'psb'));
+t('maintenance dikenali',()=>assert.strictEqual(detectType('malam ini maintenance ODP KRW 04'),'maintenance'));
+t('status OTW dikenali',()=>assert.strictEqual(detectStage('jon otw ke rumah asep sekarang'),'OTW'));
+t('status onsite dikenali',()=>assert.strictEqual(detectStage('sudah sampai lokasi'),'ON_SITE'));
+t('status selesai dikenali',()=>assert.strictEqual(detectStage('udah normal dan selesai'),'RESOLVED'));
+t('issue LOS dilabeli benar',()=>assert.strictEqual(issueLabel('lampu LOS merah'),'LOS / Fiber'));
+t('obrolan biasa tidak jadi intent',()=>assert.strictEqual(detectType('nanti makan dimana bro'),null));
+console.log('Wiring SPV');
+t('schema V60 terpasang',()=>{const s=read('services/schemaService.js');assert.ok(s.includes('ensureV60Schema'));assert.ok(s.includes('wa_ops_pending_actions'));});
+t('operations center mounted',()=>{assert.ok(read('app.js').includes("app.use('/operations'"));assert.ok(fs.existsSync(path.join(root,'views/operations/index.ejs')));});
+t('supervisor endpoint ada',()=>{const s=read('routes/n8n.js');assert.ok(s.includes("/operations/spv-cycle"));assert.ok(s.includes("/operations/daily-summary"));});
+t('workflow WA membaca natural conversation',()=>{const d=JSON.parse(read('n8n/06-wa-ticket-bot.json'));const valid=d.nodes.find(n=>n.name==='Valid?');assert.ok(valid);assert.ok(!valid.parameters.conditions.conditions[0].leftValue.includes("startsWith('#')"));});
+t('workflow supervisor valid',()=>{const d=JSON.parse(read('n8n/08-spv-operations-supervisor.json'));const names=d.nodes.map(n=>n.name);['Supervisor Cycle 15m','Cek Tiket Belum Close','Kirim Reminder Grup','Morning 08:00','Evening 18:00'].forEach(n=>assert.ok(names.includes(n),n));});
+t('KPI menggunakan activity + SLA',()=>{const s=read('routes/teamKpi.js');assert.ok(s.includes('operations_activities'));assert.ok(s.includes('sla_breached'));assert.ok(s.includes('team_kpi_events'));});
+console.log(`\n${passed} test lolos${process.exitCode?', ADA YANG GAGAL':''}.`);

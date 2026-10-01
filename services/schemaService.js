@@ -1084,11 +1084,6 @@ async function ensureV53Schema() {
     INDEX idx_cash_settlement_cancel_settlement (settlement_id)
   )`);
   await db.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS settlement_id BIGINT UNSIGNED NULL AFTER settlement_status`);
-  // v1.26 dashboard reads the actual cash-recognition timestamp directly. Make these
-  // columns part of the normal startup schema instead of relying on the reconciliation
-  // page to create them lazily, otherwise a fresh/older install could 500 on Dashboard.
-  await db.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS settled_by BIGINT UNSIGNED NULL AFTER settlement_id`);
-  await db.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS settled_at DATETIME NULL AFTER settled_by`);
   await db.query(`ALTER TABLE payments ADD INDEX IF NOT EXISTS idx_payments_settlement (settlement_id)`);
   await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS cash_aging_alert_days TINYINT UNSIGNED NOT NULL DEFAULT 3`);
   await db.query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS cash_aging_last_alert_date DATE NULL`);
@@ -1241,4 +1236,151 @@ async function ensureV58Schema() {
   await db.query(`ALTER TABLE finance_debts ADD INDEX IF NOT EXISTS idx_finance_debt_scope(scope,status,employee_id)`).catch((err) => console.error('Index scope hutang gagal:', err.message));
 }
 
-module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema, ensureV58Schema };
+
+async function ensureV59Schema() {
+  // SPV Operations foundation. Non-destructive tables layered on top of the existing ticket model,
+  // so current Ticketing/WA/NMS/Billing behavior stays backward compatible.
+  await db.query(`CREATE TABLE IF NOT EXISTS ticket_supervisor_state (
+    ticket_id BIGINT UNSIGNED PRIMARY KEY,
+    stage ENUM('OPEN','ASSIGNED','OTW','ON_SITE','WORKING','RESOLVED','VERIFIED','CLOSED') NOT NULL DEFAULT 'OPEN',
+    stage_changed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_activity_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_reminder_at DATETIME NULL,
+    reminder_count INT UNSIGNED NOT NULL DEFAULT 0,
+    hold_until DATETIME NULL,
+    blocker_note VARCHAR(500) NULL,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_ticket_spv_stage_activity(stage,last_activity_at),
+    INDEX idx_ticket_spv_reminder(last_reminder_at),
+    CONSTRAINT fk_ticket_spv_ticket FOREIGN KEY(ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
+  )`);
+  await db.query(`CREATE TABLE IF NOT EXISTS ticket_supervisor_events (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    ticket_id BIGINT UNSIGNED NOT NULL,
+    event_type VARCHAR(50) NOT NULL,
+    stage ENUM('OPEN','ASSIGNED','OTW','ON_SITE','WORKING','RESOLVED','VERIFIED','CLOSED') NULL,
+    note VARCHAR(1000) NULL,
+    source VARCHAR(20) NOT NULL DEFAULT 'system',
+    actor_user_id BIGINT UNSIGNED NULL,
+    actor_employee_id BIGINT UNSIGNED NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_ticket_spv_event_ticket(ticket_id,created_at),
+    INDEX idx_ticket_spv_event_actor(actor_employee_id,created_at),
+    CONSTRAINT fk_ticket_spv_event_ticket FOREIGN KEY(ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
+  )`);
+  await db.query(`CREATE TABLE IF NOT EXISTS operations_activities (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    activity_code VARCHAR(40) NOT NULL,
+    activity_type ENUM('incident','psb','installation','maintenance','migration','survey','followup','other') NOT NULL DEFAULT 'other',
+    title VARCHAR(200) NOT NULL,
+    description TEXT NULL,
+    site_id BIGINT UNSIGNED NULL,
+    customer_id BIGINT UNSIGNED NULL,
+    ticket_id BIGINT UNSIGNED NULL,
+    status ENUM('planned','in_progress','done','cancelled') NOT NULL DEFAULT 'planned',
+    priority ENUM('low','medium','high','critical') NOT NULL DEFAULT 'medium',
+    primary_employee_id BIGINT UNSIGNED NULL,
+    source ENUM('web','whatsapp','n8n','system') NOT NULL DEFAULT 'web',
+    source_message_id VARCHAR(190) NULL,
+    started_at DATETIME NULL,
+    completed_at DATETIME NULL,
+    created_by_user_id BIGINT UNSIGNED NULL,
+    created_by_employee_id BIGINT UNSIGNED NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_operations_activity_code(activity_code),
+    UNIQUE KEY uq_operations_activity_source_message(source_message_id),
+    INDEX idx_operations_activity_date(created_at),
+    INDEX idx_operations_activity_status(status,activity_type),
+    INDEX idx_operations_activity_site(site_id,status),
+    INDEX idx_operations_activity_pic(primary_employee_id,status)
+  )`);
+  await db.query(`CREATE TABLE IF NOT EXISTS operations_activity_members (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    activity_id BIGINT UNSIGNED NOT NULL,
+    employee_id BIGINT UNSIGNED NOT NULL,
+    role ENUM('pic','helper','observer') NOT NULL DEFAULT 'helper',
+    status ENUM('assigned','accepted','working','done') NOT NULL DEFAULT 'assigned',
+    accepted_at DATETIME NULL,
+    completed_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_operations_activity_member(activity_id,employee_id),
+    INDEX idx_operations_member_employee(employee_id,status),
+    CONSTRAINT fk_operations_member_activity FOREIGN KEY(activity_id) REFERENCES operations_activities(id) ON DELETE CASCADE
+  )`);
+  await db.query(`CREATE TABLE IF NOT EXISTS operations_activity_updates (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    activity_id BIGINT UNSIGNED NOT NULL,
+    event_type VARCHAR(50) NOT NULL DEFAULT 'note',
+    status ENUM('planned','in_progress','done','cancelled') NULL,
+    note TEXT NULL,
+    source ENUM('web','whatsapp','n8n','system') NOT NULL DEFAULT 'web',
+    actor_user_id BIGINT UNSIGNED NULL,
+    actor_employee_id BIGINT UNSIGNED NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_operations_update_activity(activity_id,created_at),
+    INDEX idx_operations_update_actor(actor_employee_id,created_at),
+    CONSTRAINT fk_operations_update_activity FOREIGN KEY(activity_id) REFERENCES operations_activities(id) ON DELETE CASCADE
+  )`);
+  await db.query(`CREATE TABLE IF NOT EXISTS team_kpi_events (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    employee_id BIGINT UNSIGNED NOT NULL,
+    event_type VARCHAR(80) NOT NULL,
+    entity_type VARCHAR(40) NOT NULL DEFAULT 'activity',
+    entity_id BIGINT UNSIGNED NULL,
+    metric_value DECIMAL(14,2) NOT NULL DEFAULT 1,
+    duration_seconds BIGINT UNSIGNED NULL,
+    metadata_json JSON NULL,
+    occurred_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_team_kpi_employee_time(employee_id,occurred_at),
+    INDEX idx_team_kpi_event_time(event_type,occurred_at),
+    INDEX idx_team_kpi_entity(entity_type,entity_id)
+  )`);
+}
+
+async function ensureV60Schema() {
+  // SPV Operations automation: conversational context + reminder state.
+  await db.query(`CREATE TABLE IF NOT EXISTS wa_ops_context (
+    chat_id VARCHAR(190) PRIMARY KEY,
+    last_ticket_id BIGINT UNSIGNED NULL,
+    last_customer_id BIGINT UNSIGNED NULL,
+    last_site_code VARCHAR(20) NULL,
+    last_intent VARCHAR(50) NULL,
+    last_message_id VARCHAR(190) NULL,
+    context_json JSON NULL,
+    expires_at DATETIME NULL,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_wa_ops_context_expiry(expires_at)
+  )`);
+  await db.query(`CREATE TABLE IF NOT EXISTS wa_ops_pending_actions (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    chat_id VARCHAR(190) NOT NULL,
+    sender_phone VARCHAR(32) NULL,
+    message_id VARCHAR(190) NULL,
+    action_type VARCHAR(50) NOT NULL,
+    payload_json JSON NOT NULL,
+    status ENUM('pending','confirmed','cancelled','expired') NOT NULL DEFAULT 'pending',
+    expires_at DATETIME NOT NULL,
+    confirmed_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_wa_ops_pending_message(message_id),
+    INDEX idx_wa_ops_pending_chat(chat_id,status,expires_at)
+  )`);
+  await db.query(`CREATE TABLE IF NOT EXISTS operations_site_pic_rules (
+    site_id BIGINT UNSIGNED PRIMARY KEY,
+    primary_employee_id BIGINT UNSIGNED NULL,
+    backup_employee_id BIGINT UNSIGNED NULL,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_ops_site_pic_primary(primary_employee_id),
+    INDEX idx_ops_site_pic_backup(backup_employee_id)
+  )`);
+  await db.query(`ALTER TABLE ticket_supervisor_state ADD COLUMN IF NOT EXISTS sla_deadline DATETIME NULL AFTER blocker_note`);
+  await db.query(`ALTER TABLE ticket_supervisor_state ADD COLUMN IF NOT EXISTS escalation_level TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER sla_deadline`);
+  await db.query(`ALTER TABLE ticket_supervisor_state ADD COLUMN IF NOT EXISTS last_escalated_at DATETIME NULL AFTER escalation_level`);
+  await db.query(`ALTER TABLE operations_activities ADD COLUMN IF NOT EXISTS source_chat_id VARCHAR(190) NULL AFTER source_message_id`);
+  await db.query(`ALTER TABLE operations_activities ADD COLUMN IF NOT EXISTS source_sender_phone VARCHAR(32) NULL AFTER source_chat_id`);
+  await db.query(`ALTER TABLE operations_activities ADD INDEX IF NOT EXISTS idx_operations_activity_source_chat(source_chat_id,created_at)`).catch(()=>{});
+}
+
+module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema, ensureV58Schema, ensureV59Schema, ensureV60Schema };

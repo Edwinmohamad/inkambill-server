@@ -18,3 +18,10 @@ Workflow yang tersedia:
 7. `07-operations-private-alerts.json` — briefing pribadi SPV dan tugas follow-up billing. Panduan: `docs/OPERATIONS-WA-N8N.md`.
 
 Untuk workflow foto, pasang volume persistent pada n8n agar file di `/data/piket` tidak hilang saat container dibuat ulang.
+
+
+## 08 — SPV Operations Supervisor
+
+`08-spv-operations-supervisor.json` memantau semua tiket yang belum CLOSED. Workflow menjalankan cycle tiap 15 menit, tetapi backend menerapkan threshold + cooldown agar grup tidak spam. Workflow yang sama juga mengirim Morning Check 08:00, Midday Check 13:00, dan Daily Ops Report 18:00.
+
+Lihat `docs/SPV-OPERATIONS.md` untuk setup lengkap.

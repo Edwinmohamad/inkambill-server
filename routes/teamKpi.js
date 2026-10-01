@@ -14,6 +14,8 @@ function scoreRow(row,teamMaxPsb){
   const jobDone=pct(row.done_jobs,row.assigned_jobs,false);
   const dutyAttendance=pct(row.present_duties,row.assigned_duties,false);
   const psbActivity=teamMaxPsb>0?Math.min(100,Math.round(Number(row.psb_count||0)/teamMaxPsb*100)):0;
+  const opsDone=pct(row.ops_done,row.ops_total,false);
+  const slaAchievement=pct(Math.max(0,Number(row.assigned_tickets||0)-Number(row.sla_breached||0)),row.assigned_tickets,true);
   const paymentActivity=Math.min(100,Math.round(Number(row.payments_recorded||0)/40*100));
   const approvalActivity=Math.min(100,Math.round(Number(row.payments_approved||0)/30*100));
   const cashActivity=Math.min(100,Math.round(Number(row.cash_entries||0)/25*100));
@@ -21,8 +23,9 @@ function scoreRow(row,teamMaxPsb){
   let focusMetrics=[];
   const hasTicket=Number(row.assigned_tickets||0)>0,hasJob=Number(row.assigned_jobs||0)>0,hasDuty=Number(row.assigned_duties||0)>0,hasPsb=teamMaxPsb>0;
   if(category==='technical'){
-    score=weightedScore([{value:ticketClose,weight:.35,available:hasTicket},{value:updateDiscipline,weight:.15,available:hasTicket},{value:jobDone,weight:.35,available:hasJob},{value:dutyAttendance,weight:.15,available:hasDuty}]);
-    formula='35% tiket selesai · 15% update · 35% job teknisi · 15% piket';focusMetrics=[['Tiket',`${row.closed_tickets}/${row.assigned_tickets}`],['Job',`${row.done_jobs}/${row.assigned_jobs}`],['Piket',`${row.present_duties}/${row.assigned_duties}`]];
+    const hasOps=Number(row.ops_total||0)>0;
+    score=weightedScore([{value:ticketClose,weight:.25,available:hasTicket},{value:updateDiscipline,weight:.10,available:hasTicket},{value:slaAchievement,weight:.15,available:hasTicket},{value:opsDone,weight:.20,available:hasOps},{value:jobDone,weight:.20,available:hasJob},{value:dutyAttendance,weight:.10,available:hasDuty}]);
+    formula='25% tiket · 10% update · 15% SLA · 20% aktivitas · 20% job · 10% piket';focusMetrics=[['Tiket',`${row.closed_tickets}/${row.assigned_tickets}`],['Aktivitas',`${row.ops_done}/${row.ops_total}`],['SLA',`${slaAchievement}%`]];
   }else if(category==='sales'){
     score=weightedScore([{value:psbActivity,weight:.80,available:hasPsb},{value:ticketClose,weight:.20,available:hasTicket}]);
     formula='80% kontribusi PSB · 20% tindak lanjut tiket pelanggan';focusMetrics=[['PSB',row.psb_count],['Tiket',`${row.closed_tickets}/${row.assigned_tickets}`],['Kontribusi',`${psbActivity}%`]];
@@ -39,7 +42,7 @@ function scoreRow(row,teamMaxPsb){
     score=weightedScore([{value:ticketClose,weight:.35,available:hasTicket},{value:jobDone,weight:.25,available:hasJob},{value:dutyAttendance,weight:.40,available:hasDuty}]);
     formula='35% tiket · 25% pekerjaan · 40% piket';focusMetrics=[['Tiket',`${row.closed_tickets}/${row.assigned_tickets}`],['Job',`${row.done_jobs}/${row.assigned_jobs}`],['Piket',`${row.present_duties}/${row.assigned_duties}`]];
   }
-  return {...row,effective_category:category,ticket_close_rate:ticketClose,update_rate:updateDiscipline,job_done_rate:jobDone,duty_rate:dutyAttendance,psb_activity:psbActivity,payment_activity:paymentActivity,approval_activity:approvalActivity,cash_activity:cashActivity,score,formula,focusMetrics};
+  return {...row,effective_category:category,ticket_close_rate:ticketClose,update_rate:updateDiscipline,job_done_rate:jobDone,duty_rate:dutyAttendance,psb_activity:psbActivity,ops_done_rate:opsDone,sla_achievement:slaAchievement,payment_activity:paymentActivity,approval_activity:approvalActivity,cash_activity:cashActivity,score,formula,focusMetrics};
 }
 
 router.get('/', async(req,res)=>{
@@ -63,13 +66,17 @@ router.get('/', async(req,res)=>{
       ,(SELECT COUNT(*) FROM payments pay WHERE e.user_id IS NOT NULL AND pay.received_by=e.user_id AND DATE(pay.paid_at) BETWEEN ? AND ?) payments_recorded
       ,(SELECT COUNT(*) FROM payments pay WHERE e.user_id IS NOT NULL AND pay.verified_by=e.user_id AND DATE(pay.verified_at) BETWEEN ? AND ?) payments_approved
       ,(SELECT COUNT(*) FROM cash_transactions ct WHERE e.user_id IS NOT NULL AND ct.created_by=e.user_id AND ct.transaction_date BETWEEN ? AND ?) cash_entries
+      ,(SELECT COUNT(*) FROM operations_activities oa WHERE oa.primary_employee_id=e.id AND DATE(oa.created_at) BETWEEN ? AND ?) ops_total
+      ,(SELECT COUNT(*) FROM operations_activities oa WHERE oa.primary_employee_id=e.id AND oa.status='done' AND DATE(COALESCE(oa.completed_at,oa.updated_at)) BETWEEN ? AND ?) ops_done
+      ,(SELECT COUNT(*) FROM tickets tx WHERE tx.assigned_employee_id=e.id AND DATE(tx.opened_at) BETWEEN ? AND ? AND TIMESTAMPDIFF(MINUTE,tx.opened_at,COALESCE(tx.closed_at,NOW())) > CASE tx.priority WHEN 'critical' THEN 240 WHEN 'high' THEN 480 WHEN 'low' THEN 2880 ELSE 1440 END) sla_breached
+      ,(SELECT COUNT(*) FROM team_kpi_events ke WHERE ke.employee_id=e.id AND DATE(ke.occurred_at) BETWEEN ? AND ?) kpi_events
     FROM employees e
     LEFT JOIN users u ON u.id=e.user_id
     LEFT JOIN positions p ON p.id=e.position_id
     LEFT JOIN departments d ON d.id=e.department_id
     WHERE e.is_active=1
     ORDER BY FIELD(COALESCE(p.category,'other'),'technical','admin','finance','sales','management','other'),e.name
-  `,[start,end,start,end,start,end,start,end,start,end,start,end,start,end,start,end,start,end,start,end,start,end]);
+  `,[start,end,start,end,start,end,start,end,start,end,start,end,start,end,start,end,start,end,start,end,start,end,start,end,start,end,start,end,start,end,start,end]);
   const maxPsb=Math.max(0,...rows.map(r=>Number(r.psb_count||0)));
   const team=rows.map(r=>scoreRow(r,maxPsb)).sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name));
   const summary={
@@ -78,7 +85,9 @@ router.get('/', async(req,res)=>{
     closed:team.reduce((a,x)=>a+Number(x.closed_tickets||0),0),
     dutyPresent:team.reduce((a,x)=>a+Number(x.present_duties||0),0),
     psb:team.reduce((a,x)=>a+Number(x.psb_count||0),0),
-    jobsDone:team.reduce((a,x)=>a+Number(x.done_jobs||0),0)
+    jobsDone:team.reduce((a,x)=>a+Number(x.done_jobs||0),0),
+    opsDone:team.reduce((a,x)=>a+Number(x.ops_done||0),0),
+    slaBreached:team.reduce((a,x)=>a+Number(x.sla_breached||0),0)
   };
   res.render('team-kpi/index',{title:'KPI Tim',team,summary,month,year,monthNames:MONTH_NAMES,start,end});
 });

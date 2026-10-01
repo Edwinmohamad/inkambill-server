@@ -10,7 +10,7 @@
     <article><span><i class="bi bi-check2-circle"></i></span><div><small>Tiket Closed</small><strong><%= summary.closed %></strong></div></article>
     <article><span><i class="bi bi-shield-check"></i></span><div><small>Piket Hadir</small><strong><%= summary.dutyPresent %></strong></div></article>
     <article><span><i class="bi bi-person-plus-fill"></i></span><div><small>PSB</small><strong><%= summary.psb %></strong></div></article>
-    <article><span><i class="bi bi-tools"></i></span><div><small>Job Selesai</small><strong><%= summary.jobsDone %></strong></div></article>
+    <article><span><i class="bi bi-tools"></i></span><div><small>Job Selesai</small><strong><%= summary.jobsDone %></strong></div></article><article><span><i class="bi bi-activity"></i></span><div><small>Aktivitas Selesai</small><strong><%= summary.opsDone %></strong></div></article><article><span><i class="bi bi-exclamation-triangle"></i></span><div><small>SLA Breach</small><strong><%= summary.slaBreached %></strong></div></article>
   </div>
 
   <div class="data-card">
@@ -28,5 +28,5 @@
       <% if(!team.length){ %><tr><td colspan="5"><div class="empty-state"><i class="bi bi-bar-chart-steps"></i><strong>Belum ada data KPI</strong><small>Tambahkan data karyawan dan aktivitas operasional terlebih dahulu.</small></div></td></tr><% } %>
     </tbody></table></div>
   </div>
-  <div class="kpi-method-note"><i class="bi bi-info-circle-fill"></i><div><strong>Metode role-aware dan jobdesk-aware</strong><small>Teknisi dinilai dari tiket, update, job dan piket; Sales dari PSB; Admin dari layanan operasional dan input pembayaran; Finance dari pembayaran, approval dan jurnal kas; Master Admin/Management menitikberatkan approval serta kontrol operasional. Metrik yang tidak terkait jobdesk tidak membebani skor.</small></div></div>
+  <div class="kpi-method-note"><i class="bi bi-info-circle-fill"></i><div><strong>Metode role-aware dan jobdesk-aware</strong><small>Teknisi dinilai dari tiket, disiplin update, pencapaian SLA, aktivitas Operations Center, job dan piket; Sales dari PSB; Admin dari layanan operasional dan input pembayaran; Finance dari pembayaran, approval dan jurnal kas; Master Admin/Management menitikberatkan approval serta kontrol operasional. Metrik yang tidak terkait jobdesk tidak membebani skor.</small></div></div>
 </section>

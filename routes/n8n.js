@@ -6,6 +6,9 @@ const { syncStockAlert } = require('../services/inventoryService');
 const { handleWaTicketMessage } = require('../services/waTicketCommandService');
 const { notifyTicketEventAsync } = require('../services/ticketWaNotifyService');
 const { sendBillingFollowUp, sendSpvBriefing, dispatchNocAlert } = require('../services/operationalWaService');
+const { createActivity, addActivityUpdate, addMember, recordKpiEvent } = require('../services/operationsActivityService');
+const { setStage, addSupervisorNote, supervisorSnapshot } = require('../services/ticketSupervisorService');
+const { buildSupervisorCycle, dailySummary } = require('../services/spvAutomationService');
 const router = express.Router();
 
 async function beginEvent(eventType, req, keyOverride = null) {
@@ -78,17 +81,13 @@ router.patch('/tickets/:id', async (req, res) => {
   res.json({ ok: true, eventKey: event.key, ticketId: ticket.id, status });
 });
 
-// WA ticket bot (n8n/06-wa-ticket-bot.json). Body = the raw WAHA webhook body ({ event, payload })
-// or just the payload. Non-command chatter is answered with handled:false BEFORE being logged, so
-// ordinary conversations never land in n8n_webhook_events. Idempotent on the WhatsApp message id:
-// WAHA/n8n retries of the same message do not create a second ticket/update.
+// WA Operations bot. All non-empty messages from the configured operations group are forwarded
+// here so the backend can understand commands AND natural operational conversation. Access control
+// (allowed group + registered employee) remains inside handleWaTicketMessage(). Idempotent by WA id.
 router.post('/wa/command', async (req, res) => {
   const payload = req.body?.payload && typeof req.body.payload === 'object' ? req.body.payload : (req.body || {});
   const text = String(payload.body || payload.caption || '').trim();
-  const prefix = String(process.env.WA_TICKET_PREFIX || '#').trim() || '#';
-  const quoted = JSON.stringify(payload?.quotedMsg || payload?.quotedMessage || payload?.contextInfo || payload?._data?.message || {});
-  const isTicketReply = /(?:TT-\d{8}-\d{6}|N8N-[A-Z0-9]+)/i.test(quoted);
-  if (payload.fromMe || (!text.startsWith(prefix) && !isTicketReply)) return res.json({ ok: true, handled: false, reason: payload.fromMe ? 'from_me' : 'not_command', replies: [] });
+  if (payload.fromMe || (!text && !payload.hasMedia)) return res.json({ ok: true, handled: false, reason: payload.fromMe ? 'from_me' : 'empty', replies: [] });
   const messageKey = payload.id ? `wa.command:${payload.id}` : null;
   const event = await beginEvent('wa.ticket-command', req, messageKey);
   if (event.duplicate) return res.json({ ok: true, duplicate: true, eventKey: event.key, replies: [] });
@@ -145,6 +144,107 @@ router.post('/operations/noc-alert', async (req, res) => {
   if (!title) return res.status(422).json({ ok: false, eventKey: event.key, error: 'title alert wajib diisi.' });
   try { return res.json({ ok: true, eventKey: event.key, ...(await dispatchNocAlert(req.body || {})) }); }
   catch (error) { await db.execute(`UPDATE n8n_webhook_events SET status='failed',error_message=? WHERE event_key=?`, [String(error.message).slice(0, 1000), event.key]); return res.status(400).json({ ok: false, eventKey: event.key, error: error.message }); }
+});
+
+
+// SPV Operations foundation (v1.31 / schema V59).
+// n8n/WAHA can write structured operational facts here; the web remains the source of truth.
+router.post('/operations/activities', async (req, res) => {
+  const event = await beginEvent('operations.activity.create', req, req.body?.source_message_id ? `ops.activity:${req.body.source_message_id}` : null);
+  if (event.duplicate) return res.json({ ok: true, duplicate: true, eventKey: event.key });
+  try {
+    const result = await createActivity(req.body || {}, {
+      user_id: Number(req.body?.actor_user_id) || null,
+      employee_id: Number(req.body?.actor_employee_id) || null,
+      source: req.body?.source || 'n8n'
+    });
+    if (req.body?.kpi_event && req.body?.primary_employee_id) {
+      await recordKpiEvent({ employeeId: req.body.primary_employee_id, eventType: String(req.body.kpi_event), entityType: 'activity', entityId: result.id, metadata: { activity_code: result.activity_code } });
+    }
+    return res.status(result.duplicate ? 200 : 201).json({ ok: true, eventKey: event.key, ...result });
+  } catch (error) {
+    await db.execute(`UPDATE n8n_webhook_events SET status='failed',error_message=? WHERE event_key=?`, [String(error.message).slice(0, 1000), event.key]);
+    return res.status(422).json({ ok: false, eventKey: event.key, error: error.message });
+  }
+});
+
+router.post('/operations/activities/:id/update', async (req, res) => {
+  const event = await beginEvent('operations.activity.update', req);
+  if (event.duplicate) return res.json({ ok: true, duplicate: true, eventKey: event.key });
+  const activityId = Number(req.params.id);
+  const [[activity]] = await db.execute(`SELECT id,activity_code,primary_employee_id FROM operations_activities WHERE id=? LIMIT 1`, [activityId]);
+  if (!activity) return res.status(404).json({ ok: false, eventKey: event.key, error: 'Aktivitas tidak ditemukan.' });
+  try {
+    const actor = { user_id: Number(req.body?.actor_user_id) || null, employee_id: Number(req.body?.actor_employee_id) || null, source: req.body?.source || 'n8n' };
+    const updateId = await addActivityUpdate(activityId, req.body || {}, actor);
+    if (req.body?.employee_id) await addMember(activityId, Number(req.body.employee_id), req.body.role || 'helper');
+    if (req.body?.kpi_event && (req.body?.employee_id || activity.primary_employee_id)) {
+      await recordKpiEvent({ employeeId: Number(req.body.employee_id || activity.primary_employee_id), eventType: String(req.body.kpi_event), entityType: 'activity', entityId: activityId, metricValue: Number(req.body.metric_value) || 1, durationSeconds: Number(req.body.duration_seconds) || null, metadata: { activity_code: activity.activity_code } });
+    }
+    return res.json({ ok: true, eventKey: event.key, activityId, updateId });
+  } catch (error) {
+    await db.execute(`UPDATE n8n_webhook_events SET status='failed',error_message=? WHERE event_key=?`, [String(error.message).slice(0, 1000), event.key]);
+    return res.status(422).json({ ok: false, eventKey: event.key, error: error.message });
+  }
+});
+
+router.post('/operations/tickets/:id/stage', async (req, res) => {
+  const event = await beginEvent('operations.ticket.stage', req);
+  if (event.duplicate) return res.json({ ok: true, duplicate: true, eventKey: event.key });
+  try {
+    const result = await setStage(Number(req.params.id), req.body?.stage, {
+      note: req.body?.note,
+      source: req.body?.source || 'n8n',
+      user_id: req.body?.actor_user_id,
+      employee_id: req.body?.actor_employee_id
+    });
+    if (req.body?.kpi_event && req.body?.actor_employee_id) {
+      await recordKpiEvent({ employeeId: Number(req.body.actor_employee_id), eventType: String(req.body.kpi_event), entityType: 'ticket', entityId: Number(req.params.id), metadata: { stage: result.stage, previous_stage: result.previousStage } });
+    }
+    return res.json({ ok: true, eventKey: event.key, ...result });
+  } catch (error) {
+    await db.execute(`UPDATE n8n_webhook_events SET status='failed',error_message=? WHERE event_key=?`, [String(error.message).slice(0, 1000), event.key]);
+    return res.status(422).json({ ok: false, eventKey: event.key, error: error.message });
+  }
+});
+
+router.post('/operations/tickets/:id/note', async (req, res) => {
+  const event = await beginEvent('operations.ticket.note', req);
+  if (event.duplicate) return res.json({ ok: true, duplicate: true, eventKey: event.key });
+  const note = String(req.body?.note || '').trim();
+  if (!note) return res.status(422).json({ ok: false, eventKey: event.key, error: 'note wajib diisi.' });
+  try {
+    const result = await addSupervisorNote(Number(req.params.id), note, {
+      source: req.body?.source || 'n8n', user_id: req.body?.actor_user_id, employee_id: req.body?.actor_employee_id, hold_until: req.body?.hold_until || null
+    });
+    return res.json({ ok: true, eventKey: event.key, ...result });
+  } catch (error) {
+    await db.execute(`UPDATE n8n_webhook_events SET status='failed',error_message=? WHERE event_key=?`, [String(error.message).slice(0, 1000), event.key]);
+    return res.status(422).json({ ok: false, eventKey: event.key, error: error.message });
+  }
+});
+
+router.get('/operations/supervisor-snapshot', async (req, res) => {
+  try {
+    const tickets = await supervisorSnapshot();
+    return res.json({ ok: true, generated_at: new Date().toISOString(), open_count: tickets.length, tickets });
+  } catch (error) { return res.status(500).json({ ok: false, error: error.message }); }
+});
+
+
+router.post('/operations/spv-cycle', async (req, res) => {
+  const event = await beginEvent('operations.spv-cycle', req, req.get('x-idempotency-key') || null);
+  if (event.duplicate) return res.json({ ok: true, duplicate: true, eventKey: event.key, messages: [] });
+  try { return res.json({ ok: true, eventKey: event.key, ...(await buildSupervisorCycle({ force: req.body?.force === true })) }); }
+  catch (error) { await db.execute(`UPDATE n8n_webhook_events SET status='failed',error_message=? WHERE event_key=?`, [String(error.message).slice(0,1000), event.key]); return res.status(500).json({ ok:false,eventKey:event.key,error:error.message }); }
+});
+
+router.post('/operations/daily-summary', async (req, res) => {
+  const period = ['morning','midday','evening'].includes(String(req.body?.period)) ? String(req.body.period) : 'morning';
+  const event = await beginEvent(`operations.daily-summary.${period}`, req, req.get('x-idempotency-key') || null);
+  if (event.duplicate) return res.json({ ok:true,duplicate:true,eventKey:event.key,messages:[] });
+  try { return res.json({ ok:true,eventKey:event.key,...(await dailySummary(period)) }); }
+  catch (error) { await db.execute(`UPDATE n8n_webhook_events SET status='failed',error_message=? WHERE event_key=?`, [String(error.message).slice(0,1000), event.key]); return res.status(500).json({ok:false,eventKey:event.key,error:error.message}); }
 });
 
 // NMS v2 — real-time PPP event dari RouterOS (PPP profile on-up/on-down → /tool fetch) atau n8n.

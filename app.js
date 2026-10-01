@@ -2,7 +2,6 @@ require('dotenv').config();
 process.env.TZ = process.env.TZ || 'Asia/Jakarta';
 
 const express = require('express');
-const http = require('http');
 const path = require('path');
 const fs = require('fs');
 const session = require('express-session');
@@ -29,7 +28,6 @@ const { generateMonthlyInvoices } = require('./services/invoiceService');
 const { runAutoIsolation } = require('./services/networkService');
 const { captureAllNmsTelemetry, backupAllRouters } = require('./services/nmsTelemetryService');
 const { ensureNmsV2Schema, purgeNmsHistory } = require('./services/nms/schema');
-const { ensureProcurementSchema } = require('./services/procurementSchema');
 const nmsPoller = require('./services/nms/poller');
 const nmsAutomation = require('./services/nms/automation');
 const { evaluateNetworkIncidents } = require('./services/networkAlertService');
@@ -39,15 +37,13 @@ const { scanLowStock } = require('./services/inventoryService');
 const { deliverMobilePushes } = require('./services/mobilePushService');
 const { runCashAgingAlert } = require('./services/cashSettlementService');
 const { purgeOldLogs } = require('./services/logRetentionService');
-const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema, ensureV58Schema } = require('./services/schemaService');
+const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema, ensureV58Schema, ensureV59Schema, ensureV60Schema } = require('./services/schemaService');
 const { requireN8nToken } = require('./middleware/n8n');
-const { initGatewayOnBoot, ensureGatewayAlive, processQueue, runAutoReminderSweep } = require('./services/whatsappGatewayService');
+const { initGatewayOnBoot, reconcileGatewayStatus, processQueue, runAutoReminderSweep } = require('./services/whatsappGatewayService');
 const { requireWahaWebhookToken } = require('./middleware/waha');
-const { ensureV56Schema: ensureWaCrmSchema } = require('./services/waCrmSchema');
-const waRealtime = require('./services/waRealtime');
 
 const app = express();
-const assetVersion = ['public/css/app.css','public/css/debts.css','public/css/inventory.css','public/css/procurement.css','public/css/nms-wall.css','public/css/nms-noc.css','public/js/nms-wall.js','public/js/nms-noc.js','public/js/nms-layout.js','public/css/mobile-app.css','public/css/monitoring.css','public/css/wa-inbox.css','public/css/wa-broadcast.css','public/js/app.js','public/js/mobile-app.js','public/js/nms.js','public/js/performance.js','public/js/monitoring.js','public/js/wa-inbox.js','public/js/wa-broadcast.js']
+const assetVersion = ['public/css/app.css','public/css/debts.css','public/css/nms-wall.css','public/js/nms-wall.js','public/css/mobile-app.css','public/css/monitoring.css','public/js/app.js','public/js/mobile-app.js','public/js/nms.js','public/js/performance.js','public/js/monitoring.js']
   .map(file => Math.floor(fs.statSync(path.join(__dirname,file)).mtimeMs).toString(36))
   .join('-');
 app.set('view engine', 'ejs');
@@ -79,15 +75,14 @@ const sessionStore = new MySQLStore({
   createDatabaseTable: true
 });
 
-const sessionMiddleware = session({
+app.use(session({
   name: 'inkamnet.sid',
   secret: process.env.SESSION_SECRET || 'change-this-secret-now',
   store: sessionStore,
   resave: false,
   saveUninitialized: false,
   cookie: { httpOnly: true, sameSite: 'lax', secure: process.env.COOKIE_SECURE === 'true', maxAge: 1000*60*60*12 }
-});
-app.use(sessionMiddleware);
+}));
 app.use(loadPermissions);
 app.use(commonLocals);
 // Parse multipart payment-proof forms before CSRF validation so the hidden token is available.
@@ -275,6 +270,7 @@ app.use('/communication', requireAuth, require('./routes/communication'));
 app.use('/clusters', requireAuth, requirePermission('network'), require('./routes/clusters'));
 app.use('/tickets', requireAuth, requirePermission('support'), require('./routes/tickets'));
 app.use('/team-kpi', requireAuth, requirePermission('support'), require('./routes/teamKpi'));
+app.use('/operations', requireAuth, requirePermission('support'), require('./routes/operations'));
 app.use('/schedules', requireAuth, requirePermission('support'), require('./routes/schedules'));
 app.use('/server-duty', requireAuth, requirePermission('support'), require('./routes/serverDuty'));
 app.use('/inventory', requireAuth, requirePermission('warehouse'), require('./routes/inventory'));
@@ -282,8 +278,6 @@ app.use('/sites', requireAuth, requirePermission('network'), require('./routes/s
 app.use('/custom-invoices', requireAuth, requirePermission('billing'), require('./routes/customInvoices'));
 app.use('/logs', requireAuth, requirePermission('logs'), require('./routes/logs'));
 app.use('/', requireAuth, require('./routes/finance'));
-app.use('/wa-inbox', requireAuth, require('./routes/waInbox'));
-app.use('/wa-gateway', requireAuth, require('./routes/waCrm'));
 app.use('/wa-gateway', requireAuth, require('./routes/whatsappGateway'));
 
 app.use((err, req, res, next) => {
@@ -347,8 +341,8 @@ async function bootstrap() {
   await ensureV56Schema();
   await ensureV57Schema();
   await ensureV58Schema();
-  await ensureWaCrmSchema();
-  await ensureProcurementSchema();
+  await ensureV59Schema();
+  await ensureV60Schema();
   await ensureNmsV2Schema();
   nmsPoller.start();
   const [rows] = await db.query('SELECT COUNT(*) total FROM users');
@@ -379,8 +373,6 @@ async function bootstrap() {
   cron.schedule('* * * * *', async () => {
     try { await nmsAutomation.runDue(); }
     catch (err) { console.error('NMS scheduled action gagal:', err.message); }
-    try { await require('./services/waInboxService').notifyDueFollowUps(); }
-    catch (err) { console.error('WA Inbox follow-up gagal:', err.message); }
   }, { timezone: 'Asia/Jakarta' });
   cron.schedule('*/5 * * * *', async () => {
     try { await nmsAutomation.maybeAutoSync(); }
@@ -393,20 +385,14 @@ async function bootstrap() {
     catch (err) { console.error('NMS snapshot PPP gagal:', err.message); }
   }, { timezone: 'Asia/Jakarta' });
 
-  // Check the actual WAHA session every minute. The webhook cannot wake the app if WAHA itself
-  // is down, and polling the status alone does not restart a STOPPED or FAILED session.
-  cron.schedule('* * * * *', async () => {
-    try { await ensureGatewayAlive(); }
-    catch (err) { console.error('WA Gateway auto-reconnect gagal:', err.message); }
-  }, { timezone: 'Asia/Jakarta' });
-
-  // WA Gateway queue watchdog — every 5 minutes: (1) resume the send queue in case it stalled while the
+  // WA Gateway watchdog — every 5 minutes: (1) resume the send queue in case it stalled while the
   // gateway was briefly disconnected, and (2) check whether it's time to run the once-daily
   // auto-reminder sweep (runAutoReminderSweep itself no-ops unless enabled, past the configured hour,
   // and not already run today, so this can safely fire every 5 minutes without double-sending).
   cron.schedule('*/5 * * * *', async () => {
     // Safety-net resync with WAHA in case a webhook push was ever missed (WAHA restart, network
     // blip, etc.) — the webhook (routes/waha.js) is the fast path, this just keeps things honest.
+    try { await reconcileGatewayStatus(); } catch (err) { console.error('WA Gateway status reconcile gagal:', err.message); }
     try { await processQueue(); } catch (err) { console.error('WA Gateway queue watchdog gagal:', err.message); }
     try {
       const result = await runAutoReminderSweep();
@@ -472,9 +458,7 @@ async function bootstrap() {
   initGatewayOnBoot().catch(err => console.error('WA Gateway: gagal sinkronisasi awal saat startup:', err.message));
 
   const port = Number(process.env.PORT || 3000);
-  const server = http.createServer(app);
-  waRealtime.attach(server, sessionMiddleware, loadPermissions);
-  server.listen(port, '0.0.0.0', () => console.log(`INKAMNET Billing berjalan di port ${port}`));
+  app.listen(port, '0.0.0.0', () => console.log(`INKAMNET Billing berjalan di port ${port}`));
 }
 
 bootstrap().catch(err => { console.error('Startup gagal:', err); process.exit(1); });
