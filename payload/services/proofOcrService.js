@@ -4,9 +4,10 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
-const db = require('../config/db');
+const db = require('../../config/db');
 
-const PROOF_DIR = path.join(__dirname, '..', 'storage', 'payment-proofs');
+// Service ini dijalankan dari payload/ tetapi bukti asli disimpan di root app.
+const PROOF_DIR = path.join(__dirname, '..', '..', 'storage', 'payment-proofs');
 const SCANNABLE_METHODS = new Set(['transfer', 'qris']);
 const OCR_TIMEOUT_MS = Math.max(5000, Number(process.env.PROOF_OCR_TIMEOUT_MS || 25000));
 const MAX_RAW_TEXT = 60000;
@@ -626,7 +627,7 @@ async function recoverProofOcrOnBoot() {
   await db.query(`UPDATE payment_proof_ocr SET status='queued',overall_status='processing',can_approve=1 WHERE status='processing'`);
   const engine = await getTesseractInfo({ refresh: true });
   if (engine.available) await db.query(`UPDATE payment_proof_ocr SET status='queued',overall_status='processing',can_approve=1 WHERE status IN ('unavailable','error')`);
-  const [rows] = await db.query(`SELECT payment_id FROM payment_proof_ocr WHERE status='queued' ORDER BY id LIMIT 50`);
+  const [rows] = await db.query(`SELECT payment_id FROM payment_proof_ocr WHERE status='queued' ORDER BY payment_id LIMIT 50`);
   for (const row of rows) {
     const id = Number(row.payment_id);
     if (!queued.has(id)) { queued.add(id); queue.push(id); }

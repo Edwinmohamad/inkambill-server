@@ -10,6 +10,7 @@ const { formatCashExpenseName }=require('../services/cashNamingService');
 const { isVendorCashCategory }=require('../services/cashCategoryService');
 const { audit }=require('../services/auditService');
 const { assertDateOpen }=require('../services/financialControlService');
+const { repairPaymentCashIntegrity }=require('../services/paymentVerificationService');
 const router=express.Router();
 const MONTH_NAMES_ID=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 // v1.25.5 (susulan) — "Nominal Tetap" & "Tanggal Jatuh Tempo" only ever mean something when a category is
@@ -232,6 +233,23 @@ router.get('/cash',async(req,res)=>{
 
   const createdTransaction=createdId?transactions.find(t=>Number(t.id)===createdId)||null:null;
   res.render('finance/cash',{title:'Data Kas',transactions,categories,sites,summary,collection:collection||{},approvalSummary:approvalSummary||{},cashCharts,mandatoryChecklist,isVendorCashCategory,createdId,createdTransaction,filters:{month,year,site,q,category,type}});
+});
+
+// Safe repair for historical payment journals. The service only selects confirmed
+// transfer/QRIS payments (and cash that is already settled) with no source journal.
+// source_type + source_id is unique, so repeating this action cannot double-count
+// income or the real cash balance.
+router.post('/cash/sync-payment-journals',requireMasterAdmin,async(req,res)=>{
+  const returnTo=cashReturn(req.body);
+  try{
+    const result=await repairPaymentCashIntegrity({reviewerId:req.session.user.id});
+    await audit({userId:req.session.user.id,action:'sync_payment_journals',entityType:'cash_transaction',entityId:null,description:`Sinkronkan integritas pembayaran: ${result.created} jurnal dibuat, ${result.rejected} jurnal tidak valid dinonaktifkan, ${result.refreshed} tagihan dihitung ulang. Cash yang belum disetor tidak diproses.`,ip:req.ip});
+    req.session.flash={type:'success',message:`Sinkronisasi selesai: ${result.created} jurnal baru dibuat, ${result.rejected} jurnal tidak valid dikeluarkan dari saldo, dan ${result.refreshed} tagihan dihitung ulang.`};
+  }catch(error){
+    console.error('Sinkron jurnal pembayaran ke Data Kas gagal:',error);
+    req.session.flash={type:'danger',message:`Sinkronisasi jurnal pembayaran gagal: ${cashInputErrorMessage(error)}`};
+  }
+  res.redirect(returnTo);
 });
 
 router.get('/cash/:id/proof',async(req,res)=>{const [rows]=await db.execute(`SELECT proof_path,proof_original_name,proof_mime FROM cash_transactions WHERE id=? LIMIT 1`,[req.params.id]);const t=rows[0];if(!t?.proof_path)return res.status(404).send('Bukti pengeluaran tidak ditemukan.');const full=path.join(CASH_PROOF_DIR,path.basename(t.proof_path));if(!fs.existsSync(full))return res.status(404).send('File bukti pengeluaran tidak ditemukan di storage.');res.type(t.proof_mime||'application/octet-stream');res.setHeader('Content-Disposition',`inline; filename="${String(t.proof_original_name||path.basename(t.proof_path)).replace(/[\r\n"]/g,'_')}"`);res.setHeader('Cache-Control','private, max-age=300');res.setHeader('X-Content-Type-Options','nosniff');res.sendFile(full);});

@@ -1398,4 +1398,27 @@ async function ensureV61Schema() {
   if(repaired)console.log(`Rekonsiliasi Data Kas: ${repaired} jurnal pembayaran yang terlewat dibuat ulang.`);
 }
 
-module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema, ensureV58Schema, ensureV59Schema, ensureV60Schema, ensureV61Schema };
+async function ensureV62Schema() {
+  // Hasil OCR adalah audit advisory: tidak memodifikasi pembayaran maupun
+  // memberi approval otomatis. Satu bukti pembayaran memiliki satu hasil terbaru.
+  await db.query(`CREATE TABLE IF NOT EXISTS payment_proof_ocr (
+    payment_id BIGINT UNSIGNED PRIMARY KEY,
+    proof_path VARCHAR(190) NULL,
+    file_sha256 CHAR(64) NULL,
+    status ENUM('queued','processing','done','unavailable','skipped','error') NOT NULL DEFAULT 'queued',
+    engine VARCHAR(50) NULL, engine_version VARCHAR(120) NULL, error_message VARCHAR(500) NULL,
+    raw_text MEDIUMTEXT NULL, ocr_confidence DECIMAL(5,2) NULL,
+    amount_detected DECIMAL(16,2) NULL, transfer_at DATETIME NULL, transfer_has_time TINYINT(1) NOT NULL DEFAULT 0,
+    sender_name VARCHAR(180) NULL, sender_bank VARCHAR(100) NULL, recipient_name VARCHAR(180) NULL,
+    recipient_bank VARCHAR(100) NULL, recipient_account VARCHAR(80) NULL, ref_no VARCHAR(100) NULL,
+    channel VARCHAR(80) NULL, transaction_status VARCHAR(30) NULL, parsed_json JSON NULL,
+    overall_status VARCHAR(30) NULL, checks_json JSON NULL, summary VARCHAR(1000) NULL,
+    can_approve TINYINT(1) NOT NULL DEFAULT 1, duplicate_payment_ids VARCHAR(250) NULL,
+    started_at DATETIME NULL, finished_at DATETIME NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_payment_ocr_status(status,updated_at), INDEX idx_payment_ocr_hash(file_sha256), INDEX idx_payment_ocr_ref(ref_no),
+    CONSTRAINT fk_payment_proof_ocr_payment FOREIGN KEY (payment_id) REFERENCES payments(id) ON DELETE CASCADE
+  )`);
+}
+
+module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema, ensureV58Schema, ensureV59Schema, ensureV60Schema, ensureV61Schema, ensureV62Schema };

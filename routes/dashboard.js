@@ -4,6 +4,7 @@ const { requirePermission } = require('../middleware/auth');
 const { getServerResourceSnapshot } = require('../services/serverMonitorService');
 const { getGatewayStatus, getQueueStats } = require('../services/whatsappGatewayService');
 const { getBillingControlData } = require('../services/dashboardBillingControlService');
+const { loadDashboardBillingMonitor } = require('../services/dashboardBillingMonitorService');
 const router = express.Router();
 
 // v1.21.0 — Dashboard Section 1, item 1: countdown to the next billing "closing" (isolir) date, derived
@@ -83,6 +84,8 @@ router.get('/', async (req, res) => {
   const selectedMonth = safeInt(req.query.month, now.getMonth() + 1, 1, 12);
   const selectedYear = safeInt(req.query.year, now.getFullYear(), 2020, 2100);
   const selectedSiteCode = String(req.query.site || '').trim().toUpperCase();
+  const selectedCycle=['15','30'].includes(String(req.query.cycle)) ? String(req.query.cycle) : 'all';
+  const trendMonths=[3,6,12].includes(Number(req.query.trend)) ? Number(req.query.trend) : 6;
   const kpiMonth=safeInt(req.query.kpi_month,selectedMonth,1,12),kpiYear=safeInt(req.query.kpi_year,selectedYear,2020,2100);
   const kpiSiteCode=String(req.query.kpi_site||'').trim().toUpperCase();
   const psbMonth=safeInt(req.query.psb_month,selectedMonth,1,12),psbYear=safeInt(req.query.psb_year,selectedYear,2020,2100),psbSiteCode=String(req.query.psb_site??selectedSiteCode).trim().toUpperCase();
@@ -103,6 +106,26 @@ router.get('/', async (req, res) => {
   const billingYear=safeInt(req.query.billing_year,selectedYear,2020,2100);
   const billingSiteCode=String(req.query.billing_site??selectedSiteCode).trim().toUpperCase();
   const billingSite=billingSiteCode?siteOptions.find(s=>s.code===billingSiteCode):null;
+  // Data di panel Billing Monitor dipakai langsung oleh view Dashboard. Tetap
+  // sediakan struktur kosong bila instalasi lama belum memiliki kolom pendukung,
+  // sehingga Dashboard utama tidak berubah menjadi halaman error.
+  const emptyBillingMonitor=()=>({
+    filters:{cycle:selectedCycle,trendMonths},
+    today:{amount:0,count:0,transfer:0,qris:0,cash:0,yesterdayAmount:0,deltaPct:null,pendingCount:0,pendingAmount:0},
+    cycles:{'15':{invoiceCount:0,paidCount:0,pendingCount:0,openCount:0,billed:0,collected:0,outstanding:0,pendingAmount:0,customerRate:0,nominalRate:0,deltaCustomerRate:null},'30':{invoiceCount:0,paidCount:0,pendingCount:0,openCount:0,billed:0,collected:0,outstanding:0,pendingAmount:0,customerRate:0,nominalRate:0,deltaCustomerRate:null}},
+    unpaid:{'15':[],'30':[]},pending:{'15':[],'30':[]},recent:[],
+    progress:{labels:[],dates:[],cycles:{'15':{customer:[],nominal:[]},'30':{customer:[],nominal:[]}}},
+    trend:{labels:[],periods:[],cycles:{'15':{customer:[],nominal:[]},'30':{customer:[],nominal:[]}}},
+    revenueSeries:{labels:[],income:[],count:[]},
+    timing:{early:0,on_time:0,h1_3:0,late:0,total:0,cycles:{'15':{early:0,on_time:0,h1_3:0,late:0,total:0},'30':{early:0,on_time:0,h1_3:0,late:0,total:0}}}
+  });
+  let billingMonitor;
+  try {
+    billingMonitor=await loadDashboardBillingMonitor({month:selectedMonth,year:selectedYear,siteId:siteId||null,cycle:selectedCycle,trendMonths,now});
+  } catch (error) {
+    console.error('Dashboard Billing Monitor tidak dapat dimuat:', error?.message || error);
+    billingMonitor=emptyBillingMonitor();
+  }
   // Billing Control Center is an enhancement panel.  Older installations may not
   // have every optional billing column yet, so its query must never make the
   // whole Dashboard unavailable.  Keep the shell usable and leave the exact
@@ -247,10 +270,10 @@ router.get('/', async (req, res) => {
   res.render('dashboard/index',{
     title:'Dashboard',customer,revenue,billed,unpaid,newCustomers,psbToday,psbCustomers,network,noc,recent,loginTicker,siteOptions,siteCustomerRows,weekDuty,todayDuty,week,invoiceKpi,hardOverdueCustomers,inactiveCustomers,isolatedCustomers,
     selectedSiteCode:selectedSite?.code||'',selectedSiteName:selectedSite?.name||'Semua Site',collectionRate,routerRate,
-    selectedMonth,selectedYear,years,kpiMonth,kpiYear,kpiSiteCode:kpiSite?.code||'',psbMonth,psbYear,psbSiteCode:psbSite?.code||'',offMonth,offYear,offSiteCode:offSite?.code||'',
+    selectedMonth,selectedYear,selectedCycle,trendMonths,years,kpiMonth,kpiYear,kpiSiteCode:kpiSite?.code||'',psbMonth,psbYear,psbSiteCode:psbSite?.code||'',offMonth,offYear,offSiteCode:offSite?.code||'',
     greeting,monthly:{labels:monthLabels,invoices:monthlyInvoices,payments:monthlyPayments,psbLabels,psb:dailyPsb},
     closing,waOverview,serverResource,odpAvailableCount,
-    billingControl,billingMonth,billingYear,billingSiteCode:billingSite?.code||'',
+    billingControl,billingMonitor,billingMonth,billingYear,billingSiteCode:billingSite?.code||'',
     collectionBilled:nz(collectionBilling.total),collectionCollected:nz(collectionBilling.collected)
   });
 });

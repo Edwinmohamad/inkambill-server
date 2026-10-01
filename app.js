@@ -36,8 +36,10 @@ const { syncDevices: syncAcsDevices } = require('./services/acsService');
 const { scanLowStock } = require('./services/inventoryService');
 const { deliverMobilePushes } = require('./services/mobilePushService');
 const { runCashAgingAlert } = require('./services/cashSettlementService');
+const { auditFinancialIntegrity } = require('./services/financialIntegrityService');
+const { recoverProofOcrOnBoot, runProofOcrSweep } = require('./payload/services/proofOcrService');
 const { purgeOldLogs } = require('./services/logRetentionService');
-const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema, ensureV58Schema, ensureV59Schema, ensureV60Schema, ensureV61Schema } = require('./services/schemaService');
+const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema, ensureV58Schema, ensureV59Schema, ensureV60Schema, ensureV61Schema, ensureV62Schema } = require('./services/schemaService');
 const { requireN8nToken } = require('./middleware/n8n');
 const { initGatewayOnBoot, reconcileGatewayStatus, processQueue, runAutoReminderSweep } = require('./services/whatsappGatewayService');
 const { requireWahaWebhookToken } = require('./middleware/waha');
@@ -344,6 +346,8 @@ async function bootstrap() {
   await ensureV59Schema();
   await ensureV60Schema();
   await ensureV61Schema();
+  await ensureV62Schema();
+  await recoverProofOcrOnBoot().catch(err => console.error('Pemulihan antrean OCR gagal:', err.message));
   await ensureNmsV2Schema();
   nmsPoller.start();
   const [rows] = await db.query('SELECT COUNT(*) total FROM users');
@@ -366,6 +370,21 @@ async function bootstrap() {
   cron.schedule('30 2 * * 0', async () => {
     try { console.log('Cron retensi log:',await purgeOldLogs(7)); await purgeNmsHistory(); }
     catch (err) { console.error('Cron retensi log gagal:',err.message); }
+  }, { timezone: 'Asia/Jakarta' });
+
+  // Audit hanya membaca data dan melaporkan anomali; tidak pernah mengubah
+  // pembayaran, invoice, jurnal kas, maupun saldo tanpa tindakan admin.
+  cron.schedule('20 3 * * *', async () => {
+    try {
+      const result = await auditFinancialIntegrity();
+      if (result.anomalyCount) console.error('Audit integritas keuangan menemukan anomali:', result.totals);
+      else console.log('Audit integritas keuangan: OK');
+    } catch (err) { console.error('Audit integritas keuangan gagal:', err.message); }
+  }, { timezone: 'Asia/Jakarta' });
+
+  cron.schedule('*/5 * * * *', async () => {
+    try { await runProofOcrSweep(); }
+    catch (err) { console.error('Antrean OCR bukti pembayaran gagal:', err.message); }
   }, { timezone: 'Asia/Jakarta' });
 
   // NMS operational jobs are deliberately conservative: automatic Smart Sync

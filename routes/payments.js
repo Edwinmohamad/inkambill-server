@@ -26,6 +26,7 @@ function styleWorkbook(ws){
 }
 
 const { PROOF_DIR,saveProofFile,removeProofFile,paymentReference,postCashTransaction,maybeAutoUnisolate,verifyPendingPayment }=require('../services/paymentVerificationService');
+const { queueProofOcr, getPaymentOcrForUi }=require('../payload/services/proofOcrService');
 
 // v1.30 — helper bukti & jurnal dipindah ke services/paymentVerificationService.js (dipakai juga Web Inbox WA).
 function localReturn(value,fallback='/payments'){
@@ -198,6 +199,7 @@ router.post('/',requireAdmin,async(req,res)=>{
       await refreshInvoiceStatus(conn,invoiceId);
     }
     await conn.commit();
+    if(req.file) for(const payment of created) queueProofOcr(payment.paymentId);
     await audit({userId:req.session.user.id,action:'create',entityType:'payment_batch',entityId:created[0]?.paymentId||null,description:`Pembayaran ${normalizedMethod} ${created.length} faktur · total Rp${created.reduce((a,x)=>a+x.amount,0)}${req.file?' · bukti terupload':' · tanpa bukti'}`,ip:req.ip});
     const total=created.reduce((a,x)=>a+x.amount,0);
     req.session.flash={type:'success',message:`${created.length} pembayaran berhasil diajukan dengan total Rp${total.toLocaleString('id-ID')}${req.file?' beserta bukti':' tanpa bukti'}. Menunggu approval Master Admin sebelum tagihan dinyatakan lunas.`};
@@ -257,6 +259,13 @@ router.get('/:id/proof',async(req,res)=>{
   res.setHeader('Content-Disposition',`inline; filename="${safeOriginal}"`);res.setHeader('Cache-Control','private, max-age=300');res.setHeader('X-Content-Type-Options','nosniff');res.sendFile(fullPath);
 });
 
+// Hasil OCR bersifat advisory dan ditampilkan untuk membantu admin memeriksa
+// nominal, tanggal, penerima, serta rekening sebelum approval.
+router.get('/:id/proof-ocr',async(req,res,next)=>{
+  try { res.json(await getPaymentOcrForUi(Number(req.params.id))); }
+  catch (error) { next(error); }
+});
+
 router.post('/:id/proof',async(req,res)=>{
   if(!req.file)throw new Error('Pilih file bukti pembayaran terlebih dahulu.');
   const [rows]=await db.execute(`SELECT id,method,proof_path,received_by,collector_user_id FROM payments WHERE id=? LIMIT 1`,[req.params.id]);
@@ -270,6 +279,7 @@ router.post('/:id/proof',async(req,res)=>{
     await db.execute(`UPDATE payments SET proof_reference=?,proof_path=?,proof_original_name=?,proof_mime=?,proof_size=?,proof_uploaded_by=?,proof_uploaded_at=NOW() WHERE id=?`,[
       savedProof.originalName,savedProof.filename,savedProof.originalName,savedProof.mime,savedProof.size,req.session.user.id,payment.id
     ]);
+    queueProofOcr(payment.id);
     await removeProofFile(payment.proof_path);
     await audit({userId:req.session.user.id,action:'upload_proof',entityType:'payment',entityId:payment.id,description:'Upload/ganti bukti pembayaran',ip:req.ip});
     req.session.flash={type:'success',message:'Bukti pembayaran berhasil diupload.'};
@@ -439,7 +449,7 @@ async function loadReconciliationHistory(req){
   const from=`FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id
     LEFT JOIN clusters cl ON cl.id=c.cluster_id LEFT JOIN users u ON u.id=COALESCE(p.collector_user_id,p.received_by) LEFT JOIN users su ON su.id=p.settled_by
     LEFT JOIN cash_settlements cs ON cs.id=p.settlement_id`;
-  const [history]=await db.execute(`SELECT p.id,p.amount,p.reference,p.paid_at,p.settled_at,p.settlement_status,p.settlement_id,cs.code settlement_code,c.customer_code,c.name customer_name,s.code site_code,cl.name cluster_name,
+  const [history]=await db.execute(`SELECT p.id,p.amount,p.reference,p.paid_at,p.settled_at,p.settlement_status,p.settlement_id,p.proof_path,p.proof_mime,p.proof_original_name,p.proof_reference,p.proof_uploaded_at,cs.code settlement_code,c.customer_code,c.name customer_name,s.code site_code,cl.name cluster_name,
     i.invoice_number,i.period_month,i.period_year,COALESCE(u.name,'Tidak diketahui') collector_name,COALESCE(su.name,'-') settled_by_name
     ${from} ${where} ORDER BY p.paid_at DESC,p.id DESC LIMIT ${RECON_HISTORY_LIMIT}`,params);
   const [[historySummary]]=await db.execute(`SELECT COUNT(*) transactions,COALESCE(SUM(p.amount),0) amount,COUNT(DISTINCT c.id) customers,

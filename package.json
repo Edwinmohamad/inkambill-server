@@ -23,7 +23,10 @@
     "test:pppoe-smart-sync": "node scripts/test-pppoe-smart-sync.js",
     "test:fasum": "node scripts/test-fasum.js",
     "test:spv-foundation": "node scripts/test-spv-foundation.js",
-    "test:spv-ops": "node scripts/test-spv-ops-suite.js"
+    "test:spv-ops": "node scripts/test-spv-ops-suite.js",
+    "test:dashboard-contract": "node scripts/test-dashboard-view-contract.js",
+    "audit:finance": "node scripts/audit-financial-integrity.js",
+    "test:proof-ocr": "node scripts/test-proof-ocr-validation.js"
   },
   "dependencies": {
     "bcryptjs": "3.0.2",

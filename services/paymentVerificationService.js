@@ -101,6 +101,32 @@ async function reconcileMissingPaymentCashTransactions(){
     return created;
   }catch(e){await conn.rollback();throw e;}finally{conn.release();}
 }
+
+// Rebuild the three-way invariant used by Billing and Finance:
+// confirmed payment -> invoice amount/status -> one APPROVED cash journal.
+// It also neutralizes a legacy journal whose source was rejected, deleted, or
+// changed into cash still held by a collector.  Rejected journals remain as an
+// auditable record but no longer contribute to the real balance.
+async function repairPaymentCashIntegrity({ reviewerId=null }={}){
+  const conn=await db.getConnection();let rejected=0,refreshed=0;
+  try{
+    await conn.beginTransaction();
+    const [stale]=await conn.execute(`SELECT ct.id FROM cash_transactions ct
+      LEFT JOIN payments p ON ct.source_type='payment' AND p.id=ct.source_id
+      WHERE ct.source_type='payment' AND COALESCE(ct.approval_status,'APPROVED')='APPROVED'
+        AND (p.id IS NULL OR p.status<>'confirmed' OR (p.method='cash' AND p.settlement_status<>'settled'))
+      FOR UPDATE`);
+    for(const row of stale){
+      await conn.execute(`UPDATE cash_transactions SET approval_status='REJECTED',approval_reason='Jurnal dinonaktifkan otomatis: pembayaran sumber tidak lagi terkonfirmasi atau cash belum disetor.',reviewed_by=?,reviewed_at=NOW() WHERE id=?`,[reviewerId,row.id]);
+      rejected++;
+    }
+    const [invoices]=await conn.execute(`SELECT DISTINCT invoice_id FROM payments WHERE status='confirmed' AND invoice_id IS NOT NULL FOR UPDATE`);
+    for(const invoice of invoices){await refreshInvoiceStatus(conn,invoice.invoice_id);refreshed++;}
+    await conn.commit();
+  }catch(error){await conn.rollback();throw error;}finally{conn.release();}
+  const created=await reconcileMissingPaymentCashTransactions();
+  return {created,rejected,refreshed};
+}
 async function maybeAutoUnisolate(invoiceId){
   const [paidRows]=await db.execute(`SELECT i.status,c.id customer_id,c.network_status,c.isolation_reason FROM invoices i JOIN customers c ON c.id=i.customer_id WHERE i.id=?`,[invoiceId]);
   if(paidRows[0]?.status==='paid'&&paidRows[0]?.network_status==='isolated'&&paidRows[0]?.isolation_reason==='billing'){
@@ -175,4 +201,4 @@ async function createPendingTransferPayments({invoiceIds,bankId,file,userId,note
   return created;
 }
 
-module.exports={PROOF_DIR,proofExtension,proofSignatureMatches,saveProofFile,removeProofFile,paymentReference,paymentCashMeta,billingCategory,postCashTransaction,reconcileMissingPaymentCashTransactions,maybeAutoUnisolate,verifyPendingPayment,createPendingTransferPayments};
+module.exports={PROOF_DIR,proofExtension,proofSignatureMatches,saveProofFile,removeProofFile,paymentReference,paymentCashMeta,billingCategory,postCashTransaction,reconcileMissingPaymentCashTransactions,repairPaymentCashIntegrity,maybeAutoUnisolate,verifyPendingPayment,createPendingTransferPayments};
