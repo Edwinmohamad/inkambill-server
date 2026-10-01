@@ -115,8 +115,9 @@ function buildTrend({year,month,trendMonths,rows}){
   return {labels:periods.map(p=>p.label),periods:periods.map(p=>p.key),cycles};
 }
 
-async function loadDashboardBillingMonitor({month,year,siteId=null,cycle='all',trendMonths=6,now=new Date()}={}){
+async function loadDashboardBillingMonitor({month,year,siteId=null,cycle='all',trendMonths=6,incomeDate=null,now=new Date()}={}){
   const selectedCycle=normalizeCycle(cycle);const selectedTrend=normalizeTrendMonths(trendMonths);
+  const selectedIncomeDate=/^\d{4}-\d{2}-\d{2}$/.test(String(incomeDate||''))?String(incomeDate):dateKey(now);
   const sw=siteWhere(siteId),sp=siteParams(siteId),cw=cycleWhere(selectedCycle);
   const trendPeriods=monthSequence(year,month,selectedTrend);const firstTrend=trendPeriods[0];
 
@@ -156,12 +157,12 @@ async function loadDashboardBillingMonitor({month,year,siteId=null,cycle='all',t
       COALESCE(SUM(CASE WHEN p.method='qris' THEN p.amount ELSE 0 END),0) qris_amount,
       COALESCE(SUM(CASE WHEN p.method='cash' THEN p.amount ELSE 0 END),0) cash_amount
     FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id
-    WHERE p.status='confirmed' AND ${RECOGNIZED_AT_EXPR} IS NOT NULL AND DATE(${RECOGNIZED_AT_EXPR})=CURDATE()
+    WHERE p.status='confirmed' AND ${RECOGNIZED_AT_EXPR} IS NOT NULL AND DATE(${RECOGNIZED_AT_EXPR})=?
       AND ${CASH_POSTED_EXISTS}${sw}${cw}`;
 
   const yesterdayRevenueSql=`SELECT COALESCE(SUM(p.amount),0) amount
     FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id
-    WHERE p.status='confirmed' AND ${RECOGNIZED_AT_EXPR} IS NOT NULL AND DATE(${RECOGNIZED_AT_EXPR})=DATE_SUB(CURDATE(),INTERVAL 1 DAY)
+    WHERE p.status='confirmed' AND ${RECOGNIZED_AT_EXPR} IS NOT NULL AND DATE(${RECOGNIZED_AT_EXPR})=DATE_SUB(?,INTERVAL 1 DAY)
       AND ${CASH_POSTED_EXISTS}${sw}${cw}`;
 
   const pendingSummarySql=`SELECT COUNT(*) tx_count,COALESCE(SUM(p.amount),0) amount
@@ -213,8 +214,8 @@ async function loadDashboardBillingMonitor({month,year,siteId=null,cycle='all',t
     db.execute(cycleSummarySql,[year,month,...sp]),
     db.execute(unpaidSql,[year,month,...sp]),
     db.execute(pendingListSql,[year,month,...sp]),
-    db.execute(todayRevenueSql,sp),
-    db.execute(yesterdayRevenueSql,sp),
+    db.execute(todayRevenueSql,[selectedIncomeDate,...sp]),
+    db.execute(yesterdayRevenueSql,[selectedIncomeDate,...sp]),
     db.execute(pendingSummarySql,[year,month,...sp]),
     db.execute(recentIncomeSql,sp),
     db.execute(revenueDailySql,[year,month,...sp]),
@@ -240,7 +241,7 @@ async function loadDashboardBillingMonitor({month,year,siteId=null,cycle='all',t
   const revenueSeries=buildRevenueSeries({year,month,rows:revenueDaily});
 
   return {
-    filters:{cycle:selectedCycle,trendMonths:selectedTrend},
+    filters:{cycle:selectedCycle,trendMonths:selectedTrend,incomeDate:selectedIncomeDate},
     today:{amount:todayAmount,count:Number(todayRow?.tx_count||0),transfer:Number(todayRow?.transfer_amount||0),qris:Number(todayRow?.qris_amount||0),cash:Number(todayRow?.cash_amount||0),yesterdayAmount,deltaPct,pendingCount:Number(pendingSummary?.tx_count||0),pendingAmount:Number(pendingSummary?.amount||0)},
     cycles,
     unpaid:{'15':unpaidRows.filter(r=>Number(r.cycle)===15),'30':unpaidRows.filter(r=>Number(r.cycle)===30)},

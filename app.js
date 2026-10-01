@@ -37,7 +37,8 @@ const { scanLowStock } = require('./services/inventoryService');
 const { deliverMobilePushes } = require('./services/mobilePushService');
 const { runCashAgingAlert } = require('./services/cashSettlementService');
 const { purgeOldLogs } = require('./services/logRetentionService');
-const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema, ensureV58Schema } = require('./services/schemaService');
+const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema, ensureV58Schema, ensureV59Schema, ensureV60Schema, ensureV61Schema } = require('./services/schemaService');
+const { recoverProofOcrOnBoot, runProofOcrSweep } = require('./services/proofOcrService');
 const { requireN8nToken } = require('./middleware/n8n');
 const { initGatewayOnBoot, reconcileGatewayStatus, processQueue, runAutoReminderSweep } = require('./services/whatsappGatewayService');
 const { requireWahaWebhookToken } = require('./middleware/waha');
@@ -340,6 +341,10 @@ async function bootstrap() {
   await ensureV56Schema();
   await ensureV57Schema();
   await ensureV58Schema();
+  await ensureV59Schema();
+  await ensureV60Schema();
+  await ensureV61Schema();
+  await recoverProofOcrOnBoot();
   await ensureNmsV2Schema();
   nmsPoller.start();
   const [rows] = await db.query('SELECT COUNT(*) total FROM users');
@@ -351,6 +356,10 @@ async function bootstrap() {
     await db.execute(`INSERT INTO users (name,username,password_hash,role,is_active) VALUES (?,?,?,'admin',1)`, [name, username, hash]);
     console.log(`Admin awal dibuat: ${username}`);
   }
+
+  cron.schedule('* * * * *', async () => {
+    try { await runProofOcrSweep(); } catch (err) { console.error('OCR bukti transfer gagal:', err.message); }
+  });
 
   cron.schedule('10 0 * * *', async () => {
     try {

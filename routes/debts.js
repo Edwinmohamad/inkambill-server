@@ -3,6 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const db = require('../config/db');
+const { audit } = require('../services/auditService');
+const { requireAdmin } = require('../middleware/auth');
 
 const router = express.Router();
 const validDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
@@ -268,13 +270,53 @@ router.post('/', async (req, res, next) => {
     await conn.beginTransaction();
     const [created] = await conn.execute(`INSERT INTO finance_debts(record_type,scope,party_name,employee_id,user_id,purpose,site_code,principal_amount,issue_date,due_date,payment_method,installment_months,responsible_name,notes,created_by)
       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [type, scope, party, employeeId, userId, purpose, site, principal, issueDate, dueDate, method, installmentMonths, responsible, notes, req.session.user.id]);
+    const documentNumber=`HP-${issueDate.slice(0,7).replace('-','')}-${String(created.insertId).padStart(6,'0')}`;
+    await conn.execute('UPDATE finance_debts SET document_number=? WHERE id=?',[documentNumber,created.insertId]);
     for (const item of items) await conn.execute('INSERT INTO finance_debt_items(debt_id,item_name,quantity,unit_price,notes) VALUES(?,?,?,?,?)', [created.insertId, item.name, item.quantity, item.unitPrice, item.notes]);
     await conn.commit();
+    await audit({userId:req.session.user.id,action:'create',entityType:'finance_debt',entityId:created.insertId,description:`Dokumen hutang #${created.insertId} dibuat · ${type} ${scope} · ${party} · pokok Rp${principal.toLocaleString('id-ID')}`,ip:req.ip,details:{record_type:type,scope,party_name:party,principal_amount:principal,issue_date:issueDate,due_date:dueDate}});
     req.session.flash = { type: 'success', message: scope === 'INTERNAL'
       ? `${type === 'RECEIVABLE' ? 'Hutang' : 'Talangan'} ${party} berhasil dicatat.`
       : `${type === 'DEBT' ? 'Hutang' : 'Piutang'} berhasil dicatat.` };
     res.redirect(scope === 'INTERNAL' ? '/debts?scope=INTERNAL' : '/debts');
   } catch (err) { if (conn) await conn.rollback(); next(err); } finally { if (conn) conn.release(); }
+});
+
+router.post('/:id/edit',requireAdmin,async(req,res,next)=>{
+  const id=Number(req.params.id);let conn;
+  try{
+    if(!Number.isInteger(id)||id<1)return res.status(400).send('Data tidak valid.');
+    const b=req.body,reason=String(b.change_reason||'').trim().slice(0,500);
+    if(!reason){req.session.flash={type:'danger',message:'Alasan perubahan wajib diisi untuk audit.'};return res.redirect(backTo(req));}
+    const principal=amount(b.principal_amount),issueDate=validDate(b.issue_date)?String(b.issue_date):'',dueDate=validDate(b.due_date)?String(b.due_date):null;
+    const site=['GLOBAL','CDS','KBG'].includes(String(b.site_code||'').toUpperCase())?String(b.site_code).toUpperCase():'GLOBAL';
+    if(principal<=0||!issueDate||!String(b.purpose||'').trim())throw new Error('Pokok, tanggal, dan keperluan wajib diisi.');
+    if(dueDate&&dueDate<issueDate)throw new Error('Jatuh tempo tidak boleh sebelum tanggal pencatatan.');
+    conn=await db.getConnection();await conn.beginTransaction();
+    const [[before]]=await conn.execute('SELECT * FROM finance_debts WHERE id=? FOR UPDATE',[id]);if(!before)throw new Error('Data Hutang tidak ditemukan.');
+    if(before.status==='ARCHIVED')throw new Error('Data arsip tidak dapat diedit.');
+    const [[paid]]=await conn.execute('SELECT COALESCE(SUM(amount),0) total FROM finance_debt_payments WHERE debt_id=?',[id]);
+    if(principal<Number(paid.total||0))throw new Error('Pokok tidak boleh lebih kecil dari total pembayaran yang sudah tercatat.');
+    await conn.execute(`UPDATE finance_debts SET purpose=?,site_code=?,principal_amount=?,issue_date=?,due_date=?,payment_method=?,installment_months=?,responsible_name=?,notes=?,updated_by=? WHERE id=?`,[
+      String(b.purpose).trim().slice(0,255),site,principal,issueDate,dueDate,b.payment_method==='INSTALLMENT'?'INSTALLMENT':'ONCE',Math.max(1,Math.min(60,Number(b.installment_months)||1)),String(b.responsible_name||'').trim().slice(0,160)||null,String(b.notes||'').trim().slice(0,2000)||null,req.session.user.id,id]);
+    await refreshStatus(conn,id);await conn.commit();
+    await audit({userId:req.session.user.id,action:'update',entityType:'finance_debt',entityId:id,description:`${before.document_number||`HP-${id}`} diperbarui · alasan: ${reason}`,ip:req.ip,details:{reason,before,after:{purpose:b.purpose,site_code:site,principal_amount:principal,issue_date:issueDate,due_date:dueDate,payment_method:b.payment_method}}});
+    req.session.flash={type:'success',message:`${before.document_number||'Dokumen'} berhasil diperbarui dan tercatat di audit trail.`};res.redirect(backTo(req));
+  }catch(err){if(conn)await conn.rollback();req.session.flash={type:'danger',message:err.message};res.redirect(backTo(req));}finally{if(conn)conn.release();}
+});
+
+router.post('/:id/delete',requireAdmin,async(req,res,next)=>{
+  const id=Number(req.params.id),reason=String(req.body.reason||'').trim().slice(0,500);let conn;
+  try{
+    if(!reason){req.session.flash={type:'danger',message:'Alasan hapus wajib diisi.'};return res.redirect(backTo(req));}
+    conn=await db.getConnection();await conn.beginTransaction();
+    const [[row]]=await conn.execute('SELECT * FROM finance_debts WHERE id=? FOR UPDATE',[id]);if(!row)throw new Error('Data tidak ditemukan.');
+    const [[history]]=await conn.execute('SELECT COUNT(*) total FROM finance_debt_payments WHERE debt_id=?',[id]);
+    if(Number(history.total)>0)throw new Error('Dokumen memiliki riwayat pembayaran dan tidak boleh dihapus. Gunakan Arsipkan.');
+    await conn.execute('DELETE FROM finance_debts WHERE id=?',[id]);await conn.commit();
+    await audit({userId:req.session.user.id,action:'delete',entityType:'finance_debt',entityId:id,description:`${row.document_number||`HP-${id}`} dihapus · alasan: ${reason}`,ip:req.ip,details:{reason,deleted:row}});
+    req.session.flash={type:'success',message:'Dokumen tanpa riwayat pembayaran berhasil dihapus.'};res.redirect(backTo(req));
+  }catch(err){if(conn)await conn.rollback();req.session.flash={type:'danger',message:err.message};res.redirect(backTo(req));}finally{if(conn)conn.release();}
 });
 
 router.post('/:id/payments', async (req, res, next) => {
@@ -302,6 +344,7 @@ router.post('/:id/payments', async (req, res, next) => {
       [id, paymentDate, paid, method, notes, saved?.filename || null, saved?.originalName || null, saved?.mime || null, req.session.user.id]);
     await refreshStatus(conn, id);
     await conn.commit();
+    await audit({userId:req.session.user.id,action:'payment',entityType:'finance_debt',entityId:id,description:`Pembayaran hutang #${id} Rp${paid.toLocaleString('id-ID')} dicatat`,ip:req.ip,details:{payment_date:paymentDate,amount:paid,method,has_proof:Boolean(saved)}});
     req.session.flash = { type: 'success', message: 'Pembayaran berhasil dicatat dan sisa diperbarui.' };
     res.redirect(backTo(req));
   } catch (err) {
@@ -330,9 +373,13 @@ router.get('/:id/payments/:paymentId/proof', async (req, res) => {
 router.post('/:id/archive', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
+    const reason=String(req.body.reason||'').trim().slice(0,500);
     if (!Number.isInteger(id) || id < 1) return res.status(400).send('Data tidak valid.');
-    const [result] = await db.execute("UPDATE finance_debts SET status='ARCHIVED' WHERE id=? AND status<>'ARCHIVED'", [id]);
+    if(!reason){req.session.flash={type:'danger',message:'Alasan arsip wajib diisi agar jejak audit lengkap.'};return res.redirect(backTo(req));}
+    const [rows]=await db.execute('SELECT party_name,purpose,status FROM finance_debts WHERE id=? LIMIT 1',[id]);
+    const [result] = await db.execute("UPDATE finance_debts SET status='ARCHIVED',archived_reason=?,archived_by=?,archived_at=NOW() WHERE id=? AND status<>'ARCHIVED'", [reason,req.session.user.id,id]);
     if (!result.affectedRows) return res.status(404).send('Data tidak ditemukan atau sudah diarsipkan.');
+    await audit({userId:req.session.user.id,action:'archive',entityType:'finance_debt',entityId:id,description:`Dokumen hutang #${id} diarsipkan: ${reason}`,ip:req.ip,details:{reason,before:rows[0]||null}});
     req.session.flash = { type: 'success', message: 'Data dipindahkan ke arsip.' };
     res.redirect(backTo(req));
   } catch (err) { next(err); }
@@ -357,6 +404,7 @@ router.post('/:id/payments/:paymentId/delete', async (req, res, next) => {
     await conn.commit();
     removedProof = paymentRow?.proof_path || null;
     if (removedProof) await removeDebtProof(removedProof);
+    await audit({userId:req.session.user.id,action:'delete_payment',entityType:'finance_debt',entityId:id,description:`Pembayaran #${paymentId} pada dokumen hutang #${id} dihapus`,ip:req.ip,details:{payment_id:paymentId,had_proof:Boolean(removedProof)}});
     req.session.flash = { type: 'success', message: 'Pembayaran dihapus dan sisa dihitung ulang.' };
     res.redirect(backTo(req));
   } catch (err) { if (conn) await conn.rollback(); next(err); } finally { if (conn) conn.release(); }

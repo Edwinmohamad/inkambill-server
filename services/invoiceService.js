@@ -161,6 +161,13 @@ async function generateMonthlyInvoices(referenceDate = new Date(), force = false
       );
       if (!stillEligible.length) { skipped++; continue; }
 
+      // Explicit free-first-month policy: this is not a discount and never becomes a
+      // zero-value invoice. Skipping it entirely guarantees no payment or cash movement.
+      if (Number(c.is_new_install) === 1 && Number(c.first_month_free) === 1 && c.activation_date) {
+        const activation=new Date(c.activation_date);
+        if (activation.getFullYear()===year && activation.getMonth()===monthIndex) { skipped++; continue; }
+      }
+
       const dueDay = Math.min(Number(c.effective_due_day), lastDayOfMonth(year, monthIndex));
       const dueDate = new Date(year, monthIndex, dueDay);
       const calculated = currentInvoiceAmounts(c, year, monthIndex);

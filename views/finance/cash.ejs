@@ -73,7 +73,7 @@
     <div class="data-card-head"><div><h3>Data Kas · <%= monthNames[filters.month-1] %> <%= filters.year %></h3><small data-instant-result-count data-total="<%= transactions.length %>"><%= transactions.length %> transaksi<%= filters.site?` · ${filters.site}`:'' %></small></div><div class="legend-inline"><span><i class="dot success"></i>Pemasukan</span><span><i class="dot warning"></i>Bukti tersedia</span></div></div>
     <div class="table-responsive">
       <table class="app-table cash-ledger-table" data-bulk-scope="cashBulkBar">
-        <thead><tr><% if(isAdmin){ %><th class="app-check-col"><input type="checkbox" class="form-check-input" data-select-all aria-label="Pilih semua transaksi kas"></th><% } %><th class="app-seq-col">No.</th><th>Nama</th><th>Tanggal</th><th>Kategori</th><th>Site</th><th>Bukti</th><th>Status Approval</th><th>Nominal</th><th class="text-end">Aksi</th></tr></thead>
+        <thead><tr><% if(isAdmin){ %><th class="app-check-col"><input type="checkbox" class="form-check-input" data-select-all aria-label="Pilih semua transaksi kas"></th><% } %><th class="app-seq-col">No.</th><th>Nama</th><th>Tanggal</th><th>Tagihan Bulan</th><th>Kategori</th><th>Site</th><th>Bukti</th><th>Status Approval</th><th>Nominal</th><th class="text-end">Aksi</th></tr></thead>
         <tbody id="cashLedgerBody">
           <% transactions.forEach((t,index)=>{ const editable=true;const td=new Date(t.transaction_date);const txDate=`${td.getFullYear()}-${String(td.getMonth()+1).padStart(2,'0')}-${String(td.getDate()).padStart(2,'0')}`;const inheritedPaymentProof=!t.proof_path&&t.source_payment_id&&t.source_payment_proof_path;const effectiveProof=!!(t.proof_path||inheritedPaymentProof);const effectiveProofHref=t.proof_path?`/cash/${t.id}/proof`:`/payments/${t.source_payment_id}/proof`;const effectiveProofMime=t.proof_path?t.proof_mime:t.source_payment_proof_mime;const cashApproval=t.approval_status||'APPROVED'; %>
           <tr id="cash-row-<%= t.id %>" class="<%= Number(createdId||0)===Number(t.id)?'cash-row-created':'' %>" data-instant-filter-row data-instant-search-value="<%= [t.transaction_code,t.name,t.notes,t.category_name,t.category_code,t.site_code,t.purchase_shop_name,t.purchase_channel,t.vendor_name].filter(Boolean).join(' ') %>">
@@ -81,6 +81,7 @@
             <td><span class="cell-main" data-instant-number><%= index+1 %></span></td>
             <td><span class="cell-main"><%= t.name %></span></td>
             <td><%= formatDate(t.transaction_date) %></td>
+            <td><% if(t.source_invoice_month&&t.source_invoice_year){ %><span class="cell-main"><%= monthNames[Number(t.source_invoice_month)-1] %> <%= t.source_invoice_year %></span><span class="cell-sub"><%= t.source_invoice_number %></span><% }else{ %><span class="cell-sub">Bukan tagihan</span><% } %></td>
             <td><span class="status-badge <%= t.category_type==='income'?'green':'red' %>"><%= t.category_name %></span></td>
             <td><span class="status-badge purple"><%= t.site_code||'GLOBAL' %></span></td>
             

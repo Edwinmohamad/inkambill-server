@@ -19,7 +19,11 @@
   <div class="install-commission-box">
     <label class="form-check d-flex align-items-center gap-2">
       <input class="form-check-input" type="checkbox" id="isNewInstall" name="is_new_install" value="1">
-      <span>Pemasangan Baru <small class="d-block text-secondary">Pembayaran pertama pelanggan ini otomatis dianggap LUNAS (dibayar tunai saat pemasangan) dan 100% dibagi habis sebagai komisi teknisi &amp; sales sesuai skema paket — bukan pendapatan perusahaan. Mulai tagihan bulan kedua, normal 100% pendapatan perusahaan. Jangan dicentang untuk migrasi/impor pelanggan lama.</small></span>
+      <span>Pemasangan Baru <small class="d-block text-secondary">Tandai pelanggan baru agar mudah dipantau selama 1 bulan. Jangan dicentang untuk migrasi/impor pelanggan lama.</small></span>
+    </label>
+    <label class="form-check d-flex align-items-center gap-2 mt-2 ms-4">
+      <input class="form-check-input" type="checkbox" id="firstMonthFree" name="first_month_free" value="1" disabled>
+      <span>Gratis bulan pertama <small class="d-block text-secondary">Tidak membuat tagihan, pembayaran, maupun jurnal kas untuk bulan aktivasi.</small></span>
     </label>
     <div class="row g-3 mt-1" id="installCommissionFields" hidden>
       <div class="col-md-6"><label class="form-label">Nama Teknisi *</label><input class="form-control" name="install_technician_name" list="installTechnicianList" placeholder="Nama bebas, boleh bukan karyawan tetap"><datalist id="installTechnicianList"><% installTechnicians.forEach(t=>{ %><option value="<%= t.name %>"><% }) %></datalist></div>
@@ -52,11 +56,13 @@
   const syncPackages=()=>{if(!pkg||!site)return;const siteId=String(site.value||'');let selectedVisible=false,firstVisible=null;[...pkg.options].forEach(opt=>{const target=String(opt.dataset.siteId||'');const visible=!target||target===siteId;opt.hidden=!visible;opt.disabled=!visible;if(visible&&!firstVisible)firstVisible=opt;if(visible&&opt.selected)selectedVisible=true;});if(!selectedVisible&&firstVisible){pkg.value=firstVisible.value;}};
   const syncMode=()=>{email.readOnly=mode.value==='auto';if(mode.value==='auto')autoEmail();else email.focus();};
   mode.addEventListener('change',syncMode);code.addEventListener('input',autoEmail);site.addEventListener('change',syncPackages);
-  const newInstall=document.getElementById('isNewInstall'), installFields=document.getElementById('installCommissionFields'), installHint=document.getElementById('installCommissionHint');
+  const newInstall=document.getElementById('isNewInstall'), firstMonthFree=document.getElementById('firstMonthFree'), installFields=document.getElementById('installCommissionFields'), installHint=document.getElementById('installCommissionHint');
   if(newInstall&&installFields){
     const syncInstallVisibility=()=>{
-      installFields.hidden=!newInstall.checked;
-      installFields.querySelectorAll('input').forEach(el=>el.required=newInstall.checked);
+      const free=Boolean(firstMonthFree?.checked);
+      installFields.hidden=!newInstall.checked||free;
+      installFields.querySelectorAll('input').forEach(el=>el.required=newInstall.checked&&!free);
+      if(firstMonthFree){firstMonthFree.disabled=!newInstall.checked;if(!newInstall.checked)firstMonthFree.checked=false;}
       if(newInstall.checked&&pkg){
         const opt=pkg.options[pkg.selectedIndex];
         const price=opt?Number(opt.dataset.price||0):0;
@@ -73,6 +79,7 @@
       }
     };
     newInstall.addEventListener('change',syncInstallVisibility);
+    firstMonthFree?.addEventListener('change',syncInstallVisibility);
     if(pkg)pkg.addEventListener('change',syncInstallVisibility);
     syncInstallVisibility();
   }

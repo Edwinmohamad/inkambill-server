@@ -85,6 +85,9 @@ router.get('/', async (req, res) => {
   const selectedSiteCode = String(req.query.site || '').trim().toUpperCase();
   const selectedCycle = normalizeCycle(req.query.cycle);
   const trendMonths = normalizeTrendMonths(req.query.trend);
+  const rawIncomeDate=String(req.query.income_date||'').trim();
+  const selectedIncomeDate=/^\d{4}-\d{2}-\d{2}$/.test(rawIncomeDate)&&!Number.isNaN(new Date(`${rawIncomeDate}T12:00:00`).getTime())?rawIncomeDate:new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jakarta'}).format(now);
+  const incomeDateLabel=new Date(`${selectedIncomeDate}T12:00:00`).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric',timeZone:'Asia/Jakarta'});
   const kpiMonth=safeInt(req.query.kpi_month,selectedMonth,1,12),kpiYear=safeInt(req.query.kpi_year,selectedYear,2020,2100);
   const kpiSiteCode=String(req.query.kpi_site||'').trim().toUpperCase();
   const psbMonth=safeInt(req.query.psb_month,selectedMonth,1,12),psbYear=safeInt(req.query.psb_year,selectedYear,2020,2100),psbSiteCode=String(req.query.psb_site??selectedSiteCode).trim().toUpperCase();
@@ -100,7 +103,7 @@ router.get('/', async (req, res) => {
   const offSite=offSiteCode?siteOptions.find(s=>s.code===offSiteCode):null,offScope=offSite?` AND c.site_id=?`:'',offParams=offSite?[offSite.id]:[];
   // Start the billing monitor queries immediately; the service runs its independent reads in parallel.
   // We await it near render time so existing dashboard queries can continue unchanged.
-  const billingMonitorPromise=loadDashboardBillingMonitor({month:selectedMonth,year:selectedYear,siteId,cycle:selectedCycle,trendMonths,now});
+  const billingMonitorPromise=loadDashboardBillingMonitor({month:selectedMonth,year:selectedYear,siteId,cycle:selectedCycle,trendMonths,incomeDate:selectedIncomeDate,now});
 
   const [[customerStats]] = await db.execute(`SELECT
     COUNT(*) total,
@@ -230,7 +233,7 @@ router.get('/', async (req, res) => {
   res.render('dashboard/index',{
     title:'Dashboard',customer,revenue,billed,unpaid,newCustomers,psbToday,psbCustomers,network,noc,recent,loginTicker,siteOptions,siteCustomerRows,weekDuty,todayDuty,week,invoiceKpi,hardOverdueCustomers,inactiveCustomers,isolatedCustomers,
     selectedSiteCode:selectedSite?.code||'',selectedSiteName:selectedSite?.name||'Semua Site',collectionRate,routerRate,
-    selectedMonth,selectedYear,years,selectedCycle,trendMonths,kpiMonth,kpiYear,kpiSiteCode:kpiSite?.code||'',psbMonth,psbYear,psbSiteCode:psbSite?.code||'',offMonth,offYear,offSiteCode:offSite?.code||'',
+    selectedMonth,selectedYear,years,selectedCycle,trendMonths,selectedIncomeDate,incomeDateLabel,kpiMonth,kpiYear,kpiSiteCode:kpiSite?.code||'',psbMonth,psbYear,psbSiteCode:psbSite?.code||'',offMonth,offYear,offSiteCode:offSite?.code||'',
     greeting,billingMonitor,monthly:{labels:monthLabels,invoices:monthlyInvoices,payments:monthlyPayments,psbLabels,psb:dailyPsb},
     closing,waOverview,serverResource,odpAvailableCount,
     collectionBilled:nz(collectionBilling.total),collectionCollected:nz(collectionBilling.collected)

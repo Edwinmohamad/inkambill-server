@@ -27,6 +27,7 @@ function styleWorkbook(ws){
 }
 
 const { PROOF_DIR,saveProofFile,removeProofFile,paymentReference,postCashTransaction,maybeAutoUnisolate,verifyPendingPayment }=require('../services/paymentVerificationService');
+const { queueProofOcr,getPaymentOcrForUi }=require('../services/proofOcrService');
 
 // v1.30 — helper bukti & jurnal dipindah ke services/paymentVerificationService.js (dipakai juga Web Inbox WA).
 function localReturn(value,fallback='/payments'){
@@ -80,7 +81,7 @@ router.get('/',async(req,res)=>{
   const cashRecipient=cashRecipientId&&staff.some(member=>Number(member.id)===cashRecipientId)?cashRecipientId:0;
   const transferBank=transferRecipientId?banks.find(bank=>Number(bank.id)===transferRecipientId):null;
   const activeRecipient=cashRecipient?`cash:${cashRecipient}`:transferBank?`transfer:${transferBank.id}`:'';
-  let sql=`SELECT p.*,i.invoice_number,i.due_date,c.customer_code,c.name customer_name,s.code site_code,cl.name cluster_name,u.name collector_name,v.name verifier_name,pu.name proof_uploader_name
+  let sql=`SELECT p.*,i.invoice_number,i.due_date,i.period_month,i.period_year,c.customer_code,c.name customer_name,s.code site_code,cl.name cluster_name,u.name collector_name,v.name verifier_name,pu.name proof_uploader_name
     FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id
     LEFT JOIN users u ON u.id=COALESCE(p.collector_user_id,p.received_by) LEFT JOIN users v ON v.id=p.verified_by LEFT JOIN users pu ON pu.id=p.proof_uploaded_by
     WHERE 1=1`;
@@ -229,6 +230,12 @@ router.get('/:id/proof',async(req,res)=>{
   res.setHeader('Content-Disposition',`inline; filename="${safeOriginal}"`);res.setHeader('Cache-Control','private, max-age=300');res.setHeader('X-Content-Type-Options','nosniff');res.sendFile(fullPath);
 });
 
+router.get('/:id/proof-ocr',requireMasterAdmin,async(req,res)=>{
+  res.set('Cache-Control','no-store');
+  const item=await getPaymentOcrForUi(req.params.id,{queueIfMissing:true,waitMs:1200});
+  res.json({ok:true,item});
+});
+
 router.post('/:id/proof',async(req,res)=>{
   if(!req.file)throw new Error('Pilih file bukti pembayaran terlebih dahulu.');
   const [rows]=await db.execute(`SELECT id,method,proof_path,received_by,collector_user_id FROM payments WHERE id=? LIMIT 1`,[req.params.id]);
@@ -243,6 +250,7 @@ router.post('/:id/proof',async(req,res)=>{
       savedProof.originalName,savedProof.filename,savedProof.originalName,savedProof.mime,savedProof.size,req.session.user.id,payment.id
     ]);
     await removeProofFile(payment.proof_path);
+    if(['transfer','qris'].includes(payment.method))await queueProofOcr(payment.id).catch(err=>console.error('Antrean OCR gagal:',err.message));
     await audit({userId:req.session.user.id,action:'upload_proof',entityType:'payment',entityId:payment.id,description:'Upload/ganti bukti pembayaran',ip:req.ip});
     req.session.flash={type:'success',message:'Bukti pembayaran berhasil diupload.'};
   }catch(e){if(savedProof)await removeProofFile(savedProof.filename);throw e;}

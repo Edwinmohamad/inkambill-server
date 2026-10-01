@@ -457,8 +457,9 @@ router.post('/', async (req, res) => {
   // Re-validasi ulang dari DB di sini (bukan percaya form) supaya nominal flat yang berubah sejak halaman
   // form dibuka tidak lolos dengan angka lama.
   const isNewInstall=b.is_new_install?1:0;
+  const firstMonthFree=isNewInstall&&b.first_month_free?1:0;
   let installTechnicianName=null,installSalesName=null;
-  if(isNewInstall){
+  if(isNewInstall&&!firstMonthFree){
     const pkg=packageRows[0];
     const [[settingsRow]]=await db.execute(`SELECT install_sales_flat_commission FROM settings WHERE id=1 LIMIT 1`);
     const flatSalesCommission=Number(settingsRow?.install_sales_flat_commission??50000);
@@ -475,8 +476,8 @@ router.post('/', async (req, res) => {
   }
   const email=b.email_mode==='auto'?autoCustomerEmail(customerCode):(String(b.email||'').trim()||null);
   const wa=validateWhatsapp(b.phone);
-  const [result]=await db.execute(`INSERT INTO customers (customer_code,name,phone,whatsapp_status,whatsapp_normalized,whatsapp_verified_at,email,address,sales_id,site_id,router_id,cluster_id,package_id,discount_id,pppoe_username,activation_date,due_day,grace_days,customer_status,billing_status,network_status,status_changed_at,prorata_enabled,is_new_install,customer_source,install_technician_name,install_sales_name,notes) VALUES (?,?,?,?,?,NOW(),?,?,?,?,NULL,?,?,?,NULL,?,?,?,?,?,'offline',NOW(),?,?,?,?,?,?)`,[customerCode,b.name,b.phone||null,wa.valid?'valid':'invalid',wa.normalized,email,b.address||null,b.sales_id||null,siteId,b.cluster_id||null,packageId,discountId,b.activation_date||null,b.due_day||null,b.grace_days||null,b.customer_status||'active','unpaid',b.prorata_enabled?1:0,isNewInstall,isNewInstall?'new_install':'manual_entry',installTechnicianName,installSalesName,b.notes||null]);
-  await audit({userId:req.session.user.id,action:'create',entityType:'customer',entityId:result.insertId,description:`Tambah ${customerCode} - ${b.name}${isNewInstall?` (Pemasangan Baru — teknisi ${installTechnicianName}, sales ${installSalesName})`:''}`,ip:req.ip});
+  const [result]=await db.execute(`INSERT INTO customers (customer_code,name,phone,whatsapp_status,whatsapp_normalized,whatsapp_verified_at,email,address,sales_id,site_id,router_id,cluster_id,package_id,discount_id,pppoe_username,activation_date,due_day,grace_days,customer_status,billing_status,network_status,status_changed_at,prorata_enabled,is_new_install,first_month_free,customer_source,install_technician_name,install_sales_name,notes) VALUES (?,?,?,?,?,NOW(),?,?,?,?,NULL,?,?,?,NULL,?,?,?,?,?,'offline',NOW(),?,?,?,?,?,?,?)`,[customerCode,b.name,b.phone||null,wa.valid?'valid':'invalid',wa.normalized,email,b.address||null,b.sales_id||null,siteId,b.cluster_id||null,packageId,discountId,b.activation_date||null,b.due_day||null,b.grace_days||null,b.customer_status||'active','unpaid',b.prorata_enabled?1:0,isNewInstall,firstMonthFree,isNewInstall?'new_install':'manual_entry',installTechnicianName,installSalesName,b.notes||null]);
+  await audit({userId:req.session.user.id,action:'create',entityType:'customer',entityId:result.insertId,description:`Tambah ${customerCode} - ${b.name}${isNewInstall?` (Pemasangan Baru${firstMonthFree?' · gratis bulan pertama':''} — teknisi ${installTechnicianName}, sales ${installSalesName})`:''}`,ip:req.ip});
   req.session.flash={type:'success',message:`Pelanggan berhasil ditambahkan dengan Customer ID ${customerCode}.`};res.redirect('/customers');
 });
 // v1.20 — Section 3/4 bulk + archive routes. IMPORTANT: '/bulk' must be registered here, BEFORE the

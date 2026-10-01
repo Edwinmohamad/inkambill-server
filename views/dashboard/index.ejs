@@ -11,16 +11,7 @@
         <div class="command-welcome-copy"><h1><%= greeting %>, <%= user?.name||'Administrator' %></h1><p>Ringkasan operasional terbaru.</p></div>
       </div>
     </div>
-    <div class="command-hero-actions">
-      <form class="command-period command-period-v126" method="get" action="/" data-auto-filter aria-label="Filter Dashboard Billing">
-        <select name="site" aria-label="Filter site"><option value="">Semua Site</option><% siteOptions.forEach(s=>{ %><option value="<%= s.code %>" <%= selectedSiteCode===s.code?'selected':'' %>><%= s.code %> · <%= s.name %></option><% }) %></select>
-        <select name="month" aria-label="Filter bulan"><% monthNames.forEach((m,i)=>{ %><option value="<%= i+1 %>" <%= selectedMonth===i+1?'selected':'' %>><%= m %></option><% }) %></select>
-        <select name="year" aria-label="Filter tahun"><% years.forEach(y=>{ %><option value="<%= y %>" <%= selectedYear===y?'selected':'' %>><%= y %></option><% }) %></select>
-        <select name="cycle" aria-label="Filter siklus tagihan"><option value="all" <%= selectedCycle==='all'?'selected':'' %>>Siklus 15 + 30</option><option value="15" <%= selectedCycle==='15'?'selected':'' %>>Jatuh Tempo 15</option><option value="30" <%= selectedCycle==='30'?'selected':'' %>>Jatuh Tempo 30</option></select>
-        <select name="trend" aria-label="Rentang tren"><option value="3" <%= trendMonths===3?'selected':'' %>>Tren 3 Bulan</option><option value="6" <%= trendMonths===6?'selected':'' %>>Tren 6 Bulan</option><option value="12" <%= trendMonths===12?'selected':'' %>>Tren 12 Bulan</option></select>
-      </form>
-      <a href="/customers/new" class="command-add"><i class="bi bi-person-plus-fill"></i>Tambah Pelanggan</a>
-    </div>
+    <div class="command-hero-actions"><a href="/customers/new" class="command-add"><i class="bi bi-person-plus-fill"></i>Tambah Pelanggan</a></div>
   </div>
 
   <div class="dashboard-user-ticker" aria-label="Aktivitas user terbaru">
@@ -49,6 +40,14 @@
         <h2 id="billingMonitorTitle">Pendapatan & progres tagihan <%= monthNames[selectedMonth-1] %> <%= selectedYear %></h2>
         <p><%= selectedSiteCode||'Semua Site' %> · <%= selectedCycle==='all'?'Siklus 15 & 30':`Siklus ${selectedCycle}` %> · pendapatan dihitung hanya setelah masuk Data Kas.</p>
       </div>
+      <form class="command-period command-period-v126 billing-monitor-filter" method="get" action="/" data-auto-filter aria-label="Filter Billing Collection Monitor">
+        <select name="site" aria-label="Filter site"><option value="">Semua Site</option><% siteOptions.forEach(s=>{ %><option value="<%= s.code %>" <%= selectedSiteCode===s.code?'selected':'' %>><%= s.code %> · <%= s.name %></option><% }) %></select>
+        <select name="month" aria-label="Filter bulan"><% monthNames.forEach((m,i)=>{ %><option value="<%= i+1 %>" <%= selectedMonth===i+1?'selected':'' %>><%= m %></option><% }) %></select>
+        <select name="year" aria-label="Filter tahun"><% years.forEach(y=>{ %><option value="<%= y %>" <%= selectedYear===y?'selected':'' %>><%= y %></option><% }) %></select>
+        <input type="date" name="income_date" value="<%= selectedIncomeDate %>" aria-label="Tanggal pendapatan" title="Tanggal pendapatan">
+        <select name="cycle" aria-label="Filter siklus tagihan"><option value="all" <%= selectedCycle==='all'?'selected':'' %>>Siklus 15 + 30</option><option value="15" <%= selectedCycle==='15'?'selected':'' %>>Jatuh Tempo 15</option><option value="30" <%= selectedCycle==='30'?'selected':'' %>>Jatuh Tempo 30</option></select>
+        <select name="trend" aria-label="Rentang tren"><option value="3" <%= trendMonths===3?'selected':'' %>>Tren 3 Bulan</option><option value="6" <%= trendMonths===6?'selected':'' %>>Tren 6 Bulan</option><option value="12" <%= trendMonths===12?'selected':'' %>>Tren 12 Bulan</option></select>
+      </form>
       <div class="billing-monitor-links">
         <a href="/payments?approval=pending<%= selectedSiteCode?`&site=${encodeURIComponent(selectedSiteCode)}`:'' %>"><i class="bi bi-shield-check"></i> Approval</a>
         <a href="/invoices?month=<%= selectedMonth %>&year=<%= selectedYear %><%= siteQuery %>"><i class="bi bi-receipt"></i> Tagihan</a>
@@ -58,7 +57,7 @@
 
     <div class="billing-monitor-top-grid">
       <article class="bm-card bm-revenue-card">
-        <div class="bm-card-top"><span><i class="bi bi-arrow-down-left-circle-fill"></i> PENDAPATAN HARI INI</span><em><i></i> LIVE</em></div>
+        <div class="bm-card-top"><span><i class="bi bi-arrow-down-left-circle-fill"></i> PENDAPATAN <%= incomeDateLabel %></span><em><i></i> TERVERIFIKASI</em></div>
         <% if(isAdmin){ %><strong class="bm-big-money"><%= formatRupiah(bm.today.amount) %></strong><% }else{ %><strong class="bm-big-money"><%= bm.today.count %> transaksi</strong><% } %>
         <div class="bm-revenue-meta"><span><b><%= bm.today.count %></b> pembayaran masuk kas</span><span class="<%= bm.today.deltaPct!=null&&bm.today.deltaPct>=0?'up':bm.today.deltaPct!=null?'down':'' %>"><% if(bm.today.deltaPct!=null){ %><i class="bi <%= bm.today.deltaPct>=0?'bi-arrow-up-right':'bi-arrow-down-right' %>"></i><%= Math.abs(bm.today.deltaPct) %>% vs kemarin<% }else{ %>Belum ada pembanding kemarin<% } %></span></div>
         <% if(isAdmin){ %><div class="bm-method-grid"><span><small>Transfer</small><b><%= formatRupiah(bm.today.transfer) %></b></span><span><small>QRIS</small><b><%= formatRupiah(bm.today.qris) %></b></span><span><small>Cash disetor</small><b><%= formatRupiah(bm.today.cash) %></b></span></div><% } %>

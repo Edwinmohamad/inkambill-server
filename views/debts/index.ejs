@@ -114,7 +114,7 @@
         <button type="button" class="hp-row-main" data-bs-toggle="modal" data-bs-target="#debtDetailModal<%= row.id %>" aria-label="Detail <%= name %>">
           <span class="hp-avatar tone-<%= kindClass(row) %>"><% if (row.scope === 'INTERNAL') { %><%= initials(name) %><% } else { %><i class="bi <%= row.record_type === 'DEBT' ? 'bi-building' : 'bi-person' %>"></i><% } %></span>
           <span class="hp-row-text">
-            <span class="hp-row-title"><%= name %><% if (row.employee_code) { %><em><%= row.employee_code %></em><% } %></span>
+            <span class="hp-row-title"><%= name %><% if (row.employee_code) { %><em><%= row.employee_code %></em><% } %><em><%= row.document_number||`HP-${String(row.id).padStart(6,'0')}` %></em></span>
             <span class="hp-row-sub"><%= row.purpose %></span>
             <span class="hp-chips">
               <span class="hp-chip tone-<%= kindClass(row) %>"><%= kindLabel(row) %></span>
@@ -153,7 +153,7 @@
       <div class="hp-sheet-head">
         <span class="hp-avatar lg tone-<%= kindClass(row) %>"><% if (row.scope === 'INTERNAL') { %><%= initials(name) %><% } else { %><i class="bi <%= row.record_type === 'DEBT' ? 'bi-building' : 'bi-person' %>"></i><% } %></span>
         <div class="hp-sheet-title">
-          <span class="hp-eyebrow"><%= row.scope === 'INTERNAL' ? 'Internal' : 'Eksternal' %> · <%= kindLabel(row) %> · <%= row.site_code %></span>
+          <span class="hp-eyebrow"><%= row.document_number||`HP-${String(row.id).padStart(6,'0')}` %> · <%= row.scope === 'INTERNAL' ? 'Internal' : 'Eksternal' %> · <%= kindLabel(row) %> · <%= row.site_code %></span>
           <h5><%= name %></h5>
           <small><%= row.purpose %></small>
         </div>
@@ -221,8 +221,9 @@
         </div>
       </div>
       <div class="hp-sheet-foot">
-        <% if (row.status !== 'ARCHIVED') { %><form method="post" action="/debts/<%= row.id %>/archive" onsubmit="return confirm('Arsipkan data ini? Riwayat pembayaran tetap tersimpan.')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="hp-btn hp-btn-plain danger" type="submit"><i class="bi bi-archive"></i>Arsipkan</button></form><% } else { %><span></span><% } %>
+        <% if (row.status !== 'ARCHIVED') { %><form method="post" action="/debts/<%= row.id %>/archive" onsubmit="const r=prompt('Alasan arsip wajib diisi untuk audit:');if(!r||!r.trim())return false;this.querySelector('[name=reason]').value=r.trim();return true;"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="reason"><button class="hp-btn hp-btn-plain danger" type="submit"><i class="bi bi-archive"></i>Arsipkan</button></form><% } else { %><span></span><% } %>
         <div class="hp-sheet-foot-actions">
+          <% if(row.status!=='ARCHIVED'){ %><button type="button" class="hp-btn hp-btn-secondary debt-edit-btn" data-bs-toggle="modal" data-bs-target="#debtEditModal" data-id="<%= row.id %>" data-document="<%= row.document_number||row.id %>" data-purpose="<%= row.purpose %>" data-site="<%= row.site_code %>" data-principal="<%= Number(row.principal_amount) %>" data-issue="<%= row.issue_date?new Date(row.issue_date).toISOString().slice(0,10):'' %>" data-due="<%= row.due_date?new Date(row.due_date).toISOString().slice(0,10):'' %>" data-method="<%= row.payment_method %>" data-months="<%= row.installment_months %>" data-responsible="<%= row.responsible_name||'' %>" data-notes="<%= row.notes||'' %>"><i class="bi bi-pencil-square"></i>Edit</button><% } %>
           <button type="button" class="hp-btn hp-btn-secondary" data-bs-dismiss="modal">Tutup</button>
           <% if (row.status === 'ACTIVE') { %><button type="button" class="hp-btn hp-btn-primary" data-bs-toggle="modal" data-bs-target="#debtPayModal" data-debt-id="<%= row.id %>" data-debt-type-label="<%= kindLabel(row) %>" data-debt-party="<%= name %>" data-debt-purpose="<%= row.purpose %>" data-debt-site="<%= row.site_code %>" data-debt-principal="<%= principal %>" data-debt-paid="<%= paid %>" data-debt-remaining="<%= Math.floor(remaining) %>"><i class="bi bi-cash-coin"></i>Catat Pembayaran</button><% } %>
         </div>
@@ -231,6 +232,9 @@
   </div>
 </div>
 <% }) %>
+
+<div class="modal fade hp-modal" id="debtEditModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-dialog-scrollable modal-dialog-centered modal-lg"><form class="modal-content hp-sheet" method="post" id="debtEditForm"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><div class="hp-sheet-head"><div class="hp-sheet-title"><span class="hp-eyebrow">Edit data pokok</span><h5 id="debtEditDocument">Dokumen Hutang</h5><small>Semua perubahan masuk audit trail.</small></div><button type="button" class="hp-close" data-bs-dismiss="modal"><i class="bi bi-x-lg"></i></button></div><div class="modal-body hp-sheet-body"><div class="row g-3"><div class="col-12"><label class="form-label">Keperluan</label><input class="form-control" name="purpose" required></div><div class="col-md-4"><label class="form-label">Pokok</label><input class="form-control" type="number" min="1" name="principal_amount" required></div><div class="col-md-4"><label class="form-label">Tanggal</label><input class="form-control" type="date" name="issue_date" required></div><div class="col-md-4"><label class="form-label">Jatuh tempo</label><input class="form-control" type="date" name="due_date"></div><div class="col-md-4"><label class="form-label">Site</label><select class="form-select" name="site_code"><option>GLOBAL</option><option>CDS</option><option>KBG</option></select></div><div class="col-md-4"><label class="form-label">Metode</label><select class="form-select" name="payment_method"><option value="ONCE">Sekali bayar</option><option value="INSTALLMENT">Cicilan</option></select></div><div class="col-md-4"><label class="form-label">Jumlah cicilan</label><input class="form-control" type="number" min="1" max="60" name="installment_months"></div><div class="col-md-6"><label class="form-label">Penanggung jawab</label><input class="form-control" name="responsible_name"></div><div class="col-md-6"><label class="form-label">Alasan perubahan *</label><input class="form-control" name="change_reason" required placeholder="Wajib untuk audit"></div><div class="col-12"><label class="form-label">Catatan</label><textarea class="form-control" rows="3" name="notes"></textarea></div></div></div><div class="hp-sheet-foot"><button type="button" class="hp-btn hp-btn-plain danger" id="debtDeleteBtn"><i class="bi bi-trash"></i>Hapus</button><div class="hp-sheet-foot-actions"><button type="button" class="hp-btn hp-btn-secondary" data-bs-dismiss="modal">Batal</button><button class="hp-btn hp-btn-primary"><i class="bi bi-check2"></i>Simpan</button></div></div></form></div></div></div>
+<form method="post" id="debtDeleteForm" hidden><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="reason"></form>
 
 <%# ---------- Sheet: catat baru ---------- %>
 <div class="modal fade hp-modal" id="debtCreateModal" tabindex="-1" aria-hidden="true">
@@ -421,4 +425,8 @@ if(payModal){
   payModal.addEventListener('shown.bs.modal',()=>amountInput.focus());
   form.addEventListener('submit',event=>{const value=Number(amountInput.value)||0;if(value<=0||value>currentRemaining){event.preventDefault();recalc();}});
 }
+const debtEditModal=document.getElementById('debtEditModal'),debtEditForm=document.getElementById('debtEditForm'),debtDeleteForm=document.getElementById('debtDeleteForm');
+let debtEditId=null;
+debtEditModal?.addEventListener('show.bs.modal',event=>{const d=event.relatedTarget?.dataset||{};debtEditId=d.id;debtEditForm.action=`/debts/${d.id}/edit`;document.getElementById('debtEditDocument').textContent=d.document||'Dokumen Hutang';for(const [name,key] of [['purpose','purpose'],['principal_amount','principal'],['issue_date','issue'],['due_date','due'],['site_code','site'],['payment_method','method'],['installment_months','months'],['responsible_name','responsible'],['notes','notes']]){const el=debtEditForm.elements[name];if(el)el.value=d[key]||'';}debtEditForm.elements.change_reason.value='';});
+document.getElementById('debtDeleteBtn')?.addEventListener('click',()=>{if(!debtEditId)return;const reason=prompt('Alasan hapus wajib diisi. Dokumen yang memiliki pembayaran tidak dapat dihapus:');if(!reason?.trim())return;debtDeleteForm.action=`/debts/${debtEditId}/delete`;debtDeleteForm.elements.reason.value=reason.trim();debtDeleteForm.requestSubmit();});
 })();</script>

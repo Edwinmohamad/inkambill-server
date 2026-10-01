@@ -1241,4 +1241,37 @@ async function ensureV58Schema() {
   await db.query(`ALTER TABLE finance_debts ADD INDEX IF NOT EXISTS idx_finance_debt_scope(scope,status,employee_id)`).catch((err) => console.error('Index scope hutang gagal:', err.message));
 }
 
-module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema, ensureV58Schema };
+async function ensureV59Schema() {
+  // Free first month is an explicit customer policy, never a synthetic payment:
+  // no invoice, payment, or cash journal is created for the activation month.
+  await db.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS first_month_free TINYINT(1) NOT NULL DEFAULT 0 AFTER is_new_install`);
+  await db.query(`ALTER TABLE customers ADD INDEX IF NOT EXISTS idx_customers_new_free (is_new_install,first_month_free,activation_date)`).catch(()=>{});
+}
+
+async function ensureV60Schema() {
+  // Hasil OCR bersifat advisory dan sengaja berada di tabel terpisah dari payment.
+  await db.query(`CREATE TABLE IF NOT EXISTS payment_proof_ocr (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    payment_id BIGINT UNSIGNED NOT NULL,
+    proof_path VARCHAR(255) NULL,file_sha256 CHAR(64) NULL,
+    status ENUM('queued','processing','done','unavailable','error','skipped') NOT NULL DEFAULT 'queued',
+    engine VARCHAR(40) NOT NULL DEFAULT 'tesseract',engine_version VARCHAR(120) NULL,error_message VARCHAR(500) NULL,raw_text MEDIUMTEXT NULL,ocr_confidence DECIMAL(5,2) NULL,
+    amount_detected DECIMAL(14,2) NULL,transfer_at DATETIME NULL,transfer_has_time TINYINT(1) NOT NULL DEFAULT 0,sender_name VARCHAR(180) NULL,sender_bank VARCHAR(100) NULL,
+    recipient_name VARCHAR(180) NULL,recipient_bank VARCHAR(100) NULL,recipient_account VARCHAR(80) NULL,ref_no VARCHAR(120) NULL,channel VARCHAR(100) NULL,transaction_status VARCHAR(30) NULL,
+    parsed_json TEXT NULL,overall_status ENUM('processing','ok','warning','unreadable') NOT NULL DEFAULT 'processing',checks_json TEXT NULL,summary VARCHAR(1000) NULL,duplicate_payment_ids VARCHAR(255) NULL,can_approve TINYINT(1) NOT NULL DEFAULT 1,
+    started_at DATETIME NULL,finished_at DATETIME NULL,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_payment_proof_ocr_payment (payment_id),INDEX idx_payment_proof_ocr_queue (status,updated_at),INDEX idx_payment_proof_ocr_sha (file_sha256)
+  )`);
+}
+
+async function ensureV61Schema() {
+  await db.query(`ALTER TABLE finance_debts ADD COLUMN IF NOT EXISTS document_number VARCHAR(40) NULL AFTER id`);
+  await db.query(`ALTER TABLE finance_debts ADD COLUMN IF NOT EXISTS archived_reason VARCHAR(500) NULL`);
+  await db.query(`ALTER TABLE finance_debts ADD COLUMN IF NOT EXISTS archived_by BIGINT UNSIGNED NULL`);
+  await db.query(`ALTER TABLE finance_debts ADD COLUMN IF NOT EXISTS archived_at DATETIME NULL`);
+  await db.query(`ALTER TABLE finance_debts ADD COLUMN IF NOT EXISTS updated_by BIGINT UNSIGNED NULL`);
+  await db.query(`UPDATE finance_debts SET document_number=CONCAT('HP-',DATE_FORMAT(issue_date,'%Y%m'),'-',LPAD(id,6,'0')) WHERE document_number IS NULL OR document_number=''`);
+  await db.query(`ALTER TABLE finance_debts ADD UNIQUE INDEX IF NOT EXISTS uq_finance_debt_document (document_number)`).catch(()=>{});
+}
+
+module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema, ensureV58Schema, ensureV59Schema, ensureV60Schema, ensureV61Schema };
