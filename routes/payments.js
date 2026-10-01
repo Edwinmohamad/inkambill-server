@@ -12,7 +12,6 @@ const { assignCashTransactionCode }=require('../services/cashService');
 const { isoDate, assertDateOpen, resolveBookDate, financialAudit }=require('../services/financialControlService');
 const { requireAdmin, requireMasterAdmin, isAdminRole, isMasterAdminRole }=require('../middleware/auth');
 const { createReportPdf, rupiah, COLORS }=require('../services/reportPdf');
-const { ensureV53Schema }=require('../services/schemaService');
 const { cashAgingDays, queuePaymentReceipts, streamSettlementReceipt }=require('../services/cashSettlementService');
 const router=express.Router();
 
@@ -64,8 +63,15 @@ router.get('/',async(req,res)=>{
   const q=String(req.query.q||'').trim();
   const site=String(req.query.site||'').trim();
   const cluster=String(req.query.cluster||'').trim();
-  const month=Number(req.query.month)>=1&&Number(req.query.month)<=12?Number(req.query.month):'';
-  const year=Number(req.query.year)>=2020&&Number(req.query.year)<=2100?Number(req.query.year):'';
+  const period=String(req.query.period||'').trim();
+  const periodMatch=/^(20\d{2}|2100)-(0[1-9]|1[0-2])$/.exec(period);
+  const legacyMonth=Number(req.query.month)>=1&&Number(req.query.month)<=12?Number(req.query.month):'';
+  const legacyYear=Number(req.query.year)>=2020&&Number(req.query.year)<=2100?Number(req.query.year):'';
+  const month=periodMatch?Number(periodMatch[2]):legacyMonth;
+  const year=periodMatch?Number(periodMatch[1]):legacyYear;
+  const activePeriod=month&&year?`${year}-${String(month).padStart(2,'0')}`:'';
+  const dueDay=['15','30'].includes(String(req.query.due_day||''))?Number(req.query.due_day):'';
+  const paidDate=isoDate(req.query.paid_date)||'';
   const approval=['pending','confirmed','failed'].includes(String(req.query.approval||''))?String(req.query.approval):'';
   // v1.29 — filter metode (cash/transfer/QRIS).
   const method=['cash','transfer','qris'].includes(String(req.query.method||''))?String(req.query.method):'';
@@ -88,6 +94,8 @@ router.get('/',async(req,res)=>{
   if(site){sql+=` AND s.code=?`;params.push(site);}
   if(cluster){sql+=` AND c.cluster_id=?`;params.push(Number(cluster));}
   if(month&&year){sql+=` AND MONTH(p.paid_at)=? AND YEAR(p.paid_at)=?`;params.push(month,year);}
+  if(dueDay){sql+=` AND DAY(i.due_date)=?`;params.push(dueDay);}
+  if(paidDate){sql+=` AND DATE(p.paid_at)=?`;params.push(paidDate);}
   if(approval){sql+=` AND p.status=?`;params.push(approval);}
   if(method){sql+=` AND p.method=?`;params.push(method);}
   if(cashRecipient){sql+=` AND p.method='cash' AND COALESCE(p.collector_user_id,p.received_by)=?`;params.push(cashRecipient);}
@@ -101,6 +109,8 @@ router.get('/',async(req,res)=>{
   const countWhere=[];const countParams=[];
   if(site){countWhere.push('s.code=?');countParams.push(site);}if(cluster){countWhere.push('c.cluster_id=?');countParams.push(Number(cluster));}
   if(month&&year){countWhere.push('MONTH(p.paid_at)=? AND YEAR(p.paid_at)=?');countParams.push(month,year);}
+  if(dueDay){countWhere.push('DAY(i.due_date)=?');countParams.push(dueDay);}
+  if(paidDate){countWhere.push('DATE(p.paid_at)=?');countParams.push(paidDate);}
   const countSql=countWhere.length?` AND ${countWhere.join(' AND ')}`:'';
   const [methodRows]=await db.execute(`SELECT p.method,COUNT(*) total,SUM(p.status='pending') pending FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id WHERE 1=1${countSql} GROUP BY p.method`,countParams);
   const methodCounts={cash:{total:0,pending:0},transfer:{total:0,pending:0},qris:{total:0,pending:0}};
@@ -111,6 +121,8 @@ router.get('/',async(req,res)=>{
   const summaryMonth=month||new Date().getMonth()+1,summaryYear=year||new Date().getFullYear();
   const summaryWhere=['MONTH(p.paid_at)=?','YEAR(p.paid_at)=?'];const summaryParams=[summaryMonth,summaryYear];
   if(site){summaryWhere.push('s.code=?');summaryParams.push(site);}if(cluster){summaryWhere.push('c.cluster_id=?');summaryParams.push(Number(cluster));}
+  if(dueDay){summaryWhere.push('DAY(i.due_date)=?');summaryParams.push(dueDay);}
+  if(paidDate){summaryWhere.push('DATE(p.paid_at)=?');summaryParams.push(paidDate);}
   const [[summary]]=await db.execute(`SELECT
     COALESCE(SUM(CASE WHEN p.status='confirmed' THEN p.amount ELSE 0 END),0) confirmed_total,
     COALESCE(SUM(CASE WHEN p.method='cash' AND p.status='confirmed' AND p.settlement_status='held_by_staff' THEN p.amount ELSE 0 END),0) cash_held,
@@ -118,14 +130,27 @@ router.get('/',async(req,res)=>{
     SUM(p.status='confirmed') confirmed_count
     FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id WHERE ${summaryWhere.join(' AND ')}`,summaryParams);
   // Transactions Master Admin already approved but which never received a transfer/QRIS proof attachment.
-  const [[missingProof]]=await db.execute(`SELECT COUNT(*) total,COALESCE(SUM(p.amount),0) amount FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id WHERE p.status='confirmed' AND p.method IN ('transfer','qris') AND (p.proof_path IS NULL OR p.proof_path='')${site?` AND s.code=?`:''}`,site?[site]:[]);
+  const missingWhere=[`p.status='confirmed'`,`p.method IN ('transfer','qris')`,`(p.proof_path IS NULL OR p.proof_path='')`];
+  const missingParams=[];
+  if(site){missingWhere.push('s.code=?');missingParams.push(site);}
+  if(cluster){missingWhere.push('c.cluster_id=?');missingParams.push(Number(cluster));}
+  if(month&&year){missingWhere.push('MONTH(p.paid_at)=? AND YEAR(p.paid_at)=?');missingParams.push(month,year);}
+  if(dueDay){missingWhere.push('DAY(i.due_date)=?');missingParams.push(dueDay);}
+  if(paidDate){missingWhere.push('DATE(p.paid_at)=?');missingParams.push(paidDate);}
+  const [[missingProof]]=await db.execute(`SELECT COUNT(*) total,COALESCE(SUM(p.amount),0) amount FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id WHERE ${missingWhere.join(' AND ')}`,missingParams);
   const preselectedInvoiceId=Number(req.query.invoice_id||0)||null;
   // v1.25.8 — visibility and authorization are intentionally separated.
   // Every user who can open Approval & Transaksi must be able to SEE pending manual-cash requests,
   // otherwise an Admin can submit Data Kas successfully and it appears to vanish. Approve/Reject
   // remain protected by requireMasterAdmin on the mutation routes.
-  const [cashApprovals]=await db.query(`SELECT ct.id,ct.transaction_code,ct.transaction_date,ct.name,ct.amount,ct.notes,ct.proof_path,ct.proof_mime,COALESCE(ct.approval_status,'PENDING_APPROVAL') approval_status,cc.name category_name,cc.type category_type,s.code site_code,u.name creator_name FROM cash_transactions ct JOIN cash_categories cc ON cc.id=ct.category_id LEFT JOIN sites s ON s.id=ct.site_id LEFT JOIN users u ON u.id=ct.created_by WHERE ct.approval_status='PENDING_APPROVAL' OR (ct.approval_status IS NULL AND COALESCE(ct.source_type,'manual')='manual') ORDER BY ct.transaction_date DESC,ct.id DESC LIMIT 250`);
-  res.render('payments/index',{title:'Approval & Transaksi',payments,openInvoices,staff,banks,sites,clusters,cashApprovals,summary:summary||{},missingProof:missingProof||{total:0,amount:0},preselectedInvoiceId,filters:{q,site,cluster,month,year,approval,method,recipient:activeRecipient},methodCounts,summaryMonth,summaryYear});
+  const cashWhere=[`(ct.approval_status='PENDING_APPROVAL' OR (ct.approval_status IS NULL AND COALESCE(ct.source_type,'manual')='manual'))`];
+  const cashParams=[];
+  if(site){cashWhere.push('s.code=?');cashParams.push(site);}
+  if(month&&year){cashWhere.push('MONTH(ct.transaction_date)=? AND YEAR(ct.transaction_date)=?');cashParams.push(month,year);}
+  if(paidDate){cashWhere.push('DATE(ct.transaction_date)=?');cashParams.push(paidDate);}
+  if(q){cashWhere.push('(ct.name LIKE ? OR ct.transaction_code LIKE ? OR cc.name LIKE ? OR u.name LIKE ?)');const like=`%${q}%`;cashParams.push(like,like,like,like);}
+  const [cashApprovals]=await db.execute(`SELECT ct.id,ct.transaction_code,ct.transaction_date,ct.name,ct.amount,ct.notes,ct.proof_path,ct.proof_mime,COALESCE(ct.approval_status,'PENDING_APPROVAL') approval_status,cc.name category_name,cc.type category_type,s.code site_code,u.name creator_name FROM cash_transactions ct JOIN cash_categories cc ON cc.id=ct.category_id LEFT JOIN sites s ON s.id=ct.site_id LEFT JOIN users u ON u.id=ct.created_by WHERE ${cashWhere.join(' AND ')} ORDER BY ct.transaction_date DESC,ct.id DESC LIMIT 250`,cashParams);
+  res.render('payments/index',{title:'Approval & Transaksi',payments,openInvoices,staff,banks,sites,clusters,cashApprovals,summary:summary||{},missingProof:missingProof||{total:0,amount:0},preselectedInvoiceId,filters:{q,site,cluster,month,year,period:activePeriod,due_day:dueDay,paid_date:paidDate,approval,method,recipient:activeRecipient},methodCounts,summaryMonth,summaryYear});
 });
 
 router.post('/',requireAdmin,async(req,res)=>{
@@ -338,50 +363,41 @@ router.post('/:id/reject',requireMasterAdmin,async(req,res)=>{
 // since a file download has no <select> to populate.
 async function loadReconciliationData(req,{withLookups=false}={}){
   const q=String(req.query.q||'').trim();const site=String(req.query.site||'').trim();const cluster=String(req.query.cluster||'').trim();
+  const {billingMonth,billingYear}=reconciliationBillingPeriod(req);
   const agingDays=await cashAgingDays();
   const aging=req.query.aging==='overdue'?'overdue':'';
-  const collector=Number(req.query.collector)>0?String(Number(req.query.collector)):'';
-  let heldSql=`SELECT p.*,c.customer_code,c.name customer_name,s.code site_code,cl.name cluster_name,u.name collector_name,i.invoice_number,
+  let heldSql=`SELECT p.*,c.customer_code,c.name customer_name,s.code site_code,cl.name cluster_name,u.name collector_name,i.invoice_number,i.period_month,i.period_year,
     DATEDIFF(CURDATE(),DATE(p.paid_at)) age_days
     FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id LEFT JOIN users u ON u.id=COALESCE(p.collector_user_id,p.received_by)
     WHERE p.method='cash' AND p.status='confirmed' AND p.settlement_status='held_by_staff'`;
   const heldParams=[];
   if(site){heldSql+=` AND s.code=?`;heldParams.push(site);}
   if(cluster){heldSql+=` AND c.cluster_id=?`;heldParams.push(Number(cluster));}
+  if(billingMonth){heldSql+=` AND i.period_month=?`;heldParams.push(billingMonth);}
+  if(billingYear){heldSql+=` AND i.period_year=?`;heldParams.push(billingYear);}
   if(q){const like=`%${q}%`;heldSql+=` AND (c.name LIKE ? OR c.customer_code LIKE ? OR i.invoice_number LIKE ? OR u.name LIKE ? OR s.code LIKE ? OR cl.name LIKE ?)`;heldParams.push(like,like,like,like,like,like);}
-  if(collector){heldSql+=` AND COALESCE(p.collector_user_id,p.received_by)=?`;heldParams.push(Number(collector));}
   if(aging==='overdue'){heldSql+=` AND DATEDIFF(CURDATE(),DATE(p.paid_at))>?`;heldParams.push(agingDays);}
   heldSql+=` ORDER BY u.name,p.paid_at`;
   const [held]=await db.execute(heldSql,heldParams);
-  const [staffBalances]=await db.query(`SELECT COALESCE(u.id,0) user_id,COALESCE(u.name,'Tidak diketahui') collector_name,COUNT(*) transactions,COALESCE(SUM(p.amount),0) amount,
+  const scopeWhere=[];const scopeParams=[];
+  if(site){scopeWhere.push('s.code=?');scopeParams.push(site);}
+  if(cluster){scopeWhere.push('c.cluster_id=?');scopeParams.push(Number(cluster));}
+  if(billingMonth){scopeWhere.push('i.period_month=?');scopeParams.push(billingMonth);}
+  if(billingYear){scopeWhere.push('i.period_year=?');scopeParams.push(billingYear);}
+  const scopeSql=scopeWhere.length?` AND ${scopeWhere.join(' AND ')}`:'';
+  const [staffBalances]=await db.execute(`SELECT COALESCE(u.id,0) user_id,COALESCE(u.name,'Tidak diketahui') collector_name,COUNT(*) transactions,COALESCE(SUM(p.amount),0) amount,
     MAX(DATEDIFF(CURDATE(),DATE(p.paid_at))) oldest_days,SUM(DATEDIFF(CURDATE(),DATE(p.paid_at))>${Number(agingDays)}) overdue_count
-    FROM payments p LEFT JOIN users u ON u.id=COALESCE(p.collector_user_id,p.received_by)
-    WHERE p.method='cash' AND p.status='confirmed' AND p.settlement_status='held_by_staff' GROUP BY u.id,u.name ORDER BY amount DESC`);
-  const [[summary]]=await db.query(`SELECT
-    COALESCE(SUM(CASE WHEN method='cash' AND status='confirmed' AND settlement_status='held_by_staff' THEN amount ELSE 0 END),0) held_total,
-    COALESCE(SUM(CASE WHEN method='cash' AND status='confirmed' AND settlement_status='settled' AND DATE(settled_at)=CURDATE() THEN amount ELSE 0 END),0) settled_today,
-    COALESCE(SUM(CASE WHEN method='transfer' AND status='confirmed' AND DATE(paid_at)=CURDATE() THEN amount ELSE 0 END),0) transfer_today,
-    COALESCE(SUM(CASE WHEN method='cash' AND status='confirmed' AND settlement_status='held_by_staff' AND DATEDIFF(CURDATE(),DATE(paid_at))>${Number(agingDays)} THEN amount ELSE 0 END),0) overdue_total,
-    COALESCE(SUM(method='cash' AND status='confirmed' AND settlement_status='held_by_staff' AND DATEDIFF(CURDATE(),DATE(paid_at))>${Number(agingDays)}),0) overdue_count
-    FROM payments`);
-  // Widget posisi cash (selalu tampil, tidak terpengaruh filter): cash yang masih dipegang
-  // tiap collector + yang sudah disetor bulan berjalan.
-  const monthStartSql=`DATE_FORMAT(CURDATE(),'%Y-%m-01')`;
-  const [cashByCollector]=await db.query(`SELECT COALESCE(u.id,0) user_id,COALESCE(u.name,'Tidak diketahui') collector_name,
-      COALESCE(SUM(CASE WHEN p.settlement_status='held_by_staff' THEN p.amount ELSE 0 END),0) held_amount,
-      COALESCE(SUM(p.settlement_status='held_by_staff'),0) held_count,
-      COALESCE(SUM(CASE WHEN p.settlement_status='settled' THEN p.amount ELSE 0 END),0) settled_month,
-      COALESCE(SUM(p.settlement_status='settled'),0) settled_month_count
-    FROM payments p LEFT JOIN users u ON u.id=COALESCE(p.collector_user_id,p.received_by)
-    WHERE p.method='cash' AND ((p.status='confirmed' AND p.settlement_status='held_by_staff') OR (p.settlement_status='settled' AND p.settled_at>=${monthStartSql}))
-    GROUP BY u.id,u.name ORDER BY held_amount DESC,settled_month DESC`);
-  const cashWidget={collectors:cashByCollector,held_total:0,held_count:0,settled_month:0,settled_month_count:0,settled_today:Number(summary?.settled_today||0)};
-  cashByCollector.forEach(r=>{cashWidget.held_total+=Number(r.held_amount||0);cashWidget.held_count+=Number(r.held_count||0);cashWidget.settled_month+=Number(r.settled_month||0);cashWidget.settled_month_count+=Number(r.settled_month_count||0);});
-  const result={held,staffBalances,summary:summary||{},cashWidget,q,site,cluster,collector,aging,agingDays};
+    FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id LEFT JOIN users u ON u.id=COALESCE(p.collector_user_id,p.received_by)
+    WHERE p.method='cash' AND p.status='confirmed' AND p.settlement_status='held_by_staff'${scopeSql} GROUP BY u.id,u.name ORDER BY amount DESC`,scopeParams);
+  const [[summary]]=await db.execute(`SELECT
+    COALESCE(SUM(CASE WHEN p.method='cash' AND p.status='confirmed' AND p.settlement_status='held_by_staff' THEN p.amount ELSE 0 END),0) held_total,
+    COALESCE(SUM(CASE WHEN p.method='cash' AND p.status='confirmed' AND p.settlement_status='settled' AND DATE(p.settled_at)=CURDATE() THEN p.amount ELSE 0 END),0) settled_today,
+    COALESCE(SUM(CASE WHEN p.method='transfer' AND p.status='confirmed' AND DATE(p.paid_at)=CURDATE() THEN p.amount ELSE 0 END),0) transfer_today,
+    COALESCE(SUM(CASE WHEN p.method='cash' AND p.status='confirmed' AND p.settlement_status='held_by_staff' AND DATEDIFF(CURDATE(),DATE(p.paid_at))>${Number(agingDays)} THEN p.amount ELSE 0 END),0) overdue_total,
+    COALESCE(SUM(p.method='cash' AND p.status='confirmed' AND p.settlement_status='held_by_staff' AND DATEDIFF(CURDATE(),DATE(p.paid_at))>${Number(agingDays)}),0) overdue_count
+    FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id WHERE 1=1${scopeSql}`,scopeParams);
+  const result={held,staffBalances,summary:summary||{},q,site,cluster,aging,agingDays,billingMonth,billingYear};
   if(withLookups){
-    // Daftar collector untuk dropdown filter: semua user yang pernah memegang pembayaran cash.
-    const [collectors]=await db.query(`SELECT u.id,u.name FROM users u WHERE u.id IN (SELECT DISTINCT COALESCE(p.collector_user_id,p.received_by) FROM payments p WHERE p.method='cash') ORDER BY u.name`);
-    result.collectors=collectors;
     const [sites]=await db.query(`SELECT code,name FROM sites WHERE is_active=1 ORDER BY code`);const [clusters]=await db.query(`SELECT cl.id,cl.name,s.code site_code FROM clusters cl JOIN sites s ON s.id=cl.site_id WHERE cl.status!='inactive' ORDER BY s.code,cl.name`);
     result.sites=sites;result.clusters=clusters;
   }
@@ -396,102 +412,103 @@ const RECON_HISTORY_LIMIT=1000;
 const RECON_STATUSES=['all','held','settled'];
 function jakartaToday(){return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jakarta'}).format(new Date());}
 function validDateParam(value){const v=String(value||'').trim();return /^\d{4}-\d{2}-\d{2}$/.test(v)&&!Number.isNaN(new Date(`${v}T00:00:00Z`).getTime())?v:'';}
-let reconciliationHistorySchemaReady=null;
-async function ensureReconciliationHistorySchema(){
-  if(reconciliationHistorySchemaReady)return reconciliationHistorySchemaReady;
-  reconciliationHistorySchemaReady=(async()=>{
-    // Jangan jalankan migration v1.28 penuh ketika user membuka Histori.
-    // Sebagian instalasi memakai MariaDB/MySQL yang tidak menerima syntax
-    // `ALTER TABLE ... ADD INDEX IF NOT EXISTS`, sehingga route sebelumnya 500.
-    // Histori hanya memastikan schema minimum yang benar-benar dibutuhkan.
-    await db.query(`CREATE TABLE IF NOT EXISTS cash_settlements (
-      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-      code VARCHAR(40) NOT NULL,
-      settlement_date DATE NOT NULL,
-      collector_user_id BIGINT UNSIGNED NULL,
-      mode ENUM('selected','partial') NOT NULL DEFAULT 'selected',
-      payment_count INT UNSIGNED NOT NULL DEFAULT 0,
-      total_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
-      handed_amount DECIMAL(14,2) NULL,
-      difference_amount DECIMAL(14,2) NOT NULL DEFAULT 0,
-      notes VARCHAR(500) NULL,
-      status ENUM('active','cancelled') NOT NULL DEFAULT 'active',
-      created_by BIGINT UNSIGNED NULL,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      UNIQUE KEY uq_cash_settlement_code (code),
-      INDEX idx_cash_settlement_date (settlement_date),
-      INDEX idx_cash_settlement_collector (collector_user_id,settlement_date)
-    )`);
-
-    const [paymentCols]=await db.query(`SHOW COLUMNS FROM payments`);
-    const paymentColNames=new Set(paymentCols.map(c=>String(c.Field)));
-    const addPaymentColumn=async(name,ddl)=>{
-      if(paymentColNames.has(name))return;
-      await db.query(`ALTER TABLE payments ADD COLUMN ${ddl}`);
-      paymentColNames.add(name);
-    };
-    await addPaymentColumn('settlement_id','settlement_id BIGINT UNSIGNED NULL AFTER settlement_status');
-    await addPaymentColumn('settled_by','settled_by BIGINT UNSIGNED NULL AFTER settlement_id');
-    await addPaymentColumn('settled_at','settled_at DATETIME NULL AFTER settled_by');
-
-    // Index dibuat dengan pemeriksaan SHOW INDEX agar kompatibel lintas MySQL/MariaDB.
-    const [idx]=await db.query(`SHOW INDEX FROM payments WHERE Key_name='idx_payments_settlement'`);
-    if(!idx.length){
-      try{await db.query(`ALTER TABLE payments ADD INDEX idx_payments_settlement (settlement_id)`);}
-      catch(err){if(!/duplicate|exists/i.test(String(err.message||'')))throw err;}
-    }
-  })().catch(err=>{reconciliationHistorySchemaReady=null;throw err;});
-  return reconciliationHistorySchemaReady;
-}
+function reconciliationBillingPeriod(req){const month=Number(req.query.billing_month||0);const year=Number(req.query.billing_year||0);return {billingMonth:month>=1&&month<=12?month:'',billingYear:year>=2020&&year<=2100?year:''};}
 async function loadReconciliationHistory(req){
-  // Histori bergantung pada settlement_id + cash_settlements (fitur v1.28).
-  // Pastikan schema tersedia saat tab dibuka agar instalasi yang upgrade bertahap tidak 500.
-  await ensureReconciliationHistorySchema();
   const q=String(req.query.q||'').trim();const site=String(req.query.site||'').trim();const cluster=String(req.query.cluster||'').trim();
+  const {billingMonth,billingYear}=reconciliationBillingPeriod(req);
   const status=RECON_STATUSES.includes(req.query.status)?req.query.status:'all';
-  const collector=Number(req.query.collector)>0?String(Number(req.query.collector)):'';
-  // Dasar tanggal periode: tanggal pelanggan bayar (default) atau tanggal uang masuk kas.
-  const basis=req.query.basis==='settled'?'settled':'paid';
   const today=jakartaToday();
   let dateFrom=validDateParam(req.query.date_from)||`${today.slice(0,8)}01`;
   let dateTo=validDateParam(req.query.date_to)||today;
   if(dateFrom>dateTo)[dateFrom,dateTo]=[dateTo,dateFrom];
   const heldCond=`(p.status='confirmed' AND p.settlement_status='held_by_staff')`;
   const settledCond=`p.settlement_status='settled'`;
-  let where=`WHERE p.method='cash' AND DATE(${basis==='settled'?'p.settled_at':'p.paid_at'}) BETWEEN ? AND ?`;
+  let where=`WHERE p.method='cash' AND DATE(p.paid_at) BETWEEN ? AND ?`;
   const params=[dateFrom,dateTo];
   where+=status==='held'?` AND ${heldCond}`:status==='settled'?` AND ${settledCond}`:` AND (${heldCond} OR ${settledCond})`;
+  if(billingMonth){where+=` AND i.period_month=?`;params.push(billingMonth);}
+  if(billingYear){where+=` AND i.period_year=?`;params.push(billingYear);}
   let filterSql='';const filterParams=[];
   if(site){filterSql+=` AND s.code=?`;filterParams.push(site);}
   if(cluster){filterSql+=` AND c.cluster_id=?`;filterParams.push(Number(cluster));}
-  if(collector){filterSql+=` AND COALESCE(p.collector_user_id,p.received_by)=?`;filterParams.push(Number(collector));}
-  if(q){const like=`%${q}%`;filterSql+=` AND (c.name LIKE ? OR c.customer_code LIKE ? OR i.invoice_number LIKE ? OR u.name LIKE ? OR su.name LIKE ? OR s.code LIKE ? OR cl.name LIKE ? OR p.reference LIKE ? OR cs.code LIKE ?)`;filterParams.push(like,like,like,like,like,like,like,like,like);}
+  if(q){const like=`%${q}%`;filterSql+=` AND (c.name LIKE ? OR c.customer_code LIKE ? OR i.invoice_number LIKE ? OR u.name LIKE ? OR su.name LIKE ? OR s.code LIKE ? OR cl.name LIKE ? OR p.reference LIKE ?)`;filterParams.push(like,like,like,like,like,like,like,like);}
   where+=filterSql;params.push(...filterParams);
   const from=`FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id
     LEFT JOIN clusters cl ON cl.id=c.cluster_id LEFT JOIN users u ON u.id=COALESCE(p.collector_user_id,p.received_by) LEFT JOIN users su ON su.id=p.settled_by
     LEFT JOIN cash_settlements cs ON cs.id=p.settlement_id`;
-  const [history]=await db.execute(`SELECT p.id,p.amount,p.reference,p.paid_at,p.settled_at,TIMESTAMPDIFF(HOUR,p.paid_at,p.settled_at) settle_hours,p.settlement_status,p.settlement_id,cs.code settlement_code,c.customer_code,c.name customer_name,s.code site_code,cl.name cluster_name,
-    i.invoice_number,COALESCE(u.name,'Tidak diketahui') collector_name,COALESCE(su.name,'-') settled_by_name
-    ${from} ${where} ORDER BY ${basis==='settled'?'p.settled_at':'p.paid_at'} DESC,p.id DESC LIMIT ${RECON_HISTORY_LIMIT}`,params);
+  const [history]=await db.execute(`SELECT p.id,p.amount,p.reference,p.paid_at,p.settled_at,p.settlement_status,p.settlement_id,cs.code settlement_code,c.customer_code,c.name customer_name,s.code site_code,cl.name cluster_name,
+    i.invoice_number,i.period_month,i.period_year,COALESCE(u.name,'Tidak diketahui') collector_name,COALESCE(su.name,'-') settled_by_name
+    ${from} ${where} ORDER BY p.paid_at DESC,p.id DESC LIMIT ${RECON_HISTORY_LIMIT}`,params);
   const [[historySummary]]=await db.execute(`SELECT COUNT(*) transactions,COALESCE(SUM(p.amount),0) amount,COUNT(DISTINCT c.id) customers,
     COALESCE(SUM(CASE WHEN ${settledCond} THEN 1 ELSE 0 END),0) settled_count,COALESCE(SUM(CASE WHEN ${settledCond} THEN p.amount ELSE 0 END),0) settled_amount,
     COALESCE(SUM(CASE WHEN ${heldCond} THEN 1 ELSE 0 END),0) held_count,COALESCE(SUM(CASE WHEN ${heldCond} THEN p.amount ELSE 0 END),0) held_amount
     ${from} ${where}`,params);
+  const [collectorSummary]=await db.execute(`SELECT COALESCE(u.name,'Tidak diketahui') collector_name,COUNT(*) transactions,
+    COALESCE(SUM(CASE WHEN ${settledCond} THEN p.amount ELSE 0 END),0) settled_amount,COALESCE(SUM(CASE WHEN ${settledCond} THEN 1 ELSE 0 END),0) settled_count,
+    COALESCE(SUM(CASE WHEN ${heldCond} THEN p.amount ELSE 0 END),0) held_amount,COALESCE(SUM(CASE WHEN ${heldCond} THEN 1 ELSE 0 END),0) held_count
+    ${from} ${where} GROUP BY COALESCE(u.id,0),u.name ORDER BY settled_amount+held_amount DESC`,params);
+  const settlementPeriodSql=(billingMonth||billingYear)?` AND EXISTS (SELECT 1 FROM payments sp JOIN invoices si ON si.id=sp.invoice_id WHERE sp.settlement_id=cs.id${billingMonth?' AND si.period_month=?':''}${billingYear?' AND si.period_year=?':''})`:'';
+  const settlementParams=[dateFrom,dateTo,...(billingMonth?[billingMonth]:[]),...(billingYear?[billingYear]:[])];
   const [settlements]=await db.execute(`SELECT cs.id,cs.code,cs.settlement_date,cs.mode,cs.payment_count,cs.total_amount,cs.handed_amount,cs.difference_amount,cs.status,cs.notes,
       COALESCE(cu.name,'Beberapa collector') collector_name,au.name created_by_name
     FROM cash_settlements cs LEFT JOIN users cu ON cu.id=cs.collector_user_id LEFT JOIN users au ON au.id=cs.created_by
-    WHERE cs.settlement_date BETWEEN ? AND ?${collector?' AND cs.collector_user_id=?':''} ORDER BY cs.id DESC LIMIT 200`,collector?[dateFrom,dateTo,Number(collector)]:[dateFrom,dateTo]);
-  return {history,historySummary:historySummary||{},settlements,historyLimit:RECON_HISTORY_LIMIT,dateFrom,dateTo,status,basis,q,site,cluster,collector};
+    WHERE cs.settlement_date BETWEEN ? AND ?${settlementPeriodSql} ORDER BY cs.id DESC LIMIT 200`,settlementParams);
+  // v1.29 — data grafik analisis tab Histori. Tren memakai tanggal bayar (uang diterima tim) dan
+  // tanggal setor (uang masuk kas) pada rentang yang sama; rentang panjang dikelompokkan per bulan.
+  const spanDays=Math.round((new Date(`${dateTo}T00:00:00Z`)-new Date(`${dateFrom}T00:00:00Z`))/86400000)+1;
+  const monthly=spanDays>62;
+  const bucketExpr=col=>monthly?`DATE_FORMAT(${col},'%Y-%m')`:`DATE_FORMAT(${col},'%Y-%m-%d')`;
+  const settledPeriodSql=`${billingMonth?' AND i.period_month=?':''}${billingYear?' AND i.period_year=?':''}`;
+  const settledWhere=`WHERE p.method='cash' AND ${settledCond} AND DATE(p.settled_at) BETWEEN ? AND ?${settledPeriodSql}${filterSql}`;
+  const settledParams=[dateFrom,dateTo,...(billingMonth?[billingMonth]:[]),...(billingYear?[billingYear]:[]),...filterParams];
+  const [[collectedRows],[settledRows],[siteRows],[[speed]]]=await Promise.all([
+    db.execute(`SELECT ${bucketExpr('p.paid_at')} bucket,COALESCE(SUM(p.amount),0) amount ${from} ${where} GROUP BY bucket ORDER BY bucket`,params),
+    db.execute(`SELECT ${bucketExpr('p.settled_at')} bucket,COALESCE(SUM(p.amount),0) amount ${from} ${settledWhere} GROUP BY bucket ORDER BY bucket`,settledParams),
+    db.execute(`SELECT s.code site_code,COALESCE(SUM(CASE WHEN ${settledCond} THEN p.amount ELSE 0 END),0) settled_amount,
+      COALESCE(SUM(CASE WHEN ${heldCond} THEN p.amount ELSE 0 END),0) held_amount ${from} ${where} GROUP BY s.code ORDER BY settled_amount+held_amount DESC LIMIT 12`,params),
+    db.execute(`SELECT COUNT(*) settled_count,COALESCE(AVG(TIMESTAMPDIFF(HOUR,p.paid_at,p.settled_at)),0) avg_hours,
+      COALESCE(SUM(TIMESTAMPDIFF(HOUR,p.paid_at,p.settled_at)<=24),0) within_day,COALESCE(SUM(TIMESTAMPDIFF(HOUR,p.paid_at,p.settled_at)>72),0) over_three_days
+      ${from} ${settledWhere}`,settledParams)
+  ]);
+  const labels=[];
+  if(monthly){const d=new Date(`${dateFrom.slice(0,7)}-01T00:00:00Z`);const end=dateTo.slice(0,7);while(labels.length<60){const key=d.toISOString().slice(0,7);labels.push(key);if(key>=end)break;d.setUTCMonth(d.getUTCMonth()+1);}}
+  else{const d=new Date(`${dateFrom}T00:00:00Z`);while(labels.length<62){const key=d.toISOString().slice(0,10);labels.push(key);if(key>=dateTo)break;d.setUTCDate(d.getUTCDate()+1);}}
+  const toMap=rows=>new Map(rows.map(r=>[String(r.bucket),Number(r.amount||0)]));
+  const collectedMap=toMap(collectedRows),settledMap=toMap(settledRows);
+  const historyCharts={
+    monthly,
+    trend:{labels,collected:labels.map(k=>collectedMap.get(k)||0),settled:labels.map(k=>settledMap.get(k)||0)},
+    sites:siteRows.map(r=>({label:r.site_code,settled:Number(r.settled_amount||0),held:Number(r.held_amount||0)})),
+    collectors:collectorSummary.slice(0,10).map(c=>({label:c.collector_name,settled:Number(c.settled_amount||0),held:Number(c.held_amount||0)})),
+    speed:{count:Number(speed?.settled_count||0),avgHours:Number(speed?.avg_hours||0),withinDay:Number(speed?.within_day||0),overThreeDays:Number(speed?.over_three_days||0)}
+  };
+  return {history,historySummary:historySummary||{},collectorSummary,settlements,historyCharts,historyLimit:RECON_HISTORY_LIMIT,dateFrom,dateTo,status,q,site,cluster,billingMonth,billingYear};
 }
 
+// v1.29 — grafik tab Belum Disetor dihitung dari baris yang sedang tampil (ikut filter aktif).
+function heldCharts(held,agingDays){
+  const buckets=[
+    {label:'0–1 hari',test:a=>a<=1},
+    {label:`2–${agingDays} hari`,test:a=>a>=2&&a<=agingDays},
+    {label:`${agingDays+1}–7 hari`,test:a=>a>agingDays&&a<=7},
+    {label:'> 7 hari',test:a=>a>7}
+  ].filter((b,i)=>!(i===1&&agingDays<2)&&!(i===2&&agingDays>=7));
+  const aging=buckets.map(b=>{const rows=held.filter(p=>b.test(Number(p.age_days||0)));return {label:b.label,amount:rows.reduce((a,p)=>a+Number(p.amount||0),0),count:rows.length};});
+  const group=(key)=>{const m=new Map();for(const p of held){const k=p[key]||'Tidak diketahui';const cur=m.get(k)||{label:k,amount:0,overdue:0,count:0};cur.amount+=Number(p.amount||0);cur.count++;if(Number(p.age_days||0)>agingDays)cur.overdue+=Number(p.amount||0);m.set(k,cur);}return [...m.values()].sort((a,b)=>b.amount-a.amount);};
+  const total=held.reduce((a,p)=>a+Number(p.amount||0),0);
+  const avgAge=held.length?held.reduce((a,p)=>a+Number(p.age_days||0),0)/held.length:0;
+  const weightedAge=total?held.reduce((a,p)=>a+Number(p.age_days||0)*Number(p.amount||0),0)/total:0;
+  const overdueTotal=held.filter(p=>Number(p.age_days||0)>agingDays).reduce((a,p)=>a+Number(p.amount||0),0);
+  return {aging,collectors:group('collector_name').slice(0,10),sites:group('site_code').slice(0,10),total,avgAge,weightedAge,overdueTotal,oldest:held.reduce((a,p)=>Math.max(a,Number(p.age_days||0)),0)};
+}
 const reconStatusLabel=p=>p.settlement_status==='settled'?'Sudah Disetor':'Belum Disetor';
 const reconStatusTitle={all:'Semua status',held:'Belum Disetor',settled:'Sudah Disetor'};
 
 router.get('/reconciliation',requireAdmin,async(req,res)=>{
   const tab=req.query.tab==='history'?'history':'held';
   const data=await loadReconciliationData(req,{withLookups:true});
-  const historyData=tab==='history'?await loadReconciliationHistory(req):{history:[],historySummary:{},settlements:[],historyLimit:RECON_HISTORY_LIMIT,dateFrom:'',dateTo:'',status:'all',basis:'paid'};
+  const historyData=tab==='history'?await loadReconciliationHistory(req):{history:[],historySummary:{},collectorSummary:[],settlements:[],historyCharts:null,historyLimit:RECON_HISTORY_LIMIT,dateFrom:'',dateTo:'',status:'all',billingMonth:data.billingMonth,billingYear:data.billingYear};
+  data.heldCharts=heldCharts(data.held,data.agingDays);
   let justSettled=null;
   if(Number(req.query.settled)>0){const [[row]]=await db.execute(`SELECT id,code,payment_count,total_amount,handed_amount,difference_amount FROM cash_settlements WHERE id=? LIMIT 1`,[Number(req.query.settled)]);justSettled=row||null;}
   res.render('payments/reconciliation',{title:'Rekonsiliasi Pembayaran',...data,...historyData,tab,justSettled,canCancelSettlement:isMasterAdminRole(req.session.user.role)});
@@ -553,11 +570,10 @@ router.get('/reconciliation/export.xlsx',requireAdmin,async(req,res)=>{
 // Analitik/Laporan, supaya konsisten saat dicetak atau dilampirkan.
 router.get('/reconciliation/export.pdf',requireAdmin,async(req,res)=>{
   if(req.query.tab==='history'){
-    const {history,historySummary,dateFrom,dateTo,status,basis,q:hq,site:hSite,cluster:hCluster,collector:hCollector}=await loadReconciliationHistory(req);
-    const hCollectorName=hCollector?(history[0]?.collector_name||`ID ${hCollector}`):'';
+    const {history,historySummary,dateFrom,dateTo,status,q:hq,site:hSite,cluster:hCluster}=await loadReconciliationHistory(req);
     const fmt=v=>v?new Date(v).toLocaleString('id-ID',{timeZone:'Asia/Jakarta'}):'-';
     const rows=history.map(p=>({status:reconStatusLabel(p),customer:`${p.customer_name} (${p.customer_code})`,invoice:p.invoice_number,siteCluster:`${p.site_code}${p.cluster_name?' · '+p.cluster_name:''}`,collector:p.collector_name,amount:rupiah(p.amount),_rawAmount:Number(p.amount||0),paidAt:fmt(p.paid_at),settledAt:p.settled_at?`${fmt(p.settled_at)}${p.settlement_code?` · ${p.settlement_code}`:''}`:'-',settledBy:p.settled_by_name}));
-    const filterLabel=[`Periode ${basis==='settled'?'masuk kas':'bayar'} ${dateFrom} s.d. ${dateTo}`,reconStatusTitle[status],hq?`Cari: "${hq}"`:'',hSite?`Site: ${hSite}`:'',hCluster?`Cluster ID: ${hCluster}`:'',hCollectorName?`Collector: ${hCollectorName}`:''].filter(Boolean).join(' · ');
+    const filterLabel=[`Periode bayar ${dateFrom} s.d. ${dateTo}`,reconStatusTitle[status],hq?`Cari: "${hq}"`:'',hSite?`Site: ${hSite}`:'',hCluster?`Cluster ID: ${hCluster}`:''].filter(Boolean).join(' · ');
     return createReportPdf(res,{
       title:'Histori Cash Pelanggan',
       subtitle:`Status setoran cash pelanggan ke kas perusahaan · ${filterLabel}`,
@@ -585,9 +601,9 @@ router.get('/reconciliation/export.pdf',requireAdmin,async(req,res)=>{
       layout:'landscape'
     });
   }
-  const {held,staffBalances,summary,q,site,cluster,collector,aging,agingDays}=await loadReconciliationData(req);
+  const {held,staffBalances,summary,q,site,cluster}=await loadReconciliationData(req);
   const rows=held.map(p=>({collector:p.collector_name||'Tidak diketahui',customer:`${p.customer_name} (${p.customer_code})`,invoice:p.invoice_number,siteCluster:`${p.site_code}${p.cluster_name?' · '+p.cluster_name:''}`,amount:rupiah(p.amount),_rawAmount:Number(p.amount||0),receivedAt:new Date(p.paid_at).toLocaleString('id-ID',{timeZone:'Asia/Jakarta'}),status:'Belum Disetor'}));
-  const filterLabel=[q?`Cari: "${q}"`:'',site?`Site: ${site}`:'',cluster?`Cluster ID: ${cluster}`:'',collector?`Collector: ${held[0]?.collector_name||'ID '+collector}`:'',aging==='overdue'?`Lewat ${agingDays} hari`:''].filter(Boolean).join(' · ')||'Semua data';
+  const filterLabel=[q?`Cari: "${q}"`:'',site?`Site: ${site}`:'',cluster?`Cluster ID: ${cluster}`:''].filter(Boolean).join(' · ')||'Semua data';
   return createReportPdf(res,{
     title:'Rekonsiliasi Pembayaran',
     subtitle:`Cash belum disetor ke kas perusahaan · ${filterLabel}`,
@@ -658,7 +674,8 @@ router.post('/:id/settle',requireAdmin,async(req,res)=>{
   }catch(e){await conn.rollback();throw e;}finally{conn.release();}
   await audit({userId:req.session.user.id,action:'settle',entityType:'payment',entityId:result.done[0].id,description:`Konfirmasi setoran cash staff ke kas perusahaan · ${result.code}`,ip:req.ip});
   req.session.flash={type:'success',message:`Setoran cash dikonfirmasi dan masuk ke kas perusahaan (${result.code}).`};
-  res.redirect(`/payments/reconciliation?settled=${result.settlementId}`);
+  const doneParams=new URLSearchParams(returnParams);doneParams.set('settled',String(result.settlementId));
+  res.redirect(`/payments/reconciliation?${doneParams.toString()}`);
 });
 
 // v1.25.5 (update) — "Konfirmasi Setoran Massal". Sejak v1.28 satu batch = satu nomor setoran dalam satu
@@ -685,7 +702,13 @@ router.post('/bulk-settle',requireAdmin,async(req,res)=>{
 // sistem mencocokkan ke transaksi cash tertua (FIFO) yang muat utuh. Transaksi yang tidak muat tetap
 // "Belum Disetor"; kelebihan uang yang tidak cocok ke transaksi mana pun dicatat sebagai selisih lebih.
 router.post('/reconciliation/partial-settle',requireAdmin,async(req,res)=>{
-  const returnTo='/payments/reconciliation';
+  const filterSite=String(req.body.filter_site||'').trim();
+  const filterCluster=Number(req.body.filter_cluster||0)||0;
+  const filterBillingMonth=Number(req.body.filter_billing_month||0)||0;
+  const filterBillingYear=Number(req.body.filter_billing_year||0)||0;
+  const returnParams=new URLSearchParams();
+  if(filterSite)returnParams.set('site',filterSite);if(filterCluster)returnParams.set('cluster',String(filterCluster));if(filterBillingMonth)returnParams.set('billing_month',String(filterBillingMonth));if(filterBillingYear)returnParams.set('billing_year',String(filterBillingYear));
+  const returnTo=`/payments/reconciliation${returnParams.toString()?`?${returnParams}`:''}`;
   const collectorId=Number(req.body.collector_user_id);
   const handed=cleanMoney(req.body.handed_amount);
   if(!Number.isInteger(collectorId)||collectorId<1){req.session.flash={type:'danger',message:'Pilih collector yang menyetor.'};return res.redirect(returnTo);}
@@ -694,8 +717,15 @@ router.post('/reconciliation/partial-settle',requireAdmin,async(req,res)=>{
   try{
     await conn.beginTransaction();
     const settlementDate=await assertDateOpen(conn,req.body.settlement_date||new Date());
-    const [candidates]=await conn.execute(`SELECT id,amount FROM payments WHERE method='cash' AND status='confirmed' AND settlement_status='held_by_staff'
-      AND COALESCE(collector_user_id,received_by)=? ORDER BY paid_at,id FOR UPDATE`,[collectorId]);
+    let candidateSql=`SELECT p.id,p.amount FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id
+      WHERE p.method='cash' AND p.status='confirmed' AND p.settlement_status='held_by_staff' AND COALESCE(p.collector_user_id,p.received_by)=?`;
+    const candidateParams=[collectorId];
+    if(filterSite){candidateSql+=` AND s.code=?`;candidateParams.push(filterSite);}
+    if(filterCluster){candidateSql+=` AND c.cluster_id=?`;candidateParams.push(filterCluster);}
+    if(filterBillingMonth>=1&&filterBillingMonth<=12){candidateSql+=` AND i.period_month=?`;candidateParams.push(filterBillingMonth);}
+    if(filterBillingYear>=2020&&filterBillingYear<=2100){candidateSql+=` AND i.period_year=?`;candidateParams.push(filterBillingYear);}
+    candidateSql+=` ORDER BY p.paid_at,p.id FOR UPDATE`;
+    const [candidates]=await conn.execute(candidateSql,candidateParams);
     if(!candidates.length)throw new Error('Collector ini tidak sedang memegang cash yang belum disetor.');
     const picked=[];let sum=0;
     for(const row of candidates){

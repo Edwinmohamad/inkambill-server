@@ -1,6 +1,6 @@
-<% const paymentFilterQuery=new URLSearchParams({q:filters.q||'',site:filters.site||'',cluster:filters.cluster||'',month:filters.month||'',year:filters.year||'',approval:filters.approval||'',method:filters.method||'',recipient:filters.recipient||''}).toString(); const paymentMonthNames=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
-  // v1.29 — filter metode.
-  const paymentFilterUrl=(overrides={})=>{const merged={q:filters.q,site:filters.site,cluster:filters.cluster,month:filters.month,year:filters.year,approval:filters.approval,method:filters.method,recipient:filters.recipient,...overrides};const qs=new URLSearchParams();Object.entries(merged).forEach(([k,v])=>{if(v!==undefined&&v!==null&&String(v)!=='')qs.set(k,v);});const str=qs.toString();return `/payments${str?`?${str}`:''}`;};
+<% const paymentFilterQuery=new URLSearchParams({q:filters.q||'',site:filters.site||'',cluster:filters.cluster||'',period:filters.period||'',due_day:filters.due_day||'',paid_date:filters.paid_date||'',approval:filters.approval||'',method:filters.method||'',recipient:filters.recipient||''}).toString(); const paymentMonthNames=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+  // Filter URL dipusatkan agar search/chip/action mempertahankan periode, JT, dan tanggal transaksi.
+  const paymentFilterUrl=(overrides={})=>{const merged={q:filters.q,site:filters.site,cluster:filters.cluster,period:filters.period,due_day:filters.due_day,paid_date:filters.paid_date,approval:filters.approval,method:filters.method,recipient:filters.recipient,...overrides};const qs=new URLSearchParams();Object.entries(merged).forEach(([k,v])=>{if(v!==undefined&&v!==null&&String(v)!=='')qs.set(k,v);});const str=qs.toString();return `/payments${str?`?${str}`:''}`;};
   const methodCountsSafe=typeof methodCounts==='object'&&methodCounts?methodCounts:{cash:{},transfer:{},qris:{}}; %>
 <section>
   <div class="module-head">
@@ -46,7 +46,9 @@
       <div class="filter-group"><label>STATUS APPROVAL</label><select class="form-select" name="approval"><option value="">Semua Approval</option><option value="pending" <%= filters.approval==='pending'?'selected':'' %>>Menunggu Approval</option><option value="confirmed" <%= filters.approval==='confirmed'?'selected':'' %>>Disetujui</option><option value="failed" <%= filters.approval==='failed'?'selected':'' %>>Ditolak</option></select></div>
       <div class="filter-group"><label>METODE PEMBAYARAN</label><select class="form-select" name="method" id="paymentMethodFilter"><option value="">Semua Metode</option><option value="cash" <%= filters.method==='cash'?'selected':'' %>>Tunai</option><option value="transfer" <%= filters.method==='transfer'?'selected':'' %>>Transfer</option><option value="qris" <%= filters.method==='qris'?'selected':'' %>>QRIS</option></select></div>
       <div class="filter-group"><label>PENERIMA TUNAI / TRANSFER</label><select class="form-select" name="recipient" id="paymentRecipientFilter"><option value="">Semua Penerima</option><% if(staff.length){ %><optgroup label="Tunai — diterima oleh"><% staff.forEach(member=>{ const key=`cash:${member.id}`; %><option data-recipient-method="cash" value="<%= key %>" <%= filters.recipient===key?'selected':'' %>><%= member.name %> · <%= member.role %></option><% }) %></optgroup><% } %><% if(banks.length){ %><optgroup label="Transfer — rekening tujuan"><% banks.forEach(bank=>{ const key=`transfer:${bank.id}`; %><option data-recipient-method="transfer" value="<%= key %>" <%= filters.recipient===key?'selected':'' %>><%= bank.bank_name %> · <%= bank.account_number %> · a.n. <%= bank.account_name %></option><% }) %></optgroup><% } %></select></div>
-      <div class="filter-group"><label>PERIODE</label><div class="d-flex gap-2"><select class="form-select" name="month"><option value="">Semua Bulan</option><% paymentMonthNames.forEach((name,index)=>{ %><option value="<%= index+1 %>" <%= Number(filters.month)===index+1?'selected':'' %>><%= name %></option><% }) %></select><input class="form-control" type="number" name="year" min="2020" max="2100" value="<%= filters.year||'' %>" placeholder="Tahun"></div></div>
+      <div class="filter-group payment-period-control"><label>PERIODE BULAN</label><input class="form-control" type="month" name="period" value="<%= filters.period||'' %>" aria-label="Periode bulan pembayaran"></div>
+      <div class="filter-group"><label>JATUH TEMPO</label><select class="form-select" name="due_day"><option value="">Semua JT</option><option value="15" <%= Number(filters.due_day)===15?'selected':'' %>>JT 15</option><option value="30" <%= Number(filters.due_day)===30?'selected':'' %>>JT 30</option></select></div>
+      <div class="filter-group payment-date-control"><label>TANGGAL TRANSAKSI</label><input class="form-control" type="date" name="paid_date" value="<%= filters.paid_date||'' %>" aria-label="Tanggal transaksi pembayaran"></div>
       <div class="filter-group d-flex align-items-end gap-2"><button class="btn-tech flex-fill"><i class="bi bi-search"></i>Cari</button><a class="btn-tech" href="/payments"><i class="bi bi-x-lg"></i></a></div>
     </div>
   </form>
@@ -78,7 +80,7 @@
              pilih-massal (Master Admin) ditambahkan di paling kiri. -->
         <thead><tr>
           <% if(isMasterAdmin){ %><th class="app-check-col"><input type="checkbox" class="form-check-input" data-select-all aria-label="Pilih semua pembayaran menunggu approval"></th><% } %>
-          <th>No.</th><th>Pelanggan</th><th>Site / Cluster</th><th>Jatuh Tempo</th><th>Nominal</th><th>Metode</th><th>Bukti Pembayaran</th><th>Diterima Oleh</th><th>Approval</th><th>Aksi</th>
+          <th>No.</th><th>Pelanggan</th><th>Site / Cluster</th><th>Jatuh Tempo / Transaksi</th><th>Nominal</th><th>Metode</th><th>Bukti Pembayaran</th><th>Diterima Oleh</th><th>Approval</th><th>Aksi</th>
         </tr></thead>
         <tbody>
           <% payments.forEach((p,idx)=>{ %>
@@ -87,7 +89,7 @@
             <td><span class="cell-main"><%= idx+1 %></span></td>
             <td><span class="cell-main"><%= p.customer_name %></span><span class="cell-sub"><%= p.customer_code %></span></td>
             <td><span class="cell-main"><%= p.site_code %></span><span class="cell-sub">Cluster <%= p.cluster_name||'-' %></span></td>
-            <td><%= formatDate(p.due_date) %></td>
+            <td><span class="cell-main"><%= formatDate(p.due_date) %></span><span class="cell-sub">Transaksi <%= formatDate(p.paid_at) %></span></td>
             <td class="money"><%= formatRupiah(p.amount) %><span class="cell-sub"><%= p.reference||'-' %></span></td>
             <td><span class="payment-method <%= p.method %>"><i class="bi <%= p.method==='cash'?'bi-cash-coin':p.method==='transfer'?'bi-bank':'bi-wallet2' %>"></i><%= statusLabel(p.method).toUpperCase() %></span></td>
             <td>

@@ -78,17 +78,6 @@ html[data-theme="dark"] .wab{--wab-seg-on:#3a3a3e;--wab-seg-shadow:0 1px 2px rgb
 .wab-select option{background:var(--panel);color:var(--text)}
 .wab input[type=datetime-local]{color-scheme:light dark}
 .wab-grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-.wab-template-box{border:1px solid var(--line);border-radius:var(--wab-r-sm);padding:14px;background:var(--wab-fill-2)}
-.wab-template-box>strong{font-size:14px}.wab-template-box>p{font-size:12px;color:var(--muted);margin:4px 0 12px}
-.wab-template-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:8px}
-.wab-template-card{display:grid;gap:3px;text-align:left;padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--wab-card);color:var(--text);cursor:pointer}
-.wab-template-card strong{font-size:12px}.wab-template-card small{font-size:11px;color:var(--muted)}
-.wab-template-card:hover,.wab-template-card.active{border-color:var(--brand);box-shadow:var(--wab-focus)}
-.wab-followup-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
-.wab-followup-card{display:grid;gap:5px;text-align:left;padding:14px;border:1px solid var(--line);border-radius:var(--wab-r-sm);background:var(--wab-fill-2);color:var(--text);cursor:pointer}
-.wab-followup-card strong{font-size:26px;line-height:1.1}.wab-followup-card span{font-size:13px;font-weight:650}.wab-followup-card small{font-size:11px;color:var(--muted);line-height:1.4}
-.wab-followup-card:hover,.wab-followup-card.active{border-color:var(--brand);box-shadow:var(--wab-focus)}
-@media(max-width:800px){.wab-followup-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .wab-outage{padding:14px;border-radius:var(--wab-r-sm);background:var(--warning-tint)}
 
 /* Filter */
@@ -225,52 +214,30 @@ html[data-theme="light"] .wab-pill.red{color:#d70015}
   .wab-seg span{font-size:12.5px;padding:0 6px}
 }
 @media (prefers-reduced-motion:reduce){.wab *{transition:none!important}}
-.wab-presets{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0 12px}.wab-presets .wab-select{min-width:200px;flex:1}
-/* Pusat Pesan: hirarki konten dan keadaan interaktif. */
-.wab{max-width:1280px;gap:18px;line-height:1.5}
-.wab-head{align-items:center;padding:4px 0 8px}.wab-head h1{font-size:clamp(26px,2.5vw,34px);letter-spacing:-.035em}
-.wab-head-links a{height:40px;border-radius:10px;padding:0 13px}
-.wab-card{padding:22px;gap:18px;border-radius:16px}
-.wab-card-head h2{font-size:18px;letter-spacing:-.02em}
-.wab-step{background:var(--wab-fill-2);color:var(--text);font-size:12px}
-.wab-followup-grid{gap:8px}
-.wab-followup-card{min-height:122px;padding:16px;background:var(--wab-card);border-radius:12px;transition:border-color .15s,background .15s}
-.wab-followup-card strong{font-size:28px;font-variant-numeric:tabular-nums;letter-spacing:-.04em}
-.wab-followup-card span{font-size:13px}.wab-followup-card small{font-size:12px}
-.wab-followup-card:hover,.wab-followup-card.active{box-shadow:none;border-color:var(--brand);background:var(--brand-tint)}
-.wab-template-box{background:transparent;border:0;border-bottom:1px solid var(--line);border-radius:0;padding:0 0 16px}
-.wab-template-box>strong{font-size:14px}.wab-template-box>p{font-size:13px}
-.wab-template-cards{grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}
-.wab-template-card{min-height:68px;padding:12px;border-radius:11px}
-.wab-template-card strong{font-size:13px}.wab-template-card small{font-size:12px}
-.wab-template-card:hover,.wab-template-card.active{box-shadow:none;border-color:var(--brand);background:var(--brand-tint)}
-.wab-template-box>.wab-hint{margin-top:10px}
-.wab-input,.wab-select,.wab-search{height:44px}
-.wab-more summary{min-height:36px}.wab-link{min-height:34px}
-.wab-toolbar{margin-top:4px}.wab-table-wrap{max-height:440px}
-.wab-table td{padding:12px}.wab-table th{padding:11px 12px}
-.wab-seg span{height:40px}
-.wab-variables{border-bottom:1px solid var(--line)}
-.wab-variables summary{display:flex;align-items:center;justify-content:space-between;list-style:none;min-height:42px;padding:0 13px;cursor:pointer;font-size:12px;font-weight:600;color:var(--muted)}
-.wab-variables summary::-webkit-details-marker{display:none}
-.wab-variables[open] summary i{transform:rotate(180deg)}
-.wab-chips{border-top:1px solid var(--line);border-bottom:0;flex-wrap:wrap;overflow:visible}
-.wab-chip{min-height:30px}.wab-summary{gap:14px}
-.wab-btn.secondary{background:var(--wab-fill-2);color:var(--text);border:1px solid var(--line)}
-.wab-btn.secondary:hover:not(:disabled){filter:none;background:var(--line-2)}
-.wab-send-divider{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px;font-weight:600}
-.wab-send-divider:after{content:"";height:1px;background:var(--line);flex:1}
-.wab-summary .wab-hint{margin-top:-9px}
-.wab-hist-item{grid-template-columns:minmax(0,1.6fr) 160px minmax(180px,1fr) auto}
-.wab :is(button,a,input,textarea,select,summary):focus-visible{outline:2px solid var(--brand);outline-offset:2px}
-@media(max-width:800px){.wab-followup-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:767.98px){.wab-card{padding:16px}.wab-head-links{flex-wrap:wrap}.wab-followup-card{min-height:110px;padding:12px}.wab-template-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.wab-hist-item{grid-template-columns:minmax(0,1fr) auto}.wab-hist{margin:0 -16px}}
-@media(max-width:420px){.wab-followup-grid,.wab-template-cards{grid-template-columns:1fr 1fr}.wab-followup-card{min-height:130px}.wab-followup-card span{line-height:1.25}}
 
-.wab-recipient-details{grid-column:1/-1;border-top:1px solid var(--line);padding-top:8px}
-.wab-recipient-details summary{width:max-content;max-width:100%;min-height:36px;display:flex;align-items:center;color:var(--accent-text);font-size:13px;font-weight:600;cursor:pointer}
-.wab-recipient-content{max-height:360px;overflow:auto;font-size:12px;color:var(--muted)}
-.wab-recipient-table{width:100%;border-collapse:collapse;min-width:640px;color:var(--text)}
-.wab-recipient-table th,.wab-recipient-table td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
-.wab-recipient-table th{position:sticky;top:0;background:var(--panel);font-size:11px;color:var(--muted)}
-.wab-recipient-table td:last-child{max-width:300px;overflow-wrap:anywhere}
+/* Smart Audience — filter utama dibuat selalu terlihat agar admin cepat membaca scope broadcast. */
+.wab-audience-presets{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:2px 0 4px}
+.wab-audience-presets>span{font-size:12px;font-weight:650;color:var(--muted);margin-right:2px}
+.wab-preset{appearance:none;border:1px solid var(--line);background:var(--wab-fill);color:var(--text);height:30px;padding:0 11px;border-radius:999px;font:inherit;font-size:12.5px;font-weight:550;cursor:pointer;transition:background .15s,border-color .15s,color .15s,transform .1s}
+.wab-preset:hover{background:var(--wab-fill-2);border-color:var(--line-2)}
+.wab-preset:active{transform:scale(.98)}
+.wab-preset.is-active{background:var(--brand-tint);border-color:rgba(var(--brand-rgb),.25);color:var(--accent-text)}
+.wab-preset.ghost{color:var(--muted)}
+.wab-filter-primary{display:grid;grid-template-columns:minmax(260px,1.5fr) minmax(150px,.8fr) minmax(130px,.65fr) minmax(130px,.65fr) 105px;gap:10px;align-items:end}
+.wab-filter-primary>label,.wab-filter-status>label{display:grid;gap:6px;min-width:0}
+.wab-filter-primary>label>span,.wab-filter-status>label>span{font-size:12px;font-weight:500;color:var(--muted)}
+.wab-filter-primary .wab-search{align-self:end}
+.wab-filter-status{display:grid;grid-template-columns:minmax(180px,240px) minmax(0,1fr);gap:10px;align-items:end}
+.wab-safety-note{min-height:40px;display:flex;align-items:center;gap:8px;padding:9px 11px;border:1px solid var(--line);border-radius:10px;background:var(--success-tint);font-size:12px;color:var(--muted)}
+.wab-safety-note i{color:var(--success);font-size:14px;flex:0 0 auto}
+
+@media (max-width:1100px){
+  .wab-filter-primary{grid-template-columns:minmax(240px,1.5fr) repeat(2,minmax(140px,1fr))}
+  .wab-filter-primary>label:nth-child(4),.wab-filter-primary>label:nth-child(5){grid-column:auto}
+}
+@media (max-width:767.98px){
+  .wab-filter-primary,.wab-filter-status{grid-template-columns:minmax(0,1fr)}
+  .wab-audience-presets{flex-wrap:nowrap;overflow-x:auto;padding-bottom:6px;scrollbar-width:none}
+  .wab-audience-presets::-webkit-scrollbar{display:none}
+  .wab-audience-presets>*{flex:0 0 auto}
+}

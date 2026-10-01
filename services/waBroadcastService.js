@@ -2,153 +2,114 @@
 // sehingga semua lapisan anti-ban (jam kerja, kuota/jam, jeda acak, long pause, blacklist, auto-pause)
 // berlaku otomatis. Tabel wa_broadcasts hanya menyimpan metadata kampanye + status pause/cancel.
 const db = require('../config/db');
-const crypto = require('crypto');
 const tpl = require('./waTemplateService');
 const { enqueueWaMessage } = require('./whatsappGatewayService');
 
 const MAX_RECIPIENTS = 1000;
-const APPROVAL_THRESHOLD = 100;
-const BILLING_VARS = /\{(?:nominal_tagihan|nomor_invoice|tanggal_jatuh_tempo|periode|nominal|jatuh_tempo|no_faktur)\}/i;
-function invoiceScope(value) {
-  if (value === undefined || value === null || value === '') return 'current';
-  if (!['current', 'previous', 'two_months', 'custom', 'all_open'].includes(value)) throw new Error('Pilihan periode tagihan tidak valid.');
-  return value;
-}
-function invoiceSelection(src = {}) {
-  const invoice_scope = invoiceScope(src.invoice_scope);
-  const invoice_from = String(src.invoice_from || '');
-  const invoice_to = String(src.invoice_to || '');
-  if (invoice_scope === 'custom') {
-    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(invoice_from) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(invoice_to)) throw new Error('Isi bulan awal dan akhir tagihan dengan benar.');
-    const [a, b] = [invoice_from, invoice_to].map(s => Number(s.slice(0, 4)) * 12 + Number(s.slice(5)));
-    if (b < a || b - a >= 12) throw new Error('Rentang tagihan harus berurutan dan maksimal 12 bulan.');
-  }
-  return { invoice_scope, invoice_from: invoice_scope === 'custom' ? invoice_from : '', invoice_to: invoice_scope === 'custom' ? invoice_to : '' };
-}
-function scopedInvoicePredicate(filter) {
-  const { invoice_scope: scope, invoice_from, invoice_to } = invoiceSelection(filter);
-  const base = `ix.status IN ('unpaid','partial','overdue') AND ix.outstanding>0 AND ix.archived_at IS NULL`;
-  if (scope === 'all_open') return base;
-  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Jakarta', year: 'numeric', month: 'numeric' }).formatToParts(new Date());
-  const year = Number(parts.find(p => p.type === 'year').value);
-  const month = Number(parts.find(p => p.type === 'month').value);
-  const previous = month === 1 ? [year - 1, 12] : [year, month - 1];
-  const periods = scope === 'previous' ? [previous] : scope === 'two_months' ? [previous, [year, month]] : scope === 'custom'
-    ? Array.from({ length: (Number(invoice_to.slice(0, 4)) * 12 + Number(invoice_to.slice(5))) - (Number(invoice_from.slice(0, 4)) * 12 + Number(invoice_from.slice(5))) + 1 }, (_, i) => {
-      const index = Number(invoice_from.slice(0, 4)) * 12 + Number(invoice_from.slice(5)) - 1 + i;
-      return [Math.floor(index / 12), index % 12 + 1];
-    }) : [[year, month]];
-  return `${base} AND (${periods.map(([y, m]) => `(ix.period_year=${y} AND ix.period_month=${m})`).join(' OR ')})`;
-}
 const BILLING_FILTERS = {
   all: 'Semua pelanggan aktif',
+  open: 'Belum bayar',
   active: 'Aktif (tanpa tunggakan)',
   due_h3: 'Jatuh tempo H-3',
   due_h1: 'Jatuh tempo H-1',
   due_today: 'Jatuh tempo hari ini',
-  follow_up: 'Lewat tempo · masa toleransi',
-  isolation_ready: 'Memenuhi syarat isolir',
   overdue: 'Menunggak (lewat jatuh tempo)',
-  isolated: 'Terisolir',
+  isolation_due: 'Wajib isolir',
+  isolated: 'Sudah terisolir',
 };
 
-const OPEN_INV = `SELECT 1 FROM invoices ix WHERE ix.customer_id=c.id AND ix.status IN ('unpaid','partial','overdue') AND ix.outstanding>0 AND ix.archived_at IS NULL`;
-const GRACE_INV = `SELECT 1 FROM invoices ix JOIN sites sx ON sx.id=c.site_id CROSS JOIN settings st
-  WHERE ix.customer_id=c.id AND ix.status IN ('unpaid','partial','overdue') AND ix.outstanding>0 AND ix.archived_at IS NULL
-  AND ix.due_date<CURDATE() AND CURDATE()<=DATE_ADD(ix.due_date, INTERVAL COALESCE(c.grace_days,sx.default_grace_days,st.default_grace_days,2) DAY)`;
-const READY_INV = `SELECT 1 FROM invoices ix JOIN sites sx ON sx.id=c.site_id CROSS JOIN settings st
-  WHERE ix.customer_id=c.id AND ix.status IN ('unpaid','partial','overdue') AND ix.outstanding>0 AND ix.archived_at IS NULL
-  AND CURDATE()>DATE_ADD(ix.due_date, INTERVAL COALESCE(c.grace_days,sx.default_grace_days,st.default_grace_days,2) DAY)`;
+function normalizeFilter(filter = {}) {
+  const month = Number(filter.period_month);
+  const year = Number(filter.period_year);
+  const dueDay = Number(filter.due_day);
+  return {
+    ...filter,
+    billing: BILLING_FILTERS[filter.billing] ? filter.billing : 'all',
+    period_month: Number.isInteger(month) && month >= 1 && month <= 12 ? month : null,
+    period_year: Number.isInteger(year) && year >= 2020 && year <= 2100 ? year : null,
+    due_day: [15, 30].includes(dueDay) ? dueDay : null,
+  };
+}
+
+function scopedInvoiceWhere(filter = {}, alias = 'ix', { openOnly = false, safeBilling = false } = {}) {
+  const f = normalizeFilter(filter);
+  const parts = [`${alias}.customer_id=c.id`, `${alias}.archived_at IS NULL`];
+  if (openOnly) parts.push(`${alias}.status IN ('unpaid','partial','overdue')`, `${alias}.outstanding>0`);
+  if (f.period_month) parts.push(`${alias}.period_month=${f.period_month}`);
+  if (f.period_year) parts.push(`${alias}.period_year=${f.period_year}`);
+  if (f.due_day) parts.push(`DAY(${alias}.due_date)=${f.due_day}`);
+  if (safeBilling) parts.push(`NOT EXISTS (SELECT 1 FROM payments wp WHERE wp.invoice_id=${alias}.id AND wp.status='pending')`);
+  return parts.join(' AND ');
+}
 
 function buildWhere(filter = {}) {
+  const f = normalizeFilter(filter);
   const where = [`c.archived_at IS NULL`, `c.customer_status='active'`];
   const params = [];
-  switch (filter.billing) {
-    case 'active': where.push(`NOT EXISTS (${OPEN_INV} AND ix.due_date<CURDATE())`, `c.network_status<>'isolated'`); break;
-    case 'due_h3': where.push(`EXISTS (${OPEN_INV} AND ix.due_date=DATE_ADD(CURDATE(),INTERVAL 3 DAY))`); break;
-    case 'due_h1': where.push(`EXISTS (${OPEN_INV} AND ix.due_date=DATE_ADD(CURDATE(),INTERVAL 1 DAY))`); break;
-    case 'due_today': where.push(`c.network_status<>'isolated'`, `EXISTS (${OPEN_INV} AND ix.due_date=CURDATE())`); break;
-    case 'follow_up': where.push(`c.network_status<>'isolated'`, `EXISTS (${GRACE_INV})`); break;
-    case 'isolation_ready': where.push(`c.network_status<>'isolated'`, `c.router_id IS NOT NULL`, `c.pppoe_username IS NOT NULL`,
-      `(c.isolate_hold_until IS NULL OR c.isolate_hold_until<CURDATE())`, `EXISTS (${READY_INV})`); break;
-    case 'overdue': where.push(`EXISTS (${OPEN_INV} AND ix.due_date<CURDATE())`); break;
+  const openSafe = scopedInvoiceWhere(f, 'ix', { openOnly: true, safeBilling: true });
+  const scopedAny = scopedInvoiceWhere(f, 'ix', { openOnly: false, safeBilling: false });
+  const graceExpr = `COALESCE(c.grace_days,(SELECT sx.default_grace_days FROM sites sx WHERE sx.id=c.site_id),(SELECT st.default_grace_days FROM settings st WHERE st.id=1),2)`;
+
+  switch (f.billing) {
+    case 'open': where.push(`EXISTS (SELECT 1 FROM invoices ix WHERE ${openSafe})`); break;
+    case 'active': where.push(`NOT EXISTS (SELECT 1 FROM invoices ix WHERE ${scopedInvoiceWhere(f, 'ix', { openOnly: true })} AND ix.due_date<CURDATE())`, `c.network_status<>'isolated'`); break;
+    case 'due_h3': where.push(`EXISTS (SELECT 1 FROM invoices ix WHERE ${openSafe} AND ix.due_date=DATE_ADD(CURDATE(),INTERVAL 3 DAY))`); break;
+    case 'due_h1': where.push(`EXISTS (SELECT 1 FROM invoices ix WHERE ${openSafe} AND ix.due_date=DATE_ADD(CURDATE(),INTERVAL 1 DAY))`); break;
+    case 'due_today': where.push(`EXISTS (SELECT 1 FROM invoices ix WHERE ${openSafe} AND ix.due_date=CURDATE())`); break;
+    case 'overdue': where.push(`EXISTS (SELECT 1 FROM invoices ix WHERE ${openSafe} AND ix.due_date<CURDATE())`); break;
+    case 'isolation_due': where.push(`EXISTS (SELECT 1 FROM invoices ix WHERE ${openSafe} AND CURDATE()>DATE_ADD(ix.due_date,INTERVAL ${graceExpr} DAY))`, `c.network_status<>'isolated'`); break;
     case 'isolated': where.push(`c.network_status='isolated'`); break;
-    default: break;
+    default:
+      // Periode/JT yang dipilih tetap membatasi audience walaupun status tagihan = Semua.
+      if (f.period_month || f.period_year || f.due_day) where.push(`EXISTS (SELECT 1 FROM invoices ix WHERE ${scopedAny})`);
+      break;
   }
+
   for (const [key, col] of [['site_id', 'c.site_id'], ['cluster_id', 'c.cluster_id'], ['router_id', 'c.router_id'], ['olt_id', 'c.olt_id'], ['package_id', 'c.package_id']]) {
-    const v = Number(filter[key]); if (Number.isInteger(v) && v > 0) { where.push(`${col}=?`); params.push(v); }
+    const v = Number(f[key]); if (Number.isInteger(v) && v > 0) { where.push(`${col}=?`); params.push(v); }
   }
-  if (filter.vlan) { where.push(`c.vlan=?`); params.push(String(filter.vlan).trim().slice(0, 20)); }
-  if (filter.q) {
-    const like = `%${String(filter.q).trim().slice(0, 80)}%`;
+  if (f.vlan) { where.push(`c.vlan=?`); params.push(String(f.vlan).trim().slice(0, 20)); }
+  if (f.q) {
+    const like = `%${String(f.q).trim().slice(0, 80)}%`;
     where.push(`(c.name LIKE ? OR c.customer_code LIKE ? OR c.phone LIKE ? OR c.whatsapp_normalized LIKE ? OR c.address LIKE ?)`);
     params.push(like, like, like, like, like);
   }
-  const ids = [].concat(filter.customer_ids || []).map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, MAX_RECIPIENTS);
+  const ids = [].concat(f.customer_ids || []).map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, MAX_RECIPIENTS);
   if (ids.length) { where.push(`c.id IN (${ids.map(() => '?').join(',')})`); params.push(...ids); }
-  return { sql: where.join(' AND '), params };
+  return { sql: where.join(' AND '), params, filter: f };
 }
 
 async function listCandidates(filter = {}, { limit = 500 } = {}) {
-  const { sql, params } = buildWhere(filter);
-  const scoped = scopedInvoicePredicate(filter);
-  const [rows] = await db.query(`SELECT c.id,c.customer_code,c.name,c.phone,c.whatsapp_status,c.whatsapp_normalized,c.address,c.network_status,c.vlan,
-      p.name package_name,p.speed_label,p.price package_price,cl.name cluster_name,r.name router_name,s.code site_code,
-      (SELECT MIN(ix.due_date) FROM invoices ix WHERE ix.customer_id=c.id AND ${scoped}) next_due,
-      (SELECT MIN(DATE_ADD(ix.due_date, INTERVAL COALESCE(c.grace_days,s.default_grace_days,(SELECT default_grace_days FROM settings WHERE id=1),2) DAY))
-        FROM invoices ix WHERE ix.customer_id=c.id AND ${scoped}) grace_until,
-      c.isolate_hold_until,
-      (SELECT COALESCE(SUM(ix.outstanding),0) FROM invoices ix WHERE ix.customer_id=c.id AND ${scoped}) outstanding,
-      (SELECT COUNT(*) FROM invoices ix WHERE ix.customer_id=c.id AND ${scoped}) open_invoice_count,
-      (SELECT GROUP_CONCAT(ix.invoice_number ORDER BY ix.period_year,ix.period_month,ix.id SEPARATOR ', ') FROM invoices ix
-        WHERE ix.customer_id=c.id AND ${scoped}) open_invoice_numbers,
-      (SELECT GROUP_CONCAT(CONCAT(ix.period_year,'-',LPAD(ix.period_month,2,'0')) ORDER BY ix.period_year,ix.period_month SEPARATOR ', ') FROM invoices ix
-        WHERE ix.customer_id=c.id AND ${scoped}) invoice_periods,
-      (SELECT MIN(ix.id) FROM invoices ix WHERE ix.customer_id=c.id AND ${scoped}) scoped_invoice_id,
+  const built = buildWhere(filter);
+  const { sql, params, filter: f } = built;
+  // Kolom tagihan pada tabel mengikuti scope periode/JT yang sedang dipilih agar preview tidak menampilkan bulan lain.
+  const financialAudience = ['open','due_h3','due_h1','due_today','overdue','isolation_due'].includes(f.billing);
+  const openScope = scopedInvoiceWhere(f, 'ix', { openOnly: true, safeBilling: financialAudience });
+  const [rows] = await db.query(`SELECT c.id,c.customer_code,c.name,c.phone,c.whatsapp_status,c.whatsapp_normalized,c.address,c.network_status,c.vlan,c.due_day,
+      p.name package_name,p.speed_label,cl.name cluster_name,r.name router_name,s.code site_code,s.name site_name,
+      (SELECT ix.id FROM invoices ix WHERE ${openScope} ORDER BY ix.due_date ASC,ix.id ASC LIMIT 1) invoice_id,
+      (SELECT MIN(ix.due_date) FROM invoices ix WHERE ${openScope}) next_due,
+      (SELECT COALESCE(SUM(ix.outstanding),0) FROM invoices ix WHERE ${openScope}) outstanding,
+      0 pending_payment,
       EXISTS(SELECT 1 FROM wa_blacklist b WHERE b.phone=c.whatsapp_normalized) blacklisted
     FROM customers c LEFT JOIN packages p ON p.id=c.package_id LEFT JOIN clusters cl ON cl.id=c.cluster_id
       LEFT JOIN routers r ON r.id=c.router_id LEFT JOIN sites s ON s.id=c.site_id
-    WHERE ${sql} ORDER BY c.name ASC LIMIT ${Math.min(MAX_RECIPIENTS, Math.max(1, Number(limit) || 500))}`, params);
-  const [[count]] = await db.query(`SELECT COUNT(*) total,
-    SUM(CASE WHEN c.phone IS NOT NULL AND c.phone<>'' AND COALESCE(c.whatsapp_status,'')<>'invalid'
-      AND NOT EXISTS(SELECT 1 FROM wa_blacklist b WHERE b.phone=c.whatsapp_normalized)
-      ${filter.require_invoice ? `AND EXISTS(SELECT 1 FROM invoices ix WHERE ix.customer_id=c.id AND ${scoped})` : ''} THEN 1 ELSE 0 END) eligible
-    FROM customers c WHERE ${sql}`, params);
-  return { rows, total: Number(count.total || 0), eligible: Number(count.eligible || 0) };
+    WHERE ${sql} ORDER BY s.code,c.name ASC LIMIT ${Math.min(MAX_RECIPIENTS, Math.max(1, Number(limit) || 500))}`, params);
+  const [[count]] = await db.query(`SELECT COUNT(*) total FROM customers c WHERE ${sql}`, params);
+  return { rows, total: Number(count.total || 0), filter: f };
 }
 
 async function filterOptions() {
   const q = async sql => { try { const [r] = await db.query(sql); return r; } catch (_) { return []; } };
   return {
-    sites: await q(`SELECT id,code,name FROM sites ORDER BY code`),
+    sites: await q(`SELECT id,code,name FROM sites WHERE is_active=1 ORDER BY code`),
     clusters: await q(`SELECT id,name FROM clusters ORDER BY name`),
     routers: await q(`SELECT id,name FROM routers ORDER BY name`),
     olts: await q(`SELECT id,name FROM olt_devices ORDER BY name`),
     packages: await q(`SELECT id,name,speed_label FROM packages WHERE archived_at IS NULL ORDER BY name`),
     vlans: (await q(`SELECT DISTINCT vlan FROM customers WHERE vlan IS NOT NULL AND vlan<>'' ORDER BY vlan`)).map(r => r.vlan),
+    periods: await q(`SELECT DISTINCT period_year year,period_month month FROM invoices WHERE archived_at IS NULL ORDER BY period_year DESC,period_month DESC LIMIT 36`),
   };
-}
-
-function broadcastVars(row, candidate, bank, extra = {}) {
-  if (!candidate) return tpl.buildVars(row || {}, bank, extra);
-  const period = [...new Set(String(candidate.invoice_periods || '').split(', ').filter(Boolean))].map(value => {
-    const [year, month] = value.split('-').map(Number);
-    return `${new Intl.DateTimeFormat('id-ID', { month: 'long', timeZone: 'Asia/Jakarta' }).format(new Date(Date.UTC(year, month - 1, 1)))} ${year}`;
-  }).join(' dan ');
-  return { ...tpl.buildVars({ ...(row || {}), amount: candidate.outstanding,
-    invoice_number: candidate.open_invoice_numbers || '-', due_date: candidate.next_due || null,
-    period_month: null, period_year: null }, bank, extra), periode: period || '-' };
-}
-
-async function followUpSummary() {
-  const keys = ['due_today', 'follow_up', 'isolation_ready', 'isolated'];
-  const counts = await Promise.all(keys.map(async key => {
-    const { sql, params } = buildWhere({ billing: key });
-    const [[row]] = await db.query(`SELECT COUNT(*) total FROM customers c WHERE ${sql}`, params);
-    return [key, Number(row?.total || 0)];
-  }));
-  const [[settings]] = await db.query('SELECT auto_isolate FROM settings WHERE id=1');
-  return { counts: Object.fromEntries(counts), autoIsolate: !!Number(settings?.auto_isolate) };
 }
 
 // scheduledAt: string "YYYY-MM-DDTHH:mm" (waktu WIB dari input datetime-local) atau Date.
@@ -163,58 +124,38 @@ function parseSchedule(value) {
   return d;
 }
 
-async function createBroadcast({ name, templateKey = null, message, extra = {}, filter = {}, mode = 'direct', scheduledAt = null, userId = null, media = null, mediaFile = null, requestKey = null }) {
+async function createBroadcast({ name, templateKey = null, message, extra = {}, filter = {}, mode = 'direct', scheduledAt = null, userId = null }) {
   const text = String(message || '').trim();
   if (!text) throw new Error('Naskah pesan wajib diisi.');
   if (text.length > 4000) throw new Error('Naskah pesan maksimal 4000 karakter.');
-  if ([].concat(filter.customer_ids || []).length > MAX_RECIPIENTS) throw new Error(`Maksimal ${MAX_RECIPIENTS} pelanggan per broadcast.`);
   const when = mode === 'scheduled' ? parseSchedule(scheduledAt) : null;
   if (mode === 'scheduled' && !when) throw new Error('Tanggal & jam jadwal wajib diisi.');
-  const needsInvoice = BILLING_VARS.test(text);
-  const { rows } = await listCandidates({ ...filter, require_invoice: needsInvoice }, { limit: MAX_RECIPIENTS });
-  if ([].concat(filter.customer_ids || []).length) {
-    const requested = new Set([].concat(filter.customer_ids).map(Number));
-    if (rows.length !== requested.size) throw new Error('Sebagian pelanggan pilihan tidak aktif atau tidak ditemukan. Perbarui daftar penerima sebelum mengirim.');
-  }
-  if (!rows.length) throw new Error('Tidak ada penerima yang cocok dengan filter/pilihan.');
-  const eligibleCount = rows.filter(c => c.whatsapp_status !== 'invalid' && c.phone && !Number(c.blacklisted) && (!needsInvoice || Number(c.open_invoice_count) > 0)).length;
-  if (!eligibleCount) throw new Error('Tidak ada penerima dengan invoice terbuka pada periode pilihan dan nomor WhatsApp yang layak.');
-  if (mediaFile) media = await require('./waInboxService').saveMediaBuffer(mediaFile.buffer, mediaFile.mimetype, mediaFile.originalname);
-  const cleanExtra = {
-    detail_gangguan: String(extra.detail_gangguan || '').slice(0, 500) || undefined,
-    estimasi_selesai: String(extra.estimasi_selesai || '').slice(0, 120) || undefined,
-    jadwal_pemeliharaan: String(extra.jadwal_pemeliharaan || '').slice(0, 180) || undefined,
-    isi_pengumuman: String(extra.isi_pengumuman || '').slice(0, 1200) || undefined,
-  };
-  const needsApproval = eligibleCount > APPROVAL_THRESHOLD;
-  const key = /^[a-f0-9-]{36}$/i.test(String(requestKey || '')) ? `${userId}:${requestKey}` : `${userId}:${crypto.randomUUID()}`;
-  let r;
-  try {
-    [r] = await db.execute(`INSERT INTO wa_broadcasts(request_key,name,template_key,message_template,extra_vars_json,filter_json,mode,scheduled_at,status,created_by) VALUES(?,?,?,?,?,?,?,?,?,?)`,
-    [key, String(name || 'Broadcast').slice(0, 160), templateKey, text, JSON.stringify(cleanExtra), JSON.stringify({ ...filter, customer_ids: undefined, selected: [].concat(filter.customer_ids || []).length }), mode, when, needsApproval ? 'pending_approval' : (when ? 'scheduled' : 'running'), userId]);
-  } catch (e) {
-    if (e.code !== 'ER_DUP_ENTRY') throw e;
-    const [[existing]] = await db.execute(`SELECT id,total_recipients,skipped_blacklist,skipped_invalid,scheduled_at,status FROM wa_broadcasts WHERE request_key=?`, [key]);
-    if (!existing?.total_recipients) throw new Error('Permintaan ini masih disiapkan atau terhenti. Periksa riwayat broadcast sebelum mengirim ulang.');
-    return { id: existing.id, queued: existing.total_recipients, skippedBlacklist: existing.skipped_blacklist, skippedInvalid: existing.skipped_invalid, skippedNoInvoice: 0, scheduledAt: existing.scheduled_at, pendingApproval: existing.status === 'pending_approval', duplicate: true };
-  }
+
+  // FINAL RE-CHECK: kandidat selalu dibaca ulang dari database tepat saat tombol Kirim/Jadwalkan ditekan.
+  // Filter finansial juga mengecualikan invoice yang memiliki pembayaran pending agar pelanggan yang sedang
+  // menunggu approval tidak menerima reminder/isolasi yang salah.
+  const fresh = await listCandidates(filter, { limit: MAX_RECIPIENTS });
+  const rows = fresh.rows;
+  if (!rows.length) throw new Error('Tidak ada penerima yang masih cocok setelah pengecekan ulang.');
+  const cleanExtra = { detail_gangguan: String(extra.detail_gangguan || '').slice(0, 500) || undefined, estimasi_selesai: String(extra.estimasi_selesai || '').slice(0, 120) || undefined };
+  const storedFilter = { ...fresh.filter, customer_ids: undefined, selected: [].concat(filter.customer_ids || []).length, rechecked_at: new Date().toISOString() };
+  const [r] = await db.execute(`INSERT INTO wa_broadcasts(name,template_key,message_template,extra_vars_json,filter_json,mode,scheduled_at,status,created_by) VALUES(?,?,?,?,?,?,?,?,?)`,
+    [String(name || 'Broadcast').slice(0, 160), templateKey, text, JSON.stringify(cleanExtra), JSON.stringify(storedFilter), mode, when, when ? 'scheduled' : 'running', userId]);
   const broadcastId = r.insertId;
-  const batchDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
-  const approvalBatch = needsApproval ? `broadcast_${broadcastId}:${batchDate}` : null;
   const bank = await tpl.getDefaultBank();
-  let queued = 0, skippedBlacklist = 0, skippedInvalid = 0, skippedNoInvoice = 0;
+  let queued = 0, skippedBlacklist = 0, skippedInvalid = 0, skippedPending = 0;
   for (const c of rows) {
     if (c.whatsapp_status === 'invalid' || !c.phone) { skippedInvalid++; continue; }
     if (Number(c.blacklisted)) { skippedBlacklist++; continue; }
-    if (needsInvoice && !Number(c.open_invoice_count)) { skippedNoInvoice++; continue; }
-    const row = await tpl.loadCustomerRow(c.id);
-    const body = tpl.renderTemplate(text, broadcastVars(row || c, c, bank, cleanExtra));
-    const res = await enqueueWaMessage({ phone: c.phone, message: body, customerId: c.id, invoiceId: Number(c.open_invoice_count) === 1 ? c.scoped_invoice_id : null, type: 'broadcast', userId, broadcastId, scheduledAt: when, approvalBatch, media });
-    if (res.status === 'queued' || res.status === 'pending_approval') queued++; else if (res.status === 'cancelled') skippedBlacklist++; else skippedInvalid++;
+    if (Number(c.pending_payment) && ['open','due_h3','due_h1','due_today','overdue','isolation_due'].includes(fresh.filter.billing)) { skippedPending++; continue; }
+    const row = await tpl.loadCustomerRow(c.id, { invoiceId: c.invoice_id || null });
+    const body = tpl.renderTemplate(text, tpl.buildVars(row || c, bank, cleanExtra));
+    const res = await enqueueWaMessage({ phone: c.phone, message: body, customerId: c.id, invoiceId: row?.invoice_id || null, type: 'broadcast', userId, broadcastId, scheduledAt: when });
+    if (res.status === 'queued') queued++; else if (res.status === 'cancelled') skippedBlacklist++; else skippedInvalid++;
   }
-  await db.execute(`UPDATE wa_broadcasts SET total_recipients=?,skipped_blacklist=?,skipped_invalid=? WHERE id=?`, [queued, skippedBlacklist, skippedInvalid, broadcastId]);
-  console.log(`WA broadcast #${broadcastId} "${name}": ${queued} antre, ${skippedBlacklist} blacklist, ${skippedInvalid} nomor tidak valid${when ? `, jadwal ${when.toISOString()}` : ''}`);
-  return { id: broadcastId, queued, skippedBlacklist, skippedInvalid, skippedNoInvoice, scheduledAt: when, pendingApproval: needsApproval };
+  await db.execute(`UPDATE wa_broadcasts SET total_recipients=?,skipped_blacklist=?,skipped_invalid=? WHERE id=?`, [queued, skippedBlacklist, skippedInvalid + skippedPending, broadcastId]);
+  console.log(`WA broadcast #${broadcastId} "${name}": ${queued} antre, ${skippedBlacklist} blacklist, ${skippedInvalid} nomor tidak valid, ${skippedPending} pending pembayaran${when ? `, jadwal ${when.toISOString()}` : ''}`);
+  return { id: broadcastId, queued, matched: rows.length, skippedBlacklist, skippedInvalid, skippedPending, scheduledAt: when };
 }
 
 async function setBroadcastStatus(id, action, userId = null) {
@@ -231,12 +172,6 @@ async function setBroadcastStatus(id, action, userId = null) {
     if (['completed', 'cancelled'].includes(b.status)) throw new Error('Broadcast sudah selesai/dibatalkan.');
     await db.execute(`UPDATE wa_broadcasts SET status='cancelled' WHERE id=?`, [id]);
     await db.execute(`UPDATE wa_messages SET status='cancelled',error_message='Broadcast dibatalkan Admin.' WHERE broadcast_id=? AND status IN ('queued','pending_approval')`, [id]);
-  } else if (action === 'retry') {
-    if (b.status === 'cancelled') throw new Error('Broadcast yang dibatalkan tidak dapat dikirim ulang.');
-    const [r] = await db.execute(`UPDATE wa_messages SET status='queued',attempts=0,next_attempt_at=NULL,error_message=NULL WHERE broadcast_id=? AND status='failed'`, [id]);
-    if (!r.affectedRows) throw new Error('Tidak ada pesan gagal untuk dikirim ulang.');
-    await db.execute(`UPDATE wa_broadcasts SET status='running' WHERE id=?`, [id]);
-    require('./whatsappGatewayService').processQueue();
   } else throw new Error('Aksi tidak dikenal.');
   return { ok: true };
 }
@@ -258,4 +193,4 @@ async function listBroadcasts(limit = 30) {
   return rows;
 }
 
-module.exports = { BILLING_FILTERS, MAX_RECIPIENTS, APPROVAL_THRESHOLD, BILLING_VARS, invoiceScope, invoiceSelection, buildWhere, listCandidates, filterOptions, followUpSummary, broadcastVars, createBroadcast, setBroadcastStatus, refreshBroadcastStatuses, listBroadcasts, parseSchedule };
+module.exports = { BILLING_FILTERS, MAX_RECIPIENTS, normalizeFilter, buildWhere, listCandidates, filterOptions, createBroadcast, setBroadcastStatus, refreshBroadcastStatuses, listBroadcasts, parseSchedule };

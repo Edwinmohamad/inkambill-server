@@ -1,0 +1,13 @@
+<% if(typeof workspace!=='undefined' && workspace){ %>
+<section class="role-workspace role-<%= workspace.id %>" aria-label="<%= workspace.label %>">
+  <div class="role-workspace-copy">
+    <span class="role-workspace-icon"><i class="bi <%= workspace.icon %>"></i></span>
+    <div><small>WORKSPACE AKTIF</small><h2><%= workspace.label %></h2><p><%= workspace.subtitle %></p></div>
+  </div>
+  <div class="role-workspace-actions">
+    <% workspace.actions.forEach(a=>{ %>
+      <a href="<%= a.href %>"><i class="bi <%= a.icon %>"></i><span><b><%= a.title %></b><small><%= a.detail %></small></span><em class="bi bi-chevron-right"></em></a>
+    <% }) %>
+  </div>
+</section>
+<% } %>

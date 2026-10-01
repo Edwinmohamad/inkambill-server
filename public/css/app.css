@@ -2853,3 +2853,12 @@ html[data-theme] .recon-apple-v2 .app-table thead th{
   .recon-apple-v2 .recon-metrics .metric-card:nth-child(odd):not(:first-child){border-left:0}
   .recon-apple-v2 .recon-actions .btn-tech{flex:1 1 auto;justify-content:center}
 }
+
+/* v1.32 — Approval/Transaksi + Rekonsiliasi period filter polish */
+.recon-apple-v2 .recon-filter-grid{align-items:end}
+.recon-apple-v2 .recon-filter-context{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:10px;padding:9px 11px;border:1px solid var(--line);border-radius:11px;background:var(--panel-2);color:var(--muted);font-size:.72rem;line-height:1.35}
+.recon-apple-v2 .recon-filter-context i{color:var(--brand);font-size:.8rem}
+.recon-apple-v2 .recon-filter-context strong{color:var(--text);font-weight:700}
+.recon-apple-v2 .recon-period-caption{display:block;margin-top:3px;color:var(--brand)!important;font-weight:650}
+.payment-period-control .form-control,.payment-date-control .form-control{min-height:38px}
+@media(max-width:700px){.recon-apple-v2 .recon-filter-context{margin-top:8px}.recon-apple-v2 .recon-filter-context span{max-width:100%}}

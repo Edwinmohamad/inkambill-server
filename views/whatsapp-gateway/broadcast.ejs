@@ -1,8 +1,8 @@
 <link rel="stylesheet" href="/css/wa-broadcast.css?v=<%= assetVersion %>-ui2">
 <%
   const pad2 = v => String(v).padStart(2, '0');
-  const statusTone = { pending_approval: 'purple', scheduled: 'purple', running: 'orange', paused: 'gray', completed: 'green', cancelled: 'red' };
-  const statusLabel = { pending_approval: 'Menunggu Persetujuan', scheduled: 'Terjadwal', running: 'Berjalan', paused: 'Dijeda', completed: 'Selesai', cancelled: 'Dibatalkan' };
+  const statusTone = { scheduled: 'purple', running: 'orange', paused: 'gray', completed: 'green', cancelled: 'red' };
+  const statusLabel = { scheduled: 'Terjadwal', running: 'Berjalan', paused: 'Dijeda', completed: 'Selesai', cancelled: 'Dibatalkan' };
   const fmt = v => new Date(v).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'medium', timeStyle: 'short' });
   const hours = `${pad2(antiban.workStartHour)}.00–${pad2(antiban.workEndHour)}.00`;
 %>
@@ -13,11 +13,11 @@
   <header class="wab-head">
     <div>
       <p class="wab-eyebrow">WhatsApp CRM</p>
-      <h1>Pusat Pesan Pelanggan</h1>
-      <p class="wab-lede">Siapkan komunikasi layanan dan kirim kepada pelanggan yang tepat.</p>
+      <h1>Broadcast</h1>
+      <p class="wab-lede">Kirim pesan ke pelanggan terpilih, sekarang atau terjadwal.</p>
     </div>
     <nav class="wab-head-links">
-      <a href="/wa-inbox"><i class="bi bi-chat"></i>Inbox WhatsApp</a>
+      <a href="/wa-inbox"><i class="bi bi-chat"></i>Inbox</a>
       <a href="/wa-gateway#antiban"><i class="bi bi-shield"></i>Anti-ban</a>
     </nav>
   </header>
@@ -44,24 +44,6 @@
     <p class="wab-hint">Nomor opt-out dilewati. Broadcast di luar jam kirim menunggu jam kerja berikutnya.</p>
   </details>
 
-  <section class="wab-card wab-followup" aria-label="Tindak lanjut pelanggan">
-    <div class="wab-card-head"><div><h2>Kontrol Tindak Lanjut</h2><p>Data tagihan aktif diperbarui dari sistem. Klik kelompok untuk melihat pelanggan dan menyiapkan pesan.</p></div></div>
-    <div class="wab-followup-grid">
-      <% [
-        ['due_today','Jatuh tempo hari ini','Ingatkan pembayaran dan verifikasi bukti.'],
-        ['follow_up','Lewat tempo · masa toleransi','Hubungi sebelum batas toleransi berakhir.'],
-        ['isolation_ready','Memenuhi syarat isolir','Tinjau tagihan dan kondisi jaringan sebelum tindakan.'],
-        ['isolated','Sudah terisolir','Tindak lanjuti pembayaran dan pemulihan layanan.']
-      ].forEach(([key,label,detail])=>{ %>
-        <button type="button" class="wab-followup-card" data-follow-up="<%= key %>">
-          <strong data-follow-up-count="<%= key %>"><%= followUp.counts[key]||0 %></strong>
-          <span><%= label %></span><small><%= detail %></small>
-        </button>
-      <% }); %>
-    </div>
-    <p class="wab-hint" id="wabIsolationNote">Isolir otomatis <%= followUp.autoIsolate?'aktif':'nonaktif' %>. Status "memenuhi syarat isolir" mengikuti jatuh tempo, masa toleransi, data PPPoE/router, dan penundaan isolir; ini bukan perintah isolir.</p>
-  </section>
-
   <div class="wab-layout">
     <div class="wab-main">
 
@@ -72,14 +54,32 @@
         </div>
 
         <form class="wab-filter" id="wabFilter">
-          <div class="wab-filter-top">
-            <label class="wab-search"><i class="bi bi-search"></i><input name="q" placeholder="Cari nama, ID, no. HP, alamat" aria-label="Cari pelanggan" autocomplete="off"></label>
-            <select class="wab-select" name="billing" aria-label="Status tagihan"><% Object.entries(billingFilters).forEach(([k,v])=>{ %><option value="<%= k %>"><%= v %></option><% }) %></select>
+          <div class="wab-audience-presets" aria-label="Smart Audience">
+            <span>Smart Audience</span>
+            <button type="button" class="wab-preset" data-preset="due15">JT 15 belum bayar</button>
+            <button type="button" class="wab-preset" data-preset="due30">JT 30 belum bayar</button>
+            <button type="button" class="wab-preset" data-preset="overdue">Menunggak</button>
+            <button type="button" class="wab-preset" data-preset="isolation_due">Wajib isolir</button>
+            <button type="button" class="wab-preset" data-preset="isolated">Sudah isolir</button>
+            <button type="button" class="wab-preset ghost" data-preset="reset">Reset</button>
           </div>
+
+          <div class="wab-filter-primary">
+            <label class="wab-search"><i class="bi bi-search"></i><input name="q" placeholder="Cari nama, ID, no. HP, alamat" aria-label="Cari pelanggan" autocomplete="off"></label>
+            <label><span>Site</span><select class="wab-select" name="site_id"><option value="">Semua Site</option><% options.sites.forEach(o=>{ %><option value="<%= o.id %>"><%= o.code %> · <%= o.name %></option><% }) %></select></label>
+            <label><span>Jatuh tempo</span><select class="wab-select" name="due_day"><option value="">Semua JT</option><option value="15">Tanggal 15</option><option value="30">Tanggal 30</option></select></label>
+            <label><span>Bulan tagihan</span><select class="wab-select" name="period_month"><option value="">Semua bulan</option><% const mn=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des']; mn.forEach((m,i)=>{ %><option value="<%= i+1 %>"><%= m %></option><% }) %></select></label>
+            <label><span>Tahun</span><select class="wab-select" name="period_year"><option value="">Semua tahun</option><% const years=[...new Set((options.periods||[]).map(x=>Number(x.year)).filter(Boolean))]; if(!years.length){ const y=new Date().getFullYear(); years.push(y,y-1); } years.forEach(y=>{ %><option value="<%= y %>"><%= y %></option><% }) %></select></label>
+          </div>
+
+          <div class="wab-filter-status">
+            <label><span>Status audience</span><select class="wab-select" name="billing" aria-label="Status tagihan"><% Object.entries(billingFilters).forEach(([k,v])=>{ %><option value="<%= k %>"><%= v %></option><% }) %></select></label>
+            <div class="wab-safety-note"><i class="bi bi-shield-check"></i><span>Audience finansial otomatis mengecualikan pembayaran yang masih menunggu approval.</span></div>
+          </div>
+
           <details class="wab-more">
             <summary>Filter jaringan &amp; paket <span class="wab-badge" id="wabFilterCount" hidden></span><i class="bi bi-chevron-down"></i></summary>
             <div class="wab-filter-grid">
-              <label><span>Site</span><select class="wab-select" name="site_id"><option value="">Semua</option><% options.sites.forEach(o=>{ %><option value="<%= o.id %>"><%= o.code %> · <%= o.name %></option><% }) %></select></label>
               <label><span>Cluster / Node</span><select class="wab-select" name="cluster_id"><option value="">Semua</option><% options.clusters.forEach(o=>{ %><option value="<%= o.id %>"><%= o.name %></option><% }) %></select></label>
               <label><span>Router POP</span><select class="wab-select" name="router_id"><option value="">Semua</option><% options.routers.forEach(o=>{ %><option value="<%= o.id %>"><%= o.name %></option><% }) %></select></label>
               <label><span>OLT</span><select class="wab-select" name="olt_id"><option value="">Semua</option><% options.olts.forEach(o=>{ %><option value="<%= o.id %>"><%= o.name %></option><% }) %></select></label>
@@ -88,12 +88,6 @@
             </div>
           </details>
         </form>
-
-        <div class="wab-presets">
-          <select class="wab-select" id="wabPreset"><option value="">Segmen tersimpan…</option></select>
-          <button type="button" class="wab-link" id="wabPresetSave"><i class="bi bi-bookmark-plus"></i>Simpan filter</button>
-          <button type="button" class="wab-link" id="wabPresetDelete"><i class="bi bi-trash3"></i>Hapus</button>
-        </div>
 
         <div class="wab-toolbar">
           <span class="wab-count" id="wabCount">Memuat…</span>
@@ -110,12 +104,12 @@
           </table>
         </div>
 
-        <div class="wab-row-label">Kirim ke <span id="wabEligibleNote"></span></div>
+        <div class="wab-row-label">Kirim ke</div>
         <div class="wab-seg" role="radiogroup" aria-label="Target penerima">
           <label><input type="radio" name="target_mode" value="filter" checked><span>Semua hasil filter<em id="wabTotalLabel">0</em></span></label>
           <label><input type="radio" name="target_mode" value="selected"><span>Hanya yang dipilih<em id="wabSelectedLabel">0</em></span></label>
         </div>
-        <p class="wab-hint">Kolom tagihan menampilkan sisa invoice terbuka sesuai periode yang dipilih di bagian Pesan. Filter status jatuh tempo tetap mengacu pada seluruh kewajiban pelanggan. Maksimal <%= maxRecipients %> penerima.</p>
+        <p class="wab-hint">Maksimal <%= maxRecipients %> penerima per broadcast. Nomor opt-out/tidak valid dilewati. Saat Kirim ditekan, audience dicek ulang terhadap status pembayaran terbaru.</p>
       </section>
 
       <section class="wab-card">
@@ -124,47 +118,18 @@
           <div><h2>Pesan</h2><p>Variabel diisi otomatis sesuai data tiap pelanggan.</p></div>
         </div>
 
-        <div class="wab-template-box" aria-label="Template komunikasi ISP">
-          <strong>Mulai dari template</strong>
-          <p>Pilih naskah layanan, lalu sesuaikan sebelum mengirim.</p>
-          <div class="wab-template-cards">
-            <% [
-              ['isp_reminder','Pengingat tagihan ISP','Menjelang jatuh tempo'],
-              ['isp_overdue','Tunggakan ISP','Lewat jatuh tempo'],
-              ['isp_outage','Gangguan ISP','Penanganan jaringan'],
-              ['isp_recovery','Layanan pulih','Koneksi normal kembali'],
-              ['isp_maintenance','Pemeliharaan ISP','Jadwal pekerjaan'],
-            ].forEach(([key,label,detail])=>{ if(templates.some(t=>t.template_key===key)){ %>
-              <button type="button" class="wab-template-card" data-template-pick="<%= key %>"><strong><%= label %></strong><small><%= detail %></small></button>
-            <% } }); %>
-          </div>
-          <p class="wab-hint">Template lainnya tersedia pada pilihan Template di bawah.</p>
-        </div>
-
         <div class="wab-grid-2">
           <label class="wab-field"><span>Nama broadcast</span><input class="wab-input" id="wabName" maxlength="160" placeholder="Info gangguan Cluster A"></label>
           <label class="wab-field"><span>Template</span><select class="wab-select" id="wabTemplate"><option value="">Tulis manual</option><% templates.forEach(t=>{ %><option value="<%= t.template_key %>"><%= t.title %></option><% }) %></select></label>
         </div>
-        <label class="wab-field"><span>Invoice yang dicantumkan dalam pesan tagihan</span><select class="wab-select" id="wabInvoiceScope"><option value="current">Bulan ini saja</option><option value="previous">Bulan sebelumnya saja</option><option value="two_months">Bulan ini + bulan sebelumnya</option><option value="custom">Pilih rentang bulan</option><option value="all_open">Seluruh tunggakan terbuka</option></select></label>
-        <div class="wab-grid-2" id="wabInvoiceRange" hidden>
-          <label class="wab-field"><span>Dari bulan</span><input class="wab-input" type="month" id="wabInvoiceFrom"></label>
-          <label class="wab-field"><span>Sampai bulan</span><input class="wab-input" type="month" id="wabInvoiceTo"></label>
-        </div>
-        <p class="wab-hint">Nominal dijumlahkan dari sisa invoice terbuka milik pelanggan dalam cakupan pilihan. Rentang khusus maksimal 12 bulan. Pelanggan tanpa invoice pada cakupan itu dilewati untuk pesan tagihan.</p>
 
         <div class="wab-grid-2 wab-outage" id="wabOutage" hidden>
           <label class="wab-field"><span>Detail gangguan <code>{detail_gangguan}</code></span><input class="wab-input" id="wabDetail" maxlength="500" placeholder="Putus kabel fiber di jalur utama"></label>
           <label class="wab-field"><span>Estimasi selesai <code>{estimasi_selesai}</code></span><input class="wab-input" id="wabEta" maxlength="120" placeholder="Hari ini pukul 17.00 WIB"></label>
         </div>
-        <div class="wab-grid-2 wab-outage" id="wabMaintenance" hidden>
-          <label class="wab-field"><span>Jadwal pemeliharaan <code>{jadwal_pemeliharaan}</code></span><input class="wab-input" id="wabMaintenanceAt" maxlength="180" placeholder="Senin, 28 September 2026 pukul 01.00–03.00 WIB"></label>
-        </div>
-        <div class="wab-outage" id="wabAnnouncement" hidden>
-          <label class="wab-field"><span>Isi pengumuman <code>{isi_pengumuman}</code></span><textarea class="wab-input" id="wabAnnouncementText" rows="3" maxlength="1200" placeholder="Tuliskan isi pengumuman…"></textarea></label>
-        </div>
 
         <div class="wab-compose">
-          <details class="wab-variables"><summary>Sisipkan data pelanggan <i class="bi bi-chevron-down"></i></summary><div class="wab-chips" aria-label="Sisipkan variabel"><% variables.forEach(([k,label])=>{ %><button type="button" class="wab-chip" data-insert="{<%= k %>}" title="<%= label %>">{<%= k %>}</button><% }) %></div></details>
+          <div class="wab-chips" aria-label="Sisipkan variabel"><% variables.forEach(([k,label])=>{ %><button type="button" class="wab-chip" data-insert="{<%= k %>}" title="<%= label %>">{<%= k %>}</button><% }) %></div>
           <textarea id="wabMessage" rows="9" maxlength="4000" placeholder="Tulis pesan…" aria-label="Naskah pesan"></textarea>
           <div class="wab-compose-foot">
             <span id="wabChars">0 / 4000</span>
@@ -172,7 +137,6 @@
           </div>
         </div>
         <p class="wab-hint">Spintax seperti <code>{Yth.|Kepada Yth.}</code> membuat tiap pesan sedikit berbeda.</p>
-        <label class="wab-field"><span>Lampiran opsional (JPG, PNG, WEBP, PDF · maks. 6 MB)</span><input class="wab-input" id="wabFile" type="file" accept="image/jpeg,image/png,image/webp,application/pdf"></label>
         <div class="wab-previews" id="wabPreviews"></div>
       </section>
     </div>
@@ -196,14 +160,6 @@
           <div><dt>Perkiraan durasi</dt><dd id="wabSumEta">–</dd></div>
           <div><dt>Naskah</dt><dd id="wabSumMsg">Belum diisi</dd></div>
         </dl>
-
-        <label class="wab-field"><span>Pelanggan contoh untuk pesan uji</span><select class="wab-select" id="wabTestCustomer"><option value="">Gunakan data contoh (bukan pelanggan nyata)</option></select></label>
-        <label class="wab-field"><span>Nomor uji Admin</span><input class="wab-input" id="wabTestPhone" inputmode="tel" placeholder="62812…"></label>
-        <button type="button" class="wab-btn secondary" id="wabTestSend"><i class="bi bi-phone"></i>Kirim pesan uji</button>
-
-        <div class="wab-send-divider"><span>Pengiriman pelanggan</span></div>
-        <button type="button" class="wab-btn secondary" id="wabManualSend"><i class="bi bi-person-check"></i>Kirim ke 1 pelanggan</button>
-        <p class="wab-hint">Pilih tepat satu pelanggan untuk pengiriman manual.</p>
 
         <button type="button" class="wab-btn" id="wabSubmit" <%= blastEnabled?'':'disabled' %>><i class="bi bi-send-fill"></i>Buat broadcast</button>
         <div class="wab-result" id="wabResult" hidden></div>

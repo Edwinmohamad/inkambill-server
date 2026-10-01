@@ -1,0 +1,50 @@
+/* INKAMBILL Dashboard Clickable Final */
+.command-dashboard .dashboard-clickable-card{
+  cursor:pointer;
+  position:relative;
+  transition:background .14s ease,border-color .14s ease,transform .14s ease,box-shadow .14s ease;
+}
+.command-dashboard .dashboard-clickable-card:hover{
+  border-color:color-mix(in srgb,var(--brand) 38%,var(--line))!important;
+  background:color-mix(in srgb,var(--brand) 4%,var(--panel-2));
+}
+.command-dashboard .dashboard-clickable-card:focus-visible{
+  outline:2px solid color-mix(in srgb,var(--brand) 68%,transparent);
+  outline-offset:2px;
+}
+.command-dashboard .dashboard-clickable-card::after{
+  content:"↗";
+  position:absolute;
+  top:9px;
+  right:10px;
+  color:var(--muted);
+  opacity:0;
+  font-size:10px;
+  transition:opacity .14s ease,transform .14s ease;
+}
+.command-dashboard .dashboard-clickable-card:hover::after,
+.command-dashboard .dashboard-clickable-card:focus-visible::after{
+  opacity:.6;
+  transform:translate(1px,-1px);
+}
+.command-dashboard .bcc-summary.dashboard-clickable-card::after,
+.command-dashboard .bcc-alert.dashboard-clickable-card::after{
+  content:"⌄";
+}
+.command-dashboard .bcc-summary.dashboard-clickable-card.is-selected{
+  border-color:color-mix(in srgb,var(--brand) 54%,var(--line))!important;
+  background:color-mix(in srgb,var(--brand) 9%,var(--panel-2));
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--brand) 13%,transparent);
+}
+.command-dashboard .bcc-summary.dashboard-clickable-card.is-selected::after{
+  content:"✓";
+  opacity:.85;
+  color:var(--accent-text);
+}
+.command-dashboard .dashboard-click-hint{
+  display:inline-flex;align-items:center;gap:4px;
+  margin-top:3px;color:var(--muted);font-size:8px;font-weight:650;
+}
+@media(prefers-reduced-motion:reduce){
+  .command-dashboard .dashboard-clickable-card{transition:none!important}
+}

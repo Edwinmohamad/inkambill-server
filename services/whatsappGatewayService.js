@@ -192,7 +192,7 @@ async function handleWahaWebhookEvent(event) {
     const { sessionName } = await getWahaConfig();
     if (event.session && sessionName && String(event.session) !== String(sessionName)) return;
     const inbox = require('./waInboxService');
-    if (type === 'message') return inbox.ingestInbound(event.payload || {});
+    if (type === 'message') await inbox.ingestInbound(event.payload || {});
     else await inbox.handleAck(event.payload || {});
   }
 }
@@ -205,24 +205,12 @@ async function startGateway({ manual = false } = {}) {
       // Bug lama: keputusan diambil dari mirror in-memory yang bisa basi ("connected" padahal WAHA
       // sudah STOPPED) sehingga tombol Connect tidak melakukan apa-apa. Selalu cek WAHA dulu.
       await reconcileGatewayStatus();
-      if (connectionState === 'connected' || connectionState === 'qr_pending') {
-        if (manual) {
-          const config = await getWahaConfig({ fresh: true });
-          const url = callbackUrl(config);
-          if (!url) throw new Error('Callback webhook WAHA belum tersedia. Periksa APP_URL dan token webhook.');
-          const session = await waha.startSession(url, { repairWebhooks: true });
-          if (waha.missingWebhook(session, url) === null) {
-            console.warn('WA Inbox: pastikan webhook message dan message.ack terdaftar di panel WAHA; API sesi tidak menampilkan konfigurasinya.');
-          }
-          await reconcileGatewayStatus();
-        }
-        return getGatewayStatus();
-      }
+      if (connectionState === 'connected' || connectionState === 'qr_pending') return getGatewayStatus();
       if (connectionState === 'connecting' && !(startingSince && Date.now() - startingSince > STARTING_STUCK_MS)) return getGatewayStatus();
       connectionState = 'connecting';
       qrDataUrl = null;
       const config = await getWahaConfig({ fresh: true });
-      await waha.startSession(callbackUrl(config), { repairWebhooks: manual });
+      await waha.startSession(callbackUrl(config));
       await reconcileGatewayStatus();
     } catch (e) {
       connectionState = 'disconnected';
@@ -365,7 +353,7 @@ function localDateKey(d = new Date()) {
 function approvalBatchKey(source, date = new Date()) { return `${source}:${localDateKey(date)}`; }
 function describeBatch(key) {
   const [source, date] = String(key || '').split(':');
-  return { key, source, date, label: source.startsWith('broadcast_') ? `Broadcast #${source.slice(10)}` : (BATCH_LABELS[source] || source) };
+  return { key, source, date, label: BATCH_LABELS[source] || source };
 }
 
 async function listPendingBatches({ itemLimit = 500 } = {}) {
@@ -396,12 +384,10 @@ async function approveBatch(batch, userId) {
     [userId, batch]
   );
   const [ok] = await db.execute(
-    `UPDATE wa_messages SET status='queued',approved_by=?,approved_at=NOW(),next_attempt_at=scheduled_at WHERE approval_batch=? AND status='pending_approval'`,
+    `UPDATE wa_messages SET status='queued',approved_by=?,approved_at=NOW(),next_attempt_at=NULL WHERE approval_batch=? AND status='pending_approval'`,
     [userId, batch]
   );
   if (ok.affectedRows) processQueue();
-  const source = String(batch).split(':')[0];
-  if (source.startsWith('broadcast_')) await db.execute(`UPDATE wa_broadcasts SET status=IF(scheduled_at IS NOT NULL AND scheduled_at>NOW(),'scheduled','running') WHERE id=? AND status='pending_approval'`, [Number(source.slice(10))]);
   return { approved: Number(ok.affectedRows || 0), skippedPaid: Number(stale.affectedRows || 0) };
 }
 
@@ -410,8 +396,6 @@ async function rejectBatch(batch, userId) {
     `UPDATE wa_messages SET status='rejected',approved_by=?,approved_at=NOW(),error_message='Dibatalkan oleh Admin.' WHERE approval_batch=? AND status='pending_approval'`,
     [userId, batch]
   );
-  const source = String(batch).split(':')[0];
-  if (source.startsWith('broadcast_')) await db.execute(`UPDATE wa_broadcasts SET status='cancelled' WHERE id=? AND status='pending_approval'`, [Number(source.slice(10))]);
   return { rejected: Number(r.affectedRows || 0) };
 }
 
@@ -467,6 +451,30 @@ async function markChatMessage(row, patch) {
   } catch (e) { console.error('WA queue: gagal update status chat:', e.message); }
 }
 
+async function cancelStaleFinancialBroadcast(row) {
+  if (!row?.broadcast_id || !row?.customer_id || !row?.invoice_id || row.message_type !== 'broadcast') return false;
+  try {
+    const [[b]] = await db.execute(`SELECT filter_json FROM wa_broadcasts WHERE id=? LIMIT 1`, [row.broadcast_id]);
+    let filter = {};
+    try { filter = b?.filter_json ? JSON.parse(b.filter_json) : {}; } catch (_) { filter = {}; }
+    if (!['open','due_h3','due_h1','due_today','overdue','isolation_due'].includes(filter.billing)) return false;
+    const [[state]] = await db.execute(`SELECT i.status,i.outstanding,
+        EXISTS(SELECT 1 FROM payments p WHERE p.invoice_id=i.id AND p.status='pending') pending_payment
+      FROM invoices i WHERE i.id=? AND i.customer_id=? LIMIT 1`, [row.invoice_id, row.customer_id]);
+    const stale = !state || !['unpaid','partial','overdue'].includes(state.status) || Number(state.outstanding || 0) <= 0 || Number(state.pending_payment || 0) > 0;
+    if (!stale) return false;
+    const reason = Number(state?.pending_payment || 0) > 0
+      ? 'Broadcast dibatalkan otomatis: pembayaran sedang menunggu approval.'
+      : 'Broadcast dibatalkan otomatis: tagihan sudah tidak outstanding.';
+    await db.execute(`UPDATE wa_messages SET status='cancelled',error_message=? WHERE id=? AND status='queued'`, [reason, row.id]);
+    if (row.broadcast_id) realtime().emit('broadcast.progress', { broadcastId: row.broadcast_id });
+    return true;
+  } catch (e) {
+    console.error(`WA queue: gagal final-check broadcast #${row.broadcast_id}:`, e.message);
+    return false; // fail-open agar gangguan query tambahan tidak menghentikan seluruh queue.
+  }
+}
+
 async function nextQueuedRow(bulkAllowed) {
   const bulkList = antiBan.BULK_TYPES.map(() => '?').join(',');
   const [[row]] = await db.execute(
@@ -497,6 +505,9 @@ async function processQueue() {
       const row = await nextQueuedRow(gate.allowed);
       if (!row) break;
       const isBulk = antiBan.BULK_TYPES.includes(row.message_type);
+      // Scheduled financial broadcasts are checked again immediately before send.
+      // If the invoice was paid or a payment entered pending approval after scheduling, skip safely.
+      if (await cancelStaleFinancialBroadcast(row)) continue;
       if (isBulk && await antiBan.isBlacklisted(row.phone)) {
         await db.execute(`UPDATE wa_messages SET status='cancelled',error_message='Dibatalkan: nomor opt-out (blacklist broadcast).' WHERE id=?`, [row.id]);
         continue;

@@ -9,7 +9,7 @@
   const AB = { min: Number(root.dataset.minDelay) || 0, max: Number(root.dataset.maxDelay) || 0, hourly: Number(root.dataset.hourly) || 0 };
   const MAX_CHARS = 4000;
   const selected = new Set();
-  let rows = []; let total = 0; let eligible = 0; let requestKey = null; let manualKey = null;
+  let rows = []; let total = 0;
 
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = text; return e; };
   const num = v => new Intl.NumberFormat('id-ID').format(Number(v || 0));
@@ -17,63 +17,31 @@
   const fmtDate = v => v ? new Date(v).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta' }) : '-';
   const fmtDateTime = v => new Date(v).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'medium', timeStyle: 'short' });
   const NET = { online: ['green', 'Online'], offline: ['gray', 'Offline'], isolated: ['red', 'Terisolir'], router_unreachable: ['orange', 'Router ?'] };
-  const STATUS = { pending_approval: ['purple', 'Menunggu Persetujuan'], scheduled: ['purple', 'Terjadwal'], running: ['orange', 'Berjalan'], paused: ['gray', 'Dijeda'], completed: ['green', 'Selesai'], cancelled: ['red', 'Dibatalkan'] };
-  const isSelectable = r => !r.blacklisted && r.whatsapp_status !== 'invalid' && (!isBillingMessage() || Number(r.open_invoice_count) > 0);
+  const STATUS = { scheduled: ['purple', 'Terjadwal'], running: ['orange', 'Berjalan'], paused: ['gray', 'Dijeda'], completed: ['green', 'Selesai'], cancelled: ['red', 'Dibatalkan'] };
+  const isSelectable = r => !r.blacklisted && r.whatsapp_status !== 'invalid';
   const emptyRow = (colspan, text) => { const tr = el('tr'); const td = el('td', 'wab-empty', text); td.colSpan = colspan; tr.appendChild(td); return tr; };
 
-  async function api(url, { method = 'GET', body = null, form = null } = {}) {
+  async function api(url, { method = 'GET', body = null } = {}) {
     const opts = { method, headers: { Accept: 'application/json' }, cache: 'no-store' };
-    if (method !== 'GET') { opts.headers['X-CSRF-Token'] = csrf; if (form) opts.body = form; else { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body || {}); } }
+    if (method !== 'GET') { opts.headers['X-CSRF-Token'] = csrf; opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body || {}); }
     const res = await fetch(url, opts); let data;
     try { data = await res.json(); } catch (_) { data = { ok: false, message: `HTTP ${res.status}` }; }
     if (!res.ok || data.ok === false) throw new Error(data.message || `HTTP ${res.status}`);
     return data;
   }
-  const isBillingMessage = () => /\{(?:nominal_tagihan|nomor_invoice|tanggal_jatuh_tempo|periode|nominal|jatuh_tempo|no_faktur)\}/i.test($('#wabMessage').value);
-  const invoiceParams = () => ({ invoice_scope: $('#wabInvoiceScope').value, invoice_from: $('#wabInvoiceFrom').value, invoice_to: $('#wabInvoiceTo').value });
-  const filterParams = () => { const p = new URLSearchParams(); new FormData($('#wabFilter')).forEach((v, k) => { if (v) p.append(k, v); }); Object.entries(invoiceParams()).forEach(([k, v]) => p.set(k, v)); p.set('require_invoice', isBillingMessage() ? '1' : '0'); return p; };
+  const filterParams = () => { const p = new URLSearchParams(); new FormData($('#wabFilter')).forEach((v, k) => { if (v) p.append(k, v); }); return p; };
   const filterObject = () => Object.fromEntries(filterParams());
-  const PRESET_KEY = 'inkamnet.wa.broadcast.segments.v1';
-  const readPresets = () => { try { const v = JSON.parse(localStorage.getItem(PRESET_KEY) || '{}'); return v && typeof v === 'object' ? v : {}; } catch (_) { return {}; } };
-  function renderPresets() {
-    const s = $('#wabPreset'); const current = s.value; s.replaceChildren(el('option', null, 'Segmen tersimpan…'));
-    for (const name of Object.keys(readPresets()).sort((a, b) => a.localeCompare(b, 'id'))) { const o = el('option', null, name); o.value = name; s.appendChild(o); }
-    if ([...s.options].some(o => o.value === current)) s.value = current;
-  }
-  $('#wabPresetSave').addEventListener('click', () => {
-    const name = prompt('Nama segmen pelanggan:', $('#wabName').value || 'Segmen baru'); if (!name?.trim()) return;
-    const p = readPresets(); p[name.trim().slice(0, 80)] = filterObject(); localStorage.setItem(PRESET_KEY, JSON.stringify(p)); renderPresets(); $('#wabPreset').value = name.trim().slice(0, 80);
-  });
-  $('#wabPresetDelete').addEventListener('click', () => { const name = $('#wabPreset').value; if (!name || !confirm(`Hapus segmen "${name}"?`)) return; const p = readPresets(); delete p[name]; localStorage.setItem(PRESET_KEY, JSON.stringify(p)); renderPresets(); });
-  async function refreshFollowUp() {
-    try {
-      const data = await api('/wa-gateway/broadcast/api/follow-up');
-      $$('[data-follow-up-count]').forEach(node => { node.textContent = num(data.counts[node.dataset.followUpCount] || 0); });
-      $('#wabIsolationNote').textContent = `Isolir otomatis ${data.autoIsolate ? 'aktif' : 'nonaktif'}. Status "memenuhi syarat isolir" mengikuti jatuh tempo, masa toleransi, data PPPoE/router, dan penundaan isolir; ini bukan perintah isolir.`;
-    } catch (_) { /* angka terakhir tetap tampil sampai halaman dimuat ulang */ }
-  }
-  $$('[data-follow-up]').forEach(card => card.addEventListener('click', () => {
-    $('#wabFilter').reset();
-    $('#wabFilter').elements.billing.value = card.dataset.followUp;
-    selected.clear();
-    $('input[name="target_mode"][value="filter"]').checked = true;
-    $$('[data-follow-up]').forEach(item => item.classList.toggle('active', item === card));
-    updateFilterBadge(); loadCandidates();
-    $('#wabFilter').scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }));
-  setInterval(refreshFollowUp, 60000);
-  $('#wabPreset').addEventListener('change', e => {
-    const data = readPresets()[e.target.value]; if (!data) return;
-    for (const field of $('#wabFilter').elements) if (field.name) field.value = data[field.name] || '';
-    selected.clear(); updateFilterBadge(); loadCandidates();
-  });
 
   /* Penerima */
   async function loadCandidates() {
     $('#wabCount').textContent = 'Memuat…';
     try {
       const d = await api(`/wa-gateway/broadcast/api/candidates?${filterParams()}`);
-      rows = d.rows; total = d.total; eligible = d.eligible; renderRows();
+      rows = d.rows; total = d.total;
+      // Pilihan manual selalu mengikuti hasil filter terbaru agar jumlah penerima di UI tidak menipu.
+      const liveIds = new Set(rows.map(r => Number(r.id)));
+      for (const id of [...selected]) if (!liveIds.has(Number(id))) selected.delete(id);
+      renderRows();
     } catch (e) { $('#wabCount').textContent = `Gagal memuat: ${e.message}`; }
   }
   function renderRows() {
@@ -91,34 +59,22 @@
       const c2 = el('td'); c2.appendChild(el('span', 'wab-mono', r.phone || '-'));
       if (r.blacklisted) c2.appendChild(el('span', 'wab-sub', 'Opt-out'));
       else if (r.whatsapp_status !== 'valid') c2.appendChild(el('span', 'wab-sub', `WA ${r.whatsapp_status || 'belum dicek'}`));
-      const c3 = el('td');
-      c3.appendChild(el('strong', null, r.package || '-'));
-      if (r.package_price != null) c3.appendChild(el('span', 'wab-sub', `Harga paket ${rupiah(r.package_price)}/bulan`));
-      const c4 = el('td', null, [r.cluster_name, r.router_name].filter(Boolean).join(' · ') || '-');
+      const c3 = el('td', null, r.package || '-');
+      const c4 = el('td');
+      c4.append(el('strong', null, r.site_code || '-'), el('span', 'wab-sub', [r.cluster_name, r.router_name].filter(Boolean).join(' · ') || 'Tanpa cluster'));
       const c5 = el('td');
-      if (Number(r.outstanding) > 0) {
-        c5.append(el('strong', null, rupiah(r.outstanding)), el('span', 'wab-sub', `Total belum dibayar · ${num(r.open_invoice_count)} invoice`));
-        c5.appendChild(el('span', 'wab-sub', r.open_invoice_numbers || ''));
-        c5.appendChild(el('span', 'wab-sub', `Jatuh tempo tertua ${fmtDate(r.next_due)}`));
-        if (r.grace_until) c5.appendChild(el('span', 'wab-sub', `Batas toleransi ${fmtDate(r.grace_until)}`));
-        if (r.isolate_hold_until) c5.appendChild(el('span', 'wab-sub', `Tunda isolir sampai ${fmtDate(r.isolate_hold_until)}`));
-      }
-      else c5.appendChild(el('span', 'wab-sub', 'Tidak ada invoice terbuka pada periode ini'));
+      if (Number(r.outstanding) > 0) c5.append(el('strong', null, rupiah(r.outstanding)), el('span', 'wab-sub', `Jatuh tempo ${fmtDate(r.next_due)}`));
+      else c5.appendChild(el('span', 'wab-sub', 'Lunas'));
       const n = NET[r.network_status] || ['gray', r.network_status || '-'];
       const c6 = el('td'); c6.appendChild(el('span', `wab-pill ${n[0]}`, n[1]));
       tr.append(c0, c1, c2, c3, c4, c5, c6); tb.appendChild(tr);
     }
-    const sample = $('#wabTestCustomer'); const previous = sample.value;
-    sample.replaceChildren(el('option', null, 'Gunakan data contoh (bukan pelanggan nyata)'));
-    for (const r of rows.filter(isSelectable)) { const option = el('option', null, `${r.name} · ${r.customer_code}`); option.value = r.id; sample.appendChild(option); }
-    if ([...sample.options].some(o => o.value === previous)) sample.value = previous;
     updateCounts();
   }
   function updateCounts() {
     const cnt = $('#wabCount'); cnt.replaceChildren();
     cnt.append(el('b', null, num(total)), ` pelanggan cocok${total > rows.length ? ` · ${num(rows.length)} ditampilkan` : ''} · `, el('b', null, num(selected.size)), ' dipilih');
-    $('#wabTotalLabel').textContent = num(eligible);
-    $('#wabEligibleNote').textContent = `${num(eligible)} dari ${num(total)} pelanggan cocok layak masuk antrean`; 
+    $('#wabTotalLabel').textContent = num(total);
     $('#wabSelectedLabel').textContent = num(selected.size);
     const selectable = rows.filter(isSelectable);
     const all = $('#wabCheckAll');
@@ -138,6 +94,30 @@
     const n = $$('.wab-more select').filter(s => s.value).length;
     const b = $('#wabFilterCount'); b.hidden = !n; b.textContent = n;
   }
+
+  // Preset audience hanya mengisi filter; user tetap melihat daftar penerima sebelum mengirim.
+  const setField = (name, value) => {
+    const node = $(`[name="${name}"]`, $('#wabFilter'));
+    if (!node) return;
+    const str = String(value ?? '');
+    if (node.tagName === 'SELECT' && str && ![...node.options].some(o => o.value === str)) {
+      const opt = document.createElement('option'); opt.value = str; opt.textContent = str; node.appendChild(opt);
+    }
+    node.value = str;
+  };
+  const currentPeriod = () => { const d = new Date(); return { month: d.getMonth() + 1, year: d.getFullYear() }; };
+  $$('.wab-preset').forEach(btn => btn.addEventListener('click', () => {
+    const p = btn.dataset.preset; const now = currentPeriod();
+    if (p === 'reset') { $('#wabFilter').reset(); selected.clear(); }
+    else {
+      setField('period_month', now.month); setField('period_year', now.year);
+      setField('due_day', p === 'due15' ? 15 : p === 'due30' ? 30 : '');
+      setField('billing', p === 'due15' || p === 'due30' ? 'open' : p);
+    }
+    $$('.wab-preset').forEach(x => x.classList.toggle('is-active', x === btn && p !== 'reset'));
+    updateFilterBadge(); loadCandidates();
+  }));
+
   let t = null;
   $('#wabFilter').addEventListener('input', () => { clearTimeout(t); t = setTimeout(loadCandidates, 300); });
   $('#wabFilter').addEventListener('change', () => { updateFilterBadge(); clearTimeout(t); t = setTimeout(loadCandidates, 50); });
@@ -149,36 +129,17 @@
   function onMessageChange() {
     const len = msg.value.length; const c = $('#wabChars');
     c.textContent = `${num(len)} / ${num(MAX_CHARS)}`; c.classList.toggle('is-near', len > MAX_CHARS * 0.9);
-    $('#wabOutage').hidden = !outageRe.test(msg.value);
-    $('#wabMaintenance').hidden = !/\{jadwal_pemeliharaan\}/.test(msg.value);
-    $('#wabAnnouncement').hidden = !/\{isi_pengumuman\}/.test(msg.value);
-    clearTimeout(t); t = setTimeout(loadCandidates, 300);
+    if (outageRe.test(msg.value)) $('#wabOutage').hidden = false;
     updateSummary();
   }
   $('#wabTemplate').addEventListener('change', e => {
     const tpl = templates.find(x => x.key === e.target.value);
     if (tpl && (!msg.value.trim() || confirm('Ganti naskah dengan template terpilih?'))) msg.value = tpl.body;
     $('#wabOutage').hidden = e.target.value !== 'outage' && !outageRe.test(msg.value);
-    $('#wabMaintenance').hidden = e.target.value !== 'maintenance' && !/\{jadwal_pemeliharaan\}/.test(msg.value);
-    $('#wabAnnouncement').hidden = e.target.value !== 'announcement' && !/\{isi_pengumuman\}/.test(msg.value);
     if (!$('#wabName').value && tpl) $('#wabName').value = tpl.title;
     onMessageChange();
   });
-  $$('[data-template-pick]').forEach(button => button.addEventListener('click', () => {
-    const select = $('#wabTemplate');
-    select.value = button.dataset.templatePick;
-    select.dispatchEvent(new Event('change'));
-    $$('[data-template-pick]').forEach(item => item.classList.toggle('active', item === button));
-  }));
   msg.addEventListener('input', onMessageChange);
-  function updateInvoiceSelection() {
-    $('#wabInvoiceRange').hidden = $('#wabInvoiceScope').value !== 'custom';
-    requestKey = null; manualKey = null; $('#wabPreviews').replaceChildren();
-    if ($('#wabInvoiceScope').value !== 'custom' || ($('#wabInvoiceFrom').value && $('#wabInvoiceTo').value)) loadCandidates();
-    else $('#wabCount').textContent = 'Pilih rentang bulan tagihan.';
-  }
-  $('#wabInvoiceScope').addEventListener('change', updateInvoiceSelection);
-  ['#wabInvoiceFrom', '#wabInvoiceTo'].forEach(selector => $(selector).addEventListener('change', updateInvoiceSelection));
   $$('[data-insert]').forEach(b => b.addEventListener('click', () => {
     const s = msg.selectionStart ?? msg.value.length; const e = msg.selectionEnd ?? s;
     msg.value = msg.value.slice(0, s) + b.dataset.insert + msg.value.slice(e);
@@ -191,7 +152,7 @@
     const btn = $('#wabPreviewBtn'); btn.disabled = true;
     try {
       const firstId = [...selected][0] || rows[0]?.id || null;
-      const d = await api('/wa-gateway/broadcast/api/preview', { method: 'POST', body: { message: msg.value, customer_id: firstId, ...invoiceParams(), detail_gangguan: $('#wabDetail').value, estimasi_selesai: $('#wabEta').value, jadwal_pemeliharaan: $('#wabMaintenanceAt').value, isi_pengumuman: $('#wabAnnouncementText').value } });
+      const d = await api('/wa-gateway/broadcast/api/preview', { method: 'POST', body: { message: msg.value, customer_id: firstId, detail_gangguan: $('#wabDetail').value, estimasi_selesai: $('#wabEta').value } });
       d.samples.forEach((s, i) => { const w = el('div', 'wab-preview'); w.append(el('small', null, `Variasi ${i + 1}${firstId ? '' : ' · data contoh'}`), el('div', 'wab-bubble', s)); box.appendChild(w); });
     } catch (e) { box.appendChild(el('div', 'wab-preview-err', e.message)); }
     finally { btn.disabled = false; }
@@ -200,7 +161,7 @@
   /* Kirim */
   const mode = () => $('input[name="wab_mode"]:checked').value;
   const targetMode = () => $('input[name="target_mode"]:checked').value;
-  const recipientCount = () => targetMode() === 'selected' ? selected.size : eligible;
+  const recipientCount = () => targetMode() === 'selected' ? selected.size : total;
   function estimate(n) {
     if (!n) return '–';
     const byDelay = n * ((AB.min + AB.max) / 2);
@@ -228,56 +189,23 @@
   $('#wabSchedule').addEventListener('input', updateSummary);
 
   function showResult(kind, text) { const out = $('#wabResult'); out.hidden = false; out.className = `wab-result${kind ? ` ${kind}` : ''}`; out.textContent = text; }
-  $('#wabTestSend').addEventListener('click', async () => {
-    const phone = $('#wabTestPhone').value.trim(); if (!phone) return showResult('err', 'Isi nomor WhatsApp Admin untuk pesan uji.');
-    if (!msg.value.trim()) return showResult('err', 'Naskah pesan wajib diisi.');
-    const btn = $('#wabTestSend'); btn.disabled = true;
-    try {
-      await api('/wa-gateway/broadcast/api/test-send', { method: 'POST', body: { phone, message: msg.value, customer_id: Number($('#wabTestCustomer').value) || null, ...invoiceParams(), detail_gangguan: $('#wabDetail').value, estimasi_selesai: $('#wabEta').value, jadwal_pemeliharaan: $('#wabMaintenanceAt').value, isi_pengumuman: $('#wabAnnouncementText').value } });
-      showResult('ok', 'Pesan uji masuk antrean khusus ke nomor Admin.');
-    } catch (e) { showResult('err', e.message); } finally { btn.disabled = false; }
-  });
-  $('#wabManualSend').addEventListener('click', async () => {
-    if (selected.size !== 1) return showResult('err', 'Pilih tepat satu pelanggan untuk pengiriman manual.');
-    if (!msg.value.trim()) return showResult('err', 'Naskah pesan wajib diisi.');
-    if ($('#wabFile').files.length) return showResult('err', 'Lampiran tersedia melalui broadcast; kosongkan lampiran untuk pesan manual.');
-    const customer = [...selected][0];
-    if (!confirm('Kirim pesan manual ke satu pelanggan yang dipilih?')) return;
-    const btn = $('#wabManualSend'); btn.disabled = true; manualKey ||= (globalThis.crypto?.randomUUID?.() || 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const v = Math.random()*16|0; return (c === 'x' ? v : (v&3|8)).toString(16); }));
-    try {
-      const d = await api('/wa-gateway/broadcast/api/manual-send', { method: 'POST', body: {
-        customer_id: customer, request_key: manualKey, message: msg.value, ...invoiceParams(), detail_gangguan: $('#wabDetail').value,
-        estimasi_selesai: $('#wabEta').value, jadwal_pemeliharaan: $('#wabMaintenanceAt').value,
-        isi_pengumuman: $('#wabAnnouncementText').value,
-      } });
-      showResult('ok', d.duplicate ? `Permintaan sebelumnya untuk ${d.customer} sudah tercatat (#${d.id}; status: ${d.status}).` : `Pesan manual untuk ${d.customer} masuk antrean (#${d.id}). Pantau status di Log Pengiriman.`);
-      manualKey = null;
-    } catch (e) { showResult('err', e.message); } finally { btn.disabled = false; }
-  });
   $('#wabSubmit').addEventListener('click', async () => {
     const m = mode(); const tm = targetMode(); const count = recipientCount();
     if (!msg.value.trim()) { msg.focus(); return showResult('err', 'Naskah pesan wajib diisi.'); }
     if (!count) return showResult('err', 'Belum ada penerima.');
     if (m === 'scheduled' && !$('#wabSchedule').value) { $('#wabSchedule').focus(); return showResult('err', 'Pilih waktu kirim terlebih dahulu.'); }
     if (!confirm(`${m === 'scheduled' ? 'Jadwalkan' : 'Kirim'} broadcast ke ${num(count)} pelanggan? Pesan dikirim bertahap sesuai aturan anti-ban.`)) return;
-    const btn = $('#wabSubmit'); btn.disabled = true; requestKey ||= (globalThis.crypto?.randomUUID?.() || 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const v = Math.random()*16|0; return (c === 'x' ? v : (v&3|8)).toString(16); })); showResult('', 'Menyiapkan antrean…');
+    const btn = $('#wabSubmit'); btn.disabled = true; showResult('', 'Menyiapkan antrean…');
     try {
-      const payload = { ...filterObject(), target_mode: tm, customer_ids: [...selected], name: $('#wabName').value || 'Broadcast', template_key: $('#wabTemplate').value || null, message: msg.value, detail_gangguan: $('#wabDetail').value, estimasi_selesai: $('#wabEta').value, jadwal_pemeliharaan: $('#wabMaintenanceAt').value, isi_pengumuman: $('#wabAnnouncementText').value, mode: m, scheduled_at: $('#wabSchedule').value, request_key: requestKey };
-      let request = { method: 'POST', body: payload };
-      const file = $('#wabFile').files[0];
-      if (file) { const form = new FormData(); Object.entries(payload).forEach(([k, v]) => Array.isArray(v) ? v.forEach(x => form.append(k, x)) : form.append(k, v ?? '')); form.append('file', file); request = { method: 'POST', form }; }
-      const d = await api('/wa-gateway/broadcast', request);
-      showResult('ok', `Broadcast #${d.id} dibuat. ${num(d.queued)} pesan ${d.pendingApproval ? 'menunggu persetujuan Admin di WA Gateway' : 'masuk antrean'}${d.scheduledAt ? `, terjadwal ${fmtDateTime(d.scheduledAt)}` : ''}. ${num(d.skippedNoInvoice || 0)} tanpa invoice periode pilihan, ${num(d.skippedBlacklist)} opt-out, ${num(d.skippedInvalid)} nomor tidak valid.`);
-      requestKey = null; selected.clear(); renderRows(); loadList();
+      const d = await api('/wa-gateway/broadcast', { method: 'POST', body: { ...filterObject(), target_mode: tm, customer_ids: [...selected], name: $('#wabName').value || 'Broadcast', template_key: $('#wabTemplate').value || null, message: msg.value, detail_gangguan: $('#wabDetail').value, estimasi_selesai: $('#wabEta').value, mode: m, scheduled_at: $('#wabSchedule').value } });
+      showResult('ok', `Broadcast #${d.id} dibuat setelah audience dicek ulang. ${num(d.queued)} pesan masuk antrean${d.scheduledAt ? `, terjadwal ${fmtDateTime(d.scheduledAt)}` : ''}. ${num(d.skippedBlacklist)} opt-out, ${num(d.skippedInvalid)} nomor tidak valid${d.skippedPending ? `, ${num(d.skippedPending)} pembayaran pending dilewati` : ''}.`);
+      selected.clear(); renderRows(); loadList();
     } catch (e) { showResult('err', e.message); }
     finally { btn.disabled = false; }
   });
 
-  root.addEventListener('input', e => { if (e.target.closest('#wabFilter,#wabMessage,#wabName,#wabTemplate,#wabSchedule,#wabFile')) { requestKey = null; manualKey = null; } });
-  root.addEventListener('change', e => { if (e.target.closest('#wabFilter,#wabFile,#wabTemplate,[name=target_mode],[name=wab_mode]')) { requestKey = null; manualKey = null; } });
-
   /* Riwayat */
-  const ACTION_LABEL = { pause: 'Jeda', resume: 'Lanjutkan', cancel: 'Batalkan', retry: 'Kirim ulang gagal' };
+  const ACTION_LABEL = { pause: 'Jeda', resume: 'Lanjutkan', cancel: 'Batalkan' };
   function historyItem(b) {
     const li = el('li', 'wab-hist-item'); li.dataset.id = b.id;
     const st = STATUS[b.status] || ['gray', b.status];
@@ -299,49 +227,17 @@
       });
       acts.appendChild(btn);
     });
-    if (failed && b.status !== 'cancelled') {
-      const btn = el('button', null, ACTION_LABEL.retry); btn.type = 'button';
-      btn.addEventListener('click', async () => { if (!confirm(`Kirim ulang ${num(failed)} pesan yang gagal?`)) return; btn.disabled = true; try { await api(`/wa-gateway/broadcast/${b.id}/retry`, { method: 'POST' }); loadList(); } catch (e) { alert(e.message); btn.disabled = false; } });
-      acts.appendChild(btn);
-    }
-    const detail = el('details', 'wab-recipient-details');
-    const summary = el('summary', null, 'Lihat status tiap penerima');
-    const content = el('div', 'wab-recipient-content', 'Buka untuk memuat rincian…');
-    detail.append(summary, content);
-    detail.addEventListener('toggle', async () => {
-      if (!detail.open || detail.dataset.loaded) return;
-      content.textContent = 'Memuat penerima…';
-      try {
-        const data = await api(`/wa-gateway/broadcast/${b.id}/recipients`);
-        content.replaceChildren();
-        if (!data.recipients.length) { content.textContent = 'Belum ada penerima di antrean.'; detail.dataset.loaded = '1'; return; }
-        const table = el('table', 'wab-recipient-table');
-        const head = el('thead'); const heading = el('tr');
-        ['Pelanggan', 'Nomor', 'Status', 'Waktu kirim', 'Keterangan'].forEach(label => heading.appendChild(el('th', null, label)));
-        head.appendChild(heading); const body = el('tbody');
-        for (const r of data.recipients) {
-          const row = el('tr');
-          const cells = [r.customer_name || r.customer_code || '-', r.phone || '-',
-            ({ queued:'Antre',processing:'Diproses',pending_approval:'Menunggu persetujuan',sent:'Terkirim',failed:'Gagal',cancelled:'Dibatalkan',rejected:'Ditolak' })[r.status] || r.status,
-            r.sent_at ? fmtDateTime(r.sent_at) : '-', r.error_message || '-'];
-          cells.forEach(value => row.appendChild(el('td', null, String(value)))); body.appendChild(row);
-        }
-        table.append(head, body); content.appendChild(table); detail.dataset.loaded = '1';
-      } catch (e) { content.textContent = `Gagal memuat: ${e.message}`; }
-    });
-    li.append(main, status, prog, acts, detail);
+    li.append(main, status, prog, acts);
     return li;
   }
   async function loadList() {
     try {
       const d = await api('/wa-gateway/broadcast/api/list'); const list = $('#wabList');
-      const opened = new Set($$('li[data-id]', list).filter(li => li.querySelector('.wab-recipient-details')?.open).map(li => li.dataset.id));
       list.replaceChildren(...(d.broadcasts.length ? d.broadcasts.map(historyItem) : [el('li', 'wab-empty', 'Belum ada broadcast.')]));
-      $$('li[data-id]', list).forEach(li => { if (opened.has(li.dataset.id)) li.querySelector('.wab-recipient-details').open = true; });
     } catch (_) { /* dicoba lagi pada interval berikutnya */ }
   }
 
-  renderPresets(); updateFilterBadge(); onMessageChange();
+  updateFilterBadge(); onMessageChange();
   loadCandidates(); loadList();
   setInterval(() => { if (!document.hidden) loadList(); }, 15000);
 })();
