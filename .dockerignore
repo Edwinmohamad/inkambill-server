@@ -1,8 +1,50 @@
+# Git
 .git
-.venv
-__pycache__
-*.pyc
-*.pyo
-data/*
-uploads/*
+.gitignore
+.github
+
+# Self-hosted GitHub runner
+actions-runner/
+actions-runner/**
+
+# Backups
+backups/
+backups/**
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Runtime InkamBilling
+storage/
+
+# Sisa FMT yang tidak boleh masuk image CT220
+app/
+data/
+uploads/
+import_templates/
+requirements.txt
+install_casaos.sh
+run.sh
+
+# Temporary / old files
+_to_delete/
+Claude outputs/
+*.log
+*.tmp
+*.bak
 *.zip
+*.tar
+*.tar.gz
+
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
