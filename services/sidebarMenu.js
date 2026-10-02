@@ -6,6 +6,7 @@ const ITEMS = {
   payments: { href: '/payments', label: 'Approval & Transaksi', icon: 'bi-shield-check', permissions: ['billing', 'finance'], exact: true },
   inbox: { href: '/wa-inbox', label: 'WA Inbox', icon: 'bi-chat-dots-fill', permissions: ['billing', 'support', 'customers', 'settings'] },
   messages: { href: '/wa-gateway/broadcast', label: 'Pusat Pesan WA', icon: 'bi-megaphone-fill', admin: true, permissions: ['billing', 'support', 'customers'] },
+  operations: { href: '/operations', label: 'Operation Center', icon: 'bi-kanban-fill', permission: 'support', exact: true },
   tickets: { href: '/tickets', label: 'Ticketing', icon: 'bi-life-preserver', permission: 'support' },
   schedules: { href: '/schedules', label: 'Jadwal Teknisi', icon: 'bi-calendar2-check-fill', permission: 'support' },
   nms: { href: '/nms', label: 'NOC Dashboard', icon: 'bi-speedometer2', permission: 'network', exact: true },
@@ -24,10 +25,10 @@ function sidebarMenu(role, permissions = [], isAdmin = false) {
   let order = ['dashboard', 'customers', 'invoices', 'payments', 'tickets', 'inbox', 'reports'];
   if (key === 'master_admin' || key === 'admin') {
     focus = 'Admin';
-    order = ['dashboard', 'customers', 'invoices', 'payments', 'messages', 'tickets', 'nms', 'cash'];
+    order = ['dashboard', 'customers', 'invoices', 'payments', 'messages', 'operations', 'tickets', 'nms', 'cash'];
   } else if (/teknisi|technical|network|noc/.test(key) || (allowed.has('network') && allowed.has('support') && !allowed.has('billing'))) {
     focus = 'Teknisi';
-    order = ['dashboard', 'nms', 'secrets', 'devices', 'tickets', 'schedules', 'inbox'];
+    order = ['dashboard', 'nms', 'secrets', 'devices', 'operations', 'tickets', 'schedules', 'inbox'];
   } else if (/gudang|warehouse|inventory/.test(key) || (allowed.has('warehouse') && !allowed.has('billing') && !allowed.has('network'))) {
     focus = 'Gudang';
     order = ['dashboard', 'inventory', 'procurement', 'tickets', 'reports'];

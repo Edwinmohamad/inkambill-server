@@ -41,12 +41,14 @@
         <p><%= selectedSiteCode||'Semua Site' %> · <%= selectedCycle==='all'?'Siklus 15 & 30':`Siklus ${selectedCycle}` %> · pendapatan dihitung hanya setelah masuk Data Kas.</p>
       </div>
       <form class="command-period command-period-v126 billing-monitor-filter" method="get" action="/" data-auto-filter aria-label="Filter Billing Collection Monitor">
-        <select name="site" aria-label="Filter site"><option value="">Semua Site</option><% siteOptions.forEach(s=>{ %><option value="<%= s.code %>" <%= selectedSiteCode===s.code?'selected':'' %>><%= s.code %> · <%= s.name %></option><% }) %></select>
-        <select name="month" aria-label="Filter bulan"><% monthNames.forEach((m,i)=>{ %><option value="<%= i+1 %>" <%= selectedMonth===i+1?'selected':'' %>><%= m %></option><% }) %></select>
-        <select name="year" aria-label="Filter tahun"><% years.forEach(y=>{ %><option value="<%= y %>" <%= selectedYear===y?'selected':'' %>><%= y %></option><% }) %></select>
-        <input type="date" name="income_date" value="<%= selectedIncomeDate %>" aria-label="Tanggal pendapatan" title="Tanggal pendapatan">
-        <select name="cycle" aria-label="Filter siklus tagihan"><option value="all" <%= selectedCycle==='all'?'selected':'' %>>Siklus 15 + 30</option><option value="15" <%= selectedCycle==='15'?'selected':'' %>>Jatuh Tempo 15</option><option value="30" <%= selectedCycle==='30'?'selected':'' %>>Jatuh Tempo 30</option></select>
-        <select name="trend" aria-label="Rentang tren"><option value="3" <%= trendMonths===3?'selected':'' %>>Tren 3 Bulan</option><option value="6" <%= trendMonths===6?'selected':'' %>>Tren 6 Bulan</option><option value="12" <%= trendMonths===12?'selected':'' %>>Tren 12 Bulan</option></select>
+        <div class="bm-filter-title"><i class="bi bi-sliders2"></i><span><b>Filter monitor</b><small>Berubah otomatis</small></span></div>
+        <label class="bm-filter-field bm-filter-site"><span>Site</span><select name="site" aria-label="Filter site"><option value="">Semua Site</option><% siteOptions.forEach(s=>{ %><option value="<%= s.code %>" <%= selectedSiteCode===s.code?'selected':'' %>><%= s.code %> · <%= s.name %></option><% }) %></select></label>
+        <label class="bm-filter-field"><span>Bulan</span><select name="month" aria-label="Filter bulan"><% monthNames.forEach((m,i)=>{ %><option value="<%= i+1 %>" <%= selectedMonth===i+1?'selected':'' %>><%= m %></option><% }) %></select></label>
+        <label class="bm-filter-field bm-filter-year"><span>Tahun</span><select name="year" aria-label="Filter tahun"><% years.forEach(y=>{ %><option value="<%= y %>" <%= selectedYear===y?'selected':'' %>><%= y %></option><% }) %></select></label>
+        <label class="bm-filter-field bm-filter-date"><span>Tanggal kas</span><input type="date" name="income_date" value="<%= selectedIncomeDate %>" aria-label="Tanggal pendapatan"></label>
+        <label class="bm-filter-field bm-filter-cycle"><span>Siklus</span><select name="cycle" aria-label="Filter siklus tagihan"><option value="all" <%= selectedCycle==='all'?'selected':'' %>>15 + 30</option><option value="15" <%= selectedCycle==='15'?'selected':'' %>>Jatuh Tempo 15</option><option value="30" <%= selectedCycle==='30'?'selected':'' %>>Jatuh Tempo 30</option></select></label>
+        <label class="bm-filter-field bm-filter-trend"><span>Tren</span><select name="trend" aria-label="Rentang tren"><option value="3" <%= trendMonths===3?'selected':'' %>>3 Bulan</option><option value="6" <%= trendMonths===6?'selected':'' %>>6 Bulan</option><option value="12" <%= trendMonths===12?'selected':'' %>>12 Bulan</option></select></label>
+        <a class="bm-filter-reset" href="/" aria-label="Reset filter Dashboard" title="Reset filter"><i class="bi bi-arrow-counterclockwise"></i></a>
       </form>
       <div class="billing-monitor-links">
         <a href="/payments?approval=pending<%= selectedSiteCode?`&site=${encodeURIComponent(selectedSiteCode)}`:'' %>"><i class="bi bi-shield-check"></i> Approval</a>

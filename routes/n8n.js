@@ -6,6 +6,9 @@ const { syncStockAlert } = require('../services/inventoryService');
 const { handleWaTicketMessage } = require('../services/waTicketCommandService');
 const { notifyTicketEventAsync } = require('../services/ticketWaNotifyService');
 const { sendBillingFollowUp, sendSpvBriefing, dispatchNocAlert } = require('../services/operationalWaService');
+const { createActivity, addActivityUpdate } = require('../services/operationsActivityService');
+const { setStage, addSupervisorNote, supervisorSnapshot } = require('../services/ticketSupervisorService');
+const { buildSupervisorCycle, dailySummary } = require('../services/spvAutomationService');
 const router = express.Router();
 
 async function beginEvent(eventType, req, keyOverride = null) {
@@ -146,6 +149,30 @@ router.post('/operations/noc-alert', async (req, res) => {
   try { return res.json({ ok: true, eventKey: event.key, ...(await dispatchNocAlert(req.body || {})) }); }
   catch (error) { await db.execute(`UPDATE n8n_webhook_events SET status='failed',error_message=? WHERE event_key=?`, [String(error.message).slice(0, 1000), event.key]); return res.status(400).json({ ok: false, eventKey: event.key, error: error.message }); }
 });
+
+// Structured Operations Center API used by n8n/WA workflows.  Every create
+// request uses the webhook event key as a second idempotency barrier.
+router.post('/operations/activities', async (req,res) => {
+  const event=await beginEvent('operations.activity.create',req);
+  if(event.duplicate)return res.json({ok:true,duplicate:true,eventKey:event.key});
+  try{const item=await createActivity({...req.body,source:req.body?.source||'n8n',source_message_id:req.body?.source_message_id||event.key},{source:'n8n'});res.json({ok:true,eventKey:event.key,item});}
+  catch(error){await db.execute(`UPDATE n8n_webhook_events SET status='failed',error_message=? WHERE event_key=?`,[String(error.message).slice(0,1000),event.key]);res.status(400).json({ok:false,eventKey:event.key,error:error.message});}
+});
+router.post('/operations/activities/:id/update',async(req,res)=>{
+  try{const updateId=await addActivityUpdate(Number(req.params.id),{...req.body,source:req.body?.source||'n8n'},{source:'n8n',employee_id:req.body?.employee_id});res.json({ok:true,updateId});}
+  catch(error){res.status(400).json({ok:false,error:error.message});}
+});
+router.post('/operations/tickets/:id/stage',async(req,res)=>{
+  try{res.json({ok:true,...await setStage(Number(req.params.id),req.body?.stage,{note:req.body?.note,source:'n8n',employee_id:req.body?.employee_id})});}
+  catch(error){res.status(400).json({ok:false,error:error.message});}
+});
+router.post('/operations/tickets/:id/note',async(req,res)=>{
+  try{res.json({ok:true,...await addSupervisorNote(Number(req.params.id),req.body?.note,{source:'n8n',employee_id:req.body?.employee_id,hold_until:req.body?.hold_until})});}
+  catch(error){res.status(400).json({ok:false,error:error.message});}
+});
+router.get('/operations/supervisor-snapshot',async(_req,res)=>res.json({ok:true,rows:await supervisorSnapshot()}));
+router.post('/operations/spv-cycle',async(req,res)=>res.json({ok:true,...await buildSupervisorCycle({force:!!req.body?.force})}));
+router.post('/operations/daily-summary',async(req,res)=>res.json({ok:true,...await dailySummary(String(req.body?.period||'morning'))}));
 
 // NMS v2 — real-time PPP event dari RouterOS (PPP profile on-up/on-down → /tool fetch) atau n8n.
 // Body: { router_id | router_name, username, event: 'login'|'logout'|'auth_failed', address?, caller_id?, message?, occurred_at? }

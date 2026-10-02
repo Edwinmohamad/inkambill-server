@@ -39,8 +39,10 @@
      const monthStart=todayJkt.slice(0,8)+'01';
      const prevMonthEnd=shiftDay(monthStart,-1), prevMonthStart=prevMonthEnd.slice(0,8)+'01';
      const presets=[['Hari ini',todayJkt,todayJkt],['Kemarin',shiftDay(todayJkt,-1),shiftDay(todayJkt,-1)],['7 hari',shiftDay(todayJkt,-6),todayJkt],['Bulan ini',monthStart,todayJkt],['Bulan lalu',prevMonthStart,prevMonthEnd]]; %>
+  <% const reconActiveFilterCount=[q,collector,site,cluster,!isHistory&&aging,isHistory&&status!=='all'?status:'',isHistory&&basis!=='paid'?basis:''].filter(Boolean).length; %>
   <form class="filter-card recon-filter" method="get" action="/payments/reconciliation">
     <% if(isHistory){ %><input type="hidden" name="tab" value="history"><% } %>
+    <div class="recon-filter-head"><div><i class="bi bi-funnel"></i><span><b>Filter rekonsiliasi</b><small><%= isHistory?'Cari histori dan periode setoran':'Temukan cash yang masih dipegang collector' %></small></span></div><% if(reconActiveFilterCount){ %><em><%= reconActiveFilterCount %> filter aktif</em><% } %></div>
     <div class="filter-grid payment-filter-grid">
       <div class="filter-group"><label>CARI</label><div class="search-box"><i class="bi bi-search"></i><input name="q" value="<%= q %>" placeholder="Pelanggan, Customer ID, faktur<%= isHistory?', no. setoran':'' %>..."></div></div>
       <div class="filter-group"><label>COLLECTOR</label><select class="form-select" name="collector"><option value="">Semua Collector</option><% (collectors||[]).forEach(u=>{ %><option value="<%= u.id %>" <%= String(collector)===String(u.id)?'selected':'' %>><%= u.name %></option><% }) %></select></div>
@@ -54,13 +56,13 @@
       <div class="filter-group"><label>DARI</label><input type="date" class="form-control" name="date_from" value="<%= dateFrom %>"></div>
       <div class="filter-group"><label>SAMPAI</label><input type="date" class="form-control" name="date_to" value="<%= dateTo %>"></div>
       <% } %>
-      <div class="filter-group d-flex align-items-end gap-2"><button class="btn-tech primary flex-fill"><i class="bi bi-search"></i>Cari</button><a class="btn-tech" href="/payments/reconciliation<%= isHistory?'?tab=history':'' %>" aria-label="Reset filter"><i class="bi bi-x-lg"></i></a></div>
+      <div class="filter-group recon-filter-actions"><button class="btn-tech primary"><i class="bi bi-search"></i>Terapkan</button><a class="btn-tech" href="/payments/reconciliation<%= isHistory?'?tab=history':'' %>" aria-label="Reset filter"><i class="bi bi-arrow-counterclockwise"></i></a></div>
     </div>
     <% if(isHistory){ %><div class="recon-presets"><span>Periode cepat:</span><% presets.forEach(([label,f,t])=>{ %><a class="<%= dateFrom===f&&dateTo===t?'active':'' %>" href="<%= presetHref(f,t) %>"><%= label %></a><% }) %></div><% } %>
   </form>
 
   <% if(!isHistory){ const heldTotal=held.reduce((a,p)=>a+Number(p.amount||0),0); const lateRows=held.filter(p=>Number(p.age_days||0)>agingDays); const lateTotal=lateRows.reduce((a,p)=>a+Number(p.amount||0),0); const collectorCount=new Set(held.map(p=>p.collector_name||'-')).size; %>
-  <div class="recon-summary-line mb-3">
+  <div class="recon-summary-line mb-3 recon-summary-held">
     <div><span>Belum disetor</span><b><%= formatRupiah(heldTotal) %></b><small><%= held.length %> transaksi</small></div>
     <div><span>Lewat <%= agingDays %> hari</span><b class="<%= lateRows.length?'text-danger':'' %>"><%= formatRupiah(lateTotal) %></b><small><%= lateRows.length %> transaksi</small></div>
     <div><span>Collector</span><b><%= collectorCount %></b><small>memegang cash</small></div>

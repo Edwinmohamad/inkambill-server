@@ -37,10 +37,11 @@ const { scanLowStock } = require('./services/inventoryService');
 const { deliverMobilePushes } = require('./services/mobilePushService');
 const { runCashAgingAlert } = require('./services/cashSettlementService');
 const { purgeOldLogs } = require('./services/logRetentionService');
-const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema, ensureV58Schema, ensureV59Schema, ensureV60Schema, ensureV61Schema } = require('./services/schemaService');
+const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema, ensureV58Schema, ensureV59Schema, ensureV60Schema, ensureV61Schema, ensureV62Schema } = require('./services/schemaService');
 const { recoverProofOcrOnBoot, runProofOcrSweep } = require('./services/proofOcrService');
 const { requireN8nToken } = require('./middleware/n8n');
 const { initGatewayOnBoot, reconcileGatewayStatus, processQueue, runAutoReminderSweep } = require('./services/whatsappGatewayService');
+const { ensureV56Schema: ensureWaCrmSchema } = require('./services/waCrmSchema');
 const { requireWahaWebhookToken } = require('./middleware/waha');
 
 const app = express();
@@ -269,6 +270,7 @@ app.use('/settings', requireAuth, requirePermission('settings'), require('./rout
 app.use('/profile', requireAuth, require('./routes/profile'));
 app.use('/communication', requireAuth, require('./routes/communication'));
 app.use('/clusters', requireAuth, requirePermission('network'), require('./routes/clusters'));
+app.use('/operations', requireAuth, requirePermission('support'), require('./routes/operations'));
 app.use('/tickets', requireAuth, requirePermission('support'), require('./routes/tickets'));
 app.use('/team-kpi', requireAuth, requirePermission('support'), require('./routes/teamKpi'));
 app.use('/schedules', requireAuth, requirePermission('support'), require('./routes/schedules'));
@@ -278,7 +280,11 @@ app.use('/sites', requireAuth, requirePermission('network'), require('./routes/s
 app.use('/custom-invoices', requireAuth, requirePermission('billing'), require('./routes/customInvoices'));
 app.use('/logs', requireAuth, requirePermission('logs'), require('./routes/logs'));
 app.use('/', requireAuth, require('./routes/finance'));
+// WA CRM routes live beside the original gateway settings router.  These mounts
+// are required for /wa-gateway/broadcast and the Web Inbox links exposed by the UI.
+app.use('/wa-gateway', requireAuth, require('./routes/waCrm'));
 app.use('/wa-gateway', requireAuth, require('./routes/whatsappGateway'));
+app.use('/wa-inbox', requireAuth, require('./routes/waInbox'));
 
 app.use((err, req, res, next) => {
   console.error(err);
@@ -344,6 +350,8 @@ async function bootstrap() {
   await ensureV59Schema();
   await ensureV60Schema();
   await ensureV61Schema();
+  await ensureV62Schema();
+  await ensureWaCrmSchema();
   await recoverProofOcrOnBoot();
   await ensureNmsV2Schema();
   nmsPoller.start();

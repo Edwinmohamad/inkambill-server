@@ -4,6 +4,14 @@
     <div class="module-actions"><a class="btn-tech" href="/tickets"><i class="bi bi-life-preserver"></i>Ticketing</a><a class="btn-tech" href="/team-kpi"><i class="bi bi-bar-chart-steps"></i>KPI Tim</a><button class="btn-tech primary" data-bs-toggle="modal" data-bs-target="#activityModal"><i class="bi bi-plus-lg"></i>Aktivitas</button></div>
   </div>
 
+  <nav class="ops-module-nav" aria-label="Modul operasional">
+    <a class="active" href="/operations"><i class="bi bi-kanban-fill"></i><span><b>Operation Center</b><small>Ringkasan SPV &amp; aktivitas</small></span></a>
+    <a href="/tickets"><i class="bi bi-life-preserver"></i><span><b>Ticketing</b><small>Gangguan &amp; progres</small></span></a>
+    <a href="/team-kpi"><i class="bi bi-bar-chart-steps"></i><span><b>KPI Tim</b><small>Performa berbasis data</small></span></a>
+    <a href="/schedules"><i class="bi bi-calendar2-check-fill"></i><span><b>Jadwal Teknisi</b><small>Pekerjaan lapangan</small></span></a>
+    <a href="/server-duty"><i class="bi bi-shield-check"></i><span><b>Piket Server</b><small>Shift &amp; kehadiran</small></span></a>
+  </nav>
+
   <form class="ops-filter" method="get" data-auto-filter>
     <div><label>PERIODE</label><div class="ops-period-pair"><select class="form-select" name="month"><% ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'].forEach((m,i)=>{ %><option value="<%= i+1 %>" <%= Number(filters.month)===i+1?'selected':'' %>><%= m %></option><% }) %></select><input class="form-control" type="number" name="year" min="2020" max="2100" value="<%= filters.year %>"></div></div>
     <div><label>SITE</label><select class="form-select" name="site"><option value="">Semua Site</option><% sites.forEach(s=>{ %><option value="<%= s.code %>" <%= filters.site===s.code?'selected':'' %>><%= s.code %> · <%= s.name %></option><% }) %></select></div>

@@ -1,7 +1,7 @@
 <section class="team-kpi-page">
   <div class="module-head">
     <div><div class="module-kicker">TEAM PERFORMANCE</div><h1>KPI Tim</h1><p>Penilaian dipisahkan sesuai bagian kerja: teknisi, staff/admin, sales, finance, dan management.</p></div>
-    <form class="kpi-period-filter" method="get" data-auto-filter><select class="form-select" name="month"><% monthNames.forEach((m,i)=>{ %><option value="<%= i+1 %>" <%= month===i+1?'selected':'' %>><%= m %></option><% }) %></select><input class="form-control" type="number" name="year" min="2020" max="2100" value="<%= year %>"><span class="auto-filter-hint"><i class="bi bi-lightning-charge-fill"></i>Otomatis</span></form>
+    <div class="module-actions"><a class="btn-tech" href="/operations"><i class="bi bi-kanban-fill"></i>Operation Center</a><form class="kpi-period-filter" method="get" data-auto-filter><select class="form-select" name="month"><% monthNames.forEach((m,i)=>{ %><option value="<%= i+1 %>" <%= month===i+1?'selected':'' %>><%= m %></option><% }) %></select><input class="form-control" type="number" name="year" min="2020" max="2100" value="<%= year %>"><span class="auto-filter-hint"><i class="bi bi-lightning-charge-fill"></i>Otomatis</span></form></div>
   </div>
 
   <div class="team-kpi-summary">

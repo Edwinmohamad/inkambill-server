@@ -132,6 +132,18 @@
         <% if (row.status === 'ACTIVE') { %>
         <button type="button" class="hp-icon-btn" title="Catat pembayaran" aria-label="Catat pembayaran <%= name %>" data-bs-toggle="modal" data-bs-target="#debtPayModal" data-debt-id="<%= row.id %>" data-debt-type-label="<%= kindLabel(row) %>" data-debt-party="<%= name %>" data-debt-purpose="<%= row.purpose %>" data-debt-site="<%= row.site_code %>" data-debt-principal="<%= principal %>" data-debt-paid="<%= paid %>" data-debt-remaining="<%= Math.floor(remaining) %>"><i class="bi bi-plus-circle-fill"></i></button>
         <% } %>
+        <div class="dropdown hp-row-actions">
+          <button class="hp-icon-btn" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Aksi untuk <%= name %>" title="Aksi lainnya"><i class="bi bi-three-dots"></i></button>
+          <ul class="dropdown-menu dropdown-menu-end hp-action-menu">
+            <li><button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#debtDetailModal<%= row.id %>"><i class="bi bi-eye"></i>Lihat rincian</button></li>
+            <% if (row.status !== 'ARCHIVED') { %>
+            <li><button type="button" class="dropdown-item debt-edit-btn" data-bs-toggle="modal" data-bs-target="#debtEditModal" data-id="<%= row.id %>" data-document="<%= row.document_number||row.id %>" data-purpose="<%= row.purpose %>" data-site="<%= row.site_code %>" data-principal="<%= Number(row.principal_amount) %>" data-issue="<%= row.issue_date?new Date(row.issue_date).toISOString().slice(0,10):'' %>" data-due="<%= row.due_date?new Date(row.due_date).toISOString().slice(0,10):'' %>" data-method="<%= row.payment_method %>" data-months="<%= row.installment_months %>" data-responsible="<%= row.responsible_name||'' %>" data-notes="<%= row.notes||'' %>"><i class="bi bi-pencil-square"></i>Edit</button></li>
+            <li><form method="post" action="/debts/<%= row.id %>/archive" onsubmit="const r=prompt('Alasan arsip wajib diisi untuk audit:');if(!r||!r.trim())return false;this.querySelector('[name=reason]').value=r.trim();return true;"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="reason"><button class="dropdown-item" type="submit"><i class="bi bi-archive"></i>Arsipkan</button></form></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><button type="button" class="dropdown-item danger debt-delete-trigger" data-debt-delete-id="<%= row.id %>" data-debt-document="<%= row.document_number||`HP-${String(row.id).padStart(6,'0')}` %>"><i class="bi bi-trash"></i>Hapus</button></li>
+            <% } %>
+          </ul>
+        </div>
         <i class="bi bi-chevron-right hp-chevron" aria-hidden="true"></i>
       </div>
       <% }) %>
@@ -292,6 +304,11 @@
           <label class="hp-field"><span>Penanggung jawab</span><input name="responsible_name" maxlength="160" placeholder="Opsional · Edwin / Jon / Bopung"></label>
           <label class="hp-field"><span>Catatan</span><input name="notes" maxlength="2000" placeholder="Opsional"></label>
         </div>
+        <div class="hp-installment-preview" id="debtInstallmentPreview" hidden aria-live="polite">
+          <span><i class="bi bi-calendar2-week"></i>Rencana cicilan</span>
+          <strong id="debtInstallmentAmount">Isi rincian untuk melihat nominal</strong>
+          <small id="debtInstallmentNote">Nominal terakhir bisa berbeda karena pembulatan.</small>
+        </div>
 
         <div class="hp-form-label hp-form-label-row"><span>Rincian</span><button class="hp-link-btn" type="button" id="addDebtItem"><i class="bi bi-plus-circle-fill"></i>Tambah item</button></div>
         <div class="hp-group hp-items">
@@ -370,11 +387,13 @@ const rupiah=value=>`Rp ${Math.round(value||0).toLocaleString('id-ID')}`;
 // ---- Form catat baru: rincian item + total otomatis ----
 const method=document.getElementById('debtPaymentMethod'),months=document.getElementById('debtInstallmentMonths'),rows=document.getElementById('debtItemRows'),template=document.getElementById('debtItemTemplate'),total=document.getElementById('debtItemsTotal');
 if(rows){
-  const calculate=()=>{let sum=0;rows.querySelectorAll('.hp-item').forEach(row=>{const subtotal=(Number(row.querySelector('.debt-item-qty')?.value)||0)*(Number(row.querySelector('.debt-item-price')?.value)||0);row.querySelector('.debt-item-subtotal').textContent=rupiah(subtotal);sum+=subtotal;});total.textContent=rupiah(sum);};
+  const preview=document.getElementById('debtInstallmentPreview'),previewAmount=document.getElementById('debtInstallmentAmount'),previewNote=document.getElementById('debtInstallmentNote'),monthSelect=months?.querySelector('select');
+  const updateInstallmentPreview=sum=>{const count=Math.max(2,Number(monthSelect?.value)||2),enabled=method?.value==='INSTALLMENT';if(preview)preview.hidden=!enabled;if(!enabled)return;const each=Math.floor(sum/count),last=sum-(each*(count-1));previewAmount.textContent=sum>0?`${rupiah(each)} × ${count} bulan`:'Isi rincian untuk melihat nominal';previewNote.textContent=sum>0?(last===each?`Total ${rupiah(sum)} · bayar ${rupiah(each)} setiap bulan.`:`Total ${rupiah(sum)} · cicilan terakhir ${rupiah(last)} karena pembulatan.`):'Tambahkan harga satuan pada rincian item.';};
+  const calculate=()=>{let sum=0;rows.querySelectorAll('.hp-item').forEach(row=>{const subtotal=(Number(row.querySelector('.debt-item-qty')?.value)||0)*(Number(row.querySelector('.debt-item-price')?.value)||0);row.querySelector('.debt-item-subtotal').textContent=rupiah(subtotal);sum+=subtotal;});total.textContent=rupiah(sum);updateInstallmentPreview(sum);};
   const bind=row=>{row.querySelectorAll('input').forEach(input=>input.addEventListener('input',calculate));row.querySelector('.debt-remove-item')?.addEventListener('click',()=>{if(rows.children.length>1)row.remove();else row.querySelectorAll('input').forEach((input,index)=>input.value=index===1?'1':'');calculate();});};
   rows.querySelectorAll('.hp-item').forEach(bind);
   document.getElementById('addDebtItem')?.addEventListener('click',()=>{const row=template.content.firstElementChild.cloneNode(true);rows.appendChild(row);bind(row);row.querySelector('input')?.focus();});
-  const toggleMethod=()=>{months.hidden=method.value!=='INSTALLMENT';};method?.addEventListener('change',toggleMethod);toggleMethod();calculate();
+  const toggleMethod=()=>{months.hidden=method.value!=='INSTALLMENT';calculate();};method?.addEventListener('change',toggleMethod);monthSelect?.addEventListener('change',calculate);toggleMethod();calculate();
 }
 // ---- Internal / Eksternal: hanya input di section yang terlihat yang ikut terkirim ----
 const createForm=document.getElementById('debtCreateForm');
@@ -428,5 +447,7 @@ if(payModal){
 const debtEditModal=document.getElementById('debtEditModal'),debtEditForm=document.getElementById('debtEditForm'),debtDeleteForm=document.getElementById('debtDeleteForm');
 let debtEditId=null;
 debtEditModal?.addEventListener('show.bs.modal',event=>{const d=event.relatedTarget?.dataset||{};debtEditId=d.id;debtEditForm.action=`/debts/${d.id}/edit`;document.getElementById('debtEditDocument').textContent=d.document||'Dokumen Hutang';for(const [name,key] of [['purpose','purpose'],['principal_amount','principal'],['issue_date','issue'],['due_date','due'],['site_code','site'],['payment_method','method'],['installment_months','months'],['responsible_name','responsible'],['notes','notes']]){const el=debtEditForm.elements[name];if(el)el.value=d[key]||'';}debtEditForm.elements.change_reason.value='';});
-document.getElementById('debtDeleteBtn')?.addEventListener('click',()=>{if(!debtEditId)return;const reason=prompt('Alasan hapus wajib diisi. Dokumen yang memiliki pembayaran tidak dapat dihapus:');if(!reason?.trim())return;debtDeleteForm.action=`/debts/${debtEditId}/delete`;debtDeleteForm.elements.reason.value=reason.trim();debtDeleteForm.requestSubmit();});
+const requestDelete=(id,document)=>{if(!id)return;const reason=prompt(`Hapus ${document||'dokumen ini'}? Alasan hapus wajib diisi. Dokumen yang memiliki pembayaran tidak dapat dihapus:`);if(!reason?.trim())return;debtDeleteForm.action=`/debts/${id}/delete`;debtDeleteForm.elements.reason.value=reason.trim();debtDeleteForm.requestSubmit();};
+document.getElementById('debtDeleteBtn')?.addEventListener('click',()=>requestDelete(debtEditId,document.getElementById('debtEditDocument')?.textContent));
+document.querySelectorAll('.debt-delete-trigger').forEach(btn=>btn.addEventListener('click',()=>requestDelete(btn.dataset.debtDeleteId,btn.dataset.debtDocument)));
 })();</script>

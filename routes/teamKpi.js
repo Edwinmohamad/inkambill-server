@@ -11,7 +11,10 @@ function scoreRow(row,teamMaxPsb){
   const category=userRole==='master_admin'?'management':(positionCategory!=='other'?positionCategory:(userRole==='admin'?'admin':'other'));
   const ticketClose=pct(row.closed_tickets,row.assigned_tickets,false);
   const updateDiscipline=pct(row.ticket_updates,row.assigned_tickets,false);
-  const jobDone=pct(row.done_jobs,row.assigned_jobs,false);
+  const assignedWork=Number(row.assigned_jobs||0)+Number(row.assigned_activities||0);
+  const completedWork=Number(row.done_jobs||0)+Number(row.done_activities||0);
+  const jobDone=pct(completedWork,assignedWork,false);
+  const slaRate=pct(row.sla_met,row.closed_tickets,false);
   const dutyAttendance=pct(row.present_duties,row.assigned_duties,false);
   const psbActivity=teamMaxPsb>0?Math.min(100,Math.round(Number(row.psb_count||0)/teamMaxPsb*100)):0;
   const paymentActivity=Math.min(100,Math.round(Number(row.payments_recorded||0)/40*100));
@@ -19,10 +22,10 @@ function scoreRow(row,teamMaxPsb){
   const cashActivity=Math.min(100,Math.round(Number(row.cash_entries||0)/25*100));
   let score=0,formula='';
   let focusMetrics=[];
-  const hasTicket=Number(row.assigned_tickets||0)>0,hasJob=Number(row.assigned_jobs||0)>0,hasDuty=Number(row.assigned_duties||0)>0,hasPsb=teamMaxPsb>0;
+  const hasTicket=Number(row.assigned_tickets||0)>0,hasJob=assignedWork>0,hasDuty=Number(row.assigned_duties||0)>0,hasPsb=teamMaxPsb>0;
   if(category==='technical'){
-    score=weightedScore([{value:ticketClose,weight:.35,available:hasTicket},{value:updateDiscipline,weight:.15,available:hasTicket},{value:jobDone,weight:.35,available:hasJob},{value:dutyAttendance,weight:.15,available:hasDuty}]);
-    formula='35% tiket selesai · 15% update · 35% job teknisi · 15% piket';focusMetrics=[['Tiket',`${row.closed_tickets}/${row.assigned_tickets}`],['Job',`${row.done_jobs}/${row.assigned_jobs}`],['Piket',`${row.present_duties}/${row.assigned_duties}`]];
+    score=weightedScore([{value:ticketClose,weight:.30,available:hasTicket},{value:updateDiscipline,weight:.15,available:hasTicket},{value:slaRate,weight:.15,available:hasTicket},{value:jobDone,weight:.25,available:hasJob},{value:dutyAttendance,weight:.15,available:hasDuty}]);
+    formula='30% tiket selesai · 15% update · 15% SLA · 25% pekerjaan · 15% piket';focusMetrics=[['Tiket',`${row.closed_tickets}/${row.assigned_tickets}`],['Aktivitas',`${completedWork}/${assignedWork}`],['SLA',`${slaRate}%`]];
   }else if(category==='sales'){
     score=weightedScore([{value:psbActivity,weight:.80,available:hasPsb},{value:ticketClose,weight:.20,available:hasTicket}]);
     formula='80% kontribusi PSB · 20% tindak lanjut tiket pelanggan';focusMetrics=[['PSB',row.psb_count],['Tiket',`${row.closed_tickets}/${row.assigned_tickets}`],['Kontribusi',`${psbActivity}%`]];
@@ -39,7 +42,7 @@ function scoreRow(row,teamMaxPsb){
     score=weightedScore([{value:ticketClose,weight:.35,available:hasTicket},{value:jobDone,weight:.25,available:hasJob},{value:dutyAttendance,weight:.40,available:hasDuty}]);
     formula='35% tiket · 25% pekerjaan · 40% piket';focusMetrics=[['Tiket',`${row.closed_tickets}/${row.assigned_tickets}`],['Job',`${row.done_jobs}/${row.assigned_jobs}`],['Piket',`${row.present_duties}/${row.assigned_duties}`]];
   }
-  return {...row,effective_category:category,ticket_close_rate:ticketClose,update_rate:updateDiscipline,job_done_rate:jobDone,duty_rate:dutyAttendance,psb_activity:psbActivity,payment_activity:paymentActivity,approval_activity:approvalActivity,cash_activity:cashActivity,score,formula,focusMetrics};
+  return {...row,effective_category:category,ticket_close_rate:ticketClose,update_rate:updateDiscipline,job_done_rate:jobDone,sla_rate:slaRate,duty_rate:dutyAttendance,psb_activity:psbActivity,payment_activity:paymentActivity,approval_activity:approvalActivity,cash_activity:cashActivity,score,formula,focusMetrics};
 }
 
 router.get('/', async(req,res)=>{
@@ -63,13 +66,18 @@ router.get('/', async(req,res)=>{
       ,(SELECT COUNT(*) FROM payments pay WHERE e.user_id IS NOT NULL AND pay.received_by=e.user_id AND DATE(pay.paid_at) BETWEEN ? AND ?) payments_recorded
       ,(SELECT COUNT(*) FROM payments pay WHERE e.user_id IS NOT NULL AND pay.verified_by=e.user_id AND DATE(pay.verified_at) BETWEEN ? AND ?) payments_approved
       ,(SELECT COUNT(*) FROM cash_transactions ct WHERE e.user_id IS NOT NULL AND ct.created_by=e.user_id AND ct.transaction_date BETWEEN ? AND ?) cash_entries
+      ,(SELECT COUNT(DISTINCT oa.id) FROM operations_activities oa LEFT JOIN operations_activity_members om ON om.activity_id=oa.id WHERE (oa.primary_employee_id=e.id OR om.employee_id=e.id) AND DATE(oa.created_at) BETWEEN ? AND ?) assigned_activities
+      ,(SELECT COUNT(DISTINCT oa.id) FROM operations_activities oa LEFT JOIN operations_activity_members om ON om.activity_id=oa.id WHERE (oa.primary_employee_id=e.id OR om.employee_id=e.id) AND oa.status='done' AND DATE(COALESCE(oa.completed_at,oa.updated_at)) BETWEEN ? AND ?) done_activities
+      ,(SELECT COUNT(*) FROM tickets st WHERE st.assigned_employee_id=e.id AND st.status='closed' AND DATE(COALESCE(st.closed_at,st.updated_at)) BETWEEN ? AND ? AND TIMESTAMPDIFF(MINUTE,st.opened_at,COALESCE(st.closed_at,st.updated_at))<=CASE st.priority WHEN 'critical' THEN 240 WHEN 'high' THEN 480 WHEN 'low' THEN 2880 ELSE 1440 END) sla_met
+      ,(SELECT COUNT(*) FROM tickets st WHERE st.assigned_employee_id=e.id AND st.status='closed' AND DATE(COALESCE(st.closed_at,st.updated_at)) BETWEEN ? AND ? AND TIMESTAMPDIFF(MINUTE,st.opened_at,COALESCE(st.closed_at,st.updated_at))>CASE st.priority WHEN 'critical' THEN 240 WHEN 'high' THEN 480 WHEN 'low' THEN 2880 ELSE 1440 END) sla_breached
+      ,(SELECT COUNT(*) FROM team_kpi_events ke WHERE ke.employee_id=e.id AND DATE(ke.occurred_at) BETWEEN ? AND ?) kpi_events
     FROM employees e
     LEFT JOIN users u ON u.id=e.user_id
     LEFT JOIN positions p ON p.id=e.position_id
     LEFT JOIN departments d ON d.id=e.department_id
     WHERE e.is_active=1
     ORDER BY FIELD(COALESCE(p.category,'other'),'technical','admin','finance','sales','management','other'),e.name
-  `,[start,end,start,end,start,end,start,end,start,end,start,end,start,end,start,end,start,end,start,end,start,end]);
+  `,[start,end,start,end,start,end,start,end,start,end,start,end,start,end,start,end,start,end,start,end,start,end,start,end,start,end,start,end,start,end,start,end]);
   const maxPsb=Math.max(0,...rows.map(r=>Number(r.psb_count||0)));
   const team=rows.map(r=>scoreRow(r,maxPsb)).sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name));
   const summary={
