@@ -1,14 +1,16 @@
 const assert=require('assert');
 const { postCashTransaction }=require('../services/paymentVerificationService');
 
-function fakeConnection({meta=true,category=true,existing=false}={}){
+function fakeConnection({meta=true,category=true,existing=false,settlementStatus='settled'}={}){
   const calls=[];
   return {
     calls,
     async execute(sql,params){
       calls.push({sql,params});
-      if(sql.includes('FROM invoices i JOIN customers c'))return [meta?[{site_id:7,customer_name:'Pelanggan Uji',invoice_number:'INV-1',is_psb:0}]:[]];
+      if(sql.includes('FROM invoices i JOIN customers c'))return [meta?[{site_id:7,customer_name:'Pelanggan Uji',invoice_number:'INV-1',period_month:9,period_year:2026,is_psb:0}]:[]];
+      if(sql.includes("FROM closing_periods")&&sql.includes("status='LOCKED'"))return [[]];
       if(sql.includes('FROM cash_categories')&&sql.includes("type='income'"))return [category?[{id:11}]:[]];
+      if(sql.includes('SELECT method,status,settlement_status FROM payments'))return [[{method:'cash',status:'confirmed',settlement_status:settlementStatus}]];
       if(sql.includes("source_type IN ('payment','install_income')"))return [existing?[{id:99}]:[]];
       if(sql.startsWith('INSERT INTO cash_transactions'))return [{insertId:123}];
       if(sql.includes('SELECT code,name,type FROM cash_categories'))return [[{code:'SETOR',name:'Setoran Cash Pelanggan',type:'income'}]];
@@ -30,6 +32,7 @@ function fakeConnection({meta=true,category=true,existing=false}={}){
 
   await assert.rejects(()=>postCashTransaction(fakeConnection({meta:false}),args),/faktur\/pelanggan/);
   await assert.rejects(()=>postCashTransaction(fakeConnection({category:false}),args),/Kategori jurnal kas/);
+  await assert.rejects(()=>postCashTransaction(fakeConnection({settlementStatus:'held_by_staff'}),args),/masih di collector/);
 
   const conn=fakeConnection();
   const result=await postCashTransaction(conn,args);
@@ -38,6 +41,7 @@ function fakeConnection({meta=true,category=true,existing=false}={}){
   assert(insert,'jurnal cash_transactions wajib dibuat');
   assert(insert.sql.includes("'APPROVED'"),'jurnal setoran wajib langsung APPROVED');
   assert(insert.sql.includes('reviewed_by')&&insert.sql.includes('reviewed_at'),'reviewer jurnal otomatis wajib tercatat');
+  assert.strictEqual(insert.params[0],'2026-09-02','tanggal jurnal harus masuk bulan tagihan, bukan bulan setoran');
   assert.strictEqual(insert.params[4],150000,'nominal jurnal harus sama dengan setoran');
   const closingInsert=conn.calls.find(call=>call.sql.startsWith('INSERT INTO closing_entries'));
   assert(closingInsert,'jurnal setoran wajib langsung disinkronkan ke Closing AUTO yang masih DRAFT');

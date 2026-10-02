@@ -9,7 +9,7 @@ const db=require('../config/db');
 const { refreshInvoiceStatus }=require('./invoiceService');
 const { unisolateCustomer }=require('./networkService');
 const { assignCashTransactionCode }=require('./cashService');
-const { resolveBookDate, financialAudit }=require('./financialControlService');
+const { isoDate, assertDateOpen, resolveBookDate, financialAudit }=require('./financialControlService');
 const { syncCashTransactionsIntoDraftAutoClosing }=require('./closingSyncService');
 
 const PROOF_DIR=path.join(__dirname,'..','storage','payment-proofs');
@@ -45,8 +45,19 @@ function paymentReference(paymentId, date=new Date()){
 }
 
 async function paymentCashMeta(conn,invoiceId){
-  const [rows]=await conn.execute(`SELECT c.site_id,c.name customer_name,c.customer_code,i.id invoice_id,i.invoice_number,0 is_psb FROM invoices i JOIN customers c ON c.id=i.customer_id WHERE i.id=?`,[invoiceId]);
+  const [rows]=await conn.execute(`SELECT c.site_id,c.name customer_name,c.customer_code,i.id invoice_id,i.invoice_number,i.period_month,i.period_year,0 is_psb FROM invoices i JOIN customers c ON c.id=i.customer_id WHERE i.id=?`,[invoiceId]);
   return rows[0]||null;
+}
+// Jurnal pendapatan mengikuti periode tagihan, bukan bulan uang dibayar/disetor.
+// Hari tetap mengikuti tanggal pembukuan aktual sejauh valid pada bulan tagihan
+// (contoh 31 Maret untuk tagihan Februari menjadi 28/29 Februari).
+function invoicePeriodBookDate({periodMonth,periodYear,referenceDate}){
+  const month=Number(periodMonth),year=Number(periodYear);const reference=isoDate(referenceDate);
+  if(!Number.isInteger(month)||month<1||month>12||!Number.isInteger(year)||year<2000||year>2200)throw new Error('Periode bulan/tahun faktur tidak valid.');
+  if(!reference)throw new Error('Tanggal pembayaran/setoran tidak valid.');
+  const requestedDay=Number(reference.slice(8,10));
+  const lastDay=new Date(Date.UTC(year,month,0)).getUTCDate();
+  return `${year}-${String(month).padStart(2,'0')}-${String(Math.min(requestedDay,lastDay)).padStart(2,'0')}`;
 }
 async function billingCategory(conn,name='Pendapatan Billing'){
   const code=name==='Setoran Cash Pelanggan'?'SETOR':'BILL';
@@ -58,10 +69,15 @@ async function billingCategory(conn,name='Pendapatan Billing'){
 async function postCashTransaction(conn,{paymentId,invoiceId,amount,reference,bookDate,categoryName='Pendapatan Billing',prefix='Pembayaran',actorUserId=null}){
   const meta=await paymentCashMeta(conn,invoiceId);
   if(!meta)throw new Error('Data faktur/pelanggan untuk jurnal kas tidak ditemukan. Transaksi dibatalkan.');
+  const ledgerDate=invoicePeriodBookDate({periodMonth:meta.period_month,periodYear:meta.period_year,referenceDate:bookDate});
+  await assertDateOpen(conn,ledgerDate);
   const isPsb=Number(meta.is_psb)===1;
   const incomeCategory=isPsb?'Pendapatan Pemasangan Baru':categoryName;
   const catId=await billingCategory(conn,incomeCategory);
   if(!catId)throw new Error(`Kategori jurnal kas "${incomeCategory}" tidak tersedia. Transaksi dibatalkan agar saldo Data Kas tetap konsisten.`);
+  const [[sourcePayment]]=await conn.execute(`SELECT method,status,settlement_status FROM payments WHERE id=? LIMIT 1`,[paymentId]);
+  if(!sourcePayment||sourcePayment.status!=='confirmed')throw new Error('Pembayaran belum dikonfirmasi. Jurnal Data Kas tidak boleh dibuat.');
+  if(sourcePayment.method==='cash'&&sourcePayment.settlement_status!=='settled')throw new Error('Cash masih di collector dan belum diterima perusahaan. Saldo kas belum boleh bertambah.');
   // Cross-source idempotency: legacy install_income and the new payment journal represent the same money.
   const [exists]=await conn.execute(`SELECT id FROM cash_transactions WHERE source_id=? AND source_type IN ('payment','install_income') LIMIT 1`,[paymentId]);
   if(exists.length){
@@ -71,14 +87,51 @@ async function postCashTransaction(conn,{paymentId,invoiceId,amount,reference,bo
   }
   const label=isPsb?`Pemasangan Baru ${meta.customer_name}`:`${prefix} ${meta.customer_name}`;
   const [r]=await conn.execute(`INSERT INTO cash_transactions(transaction_date,name,category_id,site_id,amount,notes,source_type,source_id,approval_status,reviewed_by,reviewed_at,created_by) VALUES(?,?,?,?,?,?,'payment',?,'APPROVED',?,NOW(),?)`,[
-    bookDate,label,catId,meta.site_id,amount,`Faktur ${meta.invoice_number}${reference?` · ${reference}`:''}`,paymentId,actorUserId,actorUserId
+    ledgerDate,label,catId,meta.site_id,amount,`Faktur ${meta.invoice_number}${reference?` · ${reference}`:''}`,paymentId,actorUserId,actorUserId
   ]);
   if(!r.insertId)throw new Error('Jurnal Data Kas tidak berhasil dibuat. Transaksi dibatalkan.');
-  await assignCashTransactionCode(conn,r.insertId,catId,new Date(`${bookDate}T12:00:00`));
+  await assignCashTransactionCode(conn,r.insertId,catId,new Date(`${ledgerDate}T12:00:00`));
   const closing=await syncCashTransactionsIntoDraftAutoClosing({conn,cashTransactionIds:[r.insertId],userId:actorUserId});
   if(closing.inserted)await financialAudit({conn,userId:actorUserId,action:'sync_closing_cash',entityType:'cash_transaction',entityId:r.insertId,before:null,after:{closing_entries_inserted:closing.inserted},reason:'Sinkron langsung jurnal pembayaran/setoran ke Closing AUTO',ip:null});
   // PSB tidak pernah mencapai cabang khusus: invoice bulan berikutnya adalah billing reguler.
   return {id:r.insertId,created:true,closingInserted:closing.inserted};
+}
+
+// Koreksi data lama yang telanjur memakai bulan bayar/setor. Periode Closing yang
+// sudah LOCKED tidak disentuh; operator harus membukanya dahulu agar audit trail
+// dan angka Closing yang telah dikunci tidak berubah diam-diam.
+async function reconcilePaymentCashTransactionPeriods(){
+  const conn=await db.getConnection();let corrected=0,locked=0;
+  try{
+    await conn.beginTransaction();
+    const [rows]=await conn.execute(`SELECT ct.id,ct.category_id,ct.transaction_date,p.verified_by,p.settled_by,
+      i.period_month,i.period_year
+      FROM cash_transactions ct
+      JOIN payments p ON ct.source_type='payment' AND p.id=ct.source_id
+      JOIN invoices i ON i.id=p.invoice_id
+      WHERE (MONTH(ct.transaction_date)<>i.period_month OR YEAR(ct.transaction_date)<>i.period_year)
+      ORDER BY ct.id FOR UPDATE`);
+    for(const row of rows){
+      const oldDate=isoDate(row.transaction_date);
+      const targetDate=invoicePeriodBookDate({periodMonth:row.period_month,periodYear:row.period_year,referenceDate:oldDate});
+      const oldLock=await lockedPeriodForDateSafe(conn,oldDate);
+      const targetLock=await lockedPeriodForDateSafe(conn,targetDate);
+      if(oldLock||targetLock){locked++;continue;}
+      await conn.execute(`DELETE ce FROM closing_entries ce JOIN closing_periods cp ON cp.id=ce.closing_id
+        WHERE ce.cash_transaction_id=? AND ce.source_type='cash_sync' AND cp.status='DRAFT'`,[row.id]);
+      await conn.execute(`UPDATE cash_transactions SET transaction_date=? WHERE id=?`,[targetDate,row.id]);
+      await assignCashTransactionCode(conn,row.id,row.category_id,new Date(`${targetDate}T12:00:00`));
+      await syncCashTransactionsIntoDraftAutoClosing({conn,cashTransactionIds:[row.id],userId:row.settled_by||row.verified_by||null});
+      await financialAudit({conn,userId:null,action:'repair_invoice_period',entityType:'cash_transaction',entityId:row.id,before:{transaction_date:oldDate},after:{transaction_date:targetDate},reason:'Koreksi otomatis jurnal pembayaran agar mengikuti bulan tagihan',ip:null});
+      corrected++;
+    }
+    await conn.commit();return {corrected,locked};
+  }catch(error){await conn.rollback();throw error;}finally{conn.release();}
+}
+
+async function lockedPeriodForDateSafe(conn,date){
+  const [rows]=await conn.execute(`SELECT id FROM closing_periods WHERE status='LOCKED' AND ? BETWEEN period_start AND period_end LIMIT 1`,[date]);
+  return rows[0]||null;
 }
 
 // Pulihkan payment terkonfirmasi yang telanjur tidak mempunyai jurnal akibat versi lama
@@ -88,6 +141,16 @@ async function reconcileMissingPaymentCashTransactions(){
   const conn=await db.getConnection();let created=0;
   try{
     await conn.beginTransaction();
+    // Pertahanan untuk data dari versi lama: jurnal cash yang dibuat sebelum uang
+    // diterima perusahaan harus dinonaktifkan agar tidak pernah menambah saldo.
+    const [premature]=await conn.execute(`SELECT ct.id FROM cash_transactions ct
+      JOIN payments p ON ct.source_type='payment' AND p.id=ct.source_id
+      WHERE COALESCE(ct.approval_status,'APPROVED')='APPROVED'
+        AND (p.status<>'confirmed' OR (p.method='cash' AND p.settlement_status<>'settled')) FOR UPDATE`);
+    for(const row of premature){
+      await conn.execute(`UPDATE cash_transactions SET approval_status='REJECTED',approval_reason='Jurnal dinonaktifkan otomatis: cash belum diterima/disetor ke perusahaan.',reviewed_at=NOW() WHERE id=?`,[row.id]);
+      await conn.execute(`DELETE ce FROM closing_entries ce JOIN closing_periods cp ON cp.id=ce.closing_id WHERE ce.cash_transaction_id=? AND cp.status='DRAFT'`,[row.id]);
+    }
     const [rows]=await conn.execute(`SELECT p.id,p.invoice_id,p.amount,p.reference,p.method,p.verified_by,p.settled_by,
       COALESCE(cs.settlement_date,p.booked_at,DATE(p.paid_at)) book_date
       FROM payments p
@@ -98,11 +161,19 @@ async function reconcileMissingPaymentCashTransactions(){
       ORDER BY p.id ASC FOR UPDATE`);
     for(const payment of rows){
       const isCash=payment.method==='cash';
-      const result=await postCashTransaction(conn,{
-        paymentId:payment.id,invoiceId:payment.invoice_id,amount:payment.amount,reference:payment.reference,
-        bookDate:payment.book_date,categoryName:isCash?'Setoran Cash Pelanggan':'Pendapatan Billing',
-        prefix:isCash?'Setoran Cash':'Pembayaran',actorUserId:payment.settled_by||payment.verified_by||null
-      });
+      let result;
+      try{
+        result=await postCashTransaction(conn,{
+          paymentId:payment.id,invoiceId:payment.invoice_id,amount:payment.amount,reference:payment.reference,
+          bookDate:payment.book_date,categoryName:isCash?'Setoran Cash Pelanggan':'Pendapatan Billing',
+          prefix:isCash?'Setoran Cash':'Pembayaran',actorUserId:payment.settled_by||payment.verified_by||null
+        });
+      }catch(error){
+        // Repair historis tidak boleh membuat server gagal start hanya karena
+        // periode invoice lama telah dikunci. Baris tersebut menunggu Closing dibuka.
+        if(/sudah dikunci/i.test(error.message))continue;
+        throw error;
+      }
       if(result?.created)created++;
     }
     await conn.commit();
@@ -184,4 +255,4 @@ async function createPendingTransferPayments({invoiceIds,bankId,file,userId,note
   return created;
 }
 
-module.exports={PROOF_DIR,proofExtension,proofSignatureMatches,saveProofFile,removeProofFile,paymentReference,paymentCashMeta,billingCategory,postCashTransaction,reconcileMissingPaymentCashTransactions,maybeAutoUnisolate,verifyPendingPayment,createPendingTransferPayments};
+module.exports={PROOF_DIR,proofExtension,proofSignatureMatches,saveProofFile,removeProofFile,paymentReference,paymentCashMeta,invoicePeriodBookDate,billingCategory,postCashTransaction,reconcileMissingPaymentCashTransactions,reconcilePaymentCashTransactionPeriods,maybeAutoUnisolate,verifyPendingPayment,createPendingTransferPayments};

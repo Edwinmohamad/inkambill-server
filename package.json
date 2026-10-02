@@ -30,6 +30,8 @@
     "test:fasum": "node scripts/test-fasum.js",
     "test:financial-integrity-static": "node scripts/test-financial-integrity-static.js",
     "test:cash-settlement-journal": "node scripts/test-cash-settlement-journal.js",
+    "test:cash-invoice-period": "node scripts/test-cash-invoice-period.js",
+    "test:cash-payment-method-filter": "node scripts/test-cash-payment-method-filter.js",
     "test:psb-next-month": "node scripts/test-psb-next-month-billing.js",
     "audit:financial": "node scripts/financial-integrity-audit.js",
     "repair:psb-income": "node scripts/repair-legacy-psb-double-income.js"
