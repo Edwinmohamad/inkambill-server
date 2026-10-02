@@ -307,6 +307,13 @@ router.get('/api/palette', api(async req => {
 
 // ---------- Rekonsiliasi, kesehatan, akun bersama, ekspor ----------
 router.get('/api/reconcile', api(async req => ({ groups: await insights.reconcile(siteParam(req), req.query.kind ? String(req.query.kind) : null) })));
+router.post('/api/secrets/:id/sync-profile', requireNetworkControl, api(async req => ({ result: await insights.syncProfileToPackage({ secretId: sid(req), ...ctxOf(req) }) })));
+router.post('/api/anomalies/:id/refresh', requireNetworkControl, api(async req => ({ result: await insights.refreshActiveAnomaly({ anomalyId: Number(req.params.id), ...ctxOf(req) }) })));
+router.post('/api/anomalies/:id/radius', requireNetworkControl, api(async req => ({ result: await insights.markActiveAsRadius({ anomalyId: Number(req.params.id), note: req.body.note, ...ctxOf(req) }) })));
+router.post('/api/reconcile/ticket', requireNetworkControl, api(async req => ({ ticket: await insights.createReconcileTicket({
+  kind: String(req.body.kind || ''), secretId: Number(req.body.secretId) || null, anomalyId: Number(req.body.anomalyId) || null,
+  customerId: Number(req.body.customerId) || null, ...ctxOf(req)
+}) })));
 router.get('/api/health', api(async () => insights.siteHealth()));
 router.get('/api/shared', api(async req => insights.sharedAccounts(siteParam(req))));
 router.get('/api/flapping', api(async req => ({ rows: await dashboard.flapping(siteParam(req)) })));

@@ -85,6 +85,11 @@ async function ensureNmsV2Schema() {
     UNIQUE KEY uq_nms_ppp_anomaly (router_id, username, anomaly_type),
     INDEX idx_nms_ppp_anomaly_open (anomaly_type, resolved_at, site_id)
   )`);
+  // Klasifikasi manual harus tetap bertahan saat poller melihat sesi yang sama lagi.
+  // Contoh utama: PPP Active dari RADIUS memang tidak mempunyai /ppp/secret lokal.
+  await db.query(`ALTER TABLE nms_ppp_anomalies ADD COLUMN IF NOT EXISTS classification VARCHAR(40) NULL AFTER anomaly_type`);
+  await db.query(`ALTER TABLE nms_ppp_anomalies ADD COLUMN IF NOT EXISTS resolution_note VARCHAR(255) NULL AFTER details_json`);
+  await db.query(`ALTER TABLE nms_ppp_anomalies ADD COLUMN IF NOT EXISTS resolved_by BIGINT UNSIGNED NULL AFTER resolution_note`);
 
   await db.query(`CREATE TABLE IF NOT EXISTS nms_router_state (
     router_id BIGINT UNSIGNED PRIMARY KEY,

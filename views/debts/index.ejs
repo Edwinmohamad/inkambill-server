@@ -29,24 +29,24 @@
   const hasFilter = filters.type || filters.site || filters.status !== 'ACTIVE' || filters.query || filters.period || filters.employee;
   const selectedPerson = filters.employee ? techRows.find((t) => Number(t.employee_id) === Number(filters.employee)) : null;
 %>
-<div class="debt-page hp-page">
+<div class="debt-page hp-page debt-standard-page">
 
-  <header class="hp-header">
+  <header class="module-head hp-header">
     <div>
-      <span class="hp-eyebrow">Keuangan</span>
+      <div class="module-kicker">DEBT MANAGEMENT</div>
       <h1>Hutang &amp; Piutang</h1>
       <p>Catat hutang teknisi (internal) dan hutang/piutang dengan pihak luar (eksternal) di satu tempat.</p>
     </div>
-    <button type="button" class="hp-btn hp-btn-primary" data-bs-toggle="modal" data-bs-target="#debtCreateModal" data-create-scope="<%= scope === 'EXTERNAL' ? 'EXTERNAL' : 'INTERNAL' %>" data-create-employee="<%= filters.employee || '' %>"><i class="bi bi-plus-lg"></i><span>Catat Baru</span></button>
+    <div class="module-actions"><button type="button" class="btn-tech primary" data-bs-toggle="modal" data-bs-target="#debtCreateModal" data-create-scope="<%= scope === 'EXTERNAL' ? 'EXTERNAL' : 'INTERNAL' %>" data-create-employee="<%= filters.employee || '' %>"><i class="bi bi-plus-lg"></i><span>Catat Baru</span></button></div>
   </header>
 
-  <nav class="hp-segmented" aria-label="Jenis hutang">
-    <a class="<%= !scope ? 'active' : '' %>" href="<%= qs({ scope: '', employee: '', type: '' }) %>">Semua</a>
-    <a class="<%= scope === 'INTERNAL' ? 'active' : '' %>" href="<%= qs({ scope: 'INTERNAL', type: '' }) %>"><i class="bi bi-person-badge"></i>Internal · Teknisi</a>
-    <a class="<%= scope === 'EXTERNAL' ? 'active' : '' %>" href="<%= qs({ scope: 'EXTERNAL', employee: '', type: '' }) %>"><i class="bi bi-building"></i>Eksternal</a>
+  <nav class="payment-filter-chips hp-segmented debt-scope-tabs" aria-label="Jenis hutang">
+    <a class="payment-chip <%= !scope ? 'active' : '' %>" href="<%= qs({ scope: '', employee: '', type: '' }) %>"><i class="bi bi-grid"></i>Semua</a>
+    <a class="payment-chip <%= scope === 'INTERNAL' ? 'active' : '' %>" href="<%= qs({ scope: 'INTERNAL', type: '' }) %>"><i class="bi bi-person-badge"></i>Internal · Teknisi</a>
+    <a class="payment-chip <%= scope === 'EXTERNAL' ? 'active' : '' %>" href="<%= qs({ scope: 'EXTERNAL', employee: '', type: '' }) %>"><i class="bi bi-building"></i>Eksternal</a>
   </nav>
 
-  <section class="hp-stats" aria-label="Ringkasan">
+  <section class="metric-grid hp-stats" aria-label="Ringkasan">
     <% if (scope === 'INTERNAL') { %>
       <a class="hp-stat tone-orange" href="<%= qs({ type: 'RECEIVABLE' }) %>"><span class="hp-stat-label"><i class="bi bi-person-down"></i>Hutang Teknisi ke Kantor</span><strong><%= rp(I.RECEIVABLE.remaining) %></strong><small><%= I.RECEIVABLE.total %> catatan aktif</small></a>
       <a class="hp-stat tone-teal" href="<%= qs({ type: 'DEBT' }) %>"><span class="hp-stat-label"><i class="bi bi-person-up"></i>Talangan (Kantor Hutang)</span><strong><%= rp(I.DEBT.remaining) %></strong><small><%= I.DEBT.total %> catatan aktif</small></a>
@@ -66,9 +66,9 @@
   </section>
 
   <% if (scope !== 'EXTERNAL' && techRows.length) { %>
-  <section class="hp-section">
-    <div class="hp-section-head"><h2>Teknisi</h2><% if (filters.employee) { %><a href="<%= qs({ employee: '' }) %>">Tampilkan semua</a><% } %></div>
-    <div class="hp-people">
+  <section class="data-card hp-section debt-people-card">
+    <div class="data-card-head hp-section-head"><div><h3>Teknisi</h3><small>Ringkasan hutang dan talangan per karyawan aktif.</small></div><% if (filters.employee) { %><a class="btn-tech" href="<%= qs({ employee: '' }) %>"><i class="bi bi-x-lg"></i>Tampilkan semua</a><% } %></div>
+    <div class="data-card-body hp-people">
       <% techRows.forEach((t) => { const owed = Number(t.owed_to_office || 0), talangan = Number(t.owed_by_office || 0); const active = Number(filters.employee) === Number(t.employee_id); %>
       <a class="hp-person <%= active ? 'active' : '' %> <%= owed > 0 ? 'has-debt' : '' %>" href="<%= t.employee_id ? qs({ scope: 'INTERNAL', employee: active ? '' : t.employee_id }) : qs({ scope: 'INTERNAL', q: t.name }) %>">
         <span class="hp-avatar tone-orange"><%= initials(t.name) %></span>
@@ -82,25 +82,26 @@
   </section>
   <% } %>
 
-  <form class="hp-toolbar debt-filter" method="get" action="/debts" data-auto-filter>
+  <form class="filter-card debt-filter" method="get" action="/debts" data-auto-filter>
     <% if (scope) { %><input type="hidden" name="scope" value="<%= scope %>"><% } %>
     <% if (filters.employee) { %><input type="hidden" name="employee" value="<%= filters.employee %>"><% } %>
-    <label class="hp-search"><i class="bi bi-search"></i><input name="q" value="<%= filters.query %>" maxlength="100" autocomplete="off" placeholder="Cari nama, keperluan, kode teknisi…" aria-label="Cari"></label>
-    <div class="hp-pills">
-      <label class="hp-pill"><select name="type" aria-label="Jenis"><option value="">Semua jenis</option><% if (scope === 'INTERNAL') { %><option value="RECEIVABLE" <%= filters.type==='RECEIVABLE'?'selected':'' %>>Hutang teknisi</option><option value="DEBT" <%= filters.type==='DEBT'?'selected':'' %>>Talangan teknisi</option><% } else { %><option value="DEBT" <%= filters.type==='DEBT'?'selected':'' %>>Hutang</option><option value="RECEIVABLE" <%= filters.type==='RECEIVABLE'?'selected':'' %>>Piutang</option><% } %></select><i class="bi bi-chevron-down"></i></label>
-      <label class="hp-pill"><select name="status" aria-label="Status"><option value="ACTIVE" <%= filters.status==='ACTIVE'?'selected':'' %>>Aktif</option><option value="PAID" <%= filters.status==='PAID'?'selected':'' %>>Lunas</option><option value="ARCHIVED" <%= filters.status==='ARCHIVED'?'selected':'' %>>Arsip</option></select><i class="bi bi-chevron-down"></i></label>
-      <label class="hp-pill"><select name="site" aria-label="Lokasi"><option value="">Semua lokasi</option><option value="GLOBAL" <%= filters.site==='GLOBAL'?'selected':'' %>>Global</option><option value="CDS" <%= filters.site==='CDS'?'selected':'' %>>CDS</option><option value="KBG" <%= filters.site==='KBG'?'selected':'' %>>KBG</option></select><i class="bi bi-chevron-down"></i></label>
-      <label class="hp-pill"><select name="period" aria-label="Periode"><option value="">Semua waktu</option><option value="today" <%= filters.period==='today'?'selected':'' %>>Hari ini</option><option value="month" <%= filters.period==='month'?'selected':'' %>>Bulan ini</option><option value="custom" <%= filters.period==='custom'?'selected':'' %>>Custom</option></select><i class="bi bi-chevron-down"></i></label>
-      <% if (filters.period === 'custom') { %><span class="hp-range"><input type="date" name="from" value="<%= filters.from %>" aria-label="Dari"><span>–</span><input type="date" name="to" value="<%= filters.to %>" aria-label="Sampai"></span><% } %>
-      <% if (hasFilter) { %><a class="hp-pill hp-pill-reset debt-filter-reset" href="<%= scope ? `/debts?scope=${scope}` : '/debts' %>" title="Reset filter"><i class="bi bi-x-circle-fill"></i>Reset</a><% } %>
+    <div class="filter-grid debt-standard-filter-grid">
+      <div class="filter-group debt-filter-search"><label>CARI</label><div class="search-box"><i class="bi bi-search"></i><input name="q" value="<%= filters.query %>" maxlength="100" autocomplete="off" placeholder="Nama, keperluan, atau kode teknisi…" aria-label="Cari"></div></div>
+      <div class="filter-group"><label>JENIS</label><select class="form-select" name="type" aria-label="Jenis"><option value="">Semua jenis</option><% if (scope === 'INTERNAL') { %><option value="RECEIVABLE" <%= filters.type==='RECEIVABLE'?'selected':'' %>>Hutang teknisi</option><option value="DEBT" <%= filters.type==='DEBT'?'selected':'' %>>Talangan teknisi</option><% } else { %><option value="DEBT" <%= filters.type==='DEBT'?'selected':'' %>>Hutang</option><option value="RECEIVABLE" <%= filters.type==='RECEIVABLE'?'selected':'' %>>Piutang</option><% } %></select></div>
+      <div class="filter-group"><label>STATUS</label><select class="form-select" name="status" aria-label="Status"><option value="ACTIVE" <%= filters.status==='ACTIVE'?'selected':'' %>>Aktif</option><option value="PAID" <%= filters.status==='PAID'?'selected':'' %>>Lunas</option><option value="ARCHIVED" <%= filters.status==='ARCHIVED'?'selected':'' %>>Arsip</option></select></div>
+      <div class="filter-group"><label>SITE</label><select class="form-select" name="site" aria-label="Lokasi"><option value="">Semua lokasi</option><option value="GLOBAL" <%= filters.site==='GLOBAL'?'selected':'' %>>Global</option><option value="CDS" <%= filters.site==='CDS'?'selected':'' %>>CDS</option><option value="KBG" <%= filters.site==='KBG'?'selected':'' %>>KBG</option></select></div>
+      <div class="filter-group"><label>PERIODE</label><select class="form-select" name="period" aria-label="Periode"><option value="">Semua waktu</option><option value="today" <%= filters.period==='today'?'selected':'' %>>Hari ini</option><option value="month" <%= filters.period==='month'?'selected':'' %>>Bulan ini</option><option value="custom" <%= filters.period==='custom'?'selected':'' %>>Custom</option></select></div>
+      <% if (filters.period === 'custom') { %><div class="filter-group debt-filter-range"><label>RENTANG TANGGAL</label><div class="d-flex align-items-center gap-2"><input class="form-control" type="date" name="from" value="<%= filters.from %>" aria-label="Dari"><span class="text-secondary">–</span><input class="form-control" type="date" name="to" value="<%= filters.to %>" aria-label="Sampai"></div></div><% } %>
+      <div class="filter-group debt-filter-actions"><label>&nbsp;</label><div class="d-flex gap-2"><button class="btn-tech flex-fill" type="submit"><i class="bi bi-search"></i>Terapkan</button><% if (hasFilter) { %><a class="btn-tech debt-filter-reset" href="<%= scope ? `/debts?scope=${scope}` : '/debts' %>" title="Reset filter"><i class="bi bi-x-lg"></i></a><% } %></div></div>
     </div>
   </form>
 
-  <section class="hp-section">
-    <div class="hp-section-head">
-      <h2><%= selectedPerson ? `Catatan ${selectedPerson.name}` : (scope === 'INTERNAL' ? 'Catatan Internal' : scope === 'EXTERNAL' ? 'Catatan Eksternal' : 'Semua Catatan') %></h2>
+  <section class="data-card hp-section debt-record-card">
+    <div class="data-card-head hp-section-head">
+      <div><h3><%= selectedPerson ? `Catatan ${selectedPerson.name}` : (scope === 'INTERNAL' ? 'Catatan Internal' : scope === 'EXTERNAL' ? 'Catatan Eksternal' : 'Semua Catatan') %></h3><small>Klik baris untuk melihat rincian, jadwal cicilan, dan riwayat pembayaran.</small></div>
       <span class="hp-count"><%= records.length %> data<% if (filters.status !== 'ACTIVE') { %> · <%= filters.status === 'PAID' ? 'Lunas' : 'Arsip' %><% } %></span>
     </div>
+    <div class="data-card-body debt-record-body">
     <% if (!records.length) { %>
       <div class="hp-empty"><span><i class="bi bi-journal-check"></i></span><strong>Belum ada data</strong><small>Tekan “Catat Baru” untuk mencatat hutang teknisi atau hutang/piutang eksternal.</small></div>
     <% } else { %>
@@ -146,9 +147,10 @@
       <% }) %>
     </div>
     <% } %>
+    </div>
   </section>
 
-  <div class="hp-footnote"><i class="bi bi-info-circle"></i><span>Nominal di modul ini tidak otomatis masuk ke Closing sebagai pendapatan/pengeluaran (supaya tidak dihitung dua kali). Hutang internal teknisi ditampilkan di Closing &amp; PDF Closing sebagai rincian informasi.</span></div>
+  <div class="alert alert-modern hp-footnote"><i class="bi bi-info-circle-fill"></i><span>Nominal di modul ini tidak otomatis masuk ke Closing sebagai pendapatan/pengeluaran agar tidak dihitung dua kali. Hutang internal teknisi tetap ditampilkan di Closing dan PDF Closing sebagai rincian informasi.</span></div>
 </div>
 
 <%# ---------- Sheet detail per catatan ---------- %>

@@ -157,7 +157,7 @@ async function queryInvoiceList(req,{paged=false}={}){
   if(dueBucket==='due15'){listWhere.push('DAY(i.due_date)<=22');}
   else if(dueBucket==='due30'){listWhere.push('DAY(i.due_date)>22');}
 
-  const listSql=`SELECT i.*,DATE_FORMAT(i.invoice_date,'%Y-%m-%d') invoice_date_key,DATE_FORMAT(i.due_date,'%Y-%m-%d') due_date_key,GREATEST(DATEDIFF(CURDATE(),i.due_date),0) days_overdue,c.customer_code,c.name customer_name,c.phone,c.whatsapp_status,c.due_day,c.archived_at customer_archived_at,p.name package_name,s.code site_code,cl.name cluster_name,
+  const listSql=`SELECT i.*,DATE_FORMAT(i.invoice_date,'%Y-%m-%d') invoice_date_key,DATE_FORMAT(i.due_date,'%Y-%m-%d') due_date_key,GREATEST(DATEDIFF(CURDATE(),i.due_date),0) days_overdue,c.customer_code,c.name customer_name,(c.is_new_install=1 AND COALESCE(c.activation_date,c.created_at)>=DATE_SUB(CURDATE(),INTERVAL 30 DAY)) is_new_customer,c.phone,c.whatsapp_status,c.due_day,c.archived_at customer_archived_at,p.name package_name,s.code site_code,cl.name cluster_name,
       (SELECT COUNT(*) FROM payments px WHERE px.invoice_id=i.id) payment_count,
       (SELECT COUNT(*) FROM payments pa WHERE pa.invoice_id=i.id AND pa.status IN ('confirmed','pending')) active_payment_count,
       (SELECT COUNT(*) FROM payments pd WHERE pd.invoice_id=i.id AND pd.status='pending') pending_payment_count
@@ -211,7 +211,7 @@ router.get('/',async(req,res)=>{
   if(customer){customerWhere.push('c.id=?');customerParams.push(Number(customer));}
   const [[activeSummary]]=await db.execute(`SELECT COUNT(*) active_customers FROM customers c JOIN sites s ON s.id=c.site_id WHERE ${customerWhere.join(' AND ')}`,customerParams);
 
-  const [customers]=await db.query(`SELECT c.id,c.customer_code,c.name,s.code site_code,cl.name cluster_name FROM customers c JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id WHERE c.customer_status='active' AND c.archived_at IS NULL ORDER BY s.code,cl.name,c.name`);
+  const [customers]=await db.query(`SELECT c.id,c.customer_code,c.name,(c.is_new_install=1 AND COALESCE(c.activation_date,c.created_at)>=DATE_SUB(CURDATE(),INTERVAL 30 DAY)) is_new_customer,s.code site_code,cl.name cluster_name FROM customers c JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id WHERE c.customer_status='active' AND c.archived_at IS NULL ORDER BY s.code,cl.name,c.name`);
   const [sites]=await db.query(`SELECT id,code,name FROM sites WHERE is_active=1 ORDER BY code`);
   const [clusters]=await db.query(`SELECT cl.id,cl.name,s.code site_code FROM clusters cl JOIN sites s ON s.id=cl.site_id WHERE cl.status!='inactive' ORDER BY s.code,cl.name`);
   const issued=Number(invoiceSummary.total_invoices||0);
@@ -226,7 +226,7 @@ router.get('/',async(req,res)=>{
     paidAmount:Number(invoiceSummary.paid_amount||0),
     outstanding:Number(invoiceSummary.outstanding_amount||0)
   };
-  const [openInvoices]=await db.query(`SELECT i.id,i.invoice_number,i.outstanding,c.customer_code,c.name customer_name,s.code site_code,cl.name cluster_name
+  const [openInvoices]=await db.query(`SELECT i.id,i.invoice_number,i.outstanding,c.customer_code,c.name customer_name,(c.is_new_install=1 AND COALESCE(c.activation_date,c.created_at)>=DATE_SUB(CURDATE(),INTERVAL 30 DAY)) is_new_customer,s.code site_code,cl.name cluster_name
     FROM invoices i JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id
     WHERE c.customer_status='active' AND c.archived_at IS NULL
       AND i.status IN ('unpaid','partial','overdue') AND i.outstanding>0
@@ -514,7 +514,7 @@ router.get('/branding/logo/:filename',(req,res)=>{
 });
 
 router.get('/:id/pdf',async(req,res)=>{
-  const [rows]=await db.execute(`SELECT i.*,c.customer_code,c.name customer_name,c.phone,c.address,p.name package_name,s.code site_code,s.name site_name,cl.name cluster_name FROM invoices i JOIN customers c ON c.id=i.customer_id JOIN packages p ON p.id=c.package_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id WHERE i.id=? LIMIT 1`,[req.params.id]);
+  const [rows]=await db.execute(`SELECT i.*,c.customer_code,c.name customer_name,c.is_new_install,c.phone,c.address,p.name package_name,s.code site_code,s.name site_name,cl.name cluster_name FROM invoices i JOIN customers c ON c.id=i.customer_id JOIN packages p ON p.id=c.package_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id WHERE i.id=? LIMIT 1`,[req.params.id]);
   if(!rows.length)return res.status(404).send('Tagihan tidak ditemukan.');const x=rows[0];
   const [bankRows]=await db.query(`SELECT bank_name,account_name,account_number FROM banks WHERE is_active=1 ORDER BY id LIMIT 1`);
   const [payments]=await db.execute(`SELECT amount,method,reference,status,paid_at FROM payments WHERE invoice_id=? ORDER BY paid_at`,[req.params.id]);
@@ -523,7 +523,7 @@ router.get('/:id/pdf',async(req,res)=>{
 });
 
 router.get('/:id/print',async(req,res)=>{
-  const [rows]=await db.execute(`SELECT i.*,c.customer_code,c.name customer_name,c.phone,c.address,p.name package_name,p.price package_price,s.code site_code,s.name site_name,cl.name cluster_name
+  const [rows]=await db.execute(`SELECT i.*,c.customer_code,c.name customer_name,c.is_new_install,c.phone,c.address,p.name package_name,p.price package_price,s.code site_code,s.name site_name,cl.name cluster_name
     FROM invoices i JOIN customers c ON c.id=i.customer_id JOIN packages p ON p.id=c.package_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id WHERE i.id=? LIMIT 1`,[req.params.id]);
   if(!rows.length) return res.status(404).send('Tagihan tidak ditemukan.');
   const [payments]=await db.execute(`SELECT amount,method,reference,status,paid_at FROM payments WHERE invoice_id=? ORDER BY paid_at`,[req.params.id]);

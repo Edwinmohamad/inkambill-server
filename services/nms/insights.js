@@ -4,6 +4,8 @@ const db = require('../../config/db');
 const ros = require('./rosApi');
 const store = require('./secretStore');
 const settings = require('./settings');
+const control = require('./control');
+const { audit } = require('../auditService');
 
 const siteWhere = (col, siteId, params) => { if (!siteId) return ''; params.push(Number(siteId)); return ` AND ${col}=?`; };
 const LIMIT = 300;
@@ -63,25 +65,25 @@ const RECON = {
   removed_on_router: {
     title: 'Secret hilang dari router', tone: 'gray', fix: 'create_secret', fixLabel: 'Buat ulang secret',
     hint: 'Pelanggan terhubung ke secret yang sudah dihapus di router (mungkin lewat Winbox).',
-    sql: (siteId, p) => `SELECT p.id secret_id, p.username, p.profile, s.code site_code, c.id customer_id, c.customer_code, c.name customer_name, p.removed_on_router_at, c.site_id
-      FROM ppp_secrets p JOIN customers c ON c.id=p.customer_id JOIN sites s ON s.id=p.site_id
+    sql: (siteId, p) => `SELECT p.id secret_id, p.router_id, p.username, p.profile, s.code site_code, c.id customer_id, c.customer_code, c.name customer_name, p.removed_on_router_at, c.site_id, pk.mikrotik_profile
+      FROM ppp_secrets p JOIN customers c ON c.id=p.customer_id JOIN sites s ON s.id=p.site_id LEFT JOIN packages pk ON pk.id=c.package_id
       WHERE p.removed_on_router_at IS NOT NULL AND c.archived_at IS NULL AND c.customer_status='active'
         AND NOT EXISTS (SELECT 1 FROM ppp_secrets p2 WHERE p2.customer_id=c.id AND p2.removed_on_router_at IS NULL AND p2.id<>p.id)
         ${siteWhere('p.site_id', siteId, p)} ORDER BY p.removed_on_router_at DESC LIMIT ${LIMIT}`
   },
   active_without_secret: {
-    title: 'PPPoE Active tanpa Secret Mirror', tone: 'red', fix: null, fixLabel: null,
+    title: 'PPPoE Active tanpa Secret Mirror', tone: 'red', fix: 'recover_active', fixLabel: 'Pulihkan mirror',
     hint: 'Sesi terlihat aktif di MikroTik tetapi secret belum ada di mirror NMS. NMS mencoba recovery otomatis; yang tersisa perlu dicek di router/RADIUS.',
-    sql: (siteId, p) => `SELECT a.username, a.site_id, s.code site_code, r.name router_name, a.first_seen_at, a.last_seen_at,
+    sql: (siteId, p) => `SELECT a.id anomaly_id, a.router_id, a.username, a.site_id, s.code site_code, r.name router_name, a.first_seen_at, a.last_seen_at,
         JSON_UNQUOTE(JSON_EXTRACT(a.details_json,'$.address')) active_address,
         JSON_UNQUOTE(JSON_EXTRACT(a.details_json,'$.callerId')) active_caller_id,
         JSON_UNQUOTE(JSON_EXTRACT(a.details_json,'$.uptime')) active_uptime
       FROM nms_ppp_anomalies a JOIN sites s ON s.id=a.site_id JOIN routers r ON r.id=a.router_id
-      WHERE a.anomaly_type='active_without_secret' AND a.resolved_at IS NULL
+      WHERE a.anomaly_type='active_without_secret' AND a.resolved_at IS NULL AND COALESCE(a.classification,'')<>'radius'
         ${siteWhere('a.site_id', siteId, p)} ORDER BY a.last_seen_at DESC LIMIT ${LIMIT}`
   },
   profile_mismatch: {
-    title: 'Profile MikroTik berbeda dengan paket', tone: 'orange', fix: null, fixLabel: null,
+    title: 'Profile MikroTik berbeda dengan paket', tone: 'orange', fix: 'sync_profile', fixLabel: 'Samakan dengan paket',
     hint: 'Binding pelanggan tetap aman. NMS hanya menandai perbedaan dan tidak mengubah paket billing secara otomatis.',
     sql: (siteId, p) => `SELECT p.id secret_id, p.username, p.profile, s.code site_code, c.id customer_id, c.customer_code, c.name customer_name,
         pk.name package_name, pk.mikrotik_profile package_profile
@@ -276,6 +278,82 @@ async function notifyArea({ clusterId, message, userId }) {
   return { queued, failed, total: rows.length };
 }
 
+// ---------------------------------------------------------------- Quick fix rekonsiliasi
+async function syncProfileToPackage({ secretId, userId, ip }) {
+  const [[row]] = await db.query(`SELECT p.id, p.username, p.profile, p.removed_on_router_at, c.id customer_id, c.name customer_name,
+      pk.name package_name, pk.mikrotik_profile package_profile
+    FROM ppp_secrets p JOIN customers c ON c.id=p.customer_id LEFT JOIN packages pk ON pk.id=c.package_id
+    WHERE p.id=?`, [Number(secretId)]);
+  if (!row) throw Object.assign(new Error('PPP Secret tidak ditemukan.'), { status: 404 });
+  if (row.removed_on_router_at) throw Object.assign(new Error('Secret sudah hilang dari router. Buat ulang secret terlebih dahulu.'), { status: 409 });
+  const target = String(row.package_profile || '').trim();
+  if (!target) throw Object.assign(new Error(`Paket ${row.package_name || 'pelanggan'} belum mempunyai profile MikroTik.`), { status: 409 });
+  if (String(row.profile || '').trim().toLowerCase() === target.toLowerCase()) return { unchanged: true, secretId: row.id, username: row.username, profile: target };
+  const result = await control.changeProfile(row.id, target, { userId, ip, source: 'reconciliation' });
+  return { ...result, packageName: row.package_name, customerName: row.customer_name };
+}
+
+async function anomalyById(id) {
+  const [[row]] = await db.query(`SELECT a.*, s.code site_code, r.name router_name
+    FROM nms_ppp_anomalies a JOIN sites s ON s.id=a.site_id JOIN routers r ON r.id=a.router_id
+    WHERE a.id=? AND a.anomaly_type='active_without_secret'`, [Number(id)]);
+  if (!row) throw Object.assign(new Error('Temuan PPP Active tidak ditemukan.'), { status: 404 });
+  return row;
+}
+
+async function refreshActiveAnomaly({ anomalyId, userId, ip }) {
+  const finding = await anomalyById(anomalyId);
+  if (finding.classification === 'radius') throw Object.assign(new Error('Temuan ini sudah ditandai sebagai sesi RADIUS.'), { status: 409 });
+  const router = await store.routerById(finding.router_id);
+  const sync = await store.syncRouterSecrets(router);
+  await store.applyActive(router, await ros.active(router));
+  const [[mirror]] = await db.query(`SELECT id, username FROM ppp_secrets WHERE router_id=? AND LOWER(username)=LOWER(?) AND removed_on_router_at IS NULL LIMIT 1`, [router.id, finding.username]);
+  await audit({ userId, action: 'nms_reconcile_refresh', entityType: 'nms_ppp_anomaly', entityId: finding.id, siteId: finding.site_id, ip,
+    description: `Tarik ulang PPP ${finding.username} dari ${router.name}`, details: { recovered: !!mirror, secretId: mirror?.id || null, sync } });
+  return { recovered: !!mirror, secretId: mirror?.id || null, username: finding.username, router: router.name, sync };
+}
+
+async function markActiveAsRadius({ anomalyId, note, userId, ip }) {
+  const finding = await anomalyById(anomalyId);
+  const cleanNote = String(note || '').trim().slice(0, 255) || 'Sesi berasal dari autentikasi RADIUS eksternal.';
+  await db.execute(`UPDATE nms_ppp_anomalies SET classification='radius', resolution_note=?, resolved_by=?, resolved_at=NOW() WHERE id=?`, [cleanNote, userId || null, finding.id]);
+  await audit({ userId, action: 'nms_reconcile_mark_radius', entityType: 'nms_ppp_anomaly', entityId: finding.id, siteId: finding.site_id, ip,
+    description: `Tandai ${finding.username} sebagai sesi RADIUS`, details: { routerId: finding.router_id, router: finding.router_name, note: cleanNote } });
+  return { anomalyId: finding.id, username: finding.username, classification: 'radius', note: cleanNote };
+}
+
+const ticketDate = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()).replace(/-/g, '');
+async function createReconcileTicket({ kind, secretId, anomalyId, customerId, userId, ip }) {
+  if (!RECON[kind]) throw Object.assign(new Error('Jenis temuan rekonsiliasi tidak dikenal.'), { status: 400 });
+  let ref;
+  if (secretId) {
+    const s = await store.secretById(secretId);
+    ref = { customerId: s.customer_id || null, username: s.username, siteCode: s.site_code, routerId: s.router_id };
+  } else if (anomalyId) {
+    const a = await anomalyById(anomalyId);
+    ref = { customerId: null, username: a.username, siteCode: a.site_code, routerId: a.router_id, routerName: a.router_name };
+  } else if (customerId) {
+    const [[c]] = await db.query(`SELECT c.id, c.name, c.customer_code, s.code site_code FROM customers c JOIN sites s ON s.id=c.site_id WHERE c.id=?`, [Number(customerId)]);
+    if (!c) throw Object.assign(new Error('Pelanggan tidak ditemukan.'), { status: 404 });
+    ref = { customerId: c.id, customerName: c.name, customerCode: c.customer_code, siteCode: c.site_code };
+  } else throw Object.assign(new Error('Referensi temuan tidak lengkap.'), { status: 400 });
+
+  const identity = ref.username || ref.customerCode || `customer-${ref.customerId}`;
+  const subject = `[REKON:${kind}] ${identity}`.slice(0, 180);
+  const [[open]] = await db.query(`SELECT id, ticket_code FROM tickets WHERE status IN ('open','progress','pending') AND subject=? LIMIT 1`, [subject]).catch(() => [[null]]);
+  if (open) return { existing: true, id: open.id, code: open.ticket_code };
+  const code = `TT-${ticketDate()}-${String(Date.now()).slice(-6)}`;
+  const description = [`Dibuat dari Rekonsiliasi MikroTik PPP.`, RECON[kind].title, RECON[kind].hint,
+    `Site: ${ref.siteCode || '-'}`, ref.routerName ? `Router: ${ref.routerName}` : null, ref.username ? `Username: ${ref.username}` : null,
+    ref.customerName ? `Pelanggan: ${ref.customerCode || '-'} ${ref.customerName}` : null, 'Mohon verifikasi kondisi di router/RADIUS dan dokumentasikan hasil pemeriksaan.'].filter(Boolean).join('\n');
+  const priority = ['paid_isolated', 'inactive_online', 'active_without_secret'].includes(kind) ? 'high' : 'medium';
+  const [created] = await db.execute(`INSERT INTO tickets(ticket_code,customer_id,subject,type,priority,status,description,opened_by,opened_at) VALUES(?,?,?,?,?,'open',?,?,NOW())`,
+    [code, ref.customerId || null, subject, 'Gangguan Internet', priority, description, userId || null]);
+  await audit({ userId, action: 'nms_reconcile_ticket', entityType: 'ticket', entityId: created.insertId, siteId: null, ip,
+    description: `Buat tiket ${code} dari temuan ${RECON[kind].title}`, details: { kind, secretId: Number(secretId) || null, anomalyId: Number(anomalyId) || null, customerId: Number(customerId) || null } });
+  return { existing: false, id: created.insertId, code };
+}
+
 // ---------------------------------------------------------------- Flapping → tiket
 async function createFlapTicket({ secretId, userId }) {
   const secret = await store.secretById(secretId);
@@ -353,4 +431,6 @@ async function exportCsv({ kind, siteId }) {
   return { name: `nms-${tab}`, csv: toCsv(rows) };
 }
 
-module.exports = { RECON, reconcile, diagnose, timeline, revert, detail, sharedAccounts, siteHealth, notifyArea, createFlapTicket, morningSummaryText, sendSummary, exportCsv, toCsv };
+module.exports = { RECON, reconcile, diagnose, timeline, revert, detail, sharedAccounts, siteHealth, notifyArea,
+  syncProfileToPackage, refreshActiveAnomaly, markActiveAsRadius, createReconcileTicket, createFlapTicket,
+  morningSummaryText, sendSummary, exportCsv, toCsv };

@@ -13,10 +13,10 @@ router.get('/', async (req, res) => {
   const collectorExpr = 'COALESCE(p.collector_user_id,p.received_by)';
   const base = `FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id`;
   const [[held], [pending], [settlements], [[totals]]] = await Promise.all([
-    db.execute(`SELECT p.id,p.amount,p.reference,p.paid_at,c.name customer_name,c.customer_code,i.invoice_number,s.code site_code,cl.name cluster_name,
+    db.execute(`SELECT p.id,p.amount,p.reference,p.paid_at,c.name customer_name,c.customer_code,(c.is_new_install=1 AND COALESCE(c.activation_date,c.created_at)>=DATE_SUB(CURDATE(),INTERVAL 30 DAY)) is_new_customer,i.invoice_number,s.code site_code,cl.name cluster_name,
         DATEDIFF(CURDATE(),DATE(p.paid_at)) age_days
       ${base} WHERE p.method='cash' AND p.status='confirmed' AND p.settlement_status='held_by_staff' AND ${collectorExpr}=? ORDER BY p.paid_at,p.id`, [userId]),
-    db.execute(`SELECT p.id,p.amount,p.reference,p.paid_at,c.name customer_name,c.customer_code,i.invoice_number
+    db.execute(`SELECT p.id,p.amount,p.reference,p.paid_at,c.name customer_name,c.customer_code,(c.is_new_install=1 AND COALESCE(c.activation_date,c.created_at)>=DATE_SUB(CURDATE(),INTERVAL 30 DAY)) is_new_customer,i.invoice_number
       ${base} WHERE p.method='cash' AND p.status='pending' AND ${collectorExpr}=? ORDER BY p.paid_at DESC LIMIT 100`, [userId]),
     db.execute(`SELECT cs.id,cs.code,cs.settlement_date,cs.mode,cs.status,cs.handed_amount,cs.difference_amount,au.name created_by_name,
         COUNT(p.id) payment_count,COALESCE(SUM(p.amount),0) my_amount

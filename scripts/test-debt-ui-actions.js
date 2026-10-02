@@ -7,6 +7,9 @@ const view = fs.readFileSync(path.join(root, 'views/debts/index.ejs'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'public/css/debts.css'), 'utf8');
 
 const checks = [
+  [view.includes('class="module-head hp-header"') && view.includes('class="metric-grid hp-stats"'), 'header dan ringkasan memakai design system aplikasi'],
+  [view.includes('class="filter-card debt-filter"') && view.includes('debt-standard-filter-grid'), 'filter memakai pola filter-card standar'],
+  [view.includes('data-card hp-section debt-record-card') && view.includes('data-card hp-section debt-people-card'), 'daftar catatan dan teknisi memakai data-card standar'],
   [view.includes('data-action-popover-target="debtAction<%= row.id %>"'), 'setiap item memiliki tombol Aksi standar'],
   [view.includes('<b>Lihat Rincian</b>') && view.includes('<b>Catat Pembayaran</b>'), 'aksi detail dan pembayaran tersedia'],
   [view.includes('<b>Edit</b>') && view.includes('<b>Hapus</b>') && view.includes('<b>Arsipkan</b>'), 'aksi edit, hapus, dan arsip tersedia'],
@@ -14,7 +17,8 @@ const checks = [
   [view.includes('data-debt-switch-modal="#debtEditModal"') && view.includes('data-debt-switch-modal="#debtPayModal"'), 'aksi dari detail memakai transisi modal aman'],
   [view.includes("current.addEventListener('hidden.bs.modal',openTarget,{once:true})"), 'modal berikutnya menunggu modal detail tertutup'],
   [view.includes("document.querySelectorAll('.modal-backdrop').forEach(backdrop=>backdrop.remove())"), 'backdrop yatim dibersihkan'],
-  [css.includes('.hp-row-actions .action-menu-labeled'), 'tombol Aksi memiliki layout desktop dan mobile']
+  [css.includes('.hp-row-actions .action-menu-labeled'), 'tombol Aksi memiliki layout desktop dan mobile'],
+  [css.includes('.debt-standard-page.hp-page') && css.includes('.debt-standard-filter-grid'), 'lapisan konsistensi Hutang tersedia untuk desktop dan mobile']
 ];
 
 for (const [valid, label] of checks) {

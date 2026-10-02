@@ -136,7 +136,7 @@ async function loadDashboardBillingMonitor({month,year,siteId=null,cycle='all',t
       AND c.customer_status='active' AND c.archived_at IS NULL${sw}
     GROUP BY ${CYCLE_EXPR} ORDER BY cycle`;
 
-  const unpaidSql=`SELECT i.id invoice_id,i.invoice_number,i.due_date,i.outstanding,c.id customer_id,c.customer_code,c.name customer_name,c.phone,s.code site_code,cl.name cluster_name,
+  const unpaidSql=`SELECT i.id invoice_id,i.invoice_number,i.due_date,i.outstanding,c.id customer_id,c.customer_code,c.name customer_name,(c.is_new_install=1 AND COALESCE(c.activation_date,c.created_at)>=DATE_SUB(CURDATE(),INTERVAL 30 DAY)) is_new_customer,c.phone,s.code site_code,cl.name cluster_name,
       ${CYCLE_EXPR} cycle,DATEDIFF(CURDATE(),i.due_date) days_late
     FROM invoices i JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id
     WHERE i.period_year=? AND i.period_month=? AND i.status IN ('unpaid','partial','overdue') AND i.outstanding>0
@@ -144,7 +144,7 @@ async function loadDashboardBillingMonitor({month,year,siteId=null,cycle='all',t
       AND NOT EXISTS (SELECT 1 FROM payments pp WHERE pp.invoice_id=i.id AND pp.status='pending')${sw}
     ORDER BY cycle,i.due_date,c.name LIMIT 500`;
 
-  const pendingListSql=`SELECT i.id invoice_id,i.invoice_number,i.due_date,i.outstanding,c.id customer_id,c.customer_code,c.name customer_name,c.phone,s.code site_code,cl.name cluster_name,
+  const pendingListSql=`SELECT i.id invoice_id,i.invoice_number,i.due_date,i.outstanding,c.id customer_id,c.customer_code,c.name customer_name,(c.is_new_install=1 AND COALESCE(c.activation_date,c.created_at)>=DATE_SUB(CURDATE(),INTERVAL 30 DAY)) is_new_customer,c.phone,s.code site_code,cl.name cluster_name,
       ${CYCLE_EXPR} cycle,COALESCE(SUM(p.amount),0) pending_amount,MIN(p.paid_at) paid_at
     FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id
     WHERE p.status='pending' AND i.period_year=? AND i.period_month=? AND i.status NOT IN ('cancelled','refunded')
@@ -171,7 +171,7 @@ async function loadDashboardBillingMonitor({month,year,siteId=null,cycle='all',t
       AND c.customer_status='active' AND c.archived_at IS NULL${sw}${cw}`;
 
   const recentIncomeSql=`SELECT p.id payment_id,p.amount,p.method,p.bank_name,p.reference,${RECOGNIZED_AT_EXPR} recognized_at,
-      i.id invoice_id,i.invoice_number,${CYCLE_EXPR} cycle,c.id customer_id,c.customer_code,c.name customer_name,s.code site_code
+      i.id invoice_id,i.invoice_number,${CYCLE_EXPR} cycle,c.id customer_id,c.customer_code,c.name customer_name,(c.is_new_install=1 AND COALESCE(c.activation_date,c.created_at)>=DATE_SUB(CURDATE(),INTERVAL 30 DAY)) is_new_customer,s.code site_code
     FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id
     WHERE p.status='confirmed' AND ${RECOGNIZED_AT_EXPR} IS NOT NULL AND ${CASH_POSTED_EXISTS}
       AND c.customer_status='active' AND c.archived_at IS NULL${sw}${cw}

@@ -73,20 +73,53 @@
   function fixButtons(g, r, i) {
     if (!N.canControl) return r.secret_id ? `<button type="button" class="nx-btn sm ghost" data-fix="detail" data-row="${i}">Detail</button>` : '';
     const b = (fix, label, cls = 'tint') => `<button type="button" class="nx-btn sm ${cls}" data-fix="${fix}" data-row="${i}">${label}</button>`;
+    const ticket = b('ticket', 'Tiket teknisi', 'ghost');
     switch (g.fix) {
-      case 'isolate': return b('isolate', 'Isolir', 'red') + (g.key === 'overdue_active' && r.customer_id ? b('hold', 'Tunda', '') : '');
-      case 'unisolate': return b('unisolate', 'Buka isolir', 'green');
-      case 'map': return b('map', 'Hubungkan') + b('create-customer', 'Buat pelanggan', '');
-      case 'create_secret': return b('create-secret', 'Buat secret');
-      default: return '';
+      case 'isolate': return b('isolate', 'Isolir', 'red') + (g.key === 'overdue_active' && r.customer_id ? b('hold', 'Tunda', '') : '') + ticket;
+      case 'unisolate': return b('unisolate', 'Buka isolir', 'green') + ticket;
+      case 'map': return b('map', 'Hubungkan') + b('create-customer', 'Buat pelanggan', '') + ticket;
+      case 'create_secret': return b('create-secret', 'Buat ulang') + b('unmap', 'Putuskan mapping', 'ghost') + ticket;
+      case 'recover_active': return b('refresh-active', 'Tarik ulang') + b('mark-radius', 'Tandai RADIUS', 'ghost') + ticket;
+      case 'sync_profile': return b('sync-profile', 'Samakan profile') + ticket;
+      default: return ticket;
     }
   }
-  function runFix(fix, r, s) {
+  async function runFix(fix, r, s) {
     if (fix === 'detail') return N.drawer(r.secret_id);
     const row = { ...r, id: r.secret_id, is_isolated: fix === 'unisolate' ? 1 : 0 };
     if (fix === 'create-secret') return N.openCreateSecret(r, { onDone: () => { s.close(); loadRecon(); } });
     if (fix === 'map') return N.openMap(row, { onDone: () => { s.close(); loadRecon(); } });
     if (fix === 'create-customer') return N.openCreateCustomer(row, { onDone: () => { s.close(); loadRecon(); } });
+    if (fix === 'unmap') { const out = await N.act(row, 'unmap'); if (out) { s.close(); loadRecon(); } return; }
+    if (fix === 'sync-profile') {
+      const yes = await N.confirmBox({ title: 'Samakan profile dengan paket?', okText: 'Samakan profile', message: `Profile <b class="mono">${esc(r.username)}</b> akan diubah dari <b>${esc(r.profile || '—')}</b> ke <b>${esc(r.package_profile || '—')}</b>. Sesi aktif diputus agar limit baru langsung berlaku.` });
+      if (!yes) return;
+      const out = await N.deferred(`Mengubah profile ${rowName(r)}…`, () => api(`/nms/api/secrets/${r.secret_id}/sync-profile`, { method: 'POST', body: {} }), { seconds: 4 });
+      if (out) { toast(out.result.unchanged ? 'Profile sudah sesuai paket.' : `Profile ${r.username} disamakan ke ${out.result.to}.`, 'ok'); s.close(); N.changed(); }
+      return;
+    }
+    if (fix === 'refresh-active') {
+      try {
+        const { result } = await api(`/nms/api/anomalies/${r.anomaly_id}/refresh`, { method: 'POST', body: {} });
+        toast(result.recovered ? `${r.username} berhasil dipulihkan ke mirror NMS.` : `${r.username} tetap tidak ditemukan di /ppp/secret. Periksa RADIUS.`, result.recovered ? 'ok' : 'info');
+        if (result.recovered) s.close(); loadRecon(); N.changed();
+      } catch (err) { toast(err.message, 'err'); }
+      return;
+    }
+    if (fix === 'mark-radius') {
+      const yes = await N.confirmBox({ title: 'Tandai sebagai sesi RADIUS?', okText: 'Tandai RADIUS', message: `Temuan <b class="mono">${esc(r.username)}</b> akan disembunyikan dari daftar “Active tanpa Secret Mirror”. Tidak ada konfigurasi router yang diubah.` });
+      if (!yes) return;
+      try { await api(`/nms/api/anomalies/${r.anomaly_id}/radius`, { method: 'POST', body: {} }); toast(`${r.username} ditandai sebagai sesi RADIUS.`, 'ok'); s.close(); loadRecon(); N.changed(); }
+      catch (err) { toast(err.message, 'err'); }
+      return;
+    }
+    if (fix === 'ticket') {
+      try {
+        const { ticket: t } = await api('/nms/api/reconcile/ticket', { method: 'POST', body: { kind: g.key, secretId: r.secret_id || null, anomalyId: r.anomaly_id || null, customerId: r.customer_id || null } });
+        toast(t.existing ? `Tiket ${t.code} sudah aktif.` : `Tiket ${t.code} dibuat.`, 'ok', { action: 'Buka', onAction: () => location.assign(`/tickets/${t.id}`) });
+      } catch (err) { toast(err.message, 'err'); }
+      return;
+    }
     N.act(row, fix);
   }
 

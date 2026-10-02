@@ -72,7 +72,7 @@
             <% if(isAdmin){ %><td class="invoice-check-col"><input type="checkbox" class="form-check-input" data-row-check data-can-pay="<%= canPay?'1':'0' %>" value="<%= i.id %>" aria-label="Pilih tagihan <%= i.invoice_number %>"></td><% } %>
             <td class="invoice-no-cell"><span class="cell-main"><%= index+1 %></span></td>
             <td class="invoice-customer-cell">
-              <div><span class="cell-main"><%= i.customer_name %></span><span class="cell-sub"><%= i.customer_code %></span><span class="go-invoice-ref"><%= i.invoice_number %></span><% if(i.customer_archived_at){ %><span class="status-badge gray customer-archived-pill" title="Pelanggan ini sudah diarsipkan — riwayat tagihan tetap ditampilkan untuk audit."><i class="bi bi-archive-fill"></i>Diarsipkan</span><% } %></div>
+              <div><span class="cell-main"><%= i.customer_name %></span><%- include('../partials/customer-new-subtitle',{customer:i}) %><span class="cell-sub"><%= i.customer_code %></span><span class="go-invoice-ref"><%= i.invoice_number %></span><% if(i.customer_archived_at){ %><span class="status-badge gray customer-archived-pill" title="Pelanggan ini sudah diarsipkan — riwayat tagihan tetap ditampilkan untuk audit."><i class="bi bi-archive-fill"></i>Diarsipkan</span><% } %></div>
             </td>
             <td class="invoice-site-cell"><span class="go-cell-label">Site</span><span class="cell-main"><%= i.site_code %></span><span class="cell-sub">Cluster <%= i.cluster_name||'-' %></span></td>
             <td class="invoice-period-cell"><span class="go-cell-label">Periode</span><span class="cell-main"><%= monthNames[i.period_month-1] %> <%= i.period_year %></span><span class="cell-sub"><%= i.is_prorata?'PRORATA':'BULANAN' %></span></td>

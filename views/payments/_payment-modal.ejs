@@ -23,7 +23,7 @@
             <% openInvoices.forEach(i=>{ const searchText=[i.customer_name,i.customer_code,i.invoice_number,i.site_code,i.cluster_name||''].join(' ').toLowerCase(); %>
             <label class="invoice-picker-row" data-invoice-row data-search="<%= searchText %>" data-invoice-id="<%= i.id %>">
               <input class="form-check-input payment-invoice-check" type="checkbox" name="invoice_ids" value="<%= i.id %>" <%= Number(preselectedInvoiceId)===Number(i.id)?'checked':'' %>>
-              <span class="invoice-picker-customer"><strong><%= i.customer_name %></strong><small><%= i.customer_code %> · <%= i.invoice_number %></small></span>
+              <span class="invoice-picker-customer"><strong><%= i.customer_name %></strong><%- include('../partials/customer-new-subtitle',{customer:i}) %><small><%= i.customer_code %> · <%= i.invoice_number %></small></span>
               <span class="invoice-picker-site"><b><%= i.site_code %></b><small>Cluster <%= i.cluster_name||'-' %></small></span>
               <span class="invoice-picker-amount"><small>Sisa Tagihan</small><b><%= formatRupiah(i.outstanding) %></b></span>
               <span class="invoice-picker-input locked"><label>Nominal Bayar · Terkunci</label><input class="form-control payment-allocation" type="number" name="amount_<%= i.id %>" value="<%= Number(i.outstanding) %>" data-outstanding="<%= Number(i.outstanding) %>" readonly aria-readonly="true" <%= Number(preselectedInvoiceId)===Number(i.id)?'':'disabled' %>><i class="bi bi-lock-fill" aria-hidden="true"></i></span>

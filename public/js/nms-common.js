@@ -446,9 +446,9 @@
   async function openCreateSecret(c, { onDone } = {}) {
     let routers = []; try { routers = (await api(`/nms/api/routers${qs({ site: c.site_id })}`)).rows; } catch (_) {}
     const s = sheet({ title: 'Buat secret PPPoE', subtitle: `${esc(c.customer_name)} · ${esc(c.customer_code)}`,
-      body: `<div class="nx-row"><div class="nx-field"><label>Router</label><select data-router>${routers.map(r => `<option value="${r.id}">${esc(r.site_code)} · ${esc(r.name)}</option>`).join('') || '<option value="">Tidak ada router di site ini</option>'}</select></div>
-          <div class="nx-field"><label>Profile</label><input type="text" data-profile value="${esc(c.mikrotik_profile || '')}" placeholder="Dari paket"></div></div>
-        <div class="nx-row"><div class="nx-field"><label>Username</label><input type="text" data-user value="${esc(String(c.customer_code || '').toLowerCase())}"></div><div class="nx-field"><label>Password</label><input type="text" data-pass placeholder="Acak otomatis"></div></div>
+      body: `<div class="nx-row"><div class="nx-field"><label>Router</label><select data-router>${routers.map(r => `<option value="${r.id}" ${Number(r.id) === Number(c.router_id) ? 'selected' : ''}>${esc(r.site_code)} · ${esc(r.name)}</option>`).join('') || '<option value="">Tidak ada router di site ini</option>'}</select></div>
+          <div class="nx-field"><label>Profile</label><input type="text" data-profile value="${esc(c.profile || c.mikrotik_profile || '')}" placeholder="Dari paket"></div></div>
+        <div class="nx-row"><div class="nx-field"><label>Username</label><input type="text" data-user value="${esc(String(c.username || c.customer_code || '').toLowerCase())}"></div><div class="nx-field"><label>Password</label><input type="text" data-pass placeholder="Acak otomatis"></div></div>
         <div class="nx-field"><label>Kirim kredensial ke WA teknisi</label><input type="tel" data-wa placeholder="Opsional, contoh 0812…"></div>`,
       foot: `<button type="button" class="nx-btn" data-close>Batal</button><button type="button" class="nx-btn primary" data-save>Buat di router</button>` });
     s.$('[data-save]').addEventListener('click', async e => {

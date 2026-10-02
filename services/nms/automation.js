@@ -185,9 +185,11 @@ async function createSecretForCustomer({ customerId, routerId = null, username =
   const comment = (await settings.flag('cid_tag_enabled')) ? withCid(`${c.name}`.slice(0, 120), c.customer_code) : `${c.customer_code} ${c.name}`.slice(0, 120);
   const created = await ros.createSecret(router, { name: user, password: pass, service: 'pppoe', profile: prof, comment });
   const { encrypt } = require('../cryptoService');
-  await db.execute(`INSERT INTO ppp_secrets (site_id, router_id, ros_id, username, password_enc, profile, service, comment, last_seen_on_router_at) VALUES (?,?,?,?,?,?,?,?,NOW())
-    ON DUPLICATE KEY UPDATE ros_id=VALUES(ros_id), password_enc=VALUES(password_enc), profile=VALUES(profile), removed_on_router_at=NULL, last_seen_on_router_at=NOW()`,
-  [router.site_id, router.id, created?.['.id'] || null, user, encrypt(pass), prof, 'pppoe', comment.slice(0, 255)]);
+  const recreatedIsolated = store.isIsolirProfile(prof) ? 1 : 0;
+  await db.execute(`INSERT INTO ppp_secrets (site_id, router_id, ros_id, username, password_enc, profile, service, comment, disabled, is_isolated, last_seen_on_router_at) VALUES (?,?,?,?,?,?,?,?,0,?,NOW())
+    ON DUPLICATE KEY UPDATE ros_id=VALUES(ros_id), password_enc=VALUES(password_enc), profile=VALUES(profile), disabled=0, is_isolated=VALUES(is_isolated),
+      original_profile=IF(VALUES(is_isolated)=1,original_profile,NULL), removed_on_router_at=NULL, last_seen_on_router_at=NOW()`,
+  [router.site_id, router.id, created?.['.id'] || null, user, encrypt(pass), prof, 'pppoe', comment.slice(0, 255), recreatedIsolated]);
   const [[row]] = await db.query(`SELECT id FROM ppp_secrets WHERE router_id=? AND username=?`, [router.id, user]);
   const smartSync = require('./smartSync');
   await smartSync.manualMap(row.id, c.id, 'created');

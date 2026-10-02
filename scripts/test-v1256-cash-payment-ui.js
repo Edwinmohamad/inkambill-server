@@ -22,6 +22,8 @@ const payments=read('views/payments/index.ejs');
 assert(payments.includes('payment-history-table'));
 assert(payments.includes('paymentApproveModal'));
 assert(payments.includes('payment-approve-btn'));
+assert(payments.includes('id="proofOpenNew"'), 'viewer bukti harus menyediakan link file asli yang dipakai click handler');
+assert(payments.includes("document.getElementById('proofOpenNew').href=url"), 'click handler harus mengarahkan link file asli ke bukti terpilih');
 assert(!payments.includes('name="book_date_mode" aria-label="Tanggal pembukuan"'));
 const css=read('public/css/app.css');
 assert(css.includes('.payment-approval-compact'));

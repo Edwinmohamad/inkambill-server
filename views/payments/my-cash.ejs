@@ -15,7 +15,7 @@
   <div class="data-card mb-3">
     <div class="data-card-head"><div><h3>Cash Belum Disetor</h3><small>Urut dari yang paling lama. Serahkan ke admin untuk dikonfirmasi masuk kas.</small></div></div>
     <div class="table-responsive"><table class="app-table"><thead><tr><th class="app-seq-col">No.</th><th>Pelanggan</th><th>Site</th><th>Nominal</th><th>Dibayar</th><th>Umur</th></tr></thead><tbody>
-      <% held.forEach((p,index)=>{ const age=Number(p.age_days||0); %><tr><td><span class="cell-main"><%= index+1 %></span></td><td><span class="cell-main"><%= p.customer_name %></span><span class="cell-sub"><%= p.customer_code %> · <%= p.invoice_number %></span></td><td><span class="status-badge purple"><%= p.site_code %><%= p.cluster_name?` · ${p.cluster_name}`:'' %></span></td><td class="money"><%= formatRupiah(p.amount) %></td><td><%= new Date(p.paid_at).toLocaleString('id-ID',{timeZone:'Asia/Jakarta'}) %></td><td><span class="cash-age <%= age>agingDays?'late':age>=Math.max(1,agingDays-1)?'warn':'' %>"><%= age===0?'hari ini':`${age} hari` %></span></td></tr><% }) %>
+      <% held.forEach((p,index)=>{ const age=Number(p.age_days||0); %><tr><td><span class="cell-main"><%= index+1 %></span></td><td><span class="cell-main"><%= p.customer_name %></span><%- include('../partials/customer-new-subtitle',{customer:p}) %><span class="cell-sub"><%= p.customer_code %> · <%= p.invoice_number %></span></td><td><span class="status-badge purple"><%= p.site_code %><%= p.cluster_name?` · ${p.cluster_name}`:'' %></span></td><td class="money"><%= formatRupiah(p.amount) %></td><td><%= new Date(p.paid_at).toLocaleString('id-ID',{timeZone:'Asia/Jakarta'}) %></td><td><span class="cash-age <%= age>agingDays?'late':age>=Math.max(1,agingDays-1)?'warn':'' %>"><%= age===0?'hari ini':`${age} hari` %></span></td></tr><% }) %>
       <% if(!held.length){ %><tr><td colspan="6"><div class="empty-state"><i class="bi bi-check2-circle"></i><strong>Tidak ada cash di tangan</strong><small>Semua uang pelanggan yang Anda terima sudah disetor.</small></div></td></tr><% } %>
     </tbody></table></div>
   </div>
@@ -24,7 +24,7 @@
   <div class="data-card mb-3">
     <div class="data-card-head"><div><h3>Menunggu Approval Master Admin</h3><small>Belum dihitung sebagai cash dipegang sampai disetujui.</small></div></div>
     <div class="table-responsive"><table class="app-table"><thead><tr><th>Pelanggan</th><th>Nominal</th><th>Dibayar</th><th>Referensi</th></tr></thead><tbody>
-      <% pending.forEach(p=>{ %><tr><td><span class="cell-main"><%= p.customer_name %></span><span class="cell-sub"><%= p.customer_code %> · <%= p.invoice_number %></span></td><td class="money"><%= formatRupiah(p.amount) %></td><td><%= new Date(p.paid_at).toLocaleString('id-ID',{timeZone:'Asia/Jakarta'}) %></td><td><%= p.reference||('#'+p.id) %></td></tr><% }) %>
+      <% pending.forEach(p=>{ %><tr><td><span class="cell-main"><%= p.customer_name %></span><%- include('../partials/customer-new-subtitle',{customer:p}) %><span class="cell-sub"><%= p.customer_code %> · <%= p.invoice_number %></span></td><td class="money"><%= formatRupiah(p.amount) %></td><td><%= new Date(p.paid_at).toLocaleString('id-ID',{timeZone:'Asia/Jakarta'}) %></td><td><%= p.reference||('#'+p.id) %></td></tr><% }) %>
     </tbody></table></div>
   </div>
   <% } %>

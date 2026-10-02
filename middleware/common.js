@@ -45,6 +45,16 @@ function commonLocals(req,res,next){
   // v1.26 -- date+time formatting for activity/history timelines (e.g. Piutang & Hutang riwayat transaksi).
   res.locals.formatDateTime=(value)=>{if(!value)return '-';return new Intl.DateTimeFormat(language==='en'?'en-GB':'id-ID',{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Jakarta'}).format(new Date(value));};
   res.locals.formatTime=(value)=>{if(!value)return '';return new Intl.DateTimeFormat(language==='en'?'en-GB':'id-ID',{timeStyle:'short',timeZone:'Asia/Jakarta'}).format(new Date(value));};
+  // Label "Pelanggan Baru" berlaku tepat 30 hari sejak aktivasi. `is_new_customer`
+  // disediakan oleh query-query daftar agar database dan UI memakai patokan yang sama.
+  res.locals.isRecentNewCustomer=(customer)=>{
+    if(!customer)return false;
+    if(Object.prototype.hasOwnProperty.call(customer,'is_new_customer'))return Number(customer.is_new_customer)===1;
+    if(Number(customer.is_new_install)!==1&&customer.customer_source!=='new_install')return false;
+    const startedAt=new Date(customer.activation_date||customer.created_at||'');
+    const age=Date.now()-startedAt.getTime();
+    return Number.isFinite(age)&&age>=0&&age<30*24*60*60*1000;
+  };
   // v1.20.1: use for every `const x = <%- safeJson(data) %>;` inline <script> bootstrap payload.
   // JSON.stringify() never escapes "</script>", so embedding it raw lets any free-text DB field
   // (a cluster/category/customer name, etc.) that happens to contain "</script><script>..." break

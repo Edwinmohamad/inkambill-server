@@ -45,7 +45,7 @@ function selectedPaymentIds(body){
   return [...new Set(list.map(Number).filter(Number.isInteger).filter(x=>x>0))];
 }
 async function openInvoiceOptions(site='',cluster=''){
-  let sql=`SELECT i.id,i.invoice_number,i.outstanding,c.customer_code,c.name customer_name,s.code site_code,cl.name cluster_name
+  let sql=`SELECT i.id,i.invoice_number,i.outstanding,c.customer_code,c.name customer_name,(c.is_new_install=1 AND COALESCE(c.activation_date,c.created_at)>=DATE_SUB(CURDATE(),INTERVAL 30 DAY)) is_new_customer,s.code site_code,cl.name cluster_name
     FROM invoices i JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id
     WHERE c.customer_status='active' AND c.archived_at IS NULL
       AND i.status IN ('unpaid','partial','overdue') AND i.outstanding>0
@@ -83,7 +83,7 @@ router.get('/',async(req,res)=>{
   const cashRecipient=cashRecipientId&&staff.some(member=>Number(member.id)===cashRecipientId)?cashRecipientId:0;
   const transferBank=transferRecipientId?banks.find(bank=>Number(bank.id)===transferRecipientId):null;
   const activeRecipient=cashRecipient?`cash:${cashRecipient}`:transferBank?`transfer:${transferBank.id}`:'';
-  let sql=`SELECT p.*,i.invoice_number,i.due_date,i.period_month,i.period_year,c.customer_code,c.name customer_name,s.code site_code,cl.name cluster_name,u.name collector_name,v.name verifier_name,pu.name proof_uploader_name
+  let sql=`SELECT p.*,i.invoice_number,i.due_date,i.period_month,i.period_year,c.customer_code,c.name customer_name,(c.is_new_install=1 AND COALESCE(c.activation_date,c.created_at)>=DATE_SUB(CURDATE(),INTERVAL 30 DAY)) is_new_customer,s.code site_code,cl.name cluster_name,u.name collector_name,v.name verifier_name,pu.name proof_uploader_name
     FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id
     LEFT JOIN users u ON u.id=COALESCE(p.collector_user_id,p.received_by) LEFT JOIN users v ON v.id=p.verified_by LEFT JOIN users pu ON pu.id=p.proof_uploaded_by
     WHERE 1=1`;
@@ -352,7 +352,7 @@ async function loadReconciliationData(req,{withLookups=false}={}){
   const agingDays=await cashAgingDays();
   const aging=req.query.aging==='overdue'?'overdue':'';
   const collector=Number(req.query.collector)>0?String(Number(req.query.collector)):'';
-  let heldSql=`SELECT p.*,c.customer_code,c.name customer_name,s.code site_code,cl.name cluster_name,u.name collector_name,i.invoice_number,
+  let heldSql=`SELECT p.*,c.customer_code,c.name customer_name,(c.is_new_install=1 AND COALESCE(c.activation_date,c.created_at)>=DATE_SUB(CURDATE(),INTERVAL 30 DAY)) is_new_customer,s.code site_code,cl.name cluster_name,u.name collector_name,i.invoice_number,
     DATEDIFF(CURDATE(),DATE(p.paid_at)) age_days
     FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id LEFT JOIN users u ON u.id=COALESCE(p.collector_user_id,p.received_by)
     WHERE p.method='cash' AND p.status='confirmed' AND p.settlement_status='held_by_staff'`;
@@ -482,7 +482,7 @@ async function loadReconciliationHistory(req){
   const from=`FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id
     LEFT JOIN clusters cl ON cl.id=c.cluster_id LEFT JOIN users u ON u.id=COALESCE(p.collector_user_id,p.received_by) LEFT JOIN users su ON su.id=p.settled_by
     LEFT JOIN cash_settlements cs ON cs.id=p.settlement_id`;
-  const [history]=await db.execute(`SELECT p.id,p.amount,p.reference,p.paid_at,p.settled_at,TIMESTAMPDIFF(HOUR,p.paid_at,p.settled_at) settle_hours,p.settlement_status,p.settlement_id,cs.code settlement_code,c.customer_code,c.name customer_name,s.code site_code,cl.name cluster_name,
+  const [history]=await db.execute(`SELECT p.id,p.amount,p.reference,p.paid_at,p.settled_at,TIMESTAMPDIFF(HOUR,p.paid_at,p.settled_at) settle_hours,p.settlement_status,p.settlement_id,cs.code settlement_code,c.customer_code,c.name customer_name,(c.is_new_install=1 AND COALESCE(c.activation_date,c.created_at)>=DATE_SUB(CURDATE(),INTERVAL 30 DAY)) is_new_customer,s.code site_code,cl.name cluster_name,
     i.invoice_number,COALESCE(u.name,'Tidak diketahui') collector_name,COALESCE(su.name,'-') settled_by_name
     ${from} ${where} ORDER BY ${basis==='settled'?'p.settled_at':'p.paid_at'} DESC,p.id DESC LIMIT ${RECON_HISTORY_LIMIT}`,params);
   const [[historySummary]]=await db.execute(`SELECT COUNT(*) transactions,COALESCE(SUM(p.amount),0) amount,COUNT(DISTINCT c.id) customers,

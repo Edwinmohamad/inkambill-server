@@ -119,7 +119,8 @@ async function applyActive(router, active) {
       const a = clean.find(x => String(x.name).toLowerCase() === username) || {};
       await db.execute(`INSERT INTO nms_ppp_anomalies (site_id, router_id, username, anomaly_type, details_json, first_seen_at, last_seen_at, resolved_at)
         VALUES (?,?,?,'active_without_secret',?,NOW(),NOW(),NULL)
-        ON DUPLICATE KEY UPDATE site_id=VALUES(site_id), details_json=VALUES(details_json), last_seen_at=NOW(), resolved_at=NULL`,
+        ON DUPLICATE KEY UPDATE site_id=VALUES(site_id), details_json=VALUES(details_json), last_seen_at=NOW(),
+          resolved_at=IF(classification='radius',COALESCE(resolved_at,NOW()),NULL)`,
         [router.site_id, router.id, String(a.name || username).slice(0, 128), JSON.stringify({ address: a.address || null, callerId: a['caller-id'] || null, uptime: a.uptime || null })]).catch(() => {});
     }
     if (lowerNames.length) {

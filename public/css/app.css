@@ -34,6 +34,9 @@
   --warning-tint:rgba(255,159,10,.16);
   --info-tint:rgba(10,132,255,.14);
 }
+
+.customer-new-subtitle{display:flex;align-items:center;gap:.3rem;width:max-content;margin-top:.18rem;color:#7547d8;font-size:.7rem;font-weight:750;line-height:1.2;letter-spacing:.015em}
+.customer-new-subtitle i{font-size:.68rem}
 html[data-theme="dark"]{
   --bg:#0b0b0d;
   --bg-2:#0e0e10;
