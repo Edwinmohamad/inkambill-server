@@ -1352,4 +1352,18 @@ async function ensureV63Schema() {
   await db.query(`ALTER TABLE customers ADD INDEX IF NOT EXISTS idx_customers_psb_settlement (is_new_install,psb_team_payment,activation_date)`).catch(()=>{});
 }
 
-module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema, ensureV58Schema, ensureV59Schema, ensureV60Schema, ensureV61Schema, ensureV62Schema, ensureV63Schema };
+async function ensureV64Schema() {
+  // Jamin kategori internal jurnal pembayaran tersedia, lalu pulihkan setoran/pembayaran
+  // terkonfirmasi yang kehilangan jurnal Data Kas pada regresi versi sebelumnya.
+  await db.query(`INSERT INTO cash_categories(code,name,type,description,is_active,is_system)
+    SELECT IF(EXISTS(SELECT 1 FROM cash_categories WHERE code='BILL'),'SYSBILL','BILL'),'Pendapatan Billing','income','Kategori internal jurnal pembayaran pelanggan',1,1
+    WHERE NOT EXISTS (SELECT 1 FROM cash_categories WHERE name='Pendapatan Billing')`);
+  await db.query(`INSERT INTO cash_categories(code,name,type,description,is_active,is_system)
+    SELECT IF(EXISTS(SELECT 1 FROM cash_categories WHERE code='SETOR'),'SYSSETOR','SETOR'),'Setoran Cash Pelanggan','income','Kategori internal setoran cash pelanggan',1,1
+    WHERE NOT EXISTS (SELECT 1 FROM cash_categories WHERE name='Setoran Cash Pelanggan')`);
+  const { reconcileMissingPaymentCashTransactions }=require('./paymentVerificationService');
+  const repaired=await reconcileMissingPaymentCashTransactions();
+  if(repaired)console.log(`Rekonsiliasi Data Kas: ${repaired} jurnal pembayaran yang terlewat dibuat ulang.`);
+}
+
+module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema, ensureV58Schema, ensureV59Schema, ensureV60Schema, ensureV61Schema, ensureV62Schema, ensureV63Schema, ensureV64Schema };

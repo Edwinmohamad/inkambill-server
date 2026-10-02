@@ -169,6 +169,44 @@ async function syncCashDataIntoClosing({ conn, closingId, start, end, userId, in
   return { inserted, updated, removed, skippedUnmapped, skippedZero, scanned: rows.length, changes };
 }
 
+// Sinkron langsung untuk jurnal otomatis pembayaran/setoran yang baru dibuat.
+// Hanya periode DRAFT + AUTO yang boleh berubah; mode Manual dan periode LOCKED
+// tetap mengikuti keputusan operator. Dipanggil di transaksi DB yang sama dengan
+// pembuatan jurnal sehingga Data Kas dan Closing tidak sempat berbeda.
+async function syncCashTransactionsIntoDraftAutoClosing({ conn, cashTransactionIds, userId }) {
+  const ids=[...new Set([].concat(cashTransactionIds||[]).map(Number).filter(id=>Number.isInteger(id)&&id>0))];
+  if(!ids.length)return {inserted:0,skippedUnmapped:0,skippedZero:0};
+  const marks=ids.map(()=>'?').join(',');
+  const [rows]=await conn.execute(
+    `SELECT cp.id closing_id,ct.id,ct.transaction_date,ct.name,ct.amount,ct.notes,
+            cc.type category_type,cc.name category_name,s.code site_code
+     FROM cash_transactions ct
+     JOIN cash_categories cc ON cc.id=ct.category_id
+     LEFT JOIN sites s ON s.id=ct.site_id
+     JOIN closing_periods cp ON ct.transaction_date BETWEEN cp.period_start AND cp.period_end
+     WHERE ct.id IN (${marks})
+       AND COALESCE(ct.approval_status,'APPROVED')='APPROVED'
+       AND cp.status='DRAFT' AND UPPER(COALESCE(cp.mode,'MANUAL'))='AUTO'
+       AND NOT EXISTS (SELECT 1 FROM closing_entries ce WHERE ce.closing_id=cp.id AND ce.cash_transaction_id=ct.id)
+     ORDER BY cp.id,ct.id`,ids);
+  let inserted=0,skippedUnmapped=0,skippedZero=0;
+  for(const row of rows){
+    const mapped=mapCashRowToEntry(row);
+    if(mapped.skip==='unmapped'){skippedUnmapped++;continue;}
+    if(mapped.skip==='zero'){skippedZero++;continue;}
+    try{
+      await conn.execute(
+        `INSERT INTO closing_entries(closing_id,entry_type,source_type,cash_transaction_id,site_code,cluster_name,category,amount,entry_date,description,created_by)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+        [row.closing_id,mapped.entryType,'cash_sync',row.id,mapped.site,mapped.cluster,mapped.category,mapped.amount,mapped.entryDate,mapped.description,userId]
+      );
+      await conn.execute('UPDATE closing_periods SET last_synced_at=NOW() WHERE id=?',[row.closing_id]);
+      inserted++;
+    }catch(error){if(error?.code!=='ER_DUP_ENTRY')throw error;}
+  }
+  return {inserted,skippedUnmapped,skippedZero};
+}
+
 // Dipakai oleh banner mode Otomatis dan guard sebelum kunci periode:
 // - pendingApproval: transaksi Data Kas di rentang ini yang MASIH menunggu approval.
 // - unsyncedApproved: transaksi APPROVED & mappable yang belum ditarik.
@@ -188,4 +226,4 @@ async function countPendingCashData({ db, closingId, start, end }) {
   return { pendingApproval: Number(pendingRow?.n || 0), unsyncedApproved, staleSynced, needsSync: unsyncedApproved + staleSynced };
 }
 
-module.exports = { syncCashDataIntoClosing, countPendingCashData, selectUnsyncedCashRows, planSyncedReconciliation, mapCashRowToEntry, toDateKey };
+module.exports = { syncCashDataIntoClosing, syncCashTransactionsIntoDraftAutoClosing, countPendingCashData, selectUnsyncedCashRows, planSyncedReconciliation, mapCashRowToEntry, toDateKey };

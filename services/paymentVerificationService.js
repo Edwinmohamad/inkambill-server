@@ -10,6 +10,7 @@ const { refreshInvoiceStatus }=require('./invoiceService');
 const { unisolateCustomer }=require('./networkService');
 const { assignCashTransactionCode }=require('./cashService');
 const { resolveBookDate, financialAudit }=require('./financialControlService');
+const { syncCashTransactionsIntoDraftAutoClosing }=require('./closingSyncService');
 
 const PROOF_DIR=path.join(__dirname,'..','storage','payment-proofs');
 fs.mkdirSync(PROOF_DIR,{recursive:true});
@@ -48,24 +49,65 @@ async function paymentCashMeta(conn,invoiceId){
   return rows[0]||null;
 }
 async function billingCategory(conn,name='Pendapatan Billing'){
-  const [rows]=await conn.execute(`SELECT id FROM cash_categories WHERE name=? AND type='income' LIMIT 1`,[name]);
+  const code=name==='Setoran Cash Pelanggan'?'SETOR':'BILL';
+  const [rows]=await conn.execute(`SELECT id FROM cash_categories
+    WHERE type='income' AND (code=? OR name=?)
+    ORDER BY (code=?) DESC,COALESCE(is_system,0) DESC,id ASC LIMIT 1`,[code,name,code]);
   return rows[0]?.id||null;
 }
 async function postCashTransaction(conn,{paymentId,invoiceId,amount,reference,bookDate,categoryName='Pendapatan Billing',prefix='Pembayaran',actorUserId=null}){
-  const meta=await paymentCashMeta(conn,invoiceId);if(!meta)return;
+  const meta=await paymentCashMeta(conn,invoiceId);
+  if(!meta)throw new Error('Data faktur/pelanggan untuk jurnal kas tidak ditemukan. Transaksi dibatalkan.');
   const isPsb=Number(meta.is_psb)===1;
   const incomeCategory=isPsb?'Pendapatan Pemasangan Baru':categoryName;
-  const catId=await billingCategory(conn,incomeCategory);if(!catId)return;
+  const catId=await billingCategory(conn,incomeCategory);
+  if(!catId)throw new Error(`Kategori jurnal kas "${incomeCategory}" tidak tersedia. Transaksi dibatalkan agar saldo Data Kas tetap konsisten.`);
   // Cross-source idempotency: legacy install_income and the new payment journal represent the same money.
   const [exists]=await conn.execute(`SELECT id FROM cash_transactions WHERE source_id=? AND source_type IN ('payment','install_income') LIMIT 1`,[paymentId]);
-  if(!exists.length){
-    const label=isPsb?`Pemasangan Baru ${meta.customer_name}`:`${prefix} ${meta.customer_name}`;
-    const [r]=await conn.execute(`INSERT INTO cash_transactions(transaction_date,name,category_id,site_id,amount,notes,source_type,source_id,approval_status,created_by) VALUES(?,?,?,?,?,?,'payment',?,'APPROVED',?)`,[
-      bookDate,label,catId,meta.site_id,amount,`Faktur ${meta.invoice_number}${reference?` · ${reference}`:''}`,paymentId,actorUserId
-    ]);
-    await assignCashTransactionCode(conn,r.insertId,catId,new Date(`${bookDate}T12:00:00`));
+  if(exists.length){
+    const closing=await syncCashTransactionsIntoDraftAutoClosing({conn,cashTransactionIds:[exists[0].id],userId:actorUserId});
+    if(closing.inserted)await financialAudit({conn,userId:actorUserId,action:'sync_closing_cash',entityType:'cash_transaction',entityId:exists[0].id,before:null,after:{closing_entries_inserted:closing.inserted},reason:'Sinkron langsung jurnal pembayaran/setoran ke Closing AUTO',ip:null});
+    return {id:exists[0].id,created:false,closingInserted:closing.inserted};
   }
+  const label=isPsb?`Pemasangan Baru ${meta.customer_name}`:`${prefix} ${meta.customer_name}`;
+  const [r]=await conn.execute(`INSERT INTO cash_transactions(transaction_date,name,category_id,site_id,amount,notes,source_type,source_id,approval_status,reviewed_by,reviewed_at,created_by) VALUES(?,?,?,?,?,?,'payment',?,'APPROVED',?,NOW(),?)`,[
+    bookDate,label,catId,meta.site_id,amount,`Faktur ${meta.invoice_number}${reference?` · ${reference}`:''}`,paymentId,actorUserId,actorUserId
+  ]);
+  if(!r.insertId)throw new Error('Jurnal Data Kas tidak berhasil dibuat. Transaksi dibatalkan.');
+  await assignCashTransactionCode(conn,r.insertId,catId,new Date(`${bookDate}T12:00:00`));
+  const closing=await syncCashTransactionsIntoDraftAutoClosing({conn,cashTransactionIds:[r.insertId],userId:actorUserId});
+  if(closing.inserted)await financialAudit({conn,userId:actorUserId,action:'sync_closing_cash',entityType:'cash_transaction',entityId:r.insertId,before:null,after:{closing_entries_inserted:closing.inserted},reason:'Sinkron langsung jurnal pembayaran/setoran ke Closing AUTO',ip:null});
   // PSB tidak pernah mencapai cabang khusus: invoice bulan berikutnya adalah billing reguler.
+  return {id:r.insertId,created:true,closingInserted:closing.inserted};
+}
+
+// Pulihkan payment terkonfirmasi yang telanjur tidak mempunyai jurnal akibat versi lama
+// yang melewati kegagalan kategori secara diam-diam. Aman dijalankan berulang karena
+// source payment bersifat idempoten dan cash yang masih di collector tidak ikut diproses.
+async function reconcileMissingPaymentCashTransactions(){
+  const conn=await db.getConnection();let created=0;
+  try{
+    await conn.beginTransaction();
+    const [rows]=await conn.execute(`SELECT p.id,p.invoice_id,p.amount,p.reference,p.method,p.verified_by,p.settled_by,
+      COALESCE(cs.settlement_date,p.booked_at,DATE(p.paid_at)) book_date
+      FROM payments p
+      LEFT JOIN cash_settlements cs ON cs.id=p.settlement_id
+      WHERE p.status='confirmed'
+        AND (p.method IN ('transfer','qris') OR (p.method='cash' AND p.settlement_status='settled'))
+        AND NOT EXISTS (SELECT 1 FROM cash_transactions ct WHERE ct.source_id=p.id AND ct.source_type IN ('payment','install_income'))
+      ORDER BY p.id ASC FOR UPDATE`);
+    for(const payment of rows){
+      const isCash=payment.method==='cash';
+      const result=await postCashTransaction(conn,{
+        paymentId:payment.id,invoiceId:payment.invoice_id,amount:payment.amount,reference:payment.reference,
+        bookDate:payment.book_date,categoryName:isCash?'Setoran Cash Pelanggan':'Pendapatan Billing',
+        prefix:isCash?'Setoran Cash':'Pembayaran',actorUserId:payment.settled_by||payment.verified_by||null
+      });
+      if(result?.created)created++;
+    }
+    await conn.commit();
+    return created;
+  }catch(error){await conn.rollback();throw error;}finally{conn.release();}
 }
 
 async function maybeAutoUnisolate(invoiceId){
@@ -142,4 +184,4 @@ async function createPendingTransferPayments({invoiceIds,bankId,file,userId,note
   return created;
 }
 
-module.exports={PROOF_DIR,proofExtension,proofSignatureMatches,saveProofFile,removeProofFile,paymentReference,paymentCashMeta,billingCategory,postCashTransaction,maybeAutoUnisolate,verifyPendingPayment,createPendingTransferPayments};
+module.exports={PROOF_DIR,proofExtension,proofSignatureMatches,saveProofFile,removeProofFile,paymentReference,paymentCashMeta,billingCategory,postCashTransaction,reconcileMissingPaymentCashTransactions,maybeAutoUnisolate,verifyPendingPayment,createPendingTransferPayments};

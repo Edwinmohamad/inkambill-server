@@ -29,6 +29,7 @@
     "test:nms-recon": "node scripts/test-nms-recon-quick-fixes.js",
     "test:fasum": "node scripts/test-fasum.js",
     "test:financial-integrity-static": "node scripts/test-financial-integrity-static.js",
+    "test:cash-settlement-journal": "node scripts/test-cash-settlement-journal.js",
     "test:psb-next-month": "node scripts/test-psb-next-month-billing.js",
     "audit:financial": "node scripts/financial-integrity-audit.js",
     "repair:psb-income": "node scripts/repair-legacy-psb-double-income.js"

@@ -192,7 +192,7 @@ async function loadUnpaidCustomers(end) {
       LEFT JOIN clusters cl ON cl.id=c.cluster_id
       WHERE i.status IN ('unpaid','partial','overdue') AND i.outstanding>0 AND i.due_date<=? AND s.code IN ('CDS','KRW','CLM','KBG','KUBANG')
       GROUP BY c.id,c.customer_code,c.name,s.code,cl.name
-      ORDER BY outstanding DESC LIMIT 100`, [end]);
+      ORDER BY outstanding DESC,c.name`, [end]);
     const outstanding = rows.reduce((a, r) => a + Number(r.outstanding || 0), 0);
     return { unpaidCustomers: rows, unpaidSummary: { count: rows.length, outstanding } };
   } catch (err) {
@@ -694,6 +694,37 @@ function buildCustomerActivityRows(customerActivity, allowedBlocks) {
   }));
 }
 
+function buildUnpaidCustomerPdfData(unpaidCustomers, allowedBlocks) {
+  const rows = (Array.isArray(unpaidCustomers) ? unpaidCustomers : [])
+    .filter((row) => allowedBlocks.has(siteBlock(row.site_code, row.cluster_name)))
+    .map((row) => ({
+      name: row.name,
+      customerCode: row.customer_code,
+      location: locationText(row),
+      invoiceCount: Number(row.invoice_count) || 0,
+      outstanding: money(row.outstanding)
+    }));
+  return {
+    rows,
+    summary: {
+      count: rows.length,
+      invoiceCount: rows.reduce((sum, row) => sum + row.invoiceCount, 0),
+      outstanding: rows.reduce((sum, row) => sum + row.outstanding, 0)
+    }
+  };
+}
+
+function buildNewCustomerPdfRows(customerActivity, allowedBlocks) {
+  return (Array.isArray(customerActivity?.psb?.list) ? customerActivity.psb.list : [])
+    .filter((row) => allowedBlocks.has(siteBlock(row.site_code, row.cluster_name)))
+    .map((row) => ({
+      activationDate: date(row.activation_date),
+      name: row.name,
+      customerCode: row.customer_code,
+      location: locationText(row)
+    }));
+}
+
 // v1.29 — replaces the old flat addPersonDetailRows()/rows[] builder. Builds the
 // structured {blocks, adjustmentRows, transactionRows} shape the redesigned
 // createClosingReportPdf() renders as separate sections instead of one long table.
@@ -863,6 +894,7 @@ router.get('/pdf', async (req, res, next) => {
     // lokasi/kategori/nominal lama.
     await autoSyncBeforeReport({ start, end, userId: req.session.user.id, ip: req.ip });
     const data = await loadClosing(start, end);
+    const unpaid = await loadUnpaidCustomers(end);
     const customerActivity = await loadCustomerActivitySummary(start, end);
     const effectiveMode = data.mode || 'manual';
     let grossTotal = 0;
@@ -925,6 +957,8 @@ router.get('/pdf', async (req, res, next) => {
     const adjustmentRows = buildAdjustmentRows(data, recipient, allowedBlocks);
     const transactionRows = buildTransactionRows(data, allowedBlocks);
     const customerActivityRows = buildCustomerActivityRows(customerActivity, allowedBlocks);
+    const unpaidCustomerPdf = buildUnpaidCustomerPdfData(unpaid.unpaidCustomers, allowedBlocks);
+    const newCustomerRows = buildNewCustomerPdfRows(customerActivity, allowedBlocks);
     // v1.30 -- rincian hutang internal teknisi. PDF Mang Ali (KBG saja) hanya melihat catatan KBG.
     const internalDebt = await loadInternalDebtSummary({ start, end, sites: recipient.key === 'mang ali' ? ['KBG'] : null });
     const internalDebtRows = buildInternalDebtPdfRows(internalDebt);
@@ -941,6 +975,9 @@ router.get('/pdf', async (req, res, next) => {
       adjustmentRows,
       transactionRows,
       customerActivityRows,
+      unpaidCustomerRows: unpaidCustomerPdf.rows,
+      unpaidCustomerSummary: unpaidCustomerPdf.summary,
+      newCustomerRows,
       internalDebtRows,
       internalDebtSummary: internalDebt.summary
     });

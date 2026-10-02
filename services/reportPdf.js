@@ -44,7 +44,7 @@ function drawBrandHeader(doc,title,subtitle,compact=false){
   if(!compact&&subtitle)doc.fillColor(COLORS.muted).font('Helvetica').fontSize(7.6).text(safe(subtitle),titleX,57,{width:titleW,align:'right',lineGap:2});
   doc.strokeColor(COLORS.line).lineWidth(1).moveTo(margin,h).lineTo(width-margin,h).stroke();
   doc.rect(margin,h-1.5,34,1.5).fill(COLORS.purple);
-  doc.restore();doc.y=h+16;
+  doc.restore();doc.y=Math.max(h+16,doc.page.margins.top);
   if(!compact){doc.fillColor(COLORS.muted2).font('Helvetica').fontSize(6.8).text(`DOKUMEN RESMI · INKAMNET CONTROL CENTER · Dibuat ${nowText()}`,margin,doc.y,{width:usable,characterSpacing:.2});doc.y+=18;}
 }
 // v2.6 — label section polos (huruf kecil muted, bukan lagi kotak ungu
@@ -64,6 +64,19 @@ function drawSectionLabel(doc,label,meta){
   if(meta){doc.fillColor(COLORS.muted2).font('Helvetica').fontSize(6.8).text(safe(meta),x,doc.y,{width,align:'right',lineBreak:false});}
   doc.restore();doc.y+=12;
   doc.save();doc.strokeColor(COLORS.line).lineWidth(.75).moveTo(x,doc.y).lineTo(x+width,doc.y).stroke();doc.restore();doc.y+=9;
+}
+// Keep Closing content well clear of PDFKit's automatic bottom-margin break.
+// All page transitions can then be created explicitly with a repeated report
+// header, section label, and table header instead of clipping a row at the top.
+function closingBottomLimit(doc){return doc.page.height-doc.page.margins.bottom-140;}
+function ensureClosingSectionSpace(doc,height,title,subtitle){
+  // If PDFKit has already opened a fresh page automatically, reuse it but
+  // restore the missing compact report header before drawing the next section.
+  if(doc.y<50){drawBrandHeader(doc,title,subtitle,true);return true;}
+  if(doc.y+height<=closingBottomLimit(doc))return false;
+  doc.addPage();
+  drawBrandHeader(doc,title,subtitle,true);
+  return true;
 }
 // v2.6 — kartu ringkasan polos (border tipis, tanpa bar warna kiri, tanpa
 // lingkaran glow/shadow) — label muted kecil, angka besar berwarna aksen.
@@ -92,6 +105,13 @@ function drawTable(doc,columns,rows,title,subtitle){drawSectionLabel(doc,'Detail
 function drawReportSignoff(doc){const x=doc.page.margins.left,total=doc.page.width-doc.page.margins.left-doc.page.margins.right;if(doc.y+80>doc.page.height-doc.page.margins.bottom)doc.addPage();doc.y+=16;const boxY=doc.y;doc.save();doc.roundedRect(x,boxY,total,60,10).lineWidth(1).fillAndStroke(COLORS.soft,COLORS.line);doc.fillColor(COLORS.ink).font('Helvetica-Bold').fontSize(7.3).text('CATATAN DOKUMEN',x+16,boxY+12,{width:total*.64,height:10,ellipsis:true,lineBreak:false});doc.fillColor(COLORS.muted).font('Helvetica').fontSize(6.9).text('Laporan ini dihasilkan secara elektronik dari INKAMNET Control Center berdasarkan data yang tersimpan pada saat dokumen dibuat.',x+16,boxY+25,{width:total*.64,height:26,lineGap:2,ellipsis:true});doc.fillColor(COLORS.purple).font('Helvetica-Bold').fontSize(7).text(COMPANY,x+total*.70,boxY+24,{width:total*.27,align:'right',height:10,ellipsis:true,lineBreak:false});doc.fillColor(COLORS.muted2).font('Helvetica').fontSize(6.4).text(TAGLINE,x+total*.70,boxY+37,{width:total*.27,align:'right',height:10,ellipsis:true,lineBreak:false});doc.restore();doc.y=boxY+72;}
 function drawWatermarkOnAllPages(doc,text){const label=safe(text||'').trim();if(!label)return;const range=doc.bufferedPageRange();for(let i=0;i<range.count;i++){doc.switchToPage(range.start+i);const cx=doc.page.width/2,cy=doc.page.height/2;doc.save();doc.fillOpacity(.035);doc.fillColor(COLORS.ink);doc.font('Helvetica-Bold').fontSize(34);doc.rotate(-32,{origin:[cx,cy]});doc.text(label,0,cy-22,{width:doc.page.width,height:48,align:'center',lineBreak:false,ellipsis:true});doc.restore();}}
 function drawFooterOnAllPages(doc,company=COMPANY){const range=doc.bufferedPageRange();for(let i=0;i<range.count;i++){doc.switchToPage(range.start+i);const margin=doc.page.margins.left,y=doc.page.height-27,usable=doc.page.width-margin-doc.page.margins.right;doc.save();doc.strokeColor(COLORS.line).lineWidth(.7).moveTo(margin,y-8).lineTo(margin+usable,y-8).stroke();doc.fillColor(COLORS.muted).font('Helvetica').fontSize(6.7).text(safe(company),margin,y,{width:usable*.55,height:10,ellipsis:true,lineBreak:false});doc.text(`Halaman ${i+1} / ${range.count}`,margin+usable*.55,y,{width:usable*.45,align:'right',height:10,ellipsis:true,lineBreak:false});doc.restore();}}
+function drawClosingHeaderOnContinuationPages(doc,title){
+  const range=doc.bufferedPageRange();
+  for(let i=1;i<range.count;i++){
+    doc.switchToPage(range.start+i);
+    drawBrandHeader(doc,title,'',true);
+  }
+}
 
 // v2.6 — kartu lokasi sekarang plain white + border tipis (bukan header
 // strip gelap), dan menambahkan dua breakdown baru yang sebelumnya cuma ada
@@ -99,6 +119,7 @@ function drawFooterOnAllPages(doc,company=COMPANY){const range=doc.bufferedPageR
 // biasa, dan pengeluaran per kategori. Tinggi kartu dihitung dinamis supaya
 // tidak kepotong kalau breakdown-nya ada.
 function drawLocationShareCards(doc,recipientName,blocks,title,subtitle){
+  ensureClosingSectionSpace(doc,70,title,subtitle);
   drawSectionLabel(doc,'Ringkasan per Lokasi',`${blocks.length} lokasi`);
   const x=doc.page.margins.left,total=doc.page.width-doc.page.margins.left-doc.page.margins.right,gap=12,cw=(total-gap)/2;
   // v2.7 — bagian "BAGIAN <nama> · <persen>" sebelumnya dirender sebagai satu
@@ -171,7 +192,8 @@ function drawLocationShareCards(doc,recipientName,blocks,title,subtitle){
   for(let rowStart=0;rowStart<blocks.length;rowStart+=cols){
     const rowBlocks=blocks.slice(rowStart,rowStart+cols);
     const rowH=Math.max(...rowBlocks.map(cardHeight),150);
-    if(doc.y+rowH>doc.page.height-doc.page.margins.bottom){doc.addPage();if(title)drawBrandHeader(doc,title,subtitle,true);drawSectionLabel(doc,'Ringkasan per Lokasi',`${blocks.length} lokasi`);}
+    const cardBottomLimit=doc.page.height-40;
+    if(doc.y+rowH>cardBottomLimit){doc.addPage();if(title)drawBrandHeader(doc,title,subtitle,true);drawSectionLabel(doc,'Ringkasan per Lokasi',`${blocks.length} lokasi · lanjutan`);}
     drawCardRow(rowBlocks,rowH);
     doc.y+=18;
   }
@@ -281,9 +303,10 @@ function drawLocationShareCards(doc,recipientName,blocks,title,subtitle){
 // keterangan biasa selalu tampil utuh, dan hanya teks yang benar-benar ekstrem
 // panjang yang dipotong, itu pun dengan "..." yang jelas menandakannya.
 function drawAdjustmentTable(doc,rows,title,subtitle){
+  ensureClosingSectionSpace(doc,82,title,subtitle);
   drawSectionLabel(doc,'Penyesuaian Anda',`${rows.length} baris`);
   const x=doc.page.margins.left,total=doc.page.width-doc.page.margins.left-doc.page.margins.right;
-  const bottomLimit=doc.page.height-doc.page.margins.bottom-30;
+  const bottomLimit=closingBottomLimit(doc);
   if(!rows.length){
     doc.save();doc.roundedRect(x,doc.y,total,36,7).fillAndStroke(COLORS.soft,COLORS.line);
     doc.fillColor(COLORS.muted).font('Helvetica').fontSize(7.6).text('Tidak ada potongan atau tambahan untuk periode ini — Bersih sama dengan Kotor.',x+12,doc.y+13,{width:total-24,align:'center',height:12,lineBreak:false,ellipsis:true});
@@ -291,15 +314,15 @@ function drawAdjustmentTable(doc,rows,title,subtitle){
   }
   const cols=[{label:'No',w:.05,align:'center'},{label:'Jenis',w:.21},{label:'Lokasi',w:.12},{label:'Keterangan',w:.40},{label:'Nominal',w:.22,align:'right'}];
   const widths=cols.map(c=>c.w*total);
-  const headY=doc.y;doc.save();
-  doc.rect(x,headY,total,24).fill(COLORS.soft);doc.strokeColor(COLORS.line).lineWidth(.8).moveTo(x,headY+24).lineTo(x+total,headY+24).stroke();
-  let xx=x;cols.forEach((c,i)=>{doc.fillColor(COLORS.muted).font('Helvetica-Bold').fontSize(6.6).text(c.label.toUpperCase(),xx+10,headY+9,{width:widths[i]-16,align:c.align||'left',height:9,lineBreak:false,ellipsis:true});xx+=widths[i];});
-  doc.restore();doc.y=headY+26;
+  const drawHead=()=>{const headY=doc.y;doc.save();doc.rect(x,headY,total,24).fill(COLORS.soft);doc.strokeColor(COLORS.line).lineWidth(.8).moveTo(x,headY+24).lineTo(x+total,headY+24).stroke();let xx=x;cols.forEach((c,i)=>{doc.fillColor(COLORS.muted).font('Helvetica-Bold').fontSize(6.6).text(c.label.toUpperCase(),xx+10,headY+9,{width:widths[i]-16,align:c.align||'left',height:9,lineBreak:false,ellipsis:true});xx+=widths[i];});doc.restore();doc.y=headY+26;};
+  const nextPage=()=>{doc.addPage();drawBrandHeader(doc,title,subtitle,true);drawSectionLabel(doc,'Penyesuaian Anda','lanjutan');drawHead();};
+  drawHead();
   rows.forEach((row,ri)=>{
+    if(doc.y+70>bottomLimit)nextPage();
     const keteranganText=safe(row.keterangan);
     const keteranganH=doc.font('Helvetica').fontSize(7.4).heightOfString(keteranganText,{width:widths[3]-16,lineGap:1});
     const rh=Math.max(24,Math.min(220,keteranganH)+14);
-    if(doc.y+rh>bottomLimit){doc.addPage();drawBrandHeader(doc,title,subtitle,true);}
+    if(doc.y+rh>bottomLimit)nextPage();
     const y=doc.y;doc.save();
     if(ri%2===1)doc.rect(x,y,total,rh).fill(COLORS.soft);
     doc.strokeColor(COLORS.line).lineWidth(.6).moveTo(x,y+rh).lineTo(x+total,y+rh).stroke();
@@ -313,7 +336,7 @@ function drawAdjustmentTable(doc,rows,title,subtitle){
     doc.restore();doc.y=y+rh;
   });
   const netTotal=rows.reduce((a,r)=>a+r.nominal,0);
-  if(doc.y+26>bottomLimit){doc.addPage();drawBrandHeader(doc,title,subtitle,true);}
+  if(doc.y+30>bottomLimit){doc.addPage();drawBrandHeader(doc,title,subtitle,true);drawSectionLabel(doc,'Penyesuaian Anda','total');}
   const y=doc.y;doc.save();doc.rect(x,y,total,26).fill(COLORS.purpleSoft);doc.strokeColor(COLORS.line).lineWidth(.8).moveTo(x,y).lineTo(x+total,y).stroke();
   doc.fillColor(COLORS.purple).font('Helvetica-Bold').fontSize(7.4).text('TOTAL PENYESUAIAN',x+10,y+9,{width:total*.6,height:10,lineBreak:false,ellipsis:true});
   doc.fillColor(netTotal<0?COLORS.red:COLORS.green).font('Helvetica-Bold').fontSize(8).text(`${netTotal<0?'- ':'+ '}${rupiah(Math.abs(netTotal))}`,x+total*.55,y+8,{width:total*.43,align:'right',height:11,lineBreak:false,ellipsis:true});
@@ -327,9 +350,13 @@ function drawAdjustmentTable(doc,rows,title,subtitle){
 // konsisten dengan drawAdjustmentTable() di atas.
 function drawTransactionTable(doc,rows,title,subtitle){
   const entries=rows.filter(row=>row.kind==='entry');
+  // A transaction table is easier to scan when it starts near the top of a
+  // page. Reserve enough space for a complete category instead of squeezing a
+  // heading and one orphan row below the previous section.
+  ensureClosingSectionSpace(doc,400,title,subtitle);
   drawSectionLabel(doc,'Rincian Pendapatan & Pengeluaran',`${entries.length} transaksi`);
   const x=doc.page.margins.left,total=doc.page.width-doc.page.margins.left-doc.page.margins.right;
-  const bottomLimit=doc.page.height-doc.page.margins.bottom-30;
+  const bottomLimit=closingBottomLimit(doc);
   const cols=[{label:'No',w:.05,align:'center'},{label:'Tanggal',w:.12},{label:'Lokasi',w:.12},{label:'Jenis',w:.14},{label:'Keterangan',w:.34},{label:'Nominal',w:.23,align:'right'}];
   const widths=cols.map(c=>c.w*total);
   function drawHead(){
@@ -337,6 +364,11 @@ function drawTransactionTable(doc,rows,title,subtitle){
     doc.rect(x,hy,total,24).fill(COLORS.soft);doc.strokeColor(COLORS.line).lineWidth(.8).moveTo(x,hy+24).lineTo(x+total,hy+24).stroke();
     let xx=x;cols.forEach((c,i)=>{doc.fillColor(COLORS.muted).font('Helvetica-Bold').fontSize(6.6).text(c.label.toUpperCase(),xx+10,hy+9,{width:widths[i]-16,align:c.align||'left',height:9,lineBreak:false,ellipsis:true});xx+=widths[i];});
     doc.restore();doc.y=hy+26;
+  }
+  let entriesOnPage=0;
+  function nextPage(meta='lanjutan'){
+    doc.addPage();drawBrandHeader(doc,title,subtitle,true);drawSectionLabel(doc,'Rincian Pendapatan & Pengeluaran',meta);drawHead();
+    entriesOnPage=0;
   }
   drawHead();
   if(!entries.length){
@@ -347,15 +379,19 @@ function drawTransactionTable(doc,rows,title,subtitle){
   let totalIncome=0,totalExpense=0,entryNo=0;
   rows.forEach((row,ri)=>{
     if(row.kind==='group'){
-      if(doc.y+58>bottomLimit){doc.addPage();drawBrandHeader(doc,title,subtitle,true);drawHead();}
+      if(entriesOnPage>=8||doc.y+62>bottomLimit)nextPage();
       const y=doc.y;doc.save();doc.roundedRect(x,y,total,22,5).fill(row.jenis==='Pendapatan'?COLORS.greenSoft:COLORS.redSoft);
       doc.fillColor(row.jenis==='Pendapatan'?COLORS.green:'#B54708').font('Helvetica-Bold').fontSize(7.3).text(`${row.jenis.toUpperCase()} · ${safe(row.category)}`,x+10,y+8,{width:total*.72,height:10,ellipsis:true,lineBreak:false});
       doc.fillColor(COLORS.muted).font('Helvetica').fontSize(6.7).text(`${row.count} transaksi`,x+total*.74,y+8,{width:total*.24,align:'right',height:10});doc.restore();doc.y=y+28;return;
     }
     if(row.kind==='subtotal'){
-      if(doc.y+28>bottomLimit){doc.addPage();drawBrandHeader(doc,title,subtitle,true);drawHead();}
+      if(doc.y+32>bottomLimit)nextPage();
       const y=doc.y;doc.save();doc.rect(x,y,total,26).fill(COLORS.purpleSoft);doc.fillColor(COLORS.purple).font('Helvetica-Bold').fontSize(7.1).text(`SUBTOTAL ${safe(row.category).toUpperCase()}`,x+10,y+9,{width:total*.68,height:10,ellipsis:true});doc.fillColor(row.jenis==='Pendapatan'?COLORS.green:'#B54708').font('Helvetica-Bold').fontSize(8).text(rupiah(row.nominal),x+total*.72,y+8,{width:total*.26,align:'right',height:11});doc.restore();doc.y=y+32;if(row.jenis==='Pendapatan')totalIncome+=Number(row.nominal||0);else totalExpense+=Number(row.nominal||0);return;
     }
+    // Measure wrapped text only after moving away from the unsafe bottom area.
+    // heightOfString can otherwise make PDFKit advance a page before our own
+    // page-break check, leaving an unbranded page with a clipped first row.
+    if(entriesOnPage>=8||doc.y+80>bottomLimit)nextPage();
     const tanggalText=safe(row.tanggal);
     const lokasiText=safe(row.lokasi);
     const keteranganText=safe(row.keterangan);
@@ -363,7 +399,7 @@ function drawTransactionTable(doc,rows,title,subtitle){
     const lokasiH=doc.font('Helvetica-Bold').fontSize(7.3).heightOfString(lokasiText,{width:widths[2]-16,lineGap:1});
     const keteranganH=doc.font('Helvetica').fontSize(7.3).heightOfString(keteranganText,{width:widths[4]-16,lineGap:1});
     const rh=Math.max(24,Math.min(220,Math.max(tanggalH,lokasiH,keteranganH))+14);
-    if(doc.y+rh>bottomLimit){doc.addPage();drawBrandHeader(doc,title,subtitle,true);drawHead();}
+    if(doc.y+rh>bottomLimit)nextPage();
     entryNo+=1;
     const y=doc.y;doc.save();
     if(ri%2===1)doc.rect(x,y,total,rh).fill(COLORS.soft);
@@ -376,11 +412,11 @@ function drawTransactionTable(doc,rows,title,subtitle){
     doc.fillColor(income?COLORS.green:'#B54708').font('Helvetica-Bold').fontSize(6.8).text(safe(row.jenis).toUpperCase(),xx+10,y+8,{width:widths[3]-16,height:rh-12,lineGap:1});xx+=widths[3];
     doc.fillColor(COLORS.ink).font('Helvetica').fontSize(7.3).text(keteranganText,xx+10,y+7,{width:widths[4]-16,height:rh-10,lineGap:1,ellipsis:true});xx+=widths[4];
     doc.fillColor(COLORS.ink).font('Helvetica-Bold').fontSize(7.4).text(rupiah(row.nominal),xx+10,y+7,{width:widths[5]-16,align:'right',height:rh-10,lineBreak:false,ellipsis:true});
-    doc.restore();doc.y=y+rh;
+    doc.restore();doc.y=y+rh;entriesOnPage+=1;
   });
   // v2.6 — baris total Pendapatan/Pengeluaran di bawah tabel, supaya tidak
   // perlu jumlah manual buat cek total dari daftar per-kategori di atasnya.
-  if(doc.y+30>bottomLimit+30){doc.addPage();drawBrandHeader(doc,title,subtitle,true);}
+  if(doc.y+34>bottomLimit){doc.addPage();drawBrandHeader(doc,title,subtitle,true);drawSectionLabel(doc,'Rincian Pendapatan & Pengeluaran','total');}
   const fy=doc.y;doc.save();doc.rect(x,fy,total,30).fill(COLORS.purpleSoft);doc.strokeColor(COLORS.line).lineWidth(.8).moveTo(x,fy).lineTo(x+total,fy).stroke();
   doc.fillColor(COLORS.green).font('Helvetica-Bold').fontSize(7.4).text(`TOTAL PENDAPATAN · ${rupiah(totalIncome)}`,x+10,fy+10,{width:total*.5-10,height:11,lineBreak:false,ellipsis:true});
   doc.fillColor(COLORS.red).font('Helvetica-Bold').fontSize(7.4).text(`TOTAL PENGELUARAN · ${rupiah(totalExpense)}`,x+total*.5,fy+10,{width:total*.5-10,align:'right',height:11,lineBreak:false,ellipsis:true});
@@ -388,18 +424,18 @@ function drawTransactionTable(doc,rows,title,subtitle){
 }
 function drawCustomerActivityTable(doc,rows,title,subtitle){
   if(!Array.isArray(rows)||!rows.length)return;
+  ensureClosingSectionSpace(doc,82,title,subtitle);
   drawSectionLabel(doc,'PSB, Pelanggan Off & Status Bayar',`${rows.length} lokasi`);
   const x=doc.page.margins.left,total=doc.page.width-doc.page.margins.left-doc.page.margins.right;
-  const bottomLimit=doc.page.height-doc.page.margins.bottom-30;
+  const bottomLimit=closingBottomLimit(doc);
   const cols=[{label:'Lokasi',w:.26},{label:'PSB',w:.18,align:'center'},{label:'Pelanggan Off',w:.22,align:'center'},{label:'Bayar',w:.17,align:'center'},{label:'Belum Bayar',w:.17,align:'center'}];
   const widths=cols.map(c=>c.w*total);
-  const headY=doc.y;doc.save();
-  doc.rect(x,headY,total,24).fill(COLORS.soft);doc.strokeColor(COLORS.line).lineWidth(.8).moveTo(x,headY+24).lineTo(x+total,headY+24).stroke();
-  let xx=x;cols.forEach((c,i)=>{doc.fillColor(COLORS.muted).font('Helvetica-Bold').fontSize(6.6).text(c.label.toUpperCase(),xx+10,headY+9,{width:widths[i]-16,align:c.align||'left',height:9,lineBreak:false,ellipsis:true});xx+=widths[i];});
-  doc.restore();doc.y=headY+26;
+  const drawHead=()=>{const headY=doc.y;doc.save();doc.rect(x,headY,total,24).fill(COLORS.soft);doc.strokeColor(COLORS.line).lineWidth(.8).moveTo(x,headY+24).lineTo(x+total,headY+24).stroke();let xx=x;cols.forEach((c,i)=>{doc.fillColor(COLORS.muted).font('Helvetica-Bold').fontSize(6.6).text(c.label.toUpperCase(),xx+10,headY+9,{width:widths[i]-16,align:c.align||'left',height:9,lineBreak:false,ellipsis:true});xx+=widths[i];});doc.restore();doc.y=headY+26;};
+  const nextPage=()=>{doc.addPage();drawBrandHeader(doc,title,subtitle,true);drawSectionLabel(doc,'PSB, Pelanggan Off & Status Bayar','lanjutan');drawHead();};
+  drawHead();
   rows.forEach((row,ri)=>{
     const rh=27;
-    if(doc.y+rh>bottomLimit){doc.addPage();drawBrandHeader(doc,title,subtitle,true);}
+    if(doc.y+rh>bottomLimit)nextPage();
     const y=doc.y;doc.save();
     if(ri%2===1)doc.rect(x,y,total,rh).fill(COLORS.soft);
     doc.strokeColor(COLORS.line).lineWidth(.6).moveTo(x,y+rh).lineTo(x+total,y+rh).stroke();
@@ -411,6 +447,39 @@ function drawCustomerActivityTable(doc,rows,title,subtitle){
     doc.fillColor(COLORS.red).font('Helvetica-Bold').fontSize(7.8).text(String(row.belumBayar||0),xx2+10,y+9,{width:widths[4]-16,align:'center',height:12,lineBreak:false,ellipsis:true});
     doc.restore();doc.y=y+rh;
   });
+  doc.y+=18;
+}
+function drawUnpaidCustomerTable(doc,rows,summary,title,subtitle){
+  rows=Array.isArray(rows)?rows:[];
+  const s=summary||{};
+  const x=doc.page.margins.left,total=doc.page.width-doc.page.margins.left-doc.page.margins.right;
+  const bottomLimit=closingBottomLimit(doc);
+  const cols=[{label:'No',w:.06,align:'center'},{label:'Pelanggan',w:.32},{label:'Lokasi',w:.22},{label:'Tagihan',w:.14,align:'center'},{label:'Belum Bayar',w:.26,align:'right'}];
+  const widths=cols.map(c=>c.w*total);
+  const drawHead=()=>{const y=doc.y;doc.save();doc.rect(x,y,total,24).fill(COLORS.soft);doc.strokeColor(COLORS.line).lineWidth(.8).moveTo(x,y+24).lineTo(x+total,y+24).stroke();let xx=x;cols.forEach((c,i)=>{doc.fillColor(COLORS.muted).font('Helvetica-Bold').fontSize(6.5).text(c.label.toUpperCase(),xx+8,y+9,{width:widths[i]-14,align:c.align||'left',height:9,lineBreak:false,ellipsis:true});xx+=widths[i];});doc.restore();doc.y=y+26;};
+  let pageRowCount=0;
+  const newPage=()=>{doc.addPage();drawBrandHeader(doc,title,subtitle,true);drawSectionLabel(doc,'Pelanggan Belum Bayar','lanjutan');drawHead();pageRowCount=0;};
+  ensureClosingSectionSpace(doc,122,title,subtitle);
+  drawSectionLabel(doc,'Pelanggan Belum Bayar',`${Number(s.count)||rows.length} pelanggan · ${Number(s.invoiceCount)||0} tagihan · total ${rupiah(s.outstanding)}`);
+  const sy=doc.y;doc.save();doc.roundedRect(x,sy,total,38,7).fillAndStroke(COLORS.redSoft,COLORS.line);doc.fillColor(COLORS.muted).font('Helvetica-Bold').fontSize(6.4).text('TOTAL BELUM DIBAYAR',x+12,sy+8,{width:total*.48,height:9});doc.fillColor(COLORS.red).font('Helvetica-Bold').fontSize(12).text(rupiah(s.outstanding),x+total*.48,sy+11,{width:total*.48,align:'right',height:16,lineBreak:false,ellipsis:true});doc.restore();doc.y=sy+46;
+  drawHead();
+  if(!rows.length){const y=doc.y;doc.save();doc.fillColor(COLORS.muted).font('Helvetica-Oblique').fontSize(7.3).text('Tidak ada pelanggan dengan tagihan belum dibayar.',x+12,y+11,{width:total-24,align:'center',height:11});doc.strokeColor(COLORS.line).lineWidth(.6).moveTo(x,y+34).lineTo(x+total,y+34).stroke();doc.restore();doc.y=y+34;}
+  rows.forEach((row,i)=>{if(pageRowCount>=8||doc.y+48>bottomLimit)newPage();const name=safe(row.name),location=safe(row.location);const nameH=doc.font('Helvetica-Bold').fontSize(7.5).heightOfString(name,{width:widths[1]-14,lineGap:1});const locationH=doc.font('Helvetica').fontSize(7.2).heightOfString(location,{width:widths[2]-14,lineGap:1});const rh=Math.max(36,Math.min(64,Math.max(nameH+20,locationH+14)));if(doc.y+rh>bottomLimit)newPage();const y=doc.y;doc.save();if(i%2===1)doc.rect(x,y,total,rh).fill(COLORS.soft);doc.strokeColor(COLORS.line).lineWidth(.6).moveTo(x,y+rh).lineTo(x+total,y+rh).stroke();let xx=x;doc.fillColor(COLORS.muted2).font('Helvetica-Bold').fontSize(7).text(String(i+1),xx+8,y+10,{width:widths[0]-14,align:'center',height:10});xx+=widths[0];doc.fillColor(COLORS.ink).font('Helvetica-Bold').fontSize(7.5).text(name,xx+8,y+5,{width:widths[1]-14,height:rh-19,lineGap:1,ellipsis:true});doc.fillColor(COLORS.muted).font('Helvetica').fontSize(6.4).text(safe(row.customerCode||'-'),xx+8,y+rh-12,{width:widths[1]-14,height:8,lineBreak:false,ellipsis:true});xx+=widths[1];doc.fillColor(COLORS.ink).font('Helvetica').fontSize(7.2).text(location,xx+8,y+8,{width:widths[2]-14,height:rh-12,lineGap:1,ellipsis:true});xx+=widths[2];doc.fillColor(COLORS.ink).font('Helvetica-Bold').fontSize(7.2).text(String(row.invoiceCount||0),xx+8,y+10,{width:widths[3]-14,align:'center',height:10});xx+=widths[3];doc.fillColor(COLORS.red).font('Helvetica-Bold').fontSize(7.5).text(rupiah(row.outstanding),xx+8,y+10,{width:widths[4]-14,align:'right',height:10,lineBreak:false,ellipsis:true});doc.restore();doc.y=y+rh;pageRowCount+=1;});
+  doc.y+=18;
+}
+function drawNewCustomerTable(doc,rows,title,subtitle){
+  rows=Array.isArray(rows)?rows:[];
+  const x=doc.page.margins.left,total=doc.page.width-doc.page.margins.left-doc.page.margins.right;
+  const bottomLimit=closingBottomLimit(doc);
+  const cols=[{label:'No',w:.07,align:'center'},{label:'Tanggal Aktif',w:.20},{label:'Pelanggan Baru',w:.46},{label:'Lokasi',w:.27}];
+  const widths=cols.map(c=>c.w*total);
+  const drawHead=()=>{const y=doc.y;doc.save();doc.rect(x,y,total,24).fill(COLORS.soft);doc.strokeColor(COLORS.line).lineWidth(.8).moveTo(x,y+24).lineTo(x+total,y+24).stroke();let xx=x;cols.forEach((c,i)=>{doc.fillColor(COLORS.muted).font('Helvetica-Bold').fontSize(6.5).text(c.label.toUpperCase(),xx+8,y+9,{width:widths[i]-14,align:c.align||'left',height:9,lineBreak:false,ellipsis:true});xx+=widths[i];});doc.restore();doc.y=y+26;};
+  let pageRowCount=0;
+  const newPage=()=>{doc.addPage();drawBrandHeader(doc,title,subtitle,true);drawSectionLabel(doc,'Daftar Pelanggan Baru','lanjutan');drawHead();pageRowCount=0;};
+  ensureClosingSectionSpace(doc,88,title,subtitle);
+  drawSectionLabel(doc,'Daftar Pelanggan Baru',`${rows.length} pelanggan aktif pada periode closing`);drawHead();
+  if(!rows.length){const y=doc.y;doc.save();doc.fillColor(COLORS.muted).font('Helvetica-Oblique').fontSize(7.3).text('Tidak ada pelanggan baru pada periode closing ini.',x+12,y+11,{width:total-24,align:'center',height:11});doc.strokeColor(COLORS.line).lineWidth(.6).moveTo(x,y+34).lineTo(x+total,y+34).stroke();doc.restore();doc.y=y+34;}
+  rows.forEach((row,i)=>{if(pageRowCount>=8||doc.y+48>bottomLimit)newPage();const name=safe(row.name),location=safe(row.location);const nameH=doc.font('Helvetica-Bold').fontSize(7.5).heightOfString(name,{width:widths[2]-14,lineGap:1});const locationH=doc.font('Helvetica').fontSize(7.2).heightOfString(location,{width:widths[3]-14,lineGap:1});const rh=Math.max(36,Math.min(64,Math.max(nameH+20,locationH+14)));if(doc.y+rh>bottomLimit)newPage();const y=doc.y;doc.save();if(i%2===1)doc.rect(x,y,total,rh).fill(COLORS.soft);doc.strokeColor(COLORS.line).lineWidth(.6).moveTo(x,y+rh).lineTo(x+total,y+rh).stroke();let xx=x;doc.fillColor(COLORS.muted2).font('Helvetica-Bold').fontSize(7).text(String(i+1),xx+8,y+10,{width:widths[0]-14,align:'center',height:10});xx+=widths[0];doc.fillColor(COLORS.ink).font('Helvetica').fontSize(7.2).text(safe(row.activationDate),xx+8,y+10,{width:widths[1]-14,height:10,lineBreak:false,ellipsis:true});xx+=widths[1];doc.fillColor(COLORS.ink).font('Helvetica-Bold').fontSize(7.5).text(name,xx+8,y+5,{width:widths[2]-14,height:rh-19,lineGap:1,ellipsis:true});doc.fillColor(COLORS.muted).font('Helvetica').fontSize(6.4).text(safe(row.customerCode||'-'),xx+8,y+rh-12,{width:widths[2]-14,height:8,lineBreak:false,ellipsis:true});xx+=widths[2];doc.fillColor(COLORS.ink).font('Helvetica').fontSize(7.2).text(location,xx+8,y+8,{width:widths[3]-14,height:rh-12,lineGap:1,ellipsis:true});doc.restore();doc.y=y+rh;pageRowCount+=1;});
   doc.y+=18;
 }
 function money(v){const n=Number(v);return Number.isFinite(n)?Math.round(n):0;}
@@ -445,7 +514,7 @@ function summarizeCategoryBreakdown(doc,cats,availWidth,fontSize=6.7,font='Helve
 function drawInternalDebtSection(doc,people,summary,title,subtitle){
   if(!Array.isArray(people)||!people.length)return;
   const x=doc.page.margins.left,total=doc.page.width-doc.page.margins.left-doc.page.margins.right;
-  const bottomLimit=doc.page.height-doc.page.margins.bottom-30;
+  const bottomLimit=closingBottomLimit(doc);
   const ensure=(h)=>{if(doc.y+h>bottomLimit){doc.addPage();drawBrandHeader(doc,title,subtitle,true);return true;}return false;};
   ensure(120);
   drawSectionLabel(doc,'Hutang Internal Teknisi',`${people.length} orang · informasi, tidak memengaruhi pembagian`);
@@ -515,8 +584,12 @@ function drawInternalDebtSection(doc,people,summary,title,subtitle){
   doc.fillColor(COLORS.muted2).font('Helvetica').fontSize(6.3).text('Saldo awal = sisa sebelum periode ini · Baru = hutang yang dicatat dalam periode · Dibayar = cicilan/pelunasan dalam periode · Sisa = saldo per akhir periode.',x,doc.y,{width:total,lineGap:1});
   doc.y+=16;
 }
-function createClosingReportPdf(res,{title,subtitle,filename,recipientName='',summaryItems=[],blocks=[],adjustmentRows=[],transactionRows=[],customerActivityRows=[],internalDebtRows=[],internalDebtSummary=null,disposition='attachment',watermark=''}){
-  const doc=new PDFDocument({size:'A4',layout:'portrait',margins:{top:36,bottom:42,left:36,right:36},bufferPages:true,info:{Title:safe(title),Author:COMPANY,Subject:safe(subtitle||'')}});
+function createClosingReportPdf(res,{title,subtitle,filename,recipientName='',summaryItems=[],blocks=[],adjustmentRows=[],transactionRows=[],customerActivityRows=[],unpaidCustomerRows=[],unpaidCustomerSummary=null,newCustomerRows=[],internalDebtRows=[],internalDebtSummary=null,disposition='attachment',watermark=''}){
+  // Bottom margin is intentionally small because every Closing section manages
+  // its own larger safe area through closingBottomLimit(). This prevents
+  // PDFKit from silently inserting an unbranded page before our explicit
+  // page-break logic gets a chance to repeat the header and column labels.
+  const doc=new PDFDocument({size:'A4',layout:'portrait',margins:{top:90,bottom:20,left:36,right:36},bufferPages:true,info:{Title:safe(title),Author:COMPANY,Subject:safe(subtitle||'')}});
   res.setHeader('Content-Type','application/pdf');
   res.setHeader('Content-Disposition',`${disposition==='inline'?'inline':'attachment'}; filename="${String(filename).replace(/[\r\n"]/g,'-')}"`);
   doc.pipe(res);
@@ -524,10 +597,13 @@ function createClosingReportPdf(res,{title,subtitle,filename,recipientName='',su
   drawSummary(doc,summaryItems);
   drawLocationShareCards(doc,recipientName,blocks,title,subtitle);
   drawCustomerActivityTable(doc,customerActivityRows,title,subtitle);
+  drawUnpaidCustomerTable(doc,unpaidCustomerRows,unpaidCustomerSummary,title,subtitle);
+  drawNewCustomerTable(doc,newCustomerRows,title,subtitle);
   drawAdjustmentTable(doc,adjustmentRows,title,subtitle);
   drawTransactionTable(doc,transactionRows,title,subtitle);
   drawInternalDebtSection(doc,internalDebtRows,internalDebtSummary,title,subtitle);
   drawReportSignoff(doc);
+  drawClosingHeaderOnContinuationPages(doc,title);
   drawWatermarkOnAllPages(doc,watermark);
   drawFooterOnAllPages(doc);
   doc.end();
