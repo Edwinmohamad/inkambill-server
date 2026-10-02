@@ -96,7 +96,7 @@
             <td><span class="cell-main"><%= idx+1 %></span></td>
             <td><span class="cell-main"><%= p.customer_name %></span><span class="cell-sub"><%= p.customer_code %></span></td>
             <td><span class="cell-main"><%= p.site_code %></span><span class="cell-sub">Cluster <%= p.cluster_name||'-' %></span></td>
-            <td><span class="cell-main"><%= monthNames[Number(p.period_month)-1] %> <%= p.period_year %></span><span class="cell-sub"><%= p.invoice_number %></span></td>
+            <td><span class="cell-main"><%= paymentMonthNames[Number(p.period_month)-1] %> <%= p.period_year %></span><span class="cell-sub"><%= p.invoice_number %></span></td>
             <td><%= formatDate(p.due_date) %></td>
             <td class="money"><%= formatRupiah(p.amount) %><span class="cell-sub"><%= p.reference||'-' %></span></td>
             <td><span class="payment-method <%= p.method %>"><i class="bi <%= p.method==='cash'?'bi-cash-coin':p.method==='transfer'?'bi-bank':'bi-wallet2' %>"></i><%= statusLabel(p.method).toUpperCase() %></span></td>
