@@ -28,7 +28,8 @@
 
   <article class="cash-approval-center" id="cash-approval">
     <div class="data-card-head"><div><div class="module-kicker">CASH APPROVAL QUEUE</div><h3>Approval Kas Manual</h3><small>Pengeluaran / pemasukan dari Data Kas yang masih menunggu keputusan. <% if(!isMasterAdmin){ %>Anda dapat memonitor antrean ini; approval final hanya oleh Master Admin.<% } else { %>Nilai belum memengaruhi saldo real sebelum disetujui.<% } %></small></div><span class="cash-approval-count"><i class="bi bi-shield-check"></i><%= cashApprovals.length %> pending</span></div>
-    <% if(cashApprovals.length){ %><div class="cash-approval-list"><% cashApprovals.forEach(tx=>{ %>
+    <% if(cashApprovalUnavailable){ %><div class="alert alert-warning alert-modern mb-0"><i class="bi bi-exclamation-triangle-fill me-2"></i>Antrean approval kas belum tersedia pada database ini. Approval pembayaran tetap dapat digunakan; jalankan ulang aplikasi agar migrasi database selesai.</div>
+    <% } else if(cashApprovals.length){ %><div class="cash-approval-list"><% cashApprovals.forEach(tx=>{ %>
       <div class="cash-approval-item <%= tx.category_type %>">
         <div class="cash-approval-type"><i class="bi <%= tx.category_type==='income'?'bi-arrow-down-left-circle-fill':'bi-arrow-up-right-circle-fill' %>"></i><span><b><%= tx.category_type==='income'?'Pemasukan':'Pengeluaran' %></b><small><%= tx.transaction_code||`TX-${tx.id}` %></small></span></div>
         <div class="cash-approval-copy"><strong><%= tx.name %></strong><small><%= tx.category_name %> · <%= tx.site_code||'GLOBAL' %> · input <%= tx.creator_name||'-' %></small><em><%= tx.notes||'Tanpa catatan tambahan' %></em></div>

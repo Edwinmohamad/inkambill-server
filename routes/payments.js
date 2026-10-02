@@ -61,6 +61,26 @@ async function bankOptions(){
   const [rows]=await db.query(`SELECT id,bank_name,account_name,account_number,type FROM banks WHERE is_active=1 AND type IN ('bank_transfer','virtual_account','other') ORDER BY bank_name,account_number`);return rows;
 }
 
+// The manual-cash queue was introduced after the original payment screen.  It is
+// intentionally supplementary: an older database that has not received the
+// cash-approval migration must not make the whole Approval menu unavailable.
+// The normal startup migration creates these columns; this guard keeps the
+// payment approval workflow available while an administrator completes an
+// upgrade/restarts a server that was updated in place.
+async function loadCashApprovals(){
+  try{
+    const [rows]=await db.query(`SELECT ct.id,ct.transaction_code,ct.transaction_date,ct.name,ct.amount,ct.notes,ct.proof_path,ct.proof_mime,COALESCE(ct.approval_status,'PENDING_APPROVAL') approval_status,cc.name category_name,cc.type category_type,s.code site_code,u.name creator_name FROM cash_transactions ct JOIN cash_categories cc ON cc.id=ct.category_id LEFT JOIN sites s ON s.id=ct.site_id LEFT JOIN users u ON u.id=ct.created_by WHERE ct.approval_status='PENDING_APPROVAL' OR (ct.approval_status IS NULL AND COALESCE(ct.source_type,'manual')='manual') ORDER BY ct.transaction_date DESC,ct.id DESC LIMIT 250`);
+    return {rows,unavailable:false};
+  }catch(err){
+    // MySQL uses ER_BAD_FIELD_ERROR (1054) when a pre-v1.19 cash table is
+    // still present.  Other errors, such as a lost database connection, remain
+    // visible to the normal error handler instead of being hidden.
+    if(err?.code!=='ER_BAD_FIELD_ERROR')throw err;
+    console.warn('Antrean approval kas belum tersedia; migrasi skema kas perlu dijalankan:',err.message);
+    return {rows:[],unavailable:true};
+  }
+}
+
 router.get('/',async(req,res)=>{
   const q=String(req.query.q||'').trim();
   const site=String(req.query.site||'').trim();
@@ -125,8 +145,8 @@ router.get('/',async(req,res)=>{
   // Every user who can open Approval & Transaksi must be able to SEE pending manual-cash requests,
   // otherwise an Admin can submit Data Kas successfully and it appears to vanish. Approve/Reject
   // remain protected by requireMasterAdmin on the mutation routes.
-  const [cashApprovals]=await db.query(`SELECT ct.id,ct.transaction_code,ct.transaction_date,ct.name,ct.amount,ct.notes,ct.proof_path,ct.proof_mime,COALESCE(ct.approval_status,'PENDING_APPROVAL') approval_status,cc.name category_name,cc.type category_type,s.code site_code,u.name creator_name FROM cash_transactions ct JOIN cash_categories cc ON cc.id=ct.category_id LEFT JOIN sites s ON s.id=ct.site_id LEFT JOIN users u ON u.id=ct.created_by WHERE ct.approval_status='PENDING_APPROVAL' OR (ct.approval_status IS NULL AND COALESCE(ct.source_type,'manual')='manual') ORDER BY ct.transaction_date DESC,ct.id DESC LIMIT 250`);
-  res.render('payments/index',{title:'Approval & Transaksi',payments,openInvoices,staff,banks,sites,clusters,cashApprovals,summary:summary||{},missingProof:missingProof||{total:0,amount:0},preselectedInvoiceId,filters:{q,site,cluster,month,year,approval,method,recipient:activeRecipient},methodCounts,summaryMonth,summaryYear});
+  const cashApprovalQueue=await loadCashApprovals();
+  res.render('payments/index',{title:'Approval & Transaksi',payments,openInvoices,staff,banks,sites,clusters,cashApprovals:cashApprovalQueue.rows,cashApprovalUnavailable:cashApprovalQueue.unavailable,summary:summary||{},missingProof:missingProof||{total:0,amount:0},preselectedInvoiceId,filters:{q,site,cluster,month,year,approval,method,recipient:activeRecipient},methodCounts,summaryMonth,summaryYear});
 });
 
 router.post('/',requireAdmin,async(req,res)=>{
