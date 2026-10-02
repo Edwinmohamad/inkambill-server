@@ -1,0 +1,224 @@
+/* =========================================================
+   INKAMNET UI COHERENCE LAYER
+   Final cascade for every server-rendered module. This file is intentionally
+   loaded after page-specific styles so typography, spacing and controls share
+   one quiet Apple-inspired baseline without changing module behavior.
+   ========================================================= */
+
+:root{
+  --sidebar:252px;
+  --ui-content-max:1680px;
+  --ui-control-h:40px;
+  --ui-row-h:48px;
+  --ui-radius-xs:8px;
+  --ui-radius-sm:12px;
+  --ui-radius-md:16px;
+  --ui-radius-lg:20px;
+  --ui-space-1:4px;
+  --ui-space-2:8px;
+  --ui-space-3:12px;
+  --ui-space-4:16px;
+  --ui-space-5:20px;
+  --ui-space-6:24px;
+
+  /* A readable compact scale. Legacy tokens previously dropped as low as
+     0.30rem, producing 5px labels in dense modules. */
+  --fs-1:.6875rem;--fs-2:.6875rem;--fs-3:.6875rem;--fs-4:.6875rem;
+  --fs-5:.6875rem;--fs-6:.75rem;--fs-7:.75rem;--fs-8:.75rem;
+  --fs-9:.75rem;--fs-10:.8125rem;--fs-11:.8125rem;--fs-12:.8125rem;
+  --fs-13:.8125rem;--fs-14:.875rem;--fs-15:.875rem;--fs-16:.875rem;
+  --fs-17:.875rem;--fs-18:.9375rem;--fs-19:.9375rem;--fs-20:.9375rem;
+  --fs-21:1rem;--fs-22:1.0625rem;--fs-23:1.125rem;
+}
+
+html[data-theme="dark"]{
+  --shadow-soft:0 1px 0 rgba(255,255,255,.025),0 12px 32px rgba(0,0,0,.22);
+}
+html[data-theme="light"]{
+  --shadow-soft:0 1px 2px rgba(15,23,42,.025),0 10px 28px rgba(15,23,42,.055);
+}
+
+html{font-size:16px;text-rendering:optimizeLegibility}
+body{
+  font-family:"Geist",-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Segoe UI",sans-serif;
+  font-size:.875rem;
+  line-height:1.45;
+  letter-spacing:-.006em;
+}
+button,input,select,textarea{font:inherit;letter-spacing:inherit}
+:where(h1,h2,h3,h4,h5,h6,strong,b){letter-spacing:-.018em}
+:where(p,small,label,td,th){line-height:1.4}
+.page-enter small{font-size:max(.6875rem,.75em)!important}
+:where(a,button,input,select,textarea,[tabindex]):focus-visible{
+  outline:3px solid rgba(var(--brand-rgb),.22);
+  outline-offset:2px;
+}
+::selection{background:rgba(var(--brand-rgb),.24)}
+
+/* Shell */
+.sidebar{width:var(--sidebar);background:rgba(11,11,13,.92);backdrop-filter:blur(20px) saturate(140%);-webkit-backdrop-filter:blur(20px) saturate(140%)}
+.main-panel{margin-left:var(--sidebar)}
+.sidebar-brand{height:72px;padding:12px 16px}
+.brand-logo-plate{height:44px;border-radius:11px}
+.sidebar-scroll{padding:10px 10px 20px}
+.sidebar-section-label{padding:15px 10px 6px;font-size:.6875rem;letter-spacing:.11em;color:#74747b}
+.sidebar-nav{gap:3px}
+.sidebar-link{min-height:40px;padding:0 10px;border-left:0;border-radius:10px;font-size:.8125rem;font-weight:590;color:#a1a1a7}
+.sidebar-link i{font-size:.9375rem}
+.sidebar-link.active{background:rgba(var(--brand-rgb),.2);box-shadow:inset 0 0 0 1px rgba(var(--brand-rgb),.12)}
+.topbar{height:72px;padding:0 24px}
+.content-wrap{width:100%;max-width:var(--ui-content-max);padding:24px 28px 48px}
+.app-footer{margin-top:32px;padding-top:18px}
+
+/* Page hierarchy */
+.module-head,.ink-dashboard-head{align-items:flex-start;margin-bottom:20px}
+.module-head h1,.ink-dashboard h1{font-size:1.5rem;font-weight:680;line-height:1.15;letter-spacing:-.035em}
+.module-head p,.ink-dashboard-head p{max-width:760px;margin-top:7px;font-size:.875rem;line-height:1.5;color:var(--muted)}
+.module-kicker,.ink-panel-kicker,.command-panel-head span:first-child{
+  font-size:.6875rem;
+  font-weight:680;
+  letter-spacing:.065em;
+  text-transform:uppercase;
+}
+.module-actions{justify-content:flex-end}
+
+/* Shared surfaces: quiet borders, restrained shadow, consistent geometry. */
+:is(.data-card,.filter-card,.form-card,.metric-card,.ink-kpi,.ink-panel,.command-panel,.analytics-panel,.report-card,.settings-card,.ops-card,.cash-approval-center){
+  border-color:var(--line);
+  border-radius:var(--ui-radius-md);
+  background:var(--panel);
+  box-shadow:var(--shadow-soft);
+}
+:is(.metric-card,.ink-kpi,.command-kpi,.command-pulse){transition:border-color .18s ease,background-color .18s ease,transform .18s ease}
+:is(.metric-card,.ink-kpi,.command-kpi,.command-pulse):hover{transform:translateY(-1px);border-color:var(--line-2)}
+.metric-grid,.ink-kpi-grid{gap:12px;margin-bottom:16px}
+.metric-card,.ink-kpi{min-height:116px;padding:16px}
+.metric-card strong,.ink-kpi strong{font-size:1.25rem;line-height:1.15}
+.metric-card small,.ink-kpi small{font-size:.75rem;line-height:1.35}
+.data-card-head,.ink-panel-head,.command-panel-head{min-height:64px;padding:14px 16px;gap:12px}
+.data-card-head h3,.ink-panel h3,.command-panel-head h3{font-size:1rem;font-weight:650;line-height:1.25}
+.data-card-head small{font-size:.75rem}
+.data-card-body{padding:16px}
+
+/* Controls */
+.btn-tech,.command-button,.action-pill,.action-menu,.approval-button{
+  min-height:36px;
+  border-radius:10px;
+  font-size:.8125rem;
+  font-weight:620;
+  box-shadow:none;
+}
+.btn-tech{height:var(--ui-control-h);padding:0 14px}
+.btn-tech.primary{background:#6547d8}
+.btn-tech:hover{transform:none;background:var(--panel-2)}
+.btn-tech.primary:hover{background:#7154df;color:#fff}
+.btn-tech:disabled,.approval-button:disabled{opacity:.42;cursor:not-allowed}
+.icon-button{width:36px;height:36px;border-radius:10px}
+.filter-card{padding:14px 16px;margin-bottom:16px}
+.filter-grid{gap:12px}
+.filter-group{min-width:0}
+.filter-group label,.form-label{margin-bottom:6px;font-size:.6875rem;font-weight:680;letter-spacing:.035em;text-transform:uppercase;color:var(--muted)}
+.form-control,.form-select,.search-box{
+  min-height:var(--ui-control-h);
+  border-color:var(--line);
+  border-radius:10px;
+  background-color:var(--input);
+  color:var(--text);
+  font-size:.8125rem;
+}
+.form-control,.form-select{padding-top:.45rem;padding-bottom:.45rem}
+textarea.form-control{min-height:96px;line-height:1.5;resize:vertical}
+.form-control:focus,.form-select:focus,.search-box:focus-within{border-color:rgba(var(--brand-rgb),.55);box-shadow:0 0 0 3px rgba(var(--brand-rgb),.1)}
+.search-box{height:var(--ui-control-h);min-width:0;padding:0 11px}
+.search-box input{font-size:.8125rem}
+.form-check-input,input[type="checkbox"],input[type="radio"]{width:16px;height:16px}
+
+/* Tables and dense lists */
+.table-responsive{border-radius:0 0 var(--ui-radius-md) var(--ui-radius-md);scrollbar-width:thin;overscroll-behavior-inline:contain}
+.app-table{font-size:.8125rem}
+.app-table th{height:42px;padding:10px 12px;font-size:.6875rem;font-weight:680;letter-spacing:.055em;text-transform:uppercase;background:var(--panel-2)}
+.app-table td{min-height:var(--ui-row-h);padding:12px;font-size:.8125rem;line-height:1.4}
+.app-table tbody tr:nth-child(even){background:transparent}
+.app-table tbody tr:hover{background:rgba(var(--brand-rgb),.045)}
+.cell-main{font-weight:620}
+.cell-sub{margin-top:3px;font-size:.75rem;line-height:1.35;color:var(--muted)}
+.status-badge{font-size:.6875rem;font-weight:700;letter-spacing:.025em;text-transform:none}
+.empty-state{padding:48px 20px}
+.empty-state strong{font-size:.9375rem}
+.empty-state small{font-size:.75rem}
+
+/* Modal, dropdown and notices */
+.modal-content{border-radius:var(--ui-radius-lg);box-shadow:0 28px 80px rgba(0,0,0,.32);overflow:hidden}
+.modal-header{padding:18px 20px 14px}
+.modal-body{padding:18px 20px}
+.modal-footer{padding:14px 20px}
+.modal-title{font-size:1.0625rem;font-weight:680}
+.modal-backdrop.show{opacity:.52}
+.app-dropdown{border-radius:14px;box-shadow:0 18px 50px rgba(0,0,0,.2)}
+.app-dropdown .dropdown-item{min-height:38px;display:flex;align-items:center;font-size:.8125rem;border-radius:9px}
+.alert-modern{padding:12px 14px;border-radius:12px;font-size:.8125rem;line-height:1.45}
+.pagination{gap:4px}
+.page-link{min-width:36px;height:36px;border-radius:9px!important;display:grid;place-items:center}
+
+/* Remove decorative noise that does not communicate state. */
+.ambient-grid,.ambient-orb,.ink-kpi-glow{display:none!important}
+.reveal-item{animation-duration:.2s!important}
+/* Content must never depend on IntersectionObserver/animation JavaScript to
+   become readable. The previous .01 opacity caused blank widgets whenever a
+   script or third-party asset loaded late. */
+.command-panel,.command-kpi,.command-pulse,.metric-card,.ink-kpi{
+  opacity:1!important;
+  transform:none;
+}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+/* Responsive placement shared by all modules. */
+@media(max-width:1399.98px){
+  .content-wrap{padding:22px 22px 44px}
+  .metric-grid.five{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .filter-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .payment-filter-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media(max-width:991.98px){
+  .sidebar{width:280px;transform:translateX(-102%)}
+  body.sidebar-open .sidebar{transform:translateX(0)}
+  .main-panel{margin-left:0}
+  .content-wrap{padding:20px 18px 40px}
+  .module-head,.ink-dashboard-head{flex-direction:column;align-items:stretch}
+  .module-actions{justify-content:flex-start}
+  .metric-grid,.metric-grid.five,.ink-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .filter-grid,.payment-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .data-card-head,.ink-panel-head,.command-panel-head{align-items:flex-start;flex-wrap:wrap}
+}
+@media(max-width:575.98px){
+  body{font-size:.875rem}
+  .topbar{height:64px;padding:0 12px}
+  .topbar-actions{gap:3px}
+  .content-wrap{padding:16px 12px 92px}
+  .module-head{gap:14px;margin-bottom:16px}
+  .module-head h1,.ink-dashboard h1{font-size:1.3rem}
+  .module-actions{display:grid;grid-template-columns:1fr 1fr;width:100%}
+  .module-actions>*{min-width:0;width:100%}
+  .module-actions>:last-child:nth-child(odd){grid-column:1/-1}
+  .metric-grid,.metric-grid.five,.ink-kpi-grid,.filter-grid,.payment-filter-grid{grid-template-columns:1fr}
+  .metric-card,.ink-kpi{min-height:104px}
+  .filter-card{padding:12px}
+  .data-card-head,.ink-panel-head,.command-panel-head{padding:13px 14px}
+  .app-table th,.app-table td{padding-left:10px;padding-right:10px}
+  .modal-dialog{margin:10px}
+  .modal-content{border-radius:16px}
+  .modal-header,.modal-body,.modal-footer{padding-left:16px;padding-right:16px}
+}
+
+/* The native mobile shell owns navigation and safe-area geometry; keep only
+   the shared type/control polish from this layer. */
+body.inkamnet-go-app .main-panel{margin-left:0}
+body.inkamnet-go-app .content-wrap{max-width:none}
+
+@media print{
+  .sidebar,.topbar,.module-actions,.app-footer{display:none!important}
+  .main-panel{margin:0!important}
+  .content-wrap{max-width:none;padding:0}
+  :is(.data-card,.filter-card,.form-card,.metric-card,.ink-kpi,.ink-panel,.command-panel){box-shadow:none!important;break-inside:avoid}
+}
+

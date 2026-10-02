@@ -1,6 +1,7 @@
 // Uji WA CRM (template/Spintax, engine anti-ban, auto-pause, blacklist/opt-out, inbox) dengan DB & WAHA palsu.
 // Jalankan: node scripts/test-wa-crm.js
 const path = require('path');
+const fs = require('fs');
 const assert = require('assert');
 const root = path.join(__dirname, '..');
 function mock(rel, exports) { const f = require.resolve(path.join(root, rel)); require.cache[f] = { id: f, filename: f, loaded: true, exports }; }
@@ -77,6 +78,15 @@ async function test(name, fn) { await fn(); passed++; console.log(`✓ ${name}`)
 const waitIdle = async () => { for (let i = 0; i < 200; i++) { await new Promise(r => setTimeout(r, 10)); if (!S.messages.some(m => m.status === 'processing')) { await new Promise(r => setTimeout(r, 30)); return; } } };
 
 (async () => {
+  await test('route halaman broadcast terpasang di aplikasi', () => {
+    const appSource = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+    assert.match(appSource, /app\.use\('\/wa-gateway',\s*requireAuth,\s*require\('\.\/routes\/waCrm'\)\)/, 'router WA CRM wajib dipasang pada /wa-gateway');
+    const waCrmRouter = require(path.join(root, 'routes/waCrm'));
+    const broadcastGet = waCrmRouter.stack.some(layer => layer.route?.path === '/broadcast' && layer.route.methods?.get);
+    assert.equal(broadcastGet, true, 'GET /wa-gateway/broadcast wajib tersedia');
+    assert.equal(fs.existsSync(path.join(root, 'views/whatsapp-gateway/broadcast.ejs')), true, 'view broadcast wajib tersedia');
+  });
+
   await test('template resmi + variabel + alias lama + Spintax', () => {
     const v = tpl.buildVars({ customer_name: 'Budi', customer_code: 'C007', package_name: 'Home', speed_label: '10 Mbps', outstanding: 150000, due_date: '2026-10-20', invoice_number: 'INV-1' }, { bank_name: 'BCA', account_number: '123', account_name: 'PT X' });
     const out = tpl.renderTemplate(tpl.OFFICIAL_TEMPLATES[0].body, v);

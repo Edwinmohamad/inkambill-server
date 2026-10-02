@@ -1,7 +1,8 @@
 <% const paymentFilterQuery=new URLSearchParams({q:filters.q||'',site:filters.site||'',cluster:filters.cluster||'',month:filters.month||'',year:filters.year||'',approval:filters.approval||'',method:filters.method||'',recipient:filters.recipient||''}).toString(); const paymentMonthNames=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
   // v1.29 — filter metode.
   const paymentFilterUrl=(overrides={})=>{const merged={q:filters.q,site:filters.site,cluster:filters.cluster,month:filters.month,year:filters.year,approval:filters.approval,method:filters.method,recipient:filters.recipient,...overrides};const qs=new URLSearchParams();Object.entries(merged).forEach(([k,v])=>{if(v!==undefined&&v!==null&&String(v)!=='')qs.set(k,v);});const str=qs.toString();return `/payments${str?`?${str}`:''}`;};
-  const methodCountsSafe=typeof methodCounts==='object'&&methodCounts?methodCounts:{cash:{},transfer:{},qris:{}}; %>
+  const methodCountsSafe=typeof methodCounts==='object'&&methodCounts?methodCounts:{cash:{},transfer:{},qris:{}};
+  const cashApprovalQueueUnavailable=typeof cashApprovalUnavailable!=='undefined'&&cashApprovalUnavailable; %>
 <section>
   <div class="module-head">
     <div><div class="module-kicker">APPROVAL & TRANSACTION CENTER</div><h1>Approval & Transaksi</h1><p>Satu pusat verifikasi pembayaran pelanggan dan transaksi kas manual sebelum memengaruhi data keuangan resmi.</p></div>
@@ -28,7 +29,7 @@
 
   <article class="cash-approval-center" id="cash-approval">
     <div class="data-card-head"><div><div class="module-kicker">CASH APPROVAL QUEUE</div><h3>Approval Kas Manual</h3><small>Pengeluaran / pemasukan dari Data Kas yang masih menunggu keputusan. <% if(!isMasterAdmin){ %>Anda dapat memonitor antrean ini; approval final hanya oleh Master Admin.<% } else { %>Nilai belum memengaruhi saldo real sebelum disetujui.<% } %></small></div><span class="cash-approval-count"><i class="bi bi-shield-check"></i><%= cashApprovals.length %> pending</span></div>
-    <% if(cashApprovalUnavailable){ %><div class="alert alert-warning alert-modern mb-0"><i class="bi bi-exclamation-triangle-fill me-2"></i>Antrean approval kas belum tersedia pada database ini. Approval pembayaran tetap dapat digunakan; jalankan ulang aplikasi agar migrasi database selesai.</div>
+    <% if(cashApprovalQueueUnavailable){ %><div class="alert alert-warning alert-modern mb-0"><i class="bi bi-exclamation-triangle-fill me-2"></i>Antrean approval kas belum tersedia pada database ini. Approval pembayaran tetap dapat digunakan; jalankan ulang aplikasi agar migrasi database selesai.</div>
     <% } else if(cashApprovals.length){ %><div class="cash-approval-list"><% cashApprovals.forEach(tx=>{ %>
       <div class="cash-approval-item <%= tx.category_type %>">
         <div class="cash-approval-type"><i class="bi <%= tx.category_type==='income'?'bi-arrow-down-left-circle-fill':'bi-arrow-up-right-circle-fill' %>"></i><span><b><%= tx.category_type==='income'?'Pemasukan':'Pengeluaran' %></b><small><%= tx.transaction_code||`TX-${tx.id}` %></small></span></div>

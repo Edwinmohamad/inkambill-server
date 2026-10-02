@@ -247,6 +247,7 @@
       <main class="content-wrap">
         <% if(flash){ %><div class="alert alert-<%= flash.type %> alert-modern alert-dismissible fade show" role="alert"><i class="bi bi-info-circle-fill me-2"></i><%= flash.message %><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><% } %>
         <div class="page-enter"><%- body %></div>
+        <link rel="stylesheet" href="/css/ui-coherence.css?v=<%= assetVersion %>">
         <%- include('pagination') %>
         <footer class="app-footer"><span>© <%= new Date().getFullYear() %> Edwin Mohamad · PT INKAMNET NEXERA TECHNOLOGY</span><span>From the Village, Online Everywhere</span></footer>
       </main>
