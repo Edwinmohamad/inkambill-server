@@ -1,5 +1,7 @@
 const assert = require('assert/strict');
-const { loadCashApprovals, isSchemaCompatibilityError } = require('../services/paymentApprovalQueryService');
+const fs = require('fs');
+const path = require('path');
+const { loadCashApprovals, isSchemaCompatibilityError, safePaymentPageLoad } = require('../services/paymentApprovalQueryService');
 
 function failingDb(error) {
   return { async query() { throw error; } };
@@ -25,6 +27,22 @@ function failingDb(error) {
 
   const connectionError = Object.assign(new Error('Connection lost'), { code: 'PROTOCOL_CONNECTION_LOST' });
   await assert.rejects(() => loadCashApprovals(failingDb(connectionError), logger), /Connection lost/);
+
+  const pageWarnings = [];
+  const pageLogger = { errors: [], error(...args) { this.errors.push(args); } };
+  assert.deepEqual(await safePaymentPageLoad('riwayat pembayaran', [], async () => { throw oldColumn; }, pageWarnings, pageLogger), []);
+  assert.deepEqual(pageWarnings, ['riwayat pembayaran']);
+  assert.equal(pageLogger.errors.length, 1);
+  assert.deepEqual(await safePaymentPageLoad('filter site', [], async () => [{ code: 'CDS' }], pageWarnings, pageLogger), [{ code: 'CDS' }]);
+
+  const root = path.resolve(__dirname, '..');
+  const route = fs.readFileSync(path.join(root, 'routes/payments.js'), 'utf8');
+  const view = fs.readFileSync(path.join(root, 'views/payments/index.ejs'), 'utf8');
+  for (const label of ['riwayat pembayaran', 'ringkasan metode pembayaran', 'daftar faktur terbuka', 'ringkasan transaksi', 'ringkasan bukti pembayaran', 'antrean approval kas']) {
+    assert.match(route, new RegExp(`safe\\('${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'`), `${label} harus memiliki fallback terisolasi`);
+  }
+  assert.match(route, /paymentPageWarnings:pageWarnings/);
+  assert.match(view, /paymentPageWarnings\.join/);
 
   console.log('Payment approval page fallback: PASS');
 })().catch(error => {

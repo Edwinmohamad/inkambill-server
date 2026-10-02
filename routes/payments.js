@@ -13,7 +13,7 @@ const { isoDate, assertDateOpen, resolveBookDate, financialAudit }=require('../s
 const { requireAdmin, requireMasterAdmin, isAdminRole, isMasterAdminRole }=require('../middleware/auth');
 const { createReportPdf, rupiah, COLORS }=require('../services/reportPdf');
 const { cashAgingDays, queuePaymentReceipts, streamSettlementReceipt }=require('../services/cashSettlementService');
-const { loadCashApprovals }=require('../services/paymentApprovalQueryService');
+const { loadCashApprovals,safePaymentPageLoad }=require('../services/paymentApprovalQueryService');
 const router=express.Router();
 
 // v1.26 — shared header styling for reconciliation export sheets (same convention as
@@ -74,8 +74,10 @@ router.get('/',async(req,res)=>{
   // dapat dipisahkan tanpa mengandalkan pencarian teks. Nilai URL sengaja hanya
   // memakai ID (bukan nama/rekening) lalu divalidasi terhadap data aktif.
   const recipient=String(req.query.recipient||'').trim();
-  const staff=await staffOptions();
-  const banks=await bankOptions();
+  const pageWarnings=[];
+  const safe=(label,fallback,loader)=>safePaymentPageLoad(label,fallback,loader,pageWarnings);
+  const staff=await safe('daftar penerima tunai',[],staffOptions);
+  const banks=await safe('daftar rekening transfer',[],bankOptions);
   const cashRecipientId=/^cash:(\d+)$/.test(recipient)?Number(recipient.slice(5)):0;
   const transferRecipientId=/^transfer:(\d+)$/.test(recipient)?Number(recipient.slice(9)):0;
   const cashRecipient=cashRecipientId&&staff.some(member=>Number(member.id)===cashRecipientId)?cashRecipientId:0;
@@ -98,35 +100,36 @@ router.get('/',async(req,res)=>{
   }
   if(q){const like=`%${q}%`;sql+=` AND (c.name LIKE ? OR c.customer_code LIKE ? OR i.invoice_number LIKE ? OR p.reference LIKE ? OR s.code LIKE ? OR cl.name LIKE ?)`;params.push(like,like,like,like,like,like);}
   sql+=approval==='pending'?` ORDER BY p.id ASC`:` ORDER BY p.id DESC`;
-  const pageResult=await paginate(db,sql,params,req,50);const payments=pageResult.rows;res.locals.pagination=pageResult.pagination;
+  const pageResult=await safe('riwayat pembayaran',{rows:[],pagination:null},()=>paginate(db,sql,params,req,50));
+  const payments=pageResult.rows||[];res.locals.pagination=pageResult.pagination||null;
   const countWhere=[];const countParams=[];
   if(site){countWhere.push('s.code=?');countParams.push(site);}if(cluster){countWhere.push('c.cluster_id=?');countParams.push(Number(cluster));}
   if(month&&year){countWhere.push('MONTH(p.paid_at)=? AND YEAR(p.paid_at)=?');countParams.push(month,year);}
   const countSql=countWhere.length?` AND ${countWhere.join(' AND ')}`:'';
-  const [methodRows]=await db.execute(`SELECT p.method,COUNT(*) total,SUM(p.status='pending') pending FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id WHERE 1=1${countSql} GROUP BY p.method`,countParams);
+  const methodRows=await safe('ringkasan metode pembayaran',[],async()=>{const [rows]=await db.execute(`SELECT p.method,COUNT(*) total,SUM(p.status='pending') pending FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id WHERE 1=1${countSql} GROUP BY p.method`,countParams);return rows;});
   const methodCounts={cash:{total:0,pending:0},transfer:{total:0,pending:0},qris:{total:0,pending:0}};
   for(const r of methodRows)if(methodCounts[r.method])methodCounts[r.method]={total:Number(r.total||0),pending:Number(r.pending||0)};
-  const openInvoices=await openInvoiceOptions(site,cluster);
-  const [sites]=await db.query(`SELECT code,name FROM sites WHERE is_active=1 ORDER BY code`);
-  const [clusters]=await db.query(`SELECT cl.id,cl.name,s.code site_code FROM clusters cl JOIN sites s ON s.id=cl.site_id WHERE cl.status!='inactive' ORDER BY s.code,cl.name`);
+  const openInvoices=await safe('daftar faktur terbuka',[],()=>openInvoiceOptions(site,cluster));
+  const sites=await safe('filter site',[],async()=>{const [rows]=await db.query(`SELECT code,name FROM sites WHERE is_active=1 ORDER BY code`);return rows;});
+  const clusters=await safe('filter cluster',[],async()=>{const [rows]=await db.query(`SELECT cl.id,cl.name,s.code site_code FROM clusters cl JOIN sites s ON s.id=cl.site_id WHERE cl.status!='inactive' ORDER BY s.code,cl.name`);return rows;});
   const summaryMonth=month||new Date().getMonth()+1,summaryYear=year||new Date().getFullYear();
   const summaryWhere=['MONTH(p.paid_at)=?','YEAR(p.paid_at)=?'];const summaryParams=[summaryMonth,summaryYear];
   if(site){summaryWhere.push('s.code=?');summaryParams.push(site);}if(cluster){summaryWhere.push('c.cluster_id=?');summaryParams.push(Number(cluster));}
-  const [[summary]]=await db.execute(`SELECT
+  const summary=await safe('ringkasan transaksi',{},async()=>{const [[row]]=await db.execute(`SELECT
     COALESCE(SUM(CASE WHEN p.status='confirmed' THEN p.amount ELSE 0 END),0) confirmed_total,
     COALESCE(SUM(CASE WHEN p.method='cash' AND p.status='confirmed' AND p.settlement_status='held_by_staff' THEN p.amount ELSE 0 END),0) cash_held,
     COALESCE(SUM(CASE WHEN p.status='pending' THEN p.amount ELSE 0 END),0) transfer_pending,
     SUM(p.status='confirmed') confirmed_count
-    FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id WHERE ${summaryWhere.join(' AND ')}`,summaryParams);
+    FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id WHERE ${summaryWhere.join(' AND ')}`,summaryParams);return row||{};});
   // Transactions Master Admin already approved but which never received a transfer/QRIS proof attachment.
-  const [[missingProof]]=await db.execute(`SELECT COUNT(*) total,COALESCE(SUM(p.amount),0) amount FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id WHERE p.status='confirmed' AND p.method IN ('transfer','qris') AND (p.proof_path IS NULL OR p.proof_path='')${site?` AND s.code=?`:''}`,site?[site]:[]);
+  const missingProof=await safe('ringkasan bukti pembayaran',{total:0,amount:0},async()=>{const [[row]]=await db.execute(`SELECT COUNT(*) total,COALESCE(SUM(p.amount),0) amount FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id WHERE p.status='confirmed' AND p.method IN ('transfer','qris') AND (p.proof_path IS NULL OR p.proof_path='')${site?` AND s.code=?`:''}`,site?[site]:[]);return row||{total:0,amount:0};});
   const preselectedInvoiceId=Number(req.query.invoice_id||0)||null;
   // v1.25.8 — visibility and authorization are intentionally separated.
   // Every user who can open Approval & Transaksi must be able to SEE pending manual-cash requests,
   // otherwise an Admin can submit Data Kas successfully and it appears to vanish. Approve/Reject
   // remain protected by requireMasterAdmin on the mutation routes.
-  const cashApprovalQueue=await loadCashApprovals(db);
-  res.render('payments/index',{title:'Approval & Transaksi',payments,openInvoices,staff,banks,sites,clusters,cashApprovals:cashApprovalQueue.rows,cashApprovalUnavailable:cashApprovalQueue.unavailable,summary:summary||{},missingProof:missingProof||{total:0,amount:0},preselectedInvoiceId,filters:{q,site,cluster,month,year,approval,method,recipient:activeRecipient},methodCounts,summaryMonth,summaryYear});
+  const cashApprovalQueue=await safe('antrean approval kas',{rows:[],unavailable:true},()=>loadCashApprovals(db));
+  res.render('payments/index',{title:'Approval & Transaksi',payments,openInvoices,staff,banks,sites,clusters,cashApprovals:cashApprovalQueue.rows,cashApprovalUnavailable:cashApprovalQueue.unavailable,summary:summary||{},missingProof:missingProof||{total:0,amount:0},paymentPageWarnings:pageWarnings,preselectedInvoiceId,filters:{q,site,cluster,month,year,approval,method,recipient:activeRecipient},methodCounts,summaryMonth,summaryYear});
 });
 
 router.post('/',requireAdmin,async(req,res)=>{

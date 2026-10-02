@@ -15,12 +15,8 @@ async function validateSite(siteId){
   return rows[0]||null;
 }
 
-// v1.25.5 (susulan #10) — REVISI: skema Komisi Pemasangan Baru ternyata SERAGAM untuk semua paket (Sales
-// selalu dapat nominal flat dari Menu Pengaturan -> Aplikasi, Teknisi dapat sisanya dari harga paket), jadi
-// tidak lagi diatur manual per-paket di sini seperti susulan #9. resolveCommissionFields() & kolom
-// packages.commission_technician/commission_sales dihapus dari alur ini (kolom DB dibiarkan ada, lihat
-// services/schemaService.js ensureV34Schema — bukan operasi destruktif untuk sekadar ganti behaviour).
-// Lihat services/invoiceService.js settleNewInstallCommission() untuk perhitungan split yang baru.
+// Pembagian instalasi PSB memakai nominal sales flat dari Pengaturan; teknisi menerima sisanya.
+// Ini hanya catatan operasional non-kas pada pelanggan PSB, bukan komisi dari invoice bulanan.
 
 router.get('/', async(req,res)=>{
   const selectedSite=normalizeSiteId(req.query.site);

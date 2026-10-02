@@ -1,5 +1,5 @@
 const db = require('../config/db');
-const { assignCashTransactionCode } = require('./cashService');
+const { isPsbActivationPeriod } = require('./psbService');
 
 function lastDayOfMonth(year, monthIndex) {
   return new Date(year, monthIndex + 1, 0).getDate();
@@ -38,39 +38,6 @@ function currentInvoiceAmounts(customer, year, monthIndex) {
     discount = Math.max(0, Math.min(discount, subtotal));
   }
   return { subtotal, discount, total: subtotal - discount, isProrata };
-}
-
-// v1.25.5 (susulan #9/#10) — "Komisi Pemasangan Baru". Called right after a customer's FIRST-EVER invoice
-// is inserted (guarded by the caller checking this really is invoice #1 for this customer_id — not just
-// "no invoice this period", since a customer could in theory be created mid-cycle and this must still
-// only fire once, on their true first bill). customers.is_new_install is set ONLY by the manual "Tambah
-// Pelanggan Baru" form (never by bulk import — see routes/customers.js), so migrated customers can never
-// reach this path no matter what activation_date they're given.
-//
-// Design: instead of "excluding" this payment from profit reports (easy to forget in some future report
-// query), it is recorded as REAL symmetric income + expense — Pendapatan Pemasangan Baru in, Komisi
-// Teknisi + Komisi Sales out — amounts that by construction always sum to exactly `total` (the invoice
-// total actually billed, i.e. already net of any discount). Net cash effect is therefore always ~0 without
-// any special-case filter anywhere else in the app.
-//
-// v1.25.5 (susulan #10) — REVISI: the split is no longer read from a per-package commission_technician/
-// commission_sales pair (that was susulan #9's design). User confirmed the real-world scheme is UNIFORM
-// across every package: Sales always gets a flat amount (settings.install_sales_flat_commission, editable
-// at Menu Pengaturan -> Aplikasi), Teknisi gets whatever remains of `total`. Computed against `total` (not
-// the raw package price) so this stays correct even if a discount happens to apply to a new-install
-// customer's very first invoice.
-//
-// Gracefully no-ops (invoice stays a completely normal unpaid invoice, admins get notified) if `total`
-// isn't large enough for the split to make sense (total <= flat sales commission — e.g. an unusually cheap
-// package or a heavy discount on the first invoice) — better to fall back to normal billing + a manual
-// follow-up than to silently record a zero/negative technician commission.
-async function settleNewInstallCommission(conn, { invoiceId, customer, total, actorUserId }) {
-  // FINANCIAL-INTEGRITY FINAL: PSB registration/invoice generation MUST NOT create a payment
-  // or cash journal. Revenue is realized only through the normal payment flow.
-  await conn.execute(`INSERT INTO automation_logs (job_name,status,message) VALUES ('install_commission','deferred',?)`,[
-    `PSB ${customer.customer_code||customer.id} invoice #${invoiceId}: jurnal pemasukan/komisi ditunda sampai pembayaran benar-benar direalisasi.`
-  ]).catch(()=>{});
-  return { deferred: true, invoiceId, total: Number(total)||0, actorUserId };
 }
 
 async function nextInvoiceNumber(conn, siteCode, year, monthIndex) {
@@ -163,9 +130,9 @@ async function generateMonthlyInvoices(referenceDate = new Date(), force = false
 
       // Explicit free-first-month policy: this is not a discount and never becomes a
       // zero-value invoice. Skipping it entirely guarantees no payment or cash movement.
-      if (Number(c.is_new_install) === 1 && Number(c.first_month_free) === 1 && c.activation_date) {
-        const activation=new Date(c.activation_date);
-        if (activation.getFullYear()===year && activation.getMonth()===monthIndex) { skipped++; continue; }
+      if (Number(c.is_new_install) === 1 && isPsbActivationPeriod(c.activation_date, year, monthIndex)) {
+        skipped++;
+        continue;
       }
 
       const dueDay = Math.min(Number(c.effective_due_day), lastDayOfMonth(year, monthIndex));
@@ -222,15 +189,8 @@ async function generateMonthlyInvoices(referenceDate = new Date(), force = false
         throw err;
       }
 
-      // v1.25.5 (susulan) — "Komisi Pemasangan Baru": only ever fires on this customer's true first
-      // invoice ever (not just first-this-period) so re-running generation in a later month never
-      // re-splits a customer's second+ invoice as commission.
-      if (c.is_new_install) {
-        const [[countRow]] = await conn.execute(`SELECT COUNT(*) n FROM invoices WHERE customer_id=?`, [c.id]);
-        if (Number(countRow.n) === 1) {
-          await settleNewInstallCommission(conn, { invoiceId: insertedInvoiceId, customer: c, total, actorUserId });
-        }
-      }
+      // Invoice pertama pada bulan setelah instalasi adalah billing reguler perusahaan.
+      // Penyelesaian instalasi PSB tersimpan pada customers dan tidak pernah membuat jurnal kas.
     }
 
     await conn.commit();
@@ -333,4 +293,4 @@ async function applyInvoiceDiscount(conn, invoiceId, mode, rawValue) {
   return { subtotal, discount: discountAmount, total };
 }
 
-module.exports = { generateMonthlyInvoices, refreshInvoiceStatus, calcProrata, syncCustomerDiscountToOpenInvoices, applyInvoiceDiscount, nextInvoiceNumber, settleNewInstallCommission };
+module.exports = { generateMonthlyInvoices, refreshInvoiceStatus, calcProrata, syncCustomerDiscountToOpenInvoices, applyInvoiceDiscount, nextInvoiceNumber };

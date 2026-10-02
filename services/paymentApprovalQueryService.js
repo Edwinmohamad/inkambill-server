@@ -22,4 +22,18 @@ async function loadCashApprovals(db, logger = console) {
   }
 }
 
-module.exports = { loadCashApprovals, isSchemaCompatibilityError };
+async function safePaymentPageLoad(label, fallback, loader, warnings = [], logger = console) {
+  try {
+    return await loader();
+  } catch (error) {
+    warnings.push(label);
+    logger.error(`[Approval & Transaksi] Gagal memuat ${label}:`, {
+      code: error?.code || null,
+      errno: error?.errno || null,
+      message: error?.sqlMessage || error?.message || String(error)
+    });
+    return fallback;
+  }
+}
+
+module.exports = { loadCashApprovals, isSchemaCompatibilityError, safePaymentPageLoad };

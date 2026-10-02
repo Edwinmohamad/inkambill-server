@@ -44,7 +44,7 @@ function paymentReference(paymentId, date=new Date()){
 }
 
 async function paymentCashMeta(conn,invoiceId){
-  const [rows]=await conn.execute(`SELECT c.site_id,c.name customer_name,c.customer_code,c.is_new_install,c.install_technician_name,c.install_sales_name,i.id invoice_id,i.invoice_number, CASE WHEN c.is_new_install=1 AND i.id=(SELECT MIN(i2.id) FROM invoices i2 WHERE i2.customer_id=c.id) THEN 1 ELSE 0 END is_psb FROM invoices i JOIN customers c ON c.id=i.customer_id WHERE i.id=?`,[invoiceId]);
+  const [rows]=await conn.execute(`SELECT c.site_id,c.name customer_name,c.customer_code,i.id invoice_id,i.invoice_number,0 is_psb FROM invoices i JOIN customers c ON c.id=i.customer_id WHERE i.id=?`,[invoiceId]);
   return rows[0]||null;
 }
 async function billingCategory(conn,name='Pendapatan Billing'){
@@ -65,25 +65,7 @@ async function postCashTransaction(conn,{paymentId,invoiceId,amount,reference,bo
     ]);
     await assignCashTransactionCode(conn,r.insertId,catId,new Date(`${bookDate}T12:00:00`));
   }
-  if(!isPsb)return;
-  const [[settingsRow]]=await conn.execute(`SELECT install_sales_flat_commission FROM settings WHERE id=1 LIMIT 1`);
-  const salesCommission=Number(settingsRow?.install_sales_flat_commission??50000);
-  if(!(Number(amount)>salesCommission))return;
-  const technicianCommission=Number(amount)-salesCommission;
-  const techName=String(meta.install_technician_name||'').trim()||'Teknisi (tidak diisi)';
-  const salesName=String(meta.install_sales_name||'').trim()||'Sales (tidak diisi)';
-  const commissionRows=[
-    {code:'KOMISI-TEK',type:'payment_commission_technician',amount:technicianCommission,name:`Komisi Teknisi ${techName} - ${meta.customer_name}`},
-    {code:'KOMISI-SLS',type:'payment_commission_sales',amount:salesCommission,name:`Komisi Sales ${salesName} - ${meta.customer_name}`}
-  ];
-  for(const item of commissionRows){
-    const [[cat]]=await conn.execute(`SELECT id FROM cash_categories WHERE code=? AND type='expense' LIMIT 1`,[item.code]);
-    if(!cat?.id)continue;
-    const [dup]=await conn.execute(`SELECT id FROM cash_transactions WHERE source_type IN (?,REPLACE(?,'payment_','install_')) AND source_id=? LIMIT 1`,[item.type,item.type,paymentId]);
-    if(dup.length)continue;
-    const [r]=await conn.execute(`INSERT INTO cash_transactions(transaction_date,name,category_id,site_id,amount,notes,source_type,source_id,approval_status,created_by) VALUES(?,?,?,?,?,?,?,?,'APPROVED',?)`,[bookDate,item.name,cat.id,meta.site_id,item.amount,`Komisi PSB · Faktur ${meta.invoice_number}`,item.type,paymentId,actorUserId]);
-    await assignCashTransactionCode(conn,r.insertId,cat.id,new Date(`${bookDate}T12:00:00`));
-  }
+  // PSB tidak pernah mencapai cabang khusus: invoice bulan berikutnya adalah billing reguler.
 }
 
 async function maybeAutoUnisolate(invoiceId){

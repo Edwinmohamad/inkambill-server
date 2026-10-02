@@ -7,6 +7,7 @@ const { requireAdmin, requireMasterAdmin, isMasterAdminRole } = require('../midd
 const { validateWhatsapp } = require('../services/whatsappService');
 const { syncCustomerDiscountToOpenInvoices } = require('../services/invoiceService');
 const { isolateCustomer } = require('../services/networkService');
+const { buildPsbTerms } = require('../services/psbService');
 const router = express.Router();
 
 async function isolateAfterStatusChange(customerId, reason='status_change') {
@@ -447,26 +448,21 @@ router.post('/', async (req, res) => {
   // selections are rejected here rather than silently dropped, same treatment as package_id above.
   const {discountId,error:discountError}=await resolveDiscountId(b.discount_id);
   if(discountError){req.session.flash={type:'danger',message:discountError};return res.redirect('/customers/new');}
-  // v1.25.5 (susulan #10) — "Pemasangan Baru": pembayaran pertama pelanggan ini akan 100% dibagi habis
-  // sebagai komisi teknisi & sales (lihat services/invoiceService.js), bukan pendapatan perusahaan. Skema
-  // komisi SERAGAM semua paket (bukan diatur per-paket lagi, lihat routes/packages.js): Sales dapat nominal
-  // flat dari Menu Pengaturan -> Aplikasi, Teknisi dapat sisanya dari harga paket — jadi paket ini hanya
-  // valid untuk skema tersebut kalau harganya lebih besar dari nominal flat itu. Teknisi/sales di sini
-  // sengaja NAMA BEBAS (custom text) — orang lapangan sering bukan karyawan tetap yang terdaftar di sistem
-  // (beda dari customers.sales_id di atas, yang tetap dipakai apa adanya untuk keperluan lain).
-  // Re-validasi ulang dari DB di sini (bukan percaya form) supaya nominal flat yang berubah sejak halaman
-  // form dibuka tidak lolos dengan angka lama.
+  // PSB: pembayaran instalasi dibagikan langsung kepada tim dan hanya disimpan sebagai catatan
+  // operasional non-kas. Bulan instalasi selalu bebas invoice; billing reguler mulai bulan berikutnya.
+  // Nominal divalidasi ulang dari DB agar submit lama/rekayasa tidak dapat mengubah pembagian.
   const isNewInstall=b.is_new_install?1:0;
-  const firstMonthFree=isNewInstall&&b.first_month_free?1:0;
+  if(isNewInstall&&!b.activation_date){
+    req.session.flash={type:'danger',message:'Tanggal instalasi wajib diisi untuk pelanggan PSB agar tagihan pertama dimulai pada bulan berikutnya.'};
+    return res.redirect('/customers/new');
+  }
+  const [[settingsRow]]=await db.execute(`SELECT install_sales_flat_commission FROM settings WHERE id=1 LIMIT 1`);
+  let psbTerms;
+  try{
+    psbTerms=buildPsbTerms({isNewInstall,teamPayment:b.psb_team_payment,packagePrice:packageRows[0].price,salesFlatCommission:settingsRow?.install_sales_flat_commission??50000});
+  }catch(error){req.session.flash={type:'danger',message:error.message};return res.redirect('/customers/new');}
   let installTechnicianName=null,installSalesName=null;
-  if(isNewInstall&&!firstMonthFree){
-    const pkg=packageRows[0];
-    const [[settingsRow]]=await db.execute(`SELECT install_sales_flat_commission FROM settings WHERE id=1 LIMIT 1`);
-    const flatSalesCommission=Number(settingsRow?.install_sales_flat_commission??50000);
-    if(!(Number(pkg.price)>flatSalesCommission)){
-      req.session.flash={type:'danger',message:`Harga paket ini (Rp${Number(pkg.price).toLocaleString('id-ID')}) harus lebih besar dari nominal Komisi Sales flat saat ini (Rp${flatSalesCommission.toLocaleString('id-ID')}) agar skema komisi otomatis bisa berlaku. Sesuaikan harga paket atau nominal komisi di Menu Pengaturan → Aplikasi.`};
-      return res.redirect('/customers/new');
-    }
+  if(psbTerms.teamPayment){
     installTechnicianName=String(b.install_technician_name||'').trim();
     installSalesName=String(b.install_sales_name||'').trim();
     if(!installTechnicianName||!installSalesName){
@@ -476,9 +472,11 @@ router.post('/', async (req, res) => {
   }
   const email=b.email_mode==='auto'?autoCustomerEmail(customerCode):(String(b.email||'').trim()||null);
   const wa=validateWhatsapp(b.phone);
-  const [result]=await db.execute(`INSERT INTO customers (customer_code,name,phone,whatsapp_status,whatsapp_normalized,whatsapp_verified_at,email,address,sales_id,site_id,router_id,cluster_id,package_id,discount_id,pppoe_username,activation_date,due_day,grace_days,customer_status,billing_status,network_status,status_changed_at,prorata_enabled,is_new_install,first_month_free,customer_source,install_technician_name,install_sales_name,notes) VALUES (?,?,?,?,?,NOW(),?,?,?,?,NULL,?,?,?,NULL,?,?,?,?,?,'offline',NOW(),?,?,?,?,?,?,?)`,[customerCode,b.name,b.phone||null,wa.valid?'valid':'invalid',wa.normalized,email,b.address||null,b.sales_id||null,siteId,b.cluster_id||null,packageId,discountId,b.activation_date||null,b.due_day||null,b.grace_days||null,b.customer_status||'active','unpaid',b.prorata_enabled?1:0,isNewInstall,firstMonthFree,isNewInstall?'new_install':'manual_entry',installTechnicianName,installSalesName,b.notes||null]);
-  await audit({userId:req.session.user.id,action:'create',entityType:'customer',entityId:result.insertId,description:`Tambah ${customerCode} - ${b.name}${isNewInstall?` (Pemasangan Baru${firstMonthFree?' · gratis bulan pertama':''} — teknisi ${installTechnicianName}, sales ${installSalesName})`:''}`,ip:req.ip});
-  req.session.flash={type:'success',message:`Pelanggan berhasil ditambahkan dengan Customer ID ${customerCode}.`};res.redirect('/customers');
+  const settledAt=psbTerms.teamPayment?new Date():null;
+  const settledBy=psbTerms.teamPayment?req.session.user.id:null;
+  const [result]=await db.execute(`INSERT INTO customers (customer_code,name,phone,whatsapp_status,whatsapp_normalized,whatsapp_verified_at,email,address,sales_id,site_id,router_id,cluster_id,package_id,discount_id,pppoe_username,activation_date,due_day,grace_days,customer_status,billing_status,network_status,status_changed_at,prorata_enabled,is_new_install,first_month_free,psb_team_payment,customer_source,install_technician_name,install_sales_name,psb_sales_amount,psb_technician_amount,psb_settled_at,psb_settled_by,notes) VALUES (?,?,?,?,?,NOW(),?,?,?,?,NULL,?,?,?,NULL,?,?,?,?,?,'offline',NOW(),?,?,?,?,?,?,?,?,?,?,?,?)`,[customerCode,b.name,b.phone||null,wa.valid?'valid':'invalid',wa.normalized,email,b.address||null,b.sales_id||null,siteId,b.cluster_id||null,packageId,discountId,b.activation_date||null,b.due_day||null,b.grace_days||null,b.customer_status||'active','unpaid',b.prorata_enabled?1:0,psbTerms.isNewInstall,psbTerms.firstMonthFree,psbTerms.teamPayment,isNewInstall?'new_install':'manual_entry',installTechnicianName,installSalesName,psbTerms.salesAmount,psbTerms.technicianAmount,settledAt,settledBy,b.notes||null]);
+  await audit({userId:req.session.user.id,action:'create',entityType:'customer',entityId:result.insertId,description:`Tambah ${customerCode} - ${b.name}${isNewInstall?` (PSB · tagihan mulai bulan berikutnya${psbTerms.teamPayment?` · pembayaran instalasi langsung ke tim: sales Rp${psbTerms.salesAmount.toLocaleString('id-ID')}, teknisi Rp${psbTerms.technicianAmount.toLocaleString('id-ID')}`:' · pembayaran tim belum diselesaikan'})`:''}`,ip:req.ip});
+  req.session.flash={type:'success',message:isNewInstall?`Pelanggan PSB berhasil ditambahkan. Tidak ada transaksi kas; tagihan pertama dimulai bulan berikutnya.`:`Pelanggan berhasil ditambahkan dengan Customer ID ${customerCode}.`};res.redirect('/customers');
 });
 // v1.20 — Section 3/4 bulk + archive routes. IMPORTANT: '/bulk' must be registered here, BEFORE the
 // generic 'router.post(\'/:id\', ...)' update route further down — otherwise Express would match
@@ -586,7 +584,7 @@ router.post('/:id',async(req,res)=>{
   const [dup]=await db.execute(`SELECT id FROM customers WHERE customer_code=? AND id<>? LIMIT 1`,[customerCode,req.params.id]);
   if(dup.length){req.session.flash={type:'danger',message:`Customer ID ${customerCode} sudah digunakan pelanggan lain.`};return res.redirect(`/customers/${req.params.id}/edit`);}
   const siteId=Number(b.site_id||0),packageId=Number(b.package_id||0);
-  const [packageRows]=await db.execute(`SELECT id,site_id FROM packages WHERE id=? AND is_active=1 LIMIT 1`,[packageId]);
+  const [packageRows]=await db.execute(`SELECT id,site_id,price FROM packages WHERE id=? AND is_active=1 LIMIT 1`,[packageId]);
   if(!packageRows.length || (packageRows[0].site_id!==null && Number(packageRows[0].site_id)!==siteId)){
     req.session.flash={type:'danger',message:'Paket internet tidak sesuai dengan Site pelanggan. Pilih paket untuk Site yang benar.'};return res.redirect(`/customers/${req.params.id}/edit`);
   }
@@ -602,13 +600,25 @@ router.post('/:id',async(req,res)=>{
   // customer row update and the resync of their open invoices commit/rollback together; the resync only
   // fires when discount_id actually changed, and only ever touches invoices that are NOT paid/cancelled/
   // refunded, so already-settled historical invoices are never altered.
-  const [[before]]=await db.execute(`SELECT discount_id,customer_status FROM customers WHERE id=? LIMIT 1`,[req.params.id]);
+  const [[before]]=await db.execute(`SELECT discount_id,customer_status,is_new_install FROM customers WHERE id=? LIMIT 1`,[req.params.id]);
   const previousDiscountId=before?before.discount_id:null;
+  let psbTerms={firstMonthFree:0,teamPayment:0,salesAmount:0,technicianAmount:0};
+  let installTechnicianName=null,installSalesName=null;
+  if(Number(before?.is_new_install)===1){
+    if(!b.activation_date){req.session.flash={type:'danger',message:'Tanggal instalasi wajib diisi untuk pelanggan PSB.'};return res.redirect(`/customers/${req.params.id}/edit`);}
+    const [[settingsRow]]=await db.execute(`SELECT install_sales_flat_commission FROM settings WHERE id=1 LIMIT 1`);
+    try{psbTerms=buildPsbTerms({isNewInstall:true,teamPayment:b.psb_team_payment,packagePrice:packageRows[0].price,salesFlatCommission:settingsRow?.install_sales_flat_commission??50000});}
+    catch(error){req.session.flash={type:'danger',message:error.message};return res.redirect(`/customers/${req.params.id}/edit`);}
+    if(psbTerms.teamPayment){
+      installTechnicianName=String(b.install_technician_name||'').trim();installSalesName=String(b.install_sales_name||'').trim();
+      if(!installTechnicianName||!installSalesName){req.session.flash={type:'danger',message:'Nama teknisi dan nama sales wajib diisi saat pembayaran PSB dibagikan ke tim.'};return res.redirect(`/customers/${req.params.id}/edit`);}
+    }
+  }
   const conn=await db.getConnection();
   let resynced=0;
   try{
     await conn.beginTransaction();
-    await conn.execute(`UPDATE customers SET customer_code=?,name=?,phone=?,whatsapp_status=?,whatsapp_normalized=?,whatsapp_verified_at=NOW(),whatsapp_verified_by=NULL,email=?,address=?,sales_id=?,site_id=?,cluster_id=?,package_id=?,discount_id=?,activation_date=?,due_day=?,grace_days=?,status_changed_at=IF(customer_status<>?,NOW(),status_changed_at),customer_status=?,prorata_enabled=?,notes=? WHERE id=?`,[customerCode,b.name,b.phone||null,wa.valid?'valid':'invalid',wa.normalized,email,b.address||null,b.sales_id||null,siteId,b.cluster_id||null,packageId,discountId,b.activation_date||null,b.due_day||null,b.grace_days||null,b.customer_status,b.customer_status,b.prorata_enabled?1:0,b.notes||null,req.params.id]);
+    await conn.execute(`UPDATE customers SET customer_code=?,name=?,phone=?,whatsapp_status=?,whatsapp_normalized=?,whatsapp_verified_at=NOW(),whatsapp_verified_by=NULL,email=?,address=?,sales_id=?,site_id=?,cluster_id=?,package_id=?,discount_id=?,activation_date=?,due_day=?,grace_days=?,status_changed_at=IF(customer_status<>?,NOW(),status_changed_at),customer_status=?,prorata_enabled=?,first_month_free=IF(is_new_install=1,1,first_month_free),psb_team_payment=IF(is_new_install=1,?,psb_team_payment),install_technician_name=IF(is_new_install=1,?,install_technician_name),install_sales_name=IF(is_new_install=1,?,install_sales_name),psb_sales_amount=IF(is_new_install=1,?,psb_sales_amount),psb_technician_amount=IF(is_new_install=1,?,psb_technician_amount),psb_settled_at=IF(is_new_install=1,IF(?=1,COALESCE(psb_settled_at,NOW()),NULL),psb_settled_at),psb_settled_by=IF(is_new_install=1,IF(?=1,COALESCE(psb_settled_by,?),NULL),psb_settled_by),notes=? WHERE id=?`,[customerCode,b.name,b.phone||null,wa.valid?'valid':'invalid',wa.normalized,email,b.address||null,b.sales_id||null,siteId,b.cluster_id||null,packageId,discountId,b.activation_date||null,b.due_day||null,b.grace_days||null,b.customer_status,b.customer_status,b.prorata_enabled?1:0,psbTerms.teamPayment,installTechnicianName,installSalesName,psbTerms.salesAmount,psbTerms.technicianAmount,psbTerms.teamPayment,psbTerms.teamPayment,req.session.user.id,b.notes||null,req.params.id]);
     if(Number(previousDiscountId||0)!==Number(discountId||0)){
       resynced=await syncCustomerDiscountToOpenInvoices(conn,req.params.id,discountId);
     }

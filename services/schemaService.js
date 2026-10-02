@@ -1339,4 +1339,17 @@ async function ensureV62Schema() {
   )`);
 }
 
-module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema, ensureV58Schema, ensureV59Schema, ensureV60Schema, ensureV61Schema, ensureV62Schema };
+async function ensureV63Schema() {
+  // Pembayaran instalasi PSB adalah penyelesaian operasional langsung ke tim,
+  // bukan invoice, pemasukan, pengeluaran, atau mutasi kas perusahaan.
+  await db.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS psb_team_payment TINYINT(1) NOT NULL DEFAULT 0 AFTER first_month_free`);
+  await db.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS psb_sales_amount DECIMAL(14,2) NOT NULL DEFAULT 0 AFTER install_sales_name`);
+  await db.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS psb_technician_amount DECIMAL(14,2) NOT NULL DEFAULT 0 AFTER psb_sales_amount`);
+  await db.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS psb_settled_at DATETIME NULL AFTER psb_technician_amount`);
+  await db.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS psb_settled_by BIGINT UNSIGNED NULL AFTER psb_settled_at`);
+  // Semua PSB mengikuti kebijakan baru: bulan instalasi tidak ditagih.
+  await db.query(`UPDATE customers SET first_month_free=1 WHERE is_new_install=1 AND first_month_free<>1`);
+  await db.query(`ALTER TABLE customers ADD INDEX IF NOT EXISTS idx_customers_psb_settlement (is_new_install,psb_team_payment,activation_date)`).catch(()=>{});
+}
+
+module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema, ensureV58Schema, ensureV59Schema, ensureV60Schema, ensureV61Schema, ensureV62Schema, ensureV63Schema };

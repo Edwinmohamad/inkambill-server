@@ -9,6 +9,13 @@
     <div class="module-actions"><% if(isAdmin){ %><a class="btn-tech" href="/payments/reconciliation"><i class="bi bi-arrow-left-right"></i>Rekonsiliasi Cash</a><button class="btn-tech primary" data-bs-toggle="modal" data-bs-target="#paymentModal"><i class="bi bi-plus-lg"></i>Catat Pembayaran</button><% } %></div>
   </div>
 
+  <% if(typeof paymentPageWarnings!=='undefined'&&paymentPageWarnings.length){ %>
+  <div class="alert alert-warning alert-modern" role="alert">
+    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+    Halaman berhasil dibuka, tetapi sebagian data belum dapat dimuat: <b><%= paymentPageWarnings.join(', ') %></b>. Detail teknis sudah dicatat di log server; periksa migrasi database lalu muat ulang halaman.
+  </div>
+  <% } %>
+
   <% if(Number(missingProof?.total||0)>0){ %>
   <div class="alert alert-warning alert-modern alert-dismissible fade show" role="alert">
     <i class="bi bi-exclamation-triangle-fill me-2"></i>

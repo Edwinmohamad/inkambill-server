@@ -14,28 +14,37 @@
 <div class="col-md-4"><label class="form-label">Paket *</label><select class="form-select" name="package_id" id="customerPackage" required><% packages.forEach(p=>{ %><option value="<%= p.id %>" data-site-id="<%= p.site_id||'' %>" data-price="<%= Number(p.price) %>" <%= String(customer?.package_id||'')===String(p.id)?'selected':'' %>><%= p.site_code?`${p.site_code} · `:'GLOBAL · ' %><%= p.name %> · <%= formatRupiah(p.price) %></option><% }) %></select><div class="form-help">Hanya paket yang sesuai dengan Site pelanggan yang dapat dipilih.</div></div>
 <div class="col-md-4"><label class="form-label">Cluster / ODP</label><select class="form-select" name="cluster_id"><option value="">Belum dipilih</option><% clusters.forEach(cl=>{ %><option value="<%= cl.id %>" <%= String(customer?.cluster_id||'')===String(cl.id)?'selected':'' %>><%= cl.site_code %> · <%= cl.name %></option><% }) %></select></div>
 <div class="col-md-4"><label class="form-label">Sales</label><select class="form-select" name="sales_id"><option value="">Tanpa Sales / Direct</option><% sales.forEach(s=>{ %><option value="<%= s.id %>" <%= String(customer?.sales_id||'')===String(s.id)?'selected':'' %>><%= s.employee_code %> · <%= s.name %></option><% }) %></select><div class="form-help">Sumber data dari Pengaturan → Karyawan dengan posisi kategori Sales.</div></div>
-<% if(!customer){ %>
+<% if(!customer || Number(customer.is_new_install)===1){ %>
 <div class="col-12">
   <div class="install-commission-box">
+    <% if(!customer){ %>
     <label class="form-check d-flex align-items-center gap-2">
       <input class="form-check-input" type="checkbox" id="isNewInstall" name="is_new_install" value="1">
-      <span>Pemasangan Baru <small class="d-block text-secondary">Tandai pelanggan baru agar mudah dipantau selama 1 bulan. Jangan dicentang untuk migrasi/impor pelanggan lama.</small></span>
+      <span>Pemasangan Baru (PSB) <small class="d-block text-secondary">Bulan instalasi tidak ditagih. Tagihan internet pertama otomatis dimulai bulan berikutnya.</small></span>
     </label>
-    <label class="form-check d-flex align-items-center gap-2 mt-2 ms-4">
-      <input class="form-check-input" type="checkbox" id="firstMonthFree" name="first_month_free" value="1" disabled>
-      <span>Gratis bulan pertama <small class="d-block text-secondary">Tidak membuat tagihan, pembayaran, maupun jurnal kas untuk bulan aktivasi.</small></span>
-    </label>
+    <% }else{ %>
+      <input type="hidden" id="isNewInstall" name="is_new_install" value="1">
+      <div class="d-flex align-items-center gap-2"><span class="status-badge purple"><i class="bi bi-stars"></i>PSB</span><small class="text-secondary">Tagihan reguler dimulai bulan setelah tanggal instalasi.</small></div>
+    <% } %>
+    <div class="mt-3" id="psbPaymentControl" hidden>
+      <label class="form-label d-block">Pembayaran instalasi pelanggan dibagikan ke teknisi dan sales?</label>
+      <div class="d-flex flex-wrap gap-3">
+        <label class="form-check"><input class="form-check-input" type="radio" name="psb_team_payment" value="yes" <%= Number(customer?.psb_team_payment)===1?'checked':'' %>> <span class="form-check-label">Ya, sudah dibagikan</span></label>
+        <label class="form-check"><input class="form-check-input" type="radio" name="psb_team_payment" value="no" <%= Number(customer?.psb_team_payment)!==1?'checked':'' %>> <span class="form-check-label">Tidak / belum</span></label>
+      </div>
+      <small class="text-secondary">Catatan operasional saja. Pilihan ini tidak membuat tagihan, pemasukan, pengeluaran, atau jurnal kas.</small>
+    </div>
     <div class="row g-3 mt-1" id="installCommissionFields" hidden>
-      <div class="col-md-6"><label class="form-label">Nama Teknisi *</label><input class="form-control" name="install_technician_name" list="installTechnicianList" placeholder="Nama bebas, boleh bukan karyawan tetap"><datalist id="installTechnicianList"><% installTechnicians.forEach(t=>{ %><option value="<%= t.name %>"><% }) %></datalist></div>
-      <div class="col-md-6"><label class="form-label">Nama Sales *</label><input class="form-control" name="install_sales_name" list="installSalesList" placeholder="Nama bebas, boleh bukan karyawan tetap"><datalist id="installSalesList"><% installSalesNames.forEach(t=>{ %><option value="<%= t.name %>"><% }) %></datalist></div>
-      <div class="col-12"><small class="text-secondary" id="installCommissionHint">Pilih paket untuk melihat pembagian komisi otomatis.</small></div>
+      <div class="col-md-6"><label class="form-label">Nama Teknisi *</label><input class="form-control" name="install_technician_name" value="<%= customer?.install_technician_name || '' %>" list="installTechnicianList" placeholder="Nama teknisi penerima"><datalist id="installTechnicianList"><% installTechnicians.forEach(t=>{ %><option value="<%= t.name %>"><% }) %></datalist></div>
+      <div class="col-md-6"><label class="form-label">Nama Sales *</label><input class="form-control" name="install_sales_name" value="<%= customer?.install_sales_name || '' %>" list="installSalesList" placeholder="Nama sales penerima"><datalist id="installSalesList"><% installSalesNames.forEach(t=>{ %><option value="<%= t.name %>"><% }) %></datalist></div>
+      <div class="col-12"><small class="text-secondary" id="installCommissionHint">Pilih paket untuk melihat pembagian pembayaran instalasi.</small></div>
     </div>
   </div>
 </div>
 <% } %>
 <div class="col-12"><div class="nms-config-notice"><i class="bi bi-router-fill"></i><span><b>Konfigurasi PPPoE dipusatkan di MikroTik NMS</b><small>Secret, router, auto suggest pelanggan, serta sinkronisasi site dikelola dari <a href="/nms/secrets">MikroTik NMS</a> agar tidak terjadi salah site atau data ganda.</small></span></div></div>
 </div><hr style="border-color:var(--line);margin:24px 0"><div class="module-kicker">BILLING POLICY</div><div class="row g-3">
-<div class="col-md-3"><label class="form-label">Aktif Sejak</label><input class="form-control" type="date" name="activation_date" value="<%= customer?.activation_date ? new Date(customer.activation_date).toISOString().slice(0,10) : '' %>"></div>
+<div class="col-md-3"><label class="form-label">Aktif / Instalasi Sejak</label><input class="form-control" id="activationDate" type="date" name="activation_date" value="<%= customer?.activation_date ? new Date(customer.activation_date).toISOString().slice(0,10) : '' %>"></div>
 <div class="col-md-3"><label class="form-label">Jatuh Tempo</label><input class="form-control" id="customerDueDay" type="number" min="1" max="28" name="due_day" value="<%= customer?.due_day || '' %>" placeholder="Default site"></div>
 <div class="col-md-3"><label class="form-label">Grace Period</label><input class="form-control" type="number" min="0" max="30" name="grace_days" value="<%= customer?.grace_days ?? '' %>" placeholder="Default site"></div>
 <div class="col-md-3"><label class="form-label">Status</label><select class="form-select" name="customer_status"><% ['active','suspended','terminated'].forEach(x=>{ %><option value="<%= x %>" <%= (customer?.customer_status||'active')===x?'selected':'' %>><%= statusLabel(x) %></option><% }) %></select></div>
@@ -56,20 +65,22 @@
   const syncPackages=()=>{if(!pkg||!site)return;const siteId=String(site.value||'');let selectedVisible=false,firstVisible=null;[...pkg.options].forEach(opt=>{const target=String(opt.dataset.siteId||'');const visible=!target||target===siteId;opt.hidden=!visible;opt.disabled=!visible;if(visible&&!firstVisible)firstVisible=opt;if(visible&&opt.selected)selectedVisible=true;});if(!selectedVisible&&firstVisible){pkg.value=firstVisible.value;}};
   const syncMode=()=>{email.readOnly=mode.value==='auto';if(mode.value==='auto')autoEmail();else email.focus();};
   mode.addEventListener('change',syncMode);code.addEventListener('input',autoEmail);site.addEventListener('change',syncPackages);
-  const newInstall=document.getElementById('isNewInstall'), firstMonthFree=document.getElementById('firstMonthFree'), installFields=document.getElementById('installCommissionFields'), installHint=document.getElementById('installCommissionHint');
+  const newInstall=document.getElementById('isNewInstall'), psbPaymentControl=document.getElementById('psbPaymentControl'), installFields=document.getElementById('installCommissionFields'), installHint=document.getElementById('installCommissionHint'), activationDate=document.getElementById('activationDate');
   if(newInstall&&installFields){
     const syncInstallVisibility=()=>{
-      const free=Boolean(firstMonthFree?.checked);
-      installFields.hidden=!newInstall.checked||free;
-      installFields.querySelectorAll('input').forEach(el=>el.required=newInstall.checked&&!free);
-      if(firstMonthFree){firstMonthFree.disabled=!newInstall.checked;if(!newInstall.checked)firstMonthFree.checked=false;}
-      if(newInstall.checked&&pkg){
+      const isPsb=newInstall.type==='hidden'||newInstall.checked;
+      const split=document.querySelector('input[name="psb_team_payment"]:checked')?.value==='yes';
+      if(psbPaymentControl)psbPaymentControl.hidden=!isPsb;
+      installFields.hidden=!isPsb||!split;
+      installFields.querySelectorAll('input').forEach(el=>el.required=isPsb&&split);
+      if(activationDate)activationDate.required=isPsb;
+      if(isPsb&&split&&pkg){
         const opt=pkg.options[pkg.selectedIndex];
         const price=opt?Number(opt.dataset.price||0):0;
         const eligible=price>SALES_FLAT_COMMISSION;
         if(installHint){
           if(eligible){
-            installHint.textContent=`Skema otomatis: Teknisi ${formatRupiahJs(price-SALES_FLAT_COMMISSION)} · Sales ${formatRupiahJs(SALES_FLAT_COMMISSION)} (total ${formatRupiahJs(price)}).`;
+            installHint.textContent=`Pembagian non-kas: Sales ${formatRupiahJs(SALES_FLAT_COMMISSION)} · Teknisi ${formatRupiahJs(price-SALES_FLAT_COMMISSION)} · total ${formatRupiahJs(price)}.`;
             installHint.className='text-success';
           }else{
             installHint.textContent=`Harga paket ini (${formatRupiahJs(price)}) harus lebih besar dari Komisi Sales flat (${formatRupiahJs(SALES_FLAT_COMMISSION)}) agar skema komisi otomatis berlaku — akan ditolak saat disimpan.`;
@@ -79,7 +90,7 @@
       }
     };
     newInstall.addEventListener('change',syncInstallVisibility);
-    firstMonthFree?.addEventListener('change',syncInstallVisibility);
+    document.querySelectorAll('input[name="psb_team_payment"]').forEach(el=>el.addEventListener('change',syncInstallVisibility));
     if(pkg)pkg.addEventListener('change',syncInstallVisibility);
     syncInstallVisibility();
   }
