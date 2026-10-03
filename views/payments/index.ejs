@@ -6,7 +6,7 @@
 <section>
   <div class="module-head">
     <div><div class="module-kicker">APPROVAL & TRANSACTION CENTER</div><h1>Approval & Transaksi</h1><p>Satu pusat verifikasi pembayaran pelanggan dan transaksi kas manual sebelum memengaruhi data keuangan resmi.</p></div>
-    <div class="module-actions"><% if(isAdmin){ %><a class="btn-tech" href="/payments/reconciliation"><i class="bi bi-arrow-left-right"></i>Rekonsiliasi Cash</a><button class="btn-tech primary" data-bs-toggle="modal" data-bs-target="#paymentModal"><i class="bi bi-plus-lg"></i>Catat Pembayaran</button><% } %></div>
+    <div class="module-actions"><% if(isAdmin){ %><a class="btn-tech" href="/payments/reconciliation"><i class="bi bi-arrow-left-right"></i>Rekonsiliasi Cash</a><button class="btn-tech primary" data-bs-toggle="modal" data-bs-target="#paymentModal" data-payment-multi><i class="bi bi-plus-lg"></i>Catat Pembayaran</button><% } %></div>
   </div>
 
   <% if(typeof paymentPageWarnings!=='undefined'&&paymentPageWarnings.length){ %>

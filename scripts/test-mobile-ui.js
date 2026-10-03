@@ -43,7 +43,22 @@ const required=[
   ,[js,"item.dataset.type===cashAction",'quick income/expense category selection']
   ,[clientJs,"delete form.dataset.filterSubmitting",'filter state recovery after Android back']
   ,[clientJs,"button.dataset.originalHtml",'submit button recovery after Android back']
+  ,[css,'--go-type-meta:.6875rem','readable mobile metadata scale']
+  ,[css,'--go-radius:12px','consistent mobile surface radius']
+  ,[css,':where(a,button,input,select,textarea,[tabindex]):focus-visible','visible APK keyboard focus']
+  ,[css,'font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text"','native Apple-style font stack']
+  ,[css,'--go-motion-fast:120ms','consistent mobile motion timing']
+  ,[css,'--go-ease:cubic-bezier(.22,1,.36,1)','consistent mobile motion easing']
+  ,[css,'.modal.fade .modal-dialog{transform:translateY(12px)','restrained modal entrance motion']
 ];
 for(const [source,needle,label] of required)if(!source.includes(needle))throw new Error(`Mobile UI missing: ${label}`);
 if(!/^body\.inkamnet-go-app/m.test(css))throw new Error('Mobile CSS is not scoped to the APK body.');
+for(const match of css.matchAll(/font-size:\.(\d+)rem/g)){
+  const size=Number(`0.${match[1]}`);
+  if(size<.625)throw new Error(`Mobile UI contains unreadable font-size: ${match[0]}`);
+}
+for(const match of css.matchAll(/font-weight:(\d+)/g)){
+  if(!['400','500','600','700'].includes(match[1]))throw new Error(`Mobile UI contains inconsistent font weight: ${match[0]}`);
+}
+if(/letter-spacing:(?!0(?:[;}]))/.test(css))throw new Error('Mobile UI contains non-zero letter spacing.');
 console.log(`Mobile UI validation passed: ${required.length} shell, permission, responsive, and action checks.`);

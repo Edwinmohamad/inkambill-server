@@ -5,7 +5,7 @@
       <input type="hidden" name="_csrf" value="<%= csrfToken %>">
       <input type="hidden" name="return_to" value="<%= paymentReturnTo %>">
       <input type="hidden" name="idempotency_key" value="payment-<%= Date.now() %>-<%= Math.random().toString(36).slice(2) %>">
-      <div class="modal-header payment-entry-header"><div><div class="module-kicker">PEMBAYARAN PELANGGAN</div><h5 class="modal-title" id="paymentModalTitle">Catat Pembayaran</h5><small class="text-secondary">Pilih satu atau banyak faktur sekaligus.</small></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button></div>
+      <div class="modal-header payment-entry-header"><div><div class="module-kicker">PEMBAYARAN PELANGGAN</div><h5 class="modal-title" id="paymentModalTitle"><span data-payment-title-single>Konfirmasi Pembayaran</span><span data-payment-title-multi>Catat Pembayaran</span></h5><small class="text-secondary"><span data-payment-copy-single>Periksa detail faktur, lalu pilih metode pembayaran.</span><span data-payment-copy-multi>Pilih satu atau banyak faktur sekaligus.</span></small></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button></div>
       <div class="modal-body payment-entry-body">
         <div class="payment-mode-picker mb-3">
           <label><input type="radio" name="method" value="transfer" checked><span><i class="bi bi-bank2"></i><strong>Transfer</strong><small>Bukti wajib sebelum approval</small></span></label>
@@ -15,7 +15,7 @@
 
         <div class="invoice-picker-panel">
           <div class="invoice-picker-head">
-            <div><strong>Pilih Faktur</strong><small>Centang faktur pelanggan. Nominal dikunci otomatis sesuai sisa tagihan pada sistem.</small></div>
+            <div><strong><span data-payment-label-single>Detail Faktur</span><span data-payment-label-multi>Pilih Faktur</span></strong><small><span data-payment-help-single>Nominal pembayaran otomatis mengikuti sisa tagihan.</span><span data-payment-help-multi>Centang faktur pelanggan. Nominal dikunci otomatis sesuai sisa tagihan pada sistem.</span></small></div>
             <div class="search-box invoice-picker-search"><i class="bi bi-search"></i><input type="search" id="paymentCustomerSearch" placeholder="Cari nama pelanggan, Customer ID, faktur, site, cluster..."></div>
           </div>
           <div class="bulk-payment-tools"><button class="btn-tech compact" type="button" id="selectVisibleInvoices"><i class="bi bi-check2-square"></i>Centang Hasil Pencarian</button><button class="btn-tech compact" type="button" id="clearSelectedInvoices"><i class="bi bi-square"></i>Kosongkan</button><span><b id="selectedInvoiceCount">0</b> faktur dipilih</span><strong id="selectedInvoiceTotal">Rp 0</strong></div>
@@ -64,6 +64,21 @@
   const modalTotal=document.getElementById('paymentModalTotal');
   const proofInput=document.getElementById('proof_file');
   const proofFileName=document.getElementById('proofFileName');
+  let selectionMode=<%- JSON.stringify(preselectedInvoiceId?'single':'multi') %>;
+  function setSelection(ids,mode='multi'){
+    const selectedIds=ids.map(String);
+    const validSelectedIds=selectedIds.filter(id=>checks.some(check=>String(check.value)===id));
+    selectionMode=mode==='single'&&validSelectedIds.length===1?'single':'multi';
+    modal.classList.toggle('payment-single-mode',selectionMode==='single');
+    modal.querySelectorAll('[data-invoice-row]').forEach(row=>{
+      const selected=selectedIds.includes(String(row.dataset.invoiceId));
+      const check=row.querySelector('.payment-invoice-check');
+      if(check)check.checked=selected;
+      row.classList.toggle('d-none',selectionMode==='single'&&!selected);
+    });
+    if(selectionMode==='multi'&&search){search.value='';}
+    updateTotal();
+  }
   function syncRow(check){const row=check.closest('[data-invoice-row]');const amount=row?.querySelector('.payment-allocation');if(amount)amount.disabled=!check.checked;row?.classList.toggle('selected',check.checked);}
   function updateTotal(){let sum=0,c=0;checks.forEach(ch=>{syncRow(ch);if(ch.checked){c++;const input=ch.closest('[data-invoice-row]')?.querySelector('.payment-allocation');sum+=Number(input?.value||0);}});count.textContent=c;total.textContent=rupiah(sum);modalTotal.textContent=rupiah(sum);}
   checks.forEach(ch=>ch.addEventListener('change',updateTotal));
@@ -73,9 +88,11 @@
   function syncMethodFields(){const m=form.querySelector('input[name="method"]:checked')?.value;form.querySelectorAll('.cash-fields').forEach(x=>{const show=m==='cash';x.classList.toggle('d-none',!show);x.querySelectorAll('input,select,textarea').forEach(field=>field.disabled=!show)});form.querySelectorAll('.transfer-fields').forEach(x=>{const show=m==='transfer';x.classList.toggle('d-none',!show);x.querySelectorAll('input,select,textarea').forEach(field=>field.disabled=!show)});}
   form.querySelectorAll('input[name="method"]').forEach(r=>r.addEventListener('change',syncMethodFields));
   proofInput?.addEventListener('change',()=>{proofFileName.textContent=proofInput.files?.[0]?.name||'Belum ada bukti';});
-  document.querySelectorAll('[data-payment-invoice-id]').forEach(btn=>btn.addEventListener('click',()=>{const id=String(btn.dataset.paymentInvoiceId||'');checks.forEach(ch=>ch.checked=String(ch.value)===id);const target=checks.find(ch=>String(ch.value)===id);target?.closest('[data-invoice-row]')?.scrollIntoView({block:'nearest'});updateTotal();}));
+  document.querySelectorAll('[data-payment-invoice-id]').forEach(btn=>btn.addEventListener('click',()=>{const id=String(btn.dataset.paymentInvoiceId||'');setSelection([id],'single');}));
+  document.querySelectorAll('[data-payment-multi]').forEach(btn=>btn.addEventListener('click',()=>setSelection([],'multi')));
+  modal.addEventListener('payment:select',event=>setSelection(event.detail?.ids||[],event.detail?.mode||'multi'));
   form.addEventListener('submit',e=>{if(!checks.some(x=>x.checked)){e.preventDefault();alert('Pilih minimal satu faktur yang akan dibayar.');}});
-  syncMethodFields();updateTotal();
+  syncMethodFields();setSelection(checks.filter(ch=>ch.checked).map(ch=>ch.value),selectionMode);
   <% if(paymentAutoOpen || preselectedInvoiceId){ %>setTimeout(()=>bootstrap.Modal.getOrCreateInstance(modal).show(),120);<% } %>
 })();
 </script>

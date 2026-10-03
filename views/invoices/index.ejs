@@ -251,7 +251,7 @@
   const openPaymentModalFor=ids=>{
     const paymentModal=document.getElementById('paymentModal');
     if(!paymentModal)return;
-    paymentModal.querySelectorAll('.payment-invoice-check').forEach(ch=>{ch.checked=ids.includes(String(ch.value));ch.dispatchEvent(new Event('change',{bubbles:true}));});
+    paymentModal.dispatchEvent(new CustomEvent('payment:select',{detail:{ids,mode:'multi'}}));
     bootstrap.Modal.getOrCreateInstance(paymentModal).show();
   };
   paySelected?.addEventListener('click',()=>{const ids=refreshSelection();if(!ids.length)return;openPaymentModalFor(ids);});

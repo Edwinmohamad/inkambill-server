@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="id" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>INKAMNET GO Mobile UI Smoke Test</title>
+  <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/css/mobile-app.css">
+  <link rel="stylesheet" href="/css/ui-coherence.css">
+</head>
+<body class="inkamnet-go-app">
+  <div class="app-shell">
+    <div class="main-panel">
+      <header class="topbar">
+        <div class="topbar-title-wrap"><strong class="topbar-title">Dashboard</strong></div>
+        <div class="topbar-actions"><button class="icon-button" type="button" aria-label="Notifikasi">!</button><button class="user-button" type="button" aria-label="Profil"><span class="avatar">E</span></button></div>
+      </header>
+      <main class="content-wrap">
+        <div class="page-enter">
+          <div class="module-head">
+            <div><div class="module-kicker">OPERASIONAL HARI INI</div><h1>Control Center</h1><p>Ringkasan billing, pelanggan, dan pekerjaan tim.</p></div>
+            <div class="module-actions"><button class="btn-tech" type="button">Ekspor</button><button class="btn-tech primary" type="button">Tambah Data</button></div>
+          </div>
+          <section class="metric-grid">
+            <article class="metric-card green"><div class="metric-top"><span class="metric-label">Pelanggan Aktif</span></div><strong>1.245</strong><small>18 pelanggan baru</small></article>
+            <article class="metric-card orange"><div class="metric-top"><span class="metric-label">Perlu Approval</span></div><strong>12</strong><small>Menunggu tindakan</small></article>
+          </section>
+          <form class="filter-card go-primary-filter">
+            <div class="filter-grid">
+              <div class="filter-group"><label>Pencarian</label><div class="search-box"><input placeholder="Nama atau ID pelanggan"></div></div>
+              <div class="filter-group"><label>Site</label><select class="form-select"><option>Semua Site</option></select></div>
+              <div class="filter-group"><label>Status</label><select class="form-select"><option>Belum Lunas</option></select></div>
+            </div>
+          </form>
+          <section class="data-card invoice-registry-card">
+            <div class="invoice-registry-head"><div><h3>Tagihan Terbaru</h3><small>2 data perlu ditinjau</small></div></div>
+            <div class="action-safe-table"><table class="invoice-table"><tbody>
+              <tr class="invoice-row">
+                <td class="invoice-check-col"><input type="checkbox" aria-label="Pilih tagihan"></td>
+                <td class="invoice-customer-cell"><span class="cell-main">Budi Santoso</span><span class="cell-sub">Pelanggan aktif</span><span class="go-invoice-ref">INV-2026-00124</span></td>
+                <td class="invoice-status-cell"><span class="status-badge orange">Belum Lunas</span></td>
+                <td class="invoice-site-cell"><span class="go-cell-label">Site</span><span class="cell-main">CDS</span></td>
+                <td class="invoice-period-cell"><span class="go-cell-label">Periode</span><span class="cell-main">Oktober 2026</span></td>
+                <td class="invoice-due-cell"><span class="go-cell-label">Jatuh tempo</span><span class="cell-main">10 Okt 2026</span></td>
+                <td class="invoice-total-cell"><span class="go-cell-label">Total</span><span class="cell-main">Rp150.000</span></td>
+                <td class="invoice-pay-cell"><button class="invoice-pay-button" type="button"><span>LUNASI</span></button></td>
+                <td class="invoice-action-cell"><button class="go-invoice-action-button" type="button"><span class="go-action-label">Tindakan</span></button></td>
+              </tr>
+            </tbody></table></div>
+          </section>
+        </div>
+      </main>
+    </div>
+  </div>
+  <nav class="go-bottom-nav" aria-label="Navigasi utama">
+    <a class="active" href="#"><i>⌂</i><span>Beranda</span></a><a href="#"><i>▤</i><span>Tagihan</span></a><button class="go-add-button" type="button" aria-label="Tambah"><i>+</i></button><a href="#"><i>✓</i><span>Approval</span></a><button type="button"><i>▦</i><span>Menu</span></button>
+  </nav>
+</body>
+</html>

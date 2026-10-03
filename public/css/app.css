@@ -506,6 +506,26 @@ button.btn-tech,.btn-tech{appearance:none;-webkit-appearance:none}
 @media(max-width:1199.98px){.invoice-picker-head{align-items:flex-start;flex-direction:column}.invoice-picker-search{width:100%;min-width:0;max-width:none}.invoice-picker-row{grid-template-columns:22px minmax(160px,1.4fr) minmax(100px,.7fr) minmax(105px,.7fr) minmax(125px,.8fr)}}
 @media(max-width:767.98px){.bulk-payment-tools>span{margin-left:0;width:100%}.bulk-payment-tools>strong{text-align:left}.invoice-picker-list{max-height:430px}.invoice-picker-row{grid-template-columns:22px minmax(0,1fr);align-items:start}.invoice-picker-customer{grid-column:2}.invoice-picker-site,.invoice-picker-amount,.invoice-picker-input{grid-column:2}.invoice-picker-site,.invoice-picker-amount{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:7px}.invoice-picker-site small,.invoice-picker-amount small{margin-top:0}.payment-modal-total{width:100%;margin-bottom:7px}.modal-footer:has(.payment-modal-total){flex-wrap:wrap}}
 
+/* A row-level "Lunasi" action is intentionally focused on one invoice. Keep the
+   full picker available only for the explicit multi-payment entry points. */
+.payment-entry-modal [data-payment-title-single],.payment-entry-modal [data-payment-copy-single],.payment-entry-modal [data-payment-label-single],.payment-entry-modal [data-payment-help-single]{display:none}
+.payment-entry-modal.payment-single-mode [data-payment-title-single],.payment-entry-modal.payment-single-mode [data-payment-copy-single],.payment-entry-modal.payment-single-mode [data-payment-label-single],.payment-entry-modal.payment-single-mode [data-payment-help-single]{display:inline}
+.payment-entry-modal.payment-single-mode [data-payment-title-multi],.payment-entry-modal.payment-single-mode [data-payment-copy-multi],.payment-entry-modal.payment-single-mode [data-payment-label-multi],.payment-entry-modal.payment-single-mode [data-payment-help-multi],.payment-entry-modal.payment-single-mode .invoice-picker-search,.payment-entry-modal.payment-single-mode .bulk-payment-tools{display:none}
+.payment-entry-modal.payment-single-mode .payment-entry-dialog{max-width:900px}
+.payment-entry-modal.payment-single-mode .payment-entry-content{border-radius:20px;overflow:hidden}
+.payment-entry-modal.payment-single-mode .payment-entry-header{padding:18px 20px 14px}
+.payment-entry-modal.payment-single-mode .payment-entry-body{padding:16px 20px 20px}
+.payment-entry-modal.payment-single-mode .payment-mode-picker{gap:8px;margin-bottom:14px!important}
+.payment-entry-modal.payment-single-mode .payment-mode-picker span{min-height:70px;padding:11px 12px;border-radius:14px}
+.payment-entry-modal.payment-single-mode .invoice-picker-panel{border-radius:16px;background:var(--panel)}
+.payment-entry-modal.payment-single-mode .invoice-picker-head{padding:11px 14px;background:transparent}
+.payment-entry-modal.payment-single-mode .invoice-picker-list{max-height:none;padding:0;overflow:visible}
+.payment-entry-modal.payment-single-mode .invoice-picker-row{grid-template-columns:minmax(210px,1.5fr) minmax(110px,.7fr) minmax(120px,.7fr) minmax(140px,.8fr);gap:14px;padding:14px;border:0;border-radius:0;background:transparent;cursor:default}
+.payment-entry-modal.payment-single-mode .invoice-picker-row:hover,.payment-entry-modal.payment-single-mode .invoice-picker-row.selected{border-color:transparent;background:transparent}
+.payment-entry-modal.payment-single-mode .invoice-picker-row>.form-check-input{display:none}
+.payment-entry-modal.payment-single-mode .invoice-picker-input .form-control{border-color:rgba(46,214,161,.16);background:rgba(46,214,161,.055)}
+@media(max-width:767.98px){.payment-entry-modal.payment-single-mode .payment-entry-header{padding:16px}.payment-entry-modal.payment-single-mode .payment-entry-body{padding:12px 16px 16px}.payment-entry-modal.payment-single-mode .invoice-picker-row{grid-template-columns:1fr 1fr;gap:12px}.payment-entry-modal.payment-single-mode .invoice-picker-customer{grid-column:1/-1}.payment-entry-modal.payment-single-mode .invoice-picker-site,.payment-entry-modal.payment-single-mode .invoice-picker-amount,.payment-entry-modal.payment-single-mode .invoice-picker-input{grid-column:auto}.payment-entry-modal.payment-single-mode .invoice-picker-input{grid-column:1/-1}}
+
 /* v1.6.1 — consistent calendar/date picker affordance */
 .ink-date-picker{cursor:pointer;padding-right:42px!important;position:relative}
 input[type="date"].form-control,input[type="datetime-local"].form-control{cursor:pointer}
