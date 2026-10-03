@@ -56,7 +56,7 @@
   // Previously the leftover entry meant Android Back had to be pressed twice to leave a page.
   document.querySelectorAll('.go-menu a,.go-quick-grid a').forEach(link=>link.addEventListener('click',event=>{
     if(event.defaultPrevented||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
-    link.classList.add('go-tapped');setTimeout(()=>link.classList.remove('go-tapped'),800);
+    link.classList.add('go-tapped');setTimeout(()=>link.classList.remove('go-tapped'),180);
     const onLayer=layerState()?.kind==='overlay';
     closeAllOverlays({consumeHistory:false,restoreFocus:false});
     if(onLayer&&link.href){event.preventDefault();location.replace(link.href);}

@@ -50,6 +50,9 @@ const required=[
   ,[css,'--go-motion-fast:120ms','consistent mobile motion timing']
   ,[css,'--go-ease:cubic-bezier(.22,1,.36,1)','consistent mobile motion easing']
   ,[css,'.modal.fade .modal-dialog{transform:translateY(12px)','restrained modal entrance motion']
+  ,[css,'.module-head h1{font-size:1.32rem!important;line-height:1.2;color:var(--go-ink)!important;font-weight:600!important}','stable APK heading weight']
+  ,[css,'.status-badge.orange{color:#8a4b00!important}','readable warning status color']
+  ,[js,"setTimeout(()=>link.classList.remove('go-tapped'),180)",'short tap feedback']
 ];
 for(const [source,needle,label] of required)if(!source.includes(needle))throw new Error(`Mobile UI missing: ${label}`);
 if(!/^body\.inkamnet-go-app/m.test(css))throw new Error('Mobile CSS is not scoped to the APK body.');
