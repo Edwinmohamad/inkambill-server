@@ -123,8 +123,41 @@
       </table>
     </div>
   </div>
-  <% if(isMasterAdmin){ %><div class="customer-bulk-bar" id="paymentsApproveBulkBar" hidden><span><b data-bulk-count>0</b> pembayaran terpilih</span><div class="customer-bulk-buttons"><button type="button" data-bulk-clear class="ghost"><i class="bi bi-x-lg"></i>Batal</button><button type="button" class="success" data-simple-delete-bulk data-simple-delete-variant="success" data-simple-delete-kicker="KONFIRMASI APPROVAL" data-simple-delete-confirm-label="Ya, Approve" data-simple-delete-confirm-icon="bi-check2-circle" data-bulk-scope-id="paymentsApproveBulkBar" data-bulk-url="/payments/bulk-verify" data-bulk-action-field="action" data-bulk-action-value="verify" data-bulk-id-field="payment_ids[]" data-entity-label-plural="pembayaran" data-simple-delete-title="Approve pembayaran terpilih?" data-simple-delete-warning="Hanya pembayaran yang masih berstatus menunggu, nominalnya tidak melebihi sisa tagihan, dan sudah dilengkapi bukti (transfer/QRIS) yang akan disetujui — sisanya otomatis dilewati. Tagihan dan jurnal kas terkait akan diperbarui otomatis."><i class="bi bi-check2-circle"></i>Approve Massal</button></div></div><% } %>
+  <% if(isMasterAdmin){ %><div class="customer-bulk-bar" id="paymentsApproveBulkBar" hidden><span><b data-bulk-count>0</b> pembayaran terpilih</span><div class="customer-bulk-buttons"><button type="button" data-bulk-clear class="ghost"><i class="bi bi-x-lg"></i>Batal</button><button type="button" class="success" id="openBulkPaymentApprove"><i class="bi bi-check2-circle"></i>Approve Massal</button></div></div><% } %>
 </section>
+
+<% if(isMasterAdmin){ %>
+<div class="modal fade" id="bulkPaymentApproveModal" tabindex="-1" aria-hidden="true" aria-labelledby="bulkPaymentApproveTitle">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <form method="post" action="/payments/bulk-verify" class="modal-content bulk-payment-approve-modal" id="bulkPaymentApproveForm">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <input type="hidden" name="return_to" value="/payments?<%= paymentFilterQuery %>">
+      <input type="hidden" name="book_date_mode" value="payment_date">
+      <div class="modal-header"><div><div class="module-kicker">APPROVAL PEMBAYARAN</div><h5 class="modal-title" id="bulkPaymentApproveTitle">Review dan Approve</h5><small class="text-secondary">Hanya pembayaran yang Anda centang.</small></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button></div>
+      <div class="modal-body">
+        <div class="bulk-payment-review-summary"><span><b id="bulkPaymentApproveCount">0</b> pembayaran terpilih</span><strong id="bulkPaymentApproveTotal">Rp 0</strong></div>
+        <div class="bulk-payment-approve-head" aria-hidden="true"><span>Pelanggan</span><span>Metode</span><span>Nominal</span><span>Bukti TF</span></div>
+        <div class="bulk-payment-approve-list" id="bulkPaymentApproveList">
+          <% payments.forEach(p=>{ if(p.status!=='pending')return; const proofRequired=['transfer','qris'].includes(p.method); %>
+          <article class="bulk-payment-approve-row" data-bulk-approval-row data-payment-id="<%= p.id %>" data-amount="<%= Number(p.amount||0) %>" data-proof-required="<%= proofRequired?'1':'0' %>" data-proof-ready="<%= p.proof_path?'1':'0' %>" hidden>
+            <input type="hidden" name="payment_ids[]" value="<%= p.id %>" disabled data-bulk-payment-id>
+            <div class="bulk-payment-customer"><strong><%= p.customer_name %></strong><small><%= p.customer_code %> · <%= p.invoice_number %></small></div>
+            <div class="bulk-payment-method"><%= statusLabel(p.method) %></div>
+            <div class="bulk-payment-amount"><%= formatRupiah(p.amount) %></div>
+            <div class="bulk-proof-cell <%= proofRequired?(p.proof_path?'ready':'missing'):'optional' %>" data-bulk-proof-state>
+              <% if(proofRequired){ %><label class="bulk-proof-action <%= p.proof_path?'ready':'missing' %>"><input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" data-bulk-proof-input><i class="bi <%= p.proof_path?'bi-check2-circle':'bi-cloud-arrow-up' %>" data-bulk-proof-icon></i><span data-bulk-proof-button-label><%= p.proof_path?'Ganti bukti':'Upload bukti' %></span></label>
+              <% }else{ %><span class="bulk-proof-not-required">Tidak diperlukan</span><% } %>
+            </div>
+          </article>
+          <% }) %>
+        </div>
+        <div class="bulk-payment-approve-status" id="bulkPaymentApproveStatus" aria-live="polite"></div>
+      </div>
+      <div class="modal-footer"><div class="bulk-payment-approve-total"><small>SIAP DIAPPROVE</small><strong id="bulkPaymentApproveReady">0 dari 0</strong></div><button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button><button type="submit" class="btn-tech success" id="submitBulkPaymentApprove"><i class="bi bi-shield-check"></i>Approve Semua</button></div>
+    </form>
+  </div>
+</div>
+<% } %>
 
 <% if(isAdmin){ %><%- include('_payment-modal',{openInvoices,staff,banks,preselectedInvoiceId,returnTo:'/payments?'+paymentFilterQuery,autoOpenPaymentModal:!!preselectedInvoiceId}) %><% } %>
 
@@ -154,6 +187,52 @@
   document.querySelectorAll('.payment-method-correction-btn').forEach(btn=>btn.addEventListener('click',()=>{const f=document.getElementById('paymentMethodCorrectionForm');f.action=`/payments/${btn.dataset.paymentId}/method-to-cash`;document.getElementById('paymentMethodCorrectionContext').textContent=`${btn.dataset.customer||'-'} · ${btn.dataset.reference||'-'} · sebelumnya ${btn.dataset.method||'transfer'}`;}));
   document.querySelectorAll('[data-payment-reject]').forEach(btn=>btn.addEventListener('click',()=>{const f=document.getElementById('paymentRejectForm');f.action=`/payments/${btn.dataset.paymentReject}/reject`;document.getElementById('paymentRejectReturn').value=btn.dataset.returnTo||'/payments';document.getElementById('paymentRejectReference').textContent=`Referensi ${btn.dataset.reference||'-'}`;}));
   document.querySelectorAll('[data-cash-reject]').forEach(btn=>btn.addEventListener('click',()=>{const f=document.getElementById('cashRejectForm');if(!f)return;f.action=`/cash/${btn.dataset.cashReject}/reject`;document.getElementById('cashRejectCode').textContent=`Transaksi ${btn.dataset.code||'-'}`;}));
+  const bulkApproveModalEl=document.getElementById('bulkPaymentApproveModal');
+  const bulkApproveForm=document.getElementById('bulkPaymentApproveForm');
+  const bulkApproveRows=[...(bulkApproveForm?.querySelectorAll('[data-bulk-approval-row]')||[])];
+  const bulkApproveSubmit=document.getElementById('submitBulkPaymentApprove');
+  const bulkApproveStatus=document.getElementById('bulkPaymentApproveStatus');
+  const bulkApproveTotal=document.getElementById('bulkPaymentApproveTotal');
+  const bulkApproveCount=document.getElementById('bulkPaymentApproveCount');
+  const bulkApproveReady=document.getElementById('bulkPaymentApproveReady');
+  const rupiah=n=>'Rp '+new Intl.NumberFormat('id-ID',{maximumFractionDigits:0}).format(Number(n||0));
+  const visibleBulkRows=()=>bulkApproveRows.filter(row=>!row.hidden);
+  const syncBulkApproval=()=>{
+    const rows=visibleBulkRows();
+    const missing=rows.filter(row=>row.dataset.proofRequired==='1'&&row.dataset.proofReady!=='1');
+    const uploading=rows.some(row=>row.dataset.uploading==='1');
+    if(bulkApproveTotal)bulkApproveTotal.textContent=rupiah(rows.reduce((sum,row)=>sum+Number(row.dataset.amount||0),0));
+    if(bulkApproveCount)bulkApproveCount.textContent=rows.length;
+    if(bulkApproveReady)bulkApproveReady.textContent=`${rows.length-missing.length} dari ${rows.length}`;
+    if(bulkApproveStatus){bulkApproveStatus.classList.toggle('ready',!missing.length&&!uploading);bulkApproveStatus.innerHTML=uploading?'<i class="bi bi-arrow-repeat"></i><span>Mengupload bukti pembayaran...</span>':missing.length?`<i class="bi bi-exclamation-circle"></i><span>${missing.length} bukti transfer belum dilengkapi.</span>`:'<i class="bi bi-check2-circle"></i><span>Semua pembayaran siap diapprove.</span>';}
+    if(bulkApproveSubmit)bulkApproveSubmit.disabled=!rows.length||!!missing.length||uploading;
+  };
+  document.getElementById('openBulkPaymentApprove')?.addEventListener('click',()=>{
+    const table=document.querySelector('[data-bulk-scope="paymentsApproveBulkBar"]');
+    const ids=table?._bulkSelectedIds?.()||[...document.querySelectorAll('[data-row-check]:checked')].map(check=>String(check.value));
+    if(!ids.length||!bulkApproveModalEl)return;
+    bulkApproveRows.forEach(row=>{const selected=ids.includes(String(row.dataset.paymentId));row.hidden=!selected;row.querySelector('[data-bulk-payment-id]').disabled=!selected;});
+    syncBulkApproval();
+    bootstrap.Modal.getOrCreateInstance(bulkApproveModalEl).show();
+  });
+  bulkApproveForm?.addEventListener('submit',event=>{
+    const rows=visibleBulkRows();
+    const blocked=!rows.length||rows.some(row=>row.dataset.uploading==='1'||(row.dataset.proofRequired==='1'&&row.dataset.proofReady!=='1'));
+    if(blocked){event.preventDefault();syncBulkApproval();}
+  });
+  bulkApproveRows.forEach(row=>row.querySelector('[data-bulk-proof-input]')?.addEventListener('change',async event=>{
+    const input=event.currentTarget;const file=input.files?.[0];if(!file)return;
+    const state=row.querySelector('[data-bulk-proof-state]');const action=row.querySelector('.bulk-proof-action');const icon=row.querySelector('[data-bulk-proof-icon]');const label=row.querySelector('[data-bulk-proof-button-label]');const previousReady=row.dataset.proofReady;
+    const setProofState=(kind,text,iconName)=>{if(state)state.className=`bulk-proof-cell ${kind}`;if(action)action.className=`bulk-proof-action ${kind}`;if(icon)icon.className=`bi ${iconName}`;if(label)label.textContent=text;};
+    row.dataset.uploading='1';input.disabled=true;setProofState('uploading','Mengupload...','bi-arrow-repeat');syncBulkApproval();
+    try{
+      const data=new FormData();data.append('_csrf',document.querySelector('meta[name="csrf-token"]')?.content||'');data.append('proof_file',file);
+      const response=await fetch(`/payments/${row.dataset.paymentId}/proof`,{method:'POST',headers:{Accept:'application/json'},body:data});
+      const payload=await response.json().catch(()=>({}));if(!response.ok||!payload.ok)throw new Error(payload.message||'Upload bukti gagal.');
+      row.dataset.proofReady='1';setProofState('ready','Ganti bukti','bi-check2-circle');
+    }catch(error){row.dataset.proofReady=previousReady;setProofState(previousReady==='1'?'ready':'missing',previousReady==='1'?'Ganti bukti':'Coba lagi',previousReady==='1'?'bi-check2-circle':'bi-arrow-repeat');alert(error.message||'Upload bukti gagal.');}
+    finally{row.dataset.uploading='0';input.disabled=false;input.value='';syncBulkApproval();}
+  }));
   const img=document.getElementById('proofViewerImage'),pdf=document.getElementById('proofViewerPdf'),loading=document.getElementById('proofViewerLoading');
   document.querySelectorAll('.proof-view-btn').forEach(btn=>btn.addEventListener('click',()=>{const url=btn.dataset.proofUrl,mime=btn.dataset.proofMime||'';img.classList.add('d-none');pdf.classList.add('d-none');loading.classList.remove('d-none');document.getElementById('proofMetaCustomer').textContent=btn.dataset.customer||'-';document.getElementById('proofMetaCode').textContent=btn.dataset.customerCode||'-';document.getElementById('proofMetaInvoice').textContent=btn.dataset.invoice||'-';document.getElementById('proofMetaAmount').textContent=btn.dataset.amount||'-';document.getElementById('proofMetaBank').textContent=btn.dataset.bank||'-';document.getElementById('proofMetaReference').textContent=btn.dataset.reference||'-';document.getElementById('proofMetaUploader').textContent=btn.dataset.uploader||'-';document.getElementById('proofMetaUploaded').textContent=btn.dataset.uploaded||'-';document.getElementById('proofOpenNew').href=url;const seal=document.getElementById('proofStatusSeal');const statusKey=btn.dataset.statusKey||'';seal.classList.toggle('pending',statusKey==='pending');seal.querySelector('strong').textContent=statusKey==='pending'?'PENDING':statusKey==='failed'?'REJECTED':'CONFIRMED';if(mime==='application/pdf'){pdf.src=url;pdf.classList.remove('d-none');setTimeout(()=>loading.classList.add('d-none'),500);}else{img.src=url;img.onload=()=>loading.classList.add('d-none');img.onerror=()=>loading.querySelector('small').textContent='Bukti gagal dimuat. Coba buka file asli.';img.classList.remove('d-none');}}));
 })();

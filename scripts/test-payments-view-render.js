@@ -16,6 +16,18 @@ function render(role,over){
     for(const status of ['pending','confirmed','failed'])for(const method of ['cash','transfer','qris'])
       assert.ok((await render(role,{payments:[{...pay,status,method}],cashApprovals:[cash]})).length>1000,`${role}/${status}/${method}`);
   }
+  const masterHtml=await render('master_admin',{payments:[
+    {...pay,id:1,customer_name:'Budi Transfer',method:'transfer',proof_path:null},
+    {...pay,id:2,customer_name:'Siti Cash',method:'cash',proof_path:null},
+    {...pay,id:3,customer_name:'Rina QRIS',method:'qris',proof_path:'proof.webp',proof_mime:'image/webp'}
+  ]});
+  assert.match(masterHtml,/id="bulkPaymentApproveModal"/);
+  assert.match(masterHtml,/data-payment-id="1"[^>]*data-proof-required="1"[^>]*data-proof-ready="0"/);
+  assert.match(masterHtml,/data-payment-id="2"[^>]*data-proof-required="0"/);
+  assert.match(masterHtml,/Upload bukti/);
+  assert.match(masterHtml,/Tidak diperlukan/);
+  assert.match(masterHtml,/Ganti bukti/);
+  assert.doesNotMatch(await render('admin',{payments:[pay]}),/id="bulkPaymentApproveModal"/);
   assert.ok((await render('master_admin',{cashApprovalUnavailable:true,paymentPageWarnings:['x']})).length>1000);
   console.log('payments view render OK');
 })().catch(e=>{console.error(e);process.exit(1);});

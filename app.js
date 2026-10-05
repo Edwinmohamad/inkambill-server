@@ -152,7 +152,9 @@ app.use('/payments', (req, res, next) => {
   if (['POST','PUT','PATCH'].includes(req.method) && req.is('multipart/form-data')) {
     return paymentProofUpload(req, res, (err) => {
       if (err) {
-        req.session.flash = { type: 'danger', message: err.code === 'LIMIT_FILE_SIZE' ? 'Bukti pembayaran maksimal 6 MB.' : err.message };
+        const message = err.code === 'LIMIT_FILE_SIZE' ? 'Bukti pembayaran maksimal 6 MB.' : err.message;
+        if (String(req.get('accept') || '').includes('application/json')) return res.status(400).json({ ok: false, message });
+        req.session.flash = { type: 'danger', message };
         return res.redirect('/payments');
       }
       next();

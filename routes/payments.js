@@ -255,6 +255,7 @@ router.post('/:id/proof',async(req,res)=>{
     await removeProofFile(payment.proof_path);
     if(['transfer','qris'].includes(payment.method))await queueProofOcr(payment.id).catch(err=>console.error('Antrean OCR gagal:',err.message));
     await audit({userId:req.session.user.id,action:'upload_proof',entityType:'payment',entityId:payment.id,description:'Upload/ganti bukti pembayaran',ip:req.ip});
+    if(String(req.get('accept')||'').includes('application/json'))return res.json({ok:true,paymentId:payment.id,filename:savedProof.originalName});
     req.session.flash={type:'success',message:'Bukti pembayaran berhasil diupload.'};
   }catch(e){if(savedProof)await removeProofFile(savedProof.filename);throw e;}
   res.redirect(localReturn(req.body.return_to,'/payments'));
