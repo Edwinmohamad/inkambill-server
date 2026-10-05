@@ -1,7 +1,19 @@
 {
   "routes/closing.js": [
-    "8969e1a02313682c1e31a47f47ef9b2d6810c20a3bfdbff106ff5b1ccc18889b",
-    "4038fa14437ecea8904b5049178dbe9142f72823313398e78ac08dc680d417e5"
+    "4038fa14437ecea8904b5049178dbe9142f72823313398e78ac08dc680d417e5",
+    "8969e1a02313682c1e31a47f47ef9b2d6810c20a3bfdbff106ff5b1ccc18889b"
+  ],
+  "routes/invoices.js": [
+    "bf2a9d07b259b25788a035d8577b40af02bf3fe4c5b321dfec783a794fddec3c",
+    "d614d34883f8d0a8eb6bad46ee8bac9479a2e289d1003c46b9a065e0dcc637af"
+  ],
+  "routes/payments.js": [
+    "5fa5ed3937d1e5644d03e547130bf54cd3c9b9851f9e40e2e49405cb7ccd9fba",
+    "7ca022dd22238208af39758c33ed613bb5ce44cc39028a9a861923f79e624ee3"
+  ],
+  "routes/reports.js": [
+    "09754cc3dfecb740bc968572a936b509d4ed46616e36c5febcefb521f55d4fc5",
+    "b2be3cf8a6485ddf4539041c7aae10252f9e9dd5a12bdb95564f9b84f211fc19"
   ],
   "scripts/test-closing-report-data.js": [
     "63e6cf16d5937a7cbcc64b63f5edc7f95e22e5fa31f103f8a933fc234296a56b"
@@ -9,16 +21,27 @@
   "scripts/test-closing-report-integrity.js": [
     "6038b423eb7d496ef198c7e7352668e9ba883e1246eac513cc3c2ea22911b946"
   ],
+  "scripts/test-report-center-integrity.js": [
+    "eabec58c6e55ef95458714e0ed05f40189892a5bb4207796771aa7a8399ff47f"
+  ],
   "services/closingReportData.js": [
     "316763a1fc5b20e3d52b6b91d8437096c19c49f06450e25711aa445367a1a7cd"
   ],
   "services/closingSyncService.js": [
-    "def8b08668a35bafb21d6b7b7466c5d7a6ea47abe41fe8295410c6e2dfb31454",
-    "9e06392a8bcce7f60201a0a68f8bbb212800a4bdf1aca371fb055076e6668331"
+    "9e06392a8bcce7f60201a0a68f8bbb212800a4bdf1aca371fb055076e6668331",
+    "def8b08668a35bafb21d6b7b7466c5d7a6ea47abe41fe8295410c6e2dfb31454"
+  ],
+  "services/reportDataService.js": [
+    "60234fee86bede29cc490112cbd5fb8888ad3152d31b32dc9264da6bc316c88f"
   ],
   "services/reportPdf.js": [
+    "20b274b7274cccbd52688c06f43a0417328ae6bd42f5fcd9fff7ffc937ac95be",
+    "22b6855874c1f8dd0fe5ba59434dec478fd6dac4099122e97f13e0b990938b96",
     "3e7eac57608c535d9629a035122efb69e0aec86178abd6f31aa7a00dc43cbc2b",
-    "a784a2895675c97ce4633a65098b4a08af274bbba3da6c150bffd3b4c5b0a429",
-    "22b6855874c1f8dd0fe5ba59434dec478fd6dac4099122e97f13e0b990938b96"
+    "a784a2895675c97ce4633a65098b4a08af274bbba3da6c150bffd3b4c5b0a429"
+  ],
+  "views/reports/index.ejs": [
+    "277974082f3e2720dda21477ccf19887b23715c8ec23a87bf71597513677c22c",
+    "848d1291036e266fa8c1af4425dcab8558660edab70a1aaa656403977d391504"
   ]
 }

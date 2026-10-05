@@ -1,16 +1,27 @@
-INKAMBILL CLOSING PDF V2
-Paket kumulatif: sinkronisasi closing + tata letak 5 bagian.
-Setiap site mendapat kartu lebar: 1 Pendapatan per kategori; 2 Pengeluaran per kategori; 3 Laba bersih; 4 Piutang; 5 Pembagian hasil.
-Gunakan paket ini sebagai pengganti paket sebelumnya.
+INKAMBILL - LAPORAN PROFESIONAL V3
+Paket kumulatif pengganti patch closing sebelumnya.
+CAKUPAN
+- Menu Laporan: pelanggan, tagihan, faktur, arus kas/pemasukan/pengeluaran.
+- PDF dan TXT: nomor urut, rekap per site/kategori/status, rincian terbayar dan sisa, referensi pelanggan/invoice/kas.
+- TXT: tabel ringkas disertai rincian lengkap tanpa pemotongan teks.
+- Export Excel tagihan dan rekonsiliasi cash: nomor urut.
+- PDF laporan umum: nomor urut otomatis bila belum tersedia.
+- Closing: sinkronisasi dan layout 5 bagian dari V2.
+- Filter jatuh tempo tetap terbawa pada export; tanggal default mengikuti WIB; pelanggan/invoice arsip tidak masuk laporan operasional.
+- Kas: APPROVED saja; jurnal pembayaran harus confirmed, cash harus settled. Kategori sistem yang berisi pendapatan sah tetap dihitung.
+- Pemeriksaan invoice vs jumlah pembayaran confirmed menampilkan peringatan bila perlu rekonsiliasi. Tidak mengubah atau menghapus data finansial.
 
 PEMASANGAN
-Upload ZIP ke server, lalu:
-python3 -m zipfile -e inkambill-closing-pdf-rapi-v2.zip closing-pdf-v2
-python3 closing-pdf-v2/INSTALL.py /PATH/APLIKASI/inkambill-server
-Ganti path dengan folder aplikasi yang berisi app.js. Installer memeriksa versi file sebelum menulis, membuat backup, dan rollback bila tes gagal. Tidak mengubah database.
-Setelah selesai, rebuild/restart dengan prosedur deployment yang biasa digunakan. Export PDF baru. Periode LOCKED perlu dibuka dan Sync untuk memperbarui sumber kas; manual hanya rekonsiliasi baris kas yang sudah ada.
+Upload ZIP ke server:
+python3 -m zipfile -e inkambill-laporan-profesional-v3.zip laporan-v3
+python3 laporan-v3/INSTALL.py /PATH/APLIKASI/inkambill-server
+Ganti path dengan folder berisi app.js dan dependency aplikasi yang sudah terpasang.
+Installer memeriksa versi sebelum menulis, membuat backup, menjalankan tes, dan rollback jika tes gagal.
+Setelah terpasang, rebuild/restart sesuai deployment Anda lalu unduh laporan baru.
 
 VALIDASI
-npm run validate dan 4 tes closing lulus. Preview PDF dirender dan diperiksa secara visual. Preview memakai angka ilustrasi, bukan laporan produksi; susunan kartu saja yang dicontohkan. Database produksi belum diakses.
+npm run validate, pengujian laporan/closing/invoice/filter pembayaran/jurnal setoran lulus. PDF contoh 5 halaman telah diperiksa; angka ilustrasi bukan data produksi. Installer diuji pada salinan commit dasar.
+PDF tagihan berpatokan pada periode invoice; arus kas berpatokan pada tanggal kas diterima. Terbayar invoice termasuk cash yang belum disetor, sedangkan kas perusahaan hanya cash yang sudah disetor. Perbedaan dasar periode dan setoran ini dijelaskan untuk menghindari salah perbandingan.
+Seluruh database produksi belum diaudit langsung. Peringatan rekonsiliasi harus diperiksa pada server.
 ROLLBACK
-Salin file dari folder closing-backup yang dicetak installer ke folder aplikasi, lalu rebuild/restart.
+Pulihkan file dari folder closing-backup yang dicetak installer lalu rebuild/restart.
