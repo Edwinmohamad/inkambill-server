@@ -76,7 +76,7 @@
       </div>
     </div>
     <div class="table-responsive">
-      <table class="app-table payment-history-table" data-bulk-scope="paymentsApproveBulkBar">
+      <table class="app-table payment-history-table <%= isMasterAdmin?'has-bulk-select':'' %>" data-bulk-scope="paymentsApproveBulkBar">
         <!-- v1.24.6 — kolom "Status Approval" dan "Approval Master" digabung jadi satu kolom "Approval"
              (UI/UX audit): sebelumnya dua kolom terpisah membahas hal yang sama (badge status di satu
              kolom, tombol Approve/Reject di kolom lain) — sekarang satu kolom saja: badge biasa, atau

@@ -22,12 +22,15 @@ function render(role,over){
     {...pay,id:3,customer_name:'Rina QRIS',method:'qris',proof_path:'proof.webp',proof_mime:'image/webp'}
   ]});
   assert.match(masterHtml,/id="bulkPaymentApproveModal"/);
+  assert.match(masterHtml,/payment-history-table has-bulk-select/);
   assert.match(masterHtml,/data-payment-id="1"[^>]*data-proof-required="1"[^>]*data-proof-ready="0"/);
   assert.match(masterHtml,/data-payment-id="2"[^>]*data-proof-required="0"/);
   assert.match(masterHtml,/Upload bukti/);
   assert.match(masterHtml,/Tidak diperlukan/);
   assert.match(masterHtml,/Ganti bukti/);
-  assert.doesNotMatch(await render('admin',{payments:[pay]}),/id="bulkPaymentApproveModal"/);
+  const adminHtml=await render('admin',{payments:[pay]});
+  assert.doesNotMatch(adminHtml,/id="bulkPaymentApproveModal"/);
+  assert.doesNotMatch(adminHtml,/payment-history-table has-bulk-select/);
   assert.ok((await render('master_admin',{cashApprovalUnavailable:true,paymentPageWarnings:['x']})).length>1000);
   console.log('payments view render OK');
 })().catch(e=>{console.error(e);process.exit(1);});

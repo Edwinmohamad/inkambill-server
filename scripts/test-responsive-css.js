@@ -13,6 +13,11 @@ function requireToken(token){if(!css.includes(token))throw new Error(`Responsive
   '.infra-hub-shell{display:block',
   '.infra-frame-wrap,.infra-frame-wrap iframe{min-height:560px}',
   '.cash-approval-item{grid-template-columns:1fr}',
-  '.dashboard-user-ticker{grid-template-columns:1fr}'
+  '.dashboard-user-ticker{grid-template-columns:1fr}',
+  '.main-panel{width:calc(100% - var(--sidebar));max-width:calc(100% - var(--sidebar));min-width:0',
+  '.content-wrap>*:not(.modal){min-width:0;max-width:100%}',
+  '.table-responsive{width:100%;max-width:100%;min-width:0;overflow-x:auto',
+  '.payment-history-table{width:100%;min-width:1240px;table-layout:fixed}',
+  '.payment-approval-compact{display:flex;align-items:center;gap:5px 7px;min-width:0;flex-wrap:wrap'
 ].forEach(requireToken);
 console.log('Responsive CSS validation OK: desktop/tablet/mobile breakpoints and critical Dashboard/Analytics/Infrastructure/Approval stacking rules are present.');
