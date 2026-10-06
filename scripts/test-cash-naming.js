@@ -9,5 +9,7 @@ if(example!=='PTC_Pembelian Router 6Pcs_WisnuPandawa')throw new Error(`Format co
 const repeated=formatCashExpenseName({categoryCode:'PETTY',categoryName:'Pettycash',rawName:example,shopName:'wisnu pandawa'});
 if(repeated!==example)throw new Error(`Formatter tidak idempoten: ${repeated}`);
 if(!route.includes('formatCashExpenseName')||!route.includes('formattedName'))throw new Error('Formatter belum dipakai saat tambah/edit Data Kas.');
+if(!route.includes('src_customer.name source_customer_name')||!route.includes('src_customer.name LIKE ?'))throw new Error('Nama pelanggan sumber pembayaran belum dapat ditampilkan/dicari di Data Kas.');
+if(!view.includes('t.source_customer_name||t.display_name'))throw new Error('Data Kas belum memprioritaskan nama pelanggan dari faktur pembayaran.');
 if(!view.includes('otomatis dirapikan')||!view.includes('PTC_Pembelian Router 6Pcs_WisnuPandawa'))throw new Error('Petunjuk format belum tampil.');
 console.log('Cash naming validation passed: example, idempotency, create/edit and UI hint.');

@@ -6,9 +6,9 @@ const data = buildClosingCalculation({
   mode: 'manual',
   closing: { manual_revenue: 0, manual_expense: 0, manual_carry: 0, manual_salary_agung: 500000, manual_salary_padilah: 1000000 },
   payments: [
-    { site_code: 'CDS', cluster_name: 'KRW', amount: 24000000 },
-    { site_code: 'CDS', cluster_name: 'CLM', amount: 5000000 },
-    { site_code: 'KBG', amount: 10000000 }
+    { site_code: 'CDS', cluster_name: 'KRW', category: 'Pendapatan Billing', amount: 24000000 },
+    { site_code: 'CDS', cluster_name: 'CLM', category: 'Pendapatan Pemasangan Baru', amount: 5000000 },
+    { site_code: 'KBG', category: 'Pendapatan Billing', amount: 10000000 }
   ],
   expenses: [
     { site_code: 'CDS', category: 'Petty cash', amount: 10000000 },
@@ -22,6 +22,9 @@ const data = buildClosingCalculation({
 assert.equal(data.blocks.krwclm.revenue, 29000000);
 assert.equal(data.blocks.krwclm.expense, 10000000);
 assert.deepEqual(data.blocks.krwclm.clusterRevenue, { KRW: 24000000, CLM: 5000000 });
+assert.deepEqual(data.blocks.krwclm.incomeByCategory, { 'Pendapatan Billing': 24000000, 'Pendapatan Pemasangan Baru': 5000000 });
+assert.deepEqual(data.blocks.krwclm.clusterIncomeByCategory.KRW, { 'Pendapatan Billing': 24000000 });
+assert.deepEqual(data.blocks.krwclm.clusterIncomeByCategory.CLM, { 'Pendapatan Pemasangan Baru': 5000000 });
 assert.equal(data.blocks.krwclm.profit, 19000000);
 assert.equal(data.blocks.krwclm.shares.find((share) => share.name === 'Edwin').amount, 8750000);
 assert.equal(data.blocks.krwclm.shares.find((share) => share.name === 'Jon').amount, 4275000);
@@ -99,6 +102,11 @@ assert(syncServiceSource.includes('FROM cash_transactions'), 'closingSyncService
 assert(/approval_status[^\n]*APPROVED/.test(syncServiceSource), "closingSyncService hanya boleh menarik transaksi APPROVED");
 assert(syncServiceSource.includes("'cash_sync'"), 'Baris hasil sync harus ditandai source_type cash_sync');
 assert(syncServiceSource.includes('cash_transaction_id'), 'Baris hasil sync harus melacak cash_transaction_id supaya sync berikutnya tidak dobel');
+
+const pdfSource = fs.readFileSync(require.resolve('../services/reportPdf'), 'utf8');
+assert(pdfSource.includes("drawSectionLabel(doc,'Pendapatan per Kategori'"), 'Halaman ringkasan PDF wajib memuat pendapatan per kategori');
+assert(pdfSource.includes('block.incomeByCategory'), 'Kartu lokasi PDF wajib memakai breakdown pendapatan per kategori');
+assert(closingRoute.includes("status='confirmed' AND DATE(COALESCE(booked_at,paid_at))<=?"), 'Daftar belum bayar Closing wajib dihitung dari pembayaran confirmed sampai akhir periode');
 
 // Endpoint /mode dan /sync wajib ada dan dijaga: sync hanya boleh jalan kalau
 // periode masih DRAFT dan mode-nya AUTO.

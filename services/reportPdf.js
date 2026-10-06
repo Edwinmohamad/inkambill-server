@@ -85,6 +85,38 @@ function drawSummary(doc,items){if(!items.length)return;drawSectionLabel(doc,'Ri
     doc.fillColor(COLORS.muted).font('Helvetica-Bold').fontSize(6.5).text(safe(it.label),xx+14,y+11,{width:cw-24,height:9,characterSpacing:.3,ellipsis:true,lineBreak:false});
     doc.fillColor(accent).font('Helvetica-Bold').fontSize(12).text(safe(it.value),xx+14,y+27,{width:cw-24,height:16,ellipsis:true,lineBreak:false});
     doc.restore();});const rowsCount=Math.ceil(items.length/cols);doc.y=y+52+16+(rowsCount>1?(rowsCount-1)*62:0);}
+function drawIncomeCategorySummary(doc,rows,title,subtitle){
+  if(!Array.isArray(rows)||!rows.length)return;
+  ensureClosingSectionSpace(doc,72,title,subtitle);
+  drawSectionLabel(doc,'Pendapatan per Kategori',`${rows.length} kategori · halaman ringkasan`);
+  const x=doc.page.margins.left,total=doc.page.width-x-doc.page.margins.right,gap=10,colW=(total-gap)/2;
+  const bottomLimit=closingBottomLimit(doc);
+  const addContinuation=()=>{doc.addPage();drawBrandHeader(doc,title,subtitle,true);drawSectionLabel(doc,'Pendapatan per Kategori','lanjutan');};
+  for(let i=0;i<rows.length;i+=2){
+    const pair=rows.slice(i,i+2);
+    const heights=pair.map((row)=>{
+      doc.font('Helvetica-Bold').fontSize(7.4);
+      const nameH=doc.heightOfString(safe(row.category),{width:colW*.59-18,lineGap:1});
+      return Math.max(31,nameH+19);
+    });
+    const rowH=Math.max(...heights);
+    if(doc.y+rowH>bottomLimit)addContinuation();
+    const y=doc.y;
+    pair.forEach((row,index)=>{
+      const xx=x+index*(colW+gap);
+      doc.save();doc.roundedRect(xx,y,colW,rowH-4,7).fillAndStroke(COLORS.white,COLORS.line);
+      doc.fillColor(COLORS.ink).font('Helvetica-Bold').fontSize(7.4).text(safe(row.category),xx+10,y+8,{width:colW*.59-18,height:rowH-17,lineGap:1});
+      doc.fillColor(COLORS.green).font('Helvetica-Bold').fontSize(8.2).text(rupiah(row.amount),xx+colW*.59,y+8,{width:colW*.37,align:'right',height:11,lineBreak:false,ellipsis:true});
+      doc.fillColor(COLORS.muted2).font('Helvetica').fontSize(6.2).text(`${Number(row.count||0)} transaksi`,xx+colW*.59,y+20,{width:colW*.37,align:'right',height:9,lineBreak:false,ellipsis:true});doc.restore();
+    });
+    doc.y=y+rowH;
+  }
+  const totalIncome=rows.reduce((sum,row)=>sum+Number(row.amount||0),0);
+  if(doc.y+28>bottomLimit)addContinuation();
+  const y=doc.y;doc.save();doc.rect(x,y,total,24).fill(COLORS.greenSoft);
+  doc.fillColor(COLORS.green).font('Helvetica-Bold').fontSize(7.3).text('TOTAL PENDAPATAN',x+10,y+8,{width:total*.55,height:10,lineBreak:false});
+  doc.fontSize(8.3).text(rupiah(totalIncome),x+total*.55,y+7,{width:total*.43,align:'right',height:11,lineBreak:false,ellipsis:true});doc.restore();doc.y=y+34;
+}
 function valueFor(column,row){return typeof column.value==='function'?column.value(row):row[column.key];}function colorFor(column,row){return typeof column.color==='function'?column.color(row):(column.color||COLORS.black);}
 // v2.6 — header tabel jadi abu-abu terang + garis tipis (bukan gradient
 // navy-ungu dengan teks putih).
@@ -121,7 +153,7 @@ function drawClosingHeaderOnContinuationPages(doc,title){
 function drawLocationShareCards(doc,recipientName,blocks,title,subtitle){
   ensureClosingSectionSpace(doc,70,title,subtitle);
   drawSectionLabel(doc,'Ringkasan per Lokasi',`${blocks.length} lokasi`);
-  const x=doc.page.margins.left,total=doc.page.width-doc.page.margins.left-doc.page.margins.right,gap=12,cw=(total-gap)/2;
+  const x=doc.page.margins.left,total=doc.page.width-doc.page.margins.left-doc.page.margins.right,gap=12,cols=blocks.length===1?1:2,cw=(total-gap*(cols-1))/cols;
   // v2.7 — bagian "BAGIAN <nama> · <persen>" sebelumnya dirender sebagai satu
   // baris teks kecil (6.8pt) mirip subtitle, gampang kebaca sebagai label
   // biasa padahal ini angka paling penting di kartu (jatah penerima). Sekarang
@@ -160,9 +192,9 @@ function drawLocationShareCards(doc,recipientName,blocks,title,subtitle){
     return Math.max(12.5,doc.heightOfString(safe(label),{width:labelW,lineGap:1})+3);
   }
   function revenueRows(block){
-    if(money(block.psbRevenue)>0)return[
-      {label:'Langganan',value:rupiah(block.subscriptionRevenue)},
-      {label:'PSB',value:rupiah(block.psbRevenue)},
+    const cats=Object.entries(block.incomeByCategory||{}).sort((a,b)=>b[1]-a[1]);
+    if(cats.length)return[
+      ...cats.map(([k,v])=>({label:k,value:rupiah(v)})),
       {label:'Total Pendapatan',value:rupiah(block.revenue),bold:true,divider:true}
     ];
     return[{label:'Total Pendapatan',value:rupiah(block.revenue),bold:true}];
@@ -188,7 +220,6 @@ function drawLocationShareCards(doc,recipientName,blocks,title,subtitle){
   // baris punya tinggi dan pengecekan pindah-halaman sendiri (bukan satu
   // tinggi seragam untuk semua kartu sekaligus, yang akan boros halaman kalau
   // satu kartu jauh lebih tinggi dari yang lain).
-  const cols=2;
   for(let rowStart=0;rowStart<blocks.length;rowStart+=cols){
     const rowBlocks=blocks.slice(rowStart,rowStart+cols);
     const rowH=Math.max(...rowBlocks.map(cardHeight),150);
@@ -584,7 +615,7 @@ function drawInternalDebtSection(doc,people,summary,title,subtitle){
   doc.fillColor(COLORS.muted2).font('Helvetica').fontSize(6.3).text('Saldo awal = sisa sebelum periode ini · Baru = hutang yang dicatat dalam periode · Dibayar = cicilan/pelunasan dalam periode · Sisa = saldo per akhir periode.',x,doc.y,{width:total,lineGap:1});
   doc.y+=16;
 }
-function createClosingReportPdf(res,{title,subtitle,filename,recipientName='',summaryItems=[],blocks=[],adjustmentRows=[],transactionRows=[],customerActivityRows=[],unpaidCustomerRows=[],unpaidCustomerSummary=null,newCustomerRows=[],internalDebtRows=[],internalDebtSummary=null,disposition='attachment',watermark=''}){
+function createClosingReportPdf(res,{title,subtitle,filename,recipientName='',summaryItems=[],incomeCategoryRows=[],blocks=[],adjustmentRows=[],transactionRows=[],customerActivityRows=[],unpaidCustomerRows=[],unpaidCustomerSummary=null,newCustomerRows=[],internalDebtRows=[],internalDebtSummary=null,disposition='attachment',watermark=''}){
   // Bottom margin is intentionally small because every Closing section manages
   // its own larger safe area through closingBottomLimit(). This prevents
   // PDFKit from silently inserting an unbranded page before our explicit
@@ -595,6 +626,7 @@ function createClosingReportPdf(res,{title,subtitle,filename,recipientName='',su
   doc.pipe(res);
   drawBrandHeader(doc,title,subtitle,false);
   drawSummary(doc,summaryItems);
+  drawIncomeCategorySummary(doc,incomeCategoryRows,title,subtitle);
   drawLocationShareCards(doc,recipientName,blocks,title,subtitle);
   drawCustomerActivityTable(doc,customerActivityRows,title,subtitle);
   drawUnpaidCustomerTable(doc,unpaidCustomerRows,unpaidCustomerSummary,title,subtitle);

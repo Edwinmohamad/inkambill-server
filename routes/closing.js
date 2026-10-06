@@ -185,14 +185,22 @@ router.use((req, res, next) => {
 async function loadUnpaidCustomers(end) {
   try {
     const [rows] = await db.execute(`SELECT c.id,c.customer_code,c.name,s.code site_code,cl.name cluster_name,
-        COUNT(i.id) invoice_count, COALESCE(SUM(i.outstanding),0) outstanding
+        SUM(CASE WHEN GREATEST(i.total-COALESCE(p.confirmed_paid,0),0)>0 THEN 1 ELSE 0 END) invoice_count,
+        COALESCE(SUM(GREATEST(i.total-COALESCE(p.confirmed_paid,0),0)),0) outstanding
       FROM invoices i
       JOIN customers c ON c.id=i.customer_id
       JOIN sites s ON s.id=c.site_id
       LEFT JOIN clusters cl ON cl.id=c.cluster_id
-      WHERE i.status IN ('unpaid','partial','overdue') AND i.outstanding>0 AND i.due_date<=? AND s.code IN ('CDS','KRW','CLM','KBG','KUBANG')
+      LEFT JOIN (
+        SELECT invoice_id,SUM(amount) confirmed_paid
+        FROM payments
+        WHERE status='confirmed' AND DATE(COALESCE(booked_at,paid_at))<=?
+        GROUP BY invoice_id
+      ) p ON p.invoice_id=i.id
+      WHERE i.status NOT IN ('cancelled','refunded') AND i.due_date<=? AND s.code IN ('CDS','KRW','CLM','KBG','KUBANG')
       GROUP BY c.id,c.customer_code,c.name,s.code,cl.name
-      ORDER BY outstanding DESC,c.name`, [end]);
+      HAVING outstanding>0
+      ORDER BY outstanding DESC,c.name`, [end,end]);
     const outstanding = rows.reduce((a, r) => a + Number(r.outstanding || 0), 0);
     return { unpaidCustomers: rows, unpaidSummary: { count: rows.length, outstanding } };
   } catch (err) {
@@ -251,22 +259,33 @@ async function loadCustomerActivitySummary(start, end) {
     const monthPairs = monthPairsInRange(start, end);
     const monthCond = monthPairs.map(() => '(i.period_year=? AND i.period_month=?)').join(' OR ');
     const monthParams = monthPairs.flat();
-    const [billingRows] = monthPairs.length ? await db.execute(`SELECT s.code site_code,cl.name cluster_name,i.status,COUNT(*) cnt,
-          COALESCE(SUM(i.total),0) total_amt,COALESCE(SUM(i.paid_amount),0) paid_amt,COALESCE(SUM(i.outstanding),0) outstanding_amt
-        FROM invoices i JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id
-        WHERE i.status NOT IN ('cancelled','refunded') AND (${monthCond})
-        GROUP BY s.code,cl.name,i.status`, monthParams) : [[]];
+    const [billingRows] = monthPairs.length ? await db.execute(`SELECT x.site_code,x.cluster_name,COUNT(*) cnt,
+          SUM(CASE WHEN x.outstanding_amt<=0 THEN 1 ELSE 0 END) paid_cnt,
+          SUM(CASE WHEN x.outstanding_amt>0 THEN 1 ELSE 0 END) unpaid_cnt,
+          COALESCE(SUM(x.total_amt),0) total_amt,COALESCE(SUM(x.paid_amt),0) paid_amt,COALESCE(SUM(x.outstanding_amt),0) outstanding_amt
+        FROM (
+          SELECT i.id,s.code site_code,cl.name cluster_name,i.total total_amt,
+            LEAST(i.total,COALESCE(SUM(CASE WHEN p.status='confirmed' AND DATE(COALESCE(p.booked_at,p.paid_at))<=? THEN p.amount ELSE 0 END),0)) paid_amt,
+            GREATEST(i.total-COALESCE(SUM(CASE WHEN p.status='confirmed' AND DATE(COALESCE(p.booked_at,p.paid_at))<=? THEN p.amount ELSE 0 END),0),0) outstanding_amt
+          FROM invoices i JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id
+          LEFT JOIN payments p ON p.invoice_id=i.id
+          WHERE i.status NOT IN ('cancelled','refunded') AND (${monthCond})
+          GROUP BY i.id,s.code,cl.name,i.total
+        ) x GROUP BY x.site_code,x.cluster_name`, [end,end,...monthParams]) : [[]];
     const billing = { total: 0, paid: 0, unpaid: 0, krwclm: { paid: 0, unpaid: 0 }, kbg: { paid: 0, unpaid: 0 }, other: { paid: 0, unpaid: 0 }, billedTotal: 0, collectedTotal: 0, outstandingTotal: 0 };
     billingRows.forEach((row) => {
       const blockKey = siteBlock(row.site_code, row.cluster_name);
-      const isPaid = row.status === 'paid';
       const cnt = Number(row.cnt) || 0;
+      const paidCount = Number(row.paid_cnt) || 0;
+      const unpaidCount = Number(row.unpaid_cnt) || 0;
       billing.total += cnt;
       billing.billedTotal += Number(row.total_amt) || 0;
       billing.collectedTotal += Number(row.paid_amt) || 0;
       billing.outstandingTotal += Number(row.outstanding_amt) || 0;
-      if (isPaid) { billing.paid += cnt; billing[blockKey].paid += cnt; }
-      else { billing.unpaid += cnt; billing[blockKey].unpaid += cnt; }
+      billing.paid += paidCount;
+      billing.unpaid += unpaidCount;
+      billing[blockKey].paid += paidCount;
+      billing[blockKey].unpaid += unpaidCount;
     });
 
     return { psb, off, billing };
@@ -725,6 +744,22 @@ function buildNewCustomerPdfRows(customerActivity, allowedBlocks) {
     }));
 }
 
+function buildIncomeCategoryRows(data, allowedBlocks) {
+  const categories = new Map();
+  const incomeRows = Array.isArray(data.lineItems) && data.lineItems.length
+    ? data.lineItems.filter((row) => String(row.entry_type || '').toUpperCase() === 'INCOME')
+    : (data.payments || []);
+  incomeRows.forEach((row) => {
+    if (!allowedBlocks.has(siteBlock(row.site_code, row.cluster_name, row.site_name))) return;
+    const category = String(row.category || 'Lain-lain').trim() || 'Lain-lain';
+    const current = categories.get(category) || { category, count: 0, amount: 0 };
+    current.count += 1;
+    current.amount += money(row.amount);
+    categories.set(category, current);
+  });
+  return [...categories.values()].sort((a, b) => b.amount - a.amount || a.category.localeCompare(b.category, 'id'));
+}
+
 // v1.29 — replaces the old flat addPersonDetailRows()/rows[] builder. Builds the
 // structured {blocks, adjustmentRows, transactionRows} shape the redesigned
 // createClosingReportPdf() renders as separate sections instead of one long table.
@@ -927,15 +962,15 @@ router.get('/pdf', async (req, res, next) => {
         // belum ditandai KRW/CLM — supaya tidak ada apa pun yang kebaur diam-diam
         // ke sana tanpa ketahuan, tapi juga tidak menambah kartu kosong tiap bulan.
         if (key === 'LAINNYA' && !revenue && !expense && !Object.keys(expenseByCategory).length) return;
-        blocks.push({ label, revenue, expense, profit: revenue - expense, psbRevenue, subscriptionRevenue: revenue - psbRevenue, expenseByCategory, share: null, shareNote });
+        blocks.push({ label, revenue, expense, profit: revenue - expense, psbRevenue, subscriptionRevenue: revenue - psbRevenue, incomeByCategory: (block.clusterIncomeByCategory || {})[key] || {}, expenseByCategory, share: null, shareNote });
       });
-      blocks.push({ label: 'Total CDS (KRW + CLM)', revenue: block.revenue, expense: block.expense, profit: block.profit, share, psbRevenue: block.psbRevenue, subscriptionRevenue: block.subscriptionRevenue, expenseByCategory: block.expenseByCategory });
+      blocks.push({ label: 'Total CDS (KRW + CLM)', revenue: block.revenue, expense: block.expense, profit: block.profit, share, psbRevenue: block.psbRevenue, subscriptionRevenue: block.subscriptionRevenue, incomeByCategory: block.incomeByCategory, expenseByCategory: block.expenseByCategory });
     }
     if (allowedBlocks.has('kbg') && data.blocks.kbg) {
       const block = data.blocks.kbg;
       const share = recipientShare(block, recipient.key);
       if (share) { grossTotal += money(share.gross); netTotal += money(share.amount); }
-      blocks.push({ label: block.label, revenue: block.revenue, expense: block.expense, profit: block.profit, share, psbRevenue: block.psbRevenue, subscriptionRevenue: block.subscriptionRevenue, clusterRevenue: block.clusterRevenue, expenseByCategory: block.expenseByCategory });
+      blocks.push({ label: block.label, revenue: block.revenue, expense: block.expense, profit: block.profit, share, psbRevenue: block.psbRevenue, subscriptionRevenue: block.subscriptionRevenue, incomeByCategory: block.incomeByCategory, clusterRevenue: block.clusterRevenue, expenseByCategory: block.expenseByCategory });
     }
     // v3.1 — transaksi Data Kas yang lokasinya BUKAN persis CDS/KBG dulu
     // ditandai "Lokasi belum dipetakan" dan hanya muncul sebagai notifikasi
@@ -949,13 +984,14 @@ router.get('/pdf', async (req, res, next) => {
       blocks.push({
         label: 'Lokasi belum dipetakan',
         revenue: unmapped.revenue, expense: unmapped.expense, profit: unmapped.profit,
-        psbRevenue: unmapped.psbRevenue, subscriptionRevenue: unmapped.subscriptionRevenue,
+        psbRevenue: unmapped.psbRevenue, subscriptionRevenue: unmapped.subscriptionRevenue, incomeByCategory: unmapped.incomeByCategory,
         expenseByCategory: unmapped.expenseByCategory, share: null,
         shareNote: 'Transaksi Data Kas dengan lokasi selain CDS/KBG. Tidak masuk pembagian siapa pun — perbaiki lokasinya di Data Kas.'
       });
     }
     const adjustmentRows = buildAdjustmentRows(data, recipient, allowedBlocks);
     const transactionRows = buildTransactionRows(data, allowedBlocks);
+    const incomeCategoryRows = buildIncomeCategoryRows(data, allowedBlocks);
     const customerActivityRows = buildCustomerActivityRows(customerActivity, allowedBlocks);
     const unpaidCustomerPdf = buildUnpaidCustomerPdfData(unpaid.unpaidCustomers, allowedBlocks);
     const newCustomerRows = buildNewCustomerPdfRows(customerActivity, allowedBlocks);
@@ -971,6 +1007,7 @@ router.get('/pdf', async (req, res, next) => {
       watermark: recipient.watermark,
       recipientName: recipient.name,
       summaryItems: [{ label: 'Total Bruto', value: rupiah(grossTotal), color: '#3478F6' }, { label: 'Penyesuaian Bersih', value: `${adjustmentTotal < 0 ? '- ' : '+ '}${rupiah(Math.abs(adjustmentTotal))}`, color: adjustmentTotal < 0 ? '#FF433E' : '#18A979' }, { label: 'TOTAL DITERIMA', value: rupiah(netTotal), color: netTotal >= 0 ? '#18A979' : '#FF433E' }],
+      incomeCategoryRows,
       blocks,
       adjustmentRows,
       transactionRows,

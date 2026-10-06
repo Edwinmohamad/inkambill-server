@@ -66,15 +66,17 @@ const mapAdd = (map, key, value) => map.set(key, (map.get(key) || 0) + money(val
 function buildClosingCalculation({ payments = [], expenses = [], heldCash = [], routerAssets = [], adjustments = [], closing = {}, mode = 'auto', lineItems = [] }) {
   const selectedMode = mode === 'manual' ? 'manual' : 'auto';
   const blocks = {
-    krwclm: { label: 'CDS', revenue: 0, expense: 0, psbRevenue: 0, psbCount: 0, clusterRevenue: {}, clusterPsbRevenue: {}, clusterExpense: {}, clusterExpenseByCategory: {}, expenseByCategory: {}, shares: [] },
-    kbg: { label: 'KBG', revenue: 0, expense: 0, psbRevenue: 0, psbCount: 0, clusterRevenue: {}, expenseByCategory: {}, shares: [] },
-    other: { label: 'Lokasi belum dipetakan', revenue: 0, expense: 0, psbRevenue: 0, psbCount: 0, clusterRevenue: {}, expenseByCategory: {}, shares: [] }
+    krwclm: { label: 'CDS', revenue: 0, expense: 0, psbRevenue: 0, psbCount: 0, incomeByCategory: {}, clusterIncomeByCategory: {}, clusterRevenue: {}, clusterPsbRevenue: {}, clusterExpense: {}, clusterExpenseByCategory: {}, expenseByCategory: {}, shares: [] },
+    kbg: { label: 'KBG', revenue: 0, expense: 0, psbRevenue: 0, psbCount: 0, incomeByCategory: {}, clusterIncomeByCategory: {}, clusterRevenue: {}, expenseByCategory: {}, shares: [] },
+    other: { label: 'Lokasi belum dipetakan', revenue: 0, expense: 0, psbRevenue: 0, psbCount: 0, incomeByCategory: {}, clusterIncomeByCategory: {}, clusterRevenue: {}, expenseByCategory: {}, shares: [] }
   };
 
   payments.forEach((row) => {
     const blockKey = siteBlock(row.site_code, row.cluster_name, row.site_name);
     const amount = money(row.amount);
     blocks[blockKey].revenue += amount;
+    const category = String(row.category || row.name || 'Lain-lain').trim() || 'Lain-lain';
+    blocks[blockKey].incomeByCategory[category] = (blocks[blockKey].incomeByCategory[category] || 0) + amount;
     // v2.6 — catat berapa dari pendapatan ini yang berasal dari PSB (pemasangan
     // baru) supaya bisa ditampilkan terpisah dari pendapatan langganan biasa.
     // Tidak mengubah blocks[blockKey].revenue (total tetap sama seperti
@@ -87,6 +89,8 @@ function buildClosingCalculation({ payments = [], expenses = [], heldCash = [], 
     if (blockKey === 'krwclm') {
       const key = clusterKey(row.cluster_name || row.site_code);
       blocks[blockKey].clusterRevenue[key] = (blocks[blockKey].clusterRevenue[key] || 0) + amount;
+      const byCategory = blocks[blockKey].clusterIncomeByCategory[key] || (blocks[blockKey].clusterIncomeByCategory[key] = {});
+      byCategory[category] = (byCategory[category] || 0) + amount;
       // v3.1 — breakdown PSB per cluster (dipakai kartu KRW/CLM terpisah di PDF),
       // sejajar dengan clusterRevenue di atas. Tidak mengubah clusterRevenue.
       if (rowIsPsb) blocks[blockKey].clusterPsbRevenue[key] = (blocks[blockKey].clusterPsbRevenue[key] || 0) + amount;
@@ -126,7 +130,12 @@ function buildClosingCalculation({ payments = [], expenses = [], heldCash = [], 
   if (!hasDetailedManualRows) {
     blocks.krwclm.revenue += money(closing.manual_revenue);
     blocks.krwclm.expense += money(closing.manual_expense);
-    if (money(closing.manual_revenue)) blocks.krwclm.clusterRevenue.LAINNYA = (blocks.krwclm.clusterRevenue.LAINNYA || 0) + money(closing.manual_revenue);
+    if (money(closing.manual_revenue)) {
+      blocks.krwclm.clusterRevenue.LAINNYA = (blocks.krwclm.clusterRevenue.LAINNYA || 0) + money(closing.manual_revenue);
+      blocks.krwclm.incomeByCategory['Koreksi lama'] = (blocks.krwclm.incomeByCategory['Koreksi lama'] || 0) + money(closing.manual_revenue);
+      const legacyIncome = blocks.krwclm.clusterIncomeByCategory.LAINNYA || (blocks.krwclm.clusterIncomeByCategory.LAINNYA = {});
+      legacyIncome['Koreksi lama'] = (legacyIncome['Koreksi lama'] || 0) + money(closing.manual_revenue);
+    }
     if (money(closing.manual_expense)) blocks.krwclm.expenseByCategory['Koreksi lama'] = (blocks.krwclm.expenseByCategory['Koreksi lama'] || 0) + money(closing.manual_expense);
   }
 
