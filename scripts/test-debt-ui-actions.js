@@ -12,6 +12,8 @@ const checks = [
   [view.includes('data-card hp-section debt-record-card') && view.includes('data-card hp-section debt-people-card'), 'daftar catatan dan teknisi memakai data-card standar'],
   [view.includes('data-action-popover-target="debtAction<%= row.id %>"'), 'setiap item memiliki tombol Aksi standar'],
   [view.includes('<b>Lihat Rincian</b>') && view.includes('<b>Catat Pembayaran</b>'), 'aksi detail dan pembayaran tersedia'],
+  [view.includes('action="/debts/payments"') && view.includes('name="debt_id" id="debtPayDebtId"'), 'form pembayaran memakai endpoint stabil dan ID eksplisit'],
+  [view.includes('data-debt-payment-trigger') && view.includes('preparePayment'), 'konteks pembayaran disiapkan sebelum modal ditampilkan'],
   [view.includes('<b>Edit</b>') && view.includes('<b>Hapus</b>') && view.includes('<b>Arsipkan</b>'), 'aksi edit, hapus, dan arsip tersedia'],
   [view.includes('isAdmin && row.status !== \'ARCHIVED\''), 'aksi administratif dibatasi untuk admin'],
   [view.includes('data-debt-switch-modal="#debtEditModal"') && view.includes('data-debt-switch-modal="#debtPayModal"'), 'aksi dari detail memakai transisi modal aman'],
@@ -45,6 +47,7 @@ const locals = {
 const template = ejs.compile(view, { filename: path.join(root, 'views/debts/index.ejs') });
 const adminHtml = template({ ...locals, isAdmin: true });
 const staffHtml = template({ ...locals, isAdmin: false });
+for (const match of adminHtml.matchAll(/<script>([\s\S]*?)<\/script>/g)) new Function(match[1]);
 if (!adminHtml.includes('<b>Edit</b>') || !adminHtml.includes('<b>Hapus</b>')) throw new Error('Validasi UI Hutang gagal: admin tidak mendapat aksi edit/hapus');
 if (staffHtml.includes('<b>Edit</b>') || staffHtml.includes('<b>Hapus</b>')) throw new Error('Validasi UI Hutang gagal: aksi admin bocor ke staff');
 if (!staffHtml.includes('<b>Lihat Rincian</b>') || !staffHtml.includes('<b>Catat Pembayaran</b>')) throw new Error('Validasi UI Hutang gagal: aksi operasional staff hilang');

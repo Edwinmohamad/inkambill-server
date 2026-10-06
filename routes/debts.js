@@ -319,24 +319,31 @@ router.post('/:id/delete',requireAdmin,async(req,res,next)=>{
   }catch(err){if(conn)await conn.rollback();req.session.flash={type:'danger',message:err.message};res.redirect(backTo(req));}finally{if(conn)conn.release();}
 });
 
-router.post('/:id/payments', async (req, res, next) => {
+async function recordPayment(req, res) {
   let conn;
   let saved = null;
+  let committed = false;
   try {
-    const id = Number(req.params.id);
+    // The shared payment modal posts to a stable endpoint. Keep accepting the old
+    // parameterised URL as well so bookmarks/older rendered pages remain valid.
+    const id = Number(req.params.id || req.body.debt_id);
     const paid = amount(req.body.amount);
     const paymentDate = validDate(req.body.payment_date) ? req.body.payment_date : '';
     const method = PAYMENT_METHODS.has(String(req.body.payment_method || '').toLowerCase()) ? String(req.body.payment_method).toLowerCase() : 'cash';
     const notes = String(req.body.notes || '').trim().slice(0, 500) || null;
-    if (!Number.isInteger(id) || id < 1 || paid <= 0 || !paymentDate) return res.status(400).send('Pembayaran tidak valid.');
+    if (!Number.isInteger(id) || id < 1 || paid <= 0 || !paymentDate) {
+      req.session.flash = { type: 'danger', message: 'Pembayaran tidak valid. Periksa nominal dan tanggal pembayaran.' };
+      return res.redirect(backTo(req));
+    }
     conn = await db.getConnection();
     await conn.beginTransaction();
     const [[record]] = await conn.execute('SELECT id,status,principal_amount FROM finance_debts WHERE id=? FOR UPDATE', [id]);
-    if (!record) { await conn.rollback(); return res.status(404).send('Data tidak ditemukan.'); }
+    if (!record) throw new Error('Data hutang/piutang tidak ditemukan.');
     const [[totals]] = await conn.execute('SELECT COALESCE(SUM(amount),0) paid_amount FROM finance_debt_payments WHERE debt_id=?', [id]);
-    const remaining = Number(record.principal_amount) - Number(totals.paid_amount);
-    if (record.status === 'ARCHIVED') { await conn.rollback(); return res.status(409).send('Data yang diarsipkan tidak dapat menerima pembayaran.'); }
-    if (paid > remaining) { await conn.rollback(); return res.status(400).send(`Pembayaran melebihi sisa Rp ${Math.max(0, remaining).toLocaleString('id-ID')}.`); }
+    const remaining = Math.max(0, Number(record.principal_amount) - Number(totals.paid_amount));
+    if (record.status === 'ARCHIVED') throw new Error('Data yang diarsipkan tidak dapat menerima pembayaran.');
+    if (remaining <= 0) throw new Error('Dokumen ini sudah lunas dan tidak dapat menerima pembayaran baru.');
+    if (paid > remaining) throw new Error(`Pembayaran melebihi sisa Rp ${remaining.toLocaleString('id-ID')}.`);
     // Attachment is saved only after every business-rule check has passed, so a rejected
     // payment (over the remaining balance, archived record, ...) never leaves an orphan file.
     if (req.file) saved = await saveDebtProof(req.file);
@@ -344,15 +351,21 @@ router.post('/:id/payments', async (req, res, next) => {
       [id, paymentDate, paid, method, notes, saved?.filename || null, saved?.originalName || null, saved?.mime || null, req.session.user.id]);
     await refreshStatus(conn, id);
     await conn.commit();
+    committed = true;
     await audit({userId:req.session.user.id,action:'payment',entityType:'finance_debt',entityId:id,description:`Pembayaran hutang #${id} Rp${paid.toLocaleString('id-ID')} dicatat`,ip:req.ip,details:{payment_date:paymentDate,amount:paid,method,has_proof:Boolean(saved)}});
     req.session.flash = { type: 'success', message: 'Pembayaran berhasil dicatat dan sisa diperbarui.' };
     res.redirect(backTo(req));
   } catch (err) {
-    if (conn) await conn.rollback();
-    if (saved) await removeDebtProof(saved.filename);
-    next(err);
+    if (conn && !committed) await conn.rollback();
+    if (saved && !committed) await removeDebtProof(saved.filename);
+    console.error('Gagal mencatat pembayaran hutang:', err.message);
+    req.session.flash = { type: 'danger', message: err.message || 'Pembayaran gagal dicatat.' };
+    res.redirect(backTo(req));
   } finally { if (conn) conn.release(); }
-});
+}
+
+router.post('/payments', recordPayment);
+router.post('/:id/payments', recordPayment);
 
 router.get('/:id/payments/:paymentId/proof', async (req, res) => {
   const id = Number(req.params.id);
@@ -411,3 +424,4 @@ router.post('/:id/payments/:paymentId/delete', async (req, res, next) => {
 });
 
 module.exports = router;
+module.exports.recordPayment = recordPayment;

@@ -136,7 +136,7 @@
             <div class="ink-action-popover-head"><div><small><%= kindLabel(row) %> · <%= row.site_code %></small><strong><%= name %></strong><span><%= row.document_number||`HP-${String(row.id).padStart(6,'0')}` %> · sisa <%= rp(remaining) %></span></div></div>
             <div class="ink-action-popover-body">
               <button type="button" class="ink-action-item compact" data-action-close data-bs-toggle="modal" data-bs-target="#debtDetailModal<%= row.id %>"><i class="bi bi-eye"></i><span><b>Lihat Rincian</b><small>Item, jadwal cicilan, dan riwayat</small></span></button>
-              <% if (row.status === 'ACTIVE') { %><button type="button" class="ink-action-item compact success" data-action-close data-bs-toggle="modal" data-bs-target="#debtPayModal" data-debt-id="<%= row.id %>" data-debt-type-label="<%= kindLabel(row) %>" data-debt-party="<%= name %>" data-debt-purpose="<%= row.purpose %>" data-debt-site="<%= row.site_code %>" data-debt-principal="<%= principal %>" data-debt-paid="<%= paid %>" data-debt-remaining="<%= Math.floor(remaining) %>"><i class="bi bi-cash-coin"></i><span><b>Catat Pembayaran</b><small>Bayar sebagian atau lunasi seluruh sisa</small></span></button><% } %>
+              <% if (row.status === 'ACTIVE') { %><button type="button" class="ink-action-item compact success" data-action-close data-debt-payment-trigger data-bs-toggle="modal" data-bs-target="#debtPayModal" data-debt-id="<%= row.id %>" data-debt-type-label="<%= kindLabel(row) %>" data-debt-party="<%= name %>" data-debt-purpose="<%= row.purpose %>" data-debt-site="<%= row.site_code %>" data-debt-principal="<%= principal %>" data-debt-paid="<%= paid %>" data-debt-remaining="<%= Math.floor(remaining) %>"><i class="bi bi-cash-coin"></i><span><b>Catat Pembayaran</b><small>Bayar sebagian atau lunasi seluruh sisa</small></span></button><% } %>
               <% if (isAdmin && row.status !== 'ARCHIVED') { %><button type="button" class="ink-action-item compact debt-edit-btn" data-action-close data-bs-toggle="modal" data-bs-target="#debtEditModal" data-id="<%= row.id %>" data-document="<%= row.document_number||row.id %>" data-purpose="<%= row.purpose %>" data-site="<%= row.site_code %>" data-principal="<%= Number(row.principal_amount) %>" data-issue="<%= row.issue_date?new Date(row.issue_date).toISOString().slice(0,10):'' %>" data-due="<%= row.due_date?new Date(row.due_date).toISOString().slice(0,10):'' %>" data-method="<%= row.payment_method %>" data-months="<%= row.installment_months %>" data-responsible="<%= row.responsible_name||'' %>" data-notes="<%= row.notes||'' %>"><i class="bi bi-pencil-square"></i><span><b>Edit</b><small>Perbarui data pokok dan alasan perubahan</small></span></button><% } %>
               <% if (row.status !== 'ARCHIVED') { %><div class="ink-action-separator"></div><form method="post" action="/debts/<%= row.id %>/archive" onsubmit="const r=prompt('Alasan arsip wajib diisi untuk audit:');if(!r||!r.trim())return false;this.querySelector('[name=reason]').value=r.trim();return true;"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="reason"><button class="ink-action-item compact" type="submit"><i class="bi bi-archive"></i><span><b>Arsipkan</b><small>Simpan histori tanpa menampilkan sebagai data aktif</small></span></button></form><% } %>
               <% if (isAdmin && row.status !== 'ARCHIVED') { %><button type="button" class="ink-action-item compact danger debt-delete-trigger" data-action-close data-debt-delete-id="<%= row.id %>" data-debt-document="<%= row.document_number||`HP-${String(row.id).padStart(6,'0')}` %>"><i class="bi bi-trash3"></i><span><b>Hapus</b><small>Hanya dokumen tanpa riwayat pembayaran</small></span></button><% } %>
@@ -236,7 +236,7 @@
         <div class="hp-sheet-foot-actions">
           <% if(isAdmin&&row.status!=='ARCHIVED'){ %><button type="button" class="hp-btn hp-btn-secondary debt-edit-btn" data-debt-switch-modal="#debtEditModal" data-id="<%= row.id %>" data-document="<%= row.document_number||row.id %>" data-purpose="<%= row.purpose %>" data-site="<%= row.site_code %>" data-principal="<%= Number(row.principal_amount) %>" data-issue="<%= row.issue_date?new Date(row.issue_date).toISOString().slice(0,10):'' %>" data-due="<%= row.due_date?new Date(row.due_date).toISOString().slice(0,10):'' %>" data-method="<%= row.payment_method %>" data-months="<%= row.installment_months %>" data-responsible="<%= row.responsible_name||'' %>" data-notes="<%= row.notes||'' %>"><i class="bi bi-pencil-square"></i>Edit</button><% } %>
           <button type="button" class="hp-btn hp-btn-secondary" data-bs-dismiss="modal">Tutup</button>
-          <% if (row.status === 'ACTIVE') { %><button type="button" class="hp-btn hp-btn-primary" data-debt-switch-modal="#debtPayModal" data-debt-id="<%= row.id %>" data-debt-type-label="<%= kindLabel(row) %>" data-debt-party="<%= name %>" data-debt-purpose="<%= row.purpose %>" data-debt-site="<%= row.site_code %>" data-debt-principal="<%= principal %>" data-debt-paid="<%= paid %>" data-debt-remaining="<%= Math.floor(remaining) %>"><i class="bi bi-cash-coin"></i>Catat Pembayaran</button><% } %>
+          <% if (row.status === 'ACTIVE') { %><button type="button" class="hp-btn hp-btn-primary" data-debt-payment-trigger data-debt-switch-modal="#debtPayModal" data-debt-id="<%= row.id %>" data-debt-type-label="<%= kindLabel(row) %>" data-debt-party="<%= name %>" data-debt-purpose="<%= row.purpose %>" data-debt-site="<%= row.site_code %>" data-debt-principal="<%= principal %>" data-debt-paid="<%= paid %>" data-debt-remaining="<%= Math.floor(remaining) %>"><i class="bi bi-cash-coin"></i>Catat Pembayaran</button><% } %>
         </div>
       </div>
     </div>
@@ -337,8 +337,9 @@
 <%# ---------- Sheet: catat pembayaran (dipakai bersama semua baris) ---------- %>
 <div class="modal fade hp-modal" id="debtPayModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-    <form class="modal-content hp-sheet" method="post" id="debtPayForm" enctype="multipart/form-data" action="/debts">
+    <form class="modal-content hp-sheet" method="post" id="debtPayForm" enctype="multipart/form-data" action="/debts/payments">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <input type="hidden" name="debt_id" id="debtPayDebtId">
       <div class="hp-sheet-head">
         <div class="hp-sheet-title"><span class="hp-eyebrow" id="debtPaySummaryType">-</span><h5 id="debtPaySummaryParty">-</h5><small id="debtPaySummaryPurpose">-</small></div>
         <button type="button" class="hp-close" data-bs-dismiss="modal" aria-label="Tutup"><i class="bi bi-x-lg"></i></button>
@@ -436,15 +437,15 @@ search?.addEventListener('input',()=>{const words=search.value.toLocaleLowerCase
 // ---- Sheet catat pembayaran ----
 const payModal=document.getElementById('debtPayModal');
 if(payModal){
-  const form=document.getElementById('debtPayForm'),amountInput=document.getElementById('debtPayAmount'),dateInput=document.getElementById('debtPayDate'),liveBox=document.getElementById('debtPayLive'),liveRemaining=document.getElementById('debtPayLiveRemaining'),warning=document.getElementById('debtPayWarning'),maxHint=document.getElementById('debtPayMaxHint'),submitBtn=document.getElementById('debtPaySubmit');
+  const form=document.getElementById('debtPayForm'),debtIdInput=document.getElementById('debtPayDebtId'),amountInput=document.getElementById('debtPayAmount'),dateInput=document.getElementById('debtPayDate'),liveBox=document.getElementById('debtPayLive'),liveRemaining=document.getElementById('debtPayLiveRemaining'),warning=document.getElementById('debtPayWarning'),maxHint=document.getElementById('debtPayMaxHint'),submitBtn=document.getElementById('debtPaySubmit');
   let currentRemaining=0;
   const money=value=>rupiah(Math.max(0,Math.round(Number(value)||0)));
   const recalc=()=>{const value=Number(amountInput.value)||0;const after=currentRemaining-value;liveRemaining.textContent=money(after);const overLimit=value>currentRemaining;warning.hidden=!overLimit;liveBox.classList.toggle('is-over',after<0);liveBox.classList.toggle('is-done',value>0&&after===0);submitBtn.disabled=value<=0||overLimit;};
   amountInput.addEventListener('input',recalc);
   document.getElementById('debtPayQuick')?.addEventListener('click',e=>{const b=e.target.closest('button[data-fill]');if(!b)return;amountInput.value=b.dataset.fill==='all'?currentRemaining:Math.floor(currentRemaining/2);recalc();});
-  payModal.addEventListener('show.bs.modal',event=>{
-    const btn=event.relatedTarget;if(!btn||!btn.dataset||!btn.dataset.debtId)return;const d=btn.dataset;
-    form.action=`/debts/${d.debtId}/payments`;
+  const preparePayment=btn=>{
+    if(!btn?.dataset?.debtId)return false;const d=btn.dataset;
+    debtIdInput.value=d.debtId;
     document.getElementById('debtPaySummaryParty').textContent=d.debtParty||'-';
     document.getElementById('debtPaySummaryType').textContent=`${d.debtTypeLabel||'-'} · ${d.debtSite||''}`;
     document.getElementById('debtPaySummarySite').textContent=d.debtSite||'-';
@@ -459,9 +460,14 @@ if(payModal){
     form.querySelectorAll('input[name="payment_method"]').forEach((radio,index)=>radio.checked=index===0);
     const fileInput=form.querySelector('input[name="proof_file"]');if(fileInput)fileInput.value='';
     recalc();
-  });
+    return true;
+  };
+  // Prepare eagerly on click and again from Bootstrap's relatedTarget. This remains
+  // reliable when the action popover is portaled to <body> or another modal closes first.
+  document.querySelectorAll('[data-debt-payment-trigger]').forEach(btn=>btn.addEventListener('click',()=>preparePayment(btn)));
+  payModal.addEventListener('show.bs.modal',event=>preparePayment(event.relatedTarget));
   payModal.addEventListener('shown.bs.modal',()=>amountInput.focus());
-  form.addEventListener('submit',event=>{const value=Number(amountInput.value)||0;if(value<=0||value>currentRemaining){event.preventDefault();recalc();}});
+  form.addEventListener('submit',event=>{const value=Number(amountInput.value)||0;if(!debtIdInput.value||value<=0||value>currentRemaining){event.preventDefault();recalc();}});
 }
 const debtEditModal=document.getElementById('debtEditModal'),debtEditForm=document.getElementById('debtEditForm'),debtDeleteForm=document.getElementById('debtDeleteForm');
 let debtEditId=null;
