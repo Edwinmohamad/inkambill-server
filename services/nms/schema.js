@@ -208,6 +208,63 @@ async function ensureNmsV2Schema() {
   await tryQuery(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS isolate_hold_note VARCHAR(255) NULL`, 'customers.isolate_hold_note');
 
   await db.query(`ALTER TABLE routers ADD COLUMN IF NOT EXISTS wan_interface VARCHAR(64) NULL`);
+  await tryQuery(`ALTER TABLE routers ADD COLUMN IF NOT EXISTS connector_type ENUM('rest','legacy_api') NOT NULL DEFAULT 'rest'`, 'routers.connector_type');
+  await tryQuery(`ALTER TABLE routers ADD COLUMN IF NOT EXISTS device_role ENUM('core','distribution','infrastructure') NOT NULL DEFAULT 'core'`, 'routers.device_role');
+  await tryQuery(`ALTER TABLE routers ADD COLUMN IF NOT EXISTS pppoe_enabled TINYINT(1) NOT NULL DEFAULT 1`, 'routers.pppoe_enabled');
+  await tryQuery(`ALTER TABLE routers ADD COLUMN IF NOT EXISTS legacy_host VARCHAR(191) NULL`, 'routers.legacy_host');
+  await tryQuery(`ALTER TABLE routers ADD COLUMN IF NOT EXISTS legacy_port INT UNSIGNED NULL DEFAULT 8728`, 'routers.legacy_port');
+  await db.query(`CREATE TABLE IF NOT EXISTS network_probe_targets (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(80) NOT NULL,
+    category ENUM('internet','dns','video','social','gaming','streaming','custom') NOT NULL DEFAULT 'internet',
+    probe_type ENUM('icmp','tcp','https') NOT NULL DEFAULT 'icmp',
+    target VARCHAR(255) NOT NULL,
+    port INT UNSIGNED NULL,
+    path VARCHAR(255) NULL,
+    warning_ms INT UNSIGNED NOT NULL DEFAULT 80,
+    critical_ms INT UNSIGNED NOT NULL DEFAULT 150,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    sort_order INT NOT NULL DEFAULT 0,
+    UNIQUE KEY uq_network_probe_name(name)
+  )`);
+  await db.query(`CREATE TABLE IF NOT EXISTS network_probe_samples (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    target_id BIGINT UNSIGNED NOT NULL,
+    site_id BIGINT UNSIGNED NULL,
+    status ENUM('up','degraded','down') NOT NULL,
+    latency_ms DECIMAL(10,2) NULL,
+    jitter_ms DECIMAL(10,2) NULL,
+    packet_loss DECIMAL(6,2) NULL,
+    error_message VARCHAR(500) NULL,
+    sampled_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    INDEX idx_network_probe_target_time(target_id,sampled_at),
+    INDEX idx_network_probe_site_time(site_id,sampled_at)
+  )`);
+  await db.query(`CREATE TABLE IF NOT EXISTS network_infra_events (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    event_type VARCHAR(50) NOT NULL,
+    severity ENUM('info','warning','critical') NOT NULL DEFAULT 'info',
+    site_id BIGINT UNSIGNED NULL,
+    router_id BIGINT UNSIGNED NULL,
+    title VARCHAR(255) NOT NULL,
+    details_json LONGTEXT NULL,
+    created_by BIGINT UNSIGNED NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_network_infra_events_time(created_at),
+    INDEX idx_network_infra_events_site(site_id,created_at)
+  )`);
+  await db.query(`INSERT IGNORE INTO network_probe_targets(name,category,probe_type,target,port,warning_ms,critical_ms,sort_order) VALUES
+    ('Cloudflare DNS','dns','tcp','1.1.1.1',53,40,100,10),
+    ('Google DNS','dns','tcp','8.8.8.8',53,40,100,20),
+    ('Google','internet','https','www.google.com',443,100,250,30),
+    ('YouTube','video','https','www.youtube.com',443,120,300,40),
+    ('WhatsApp','social','https','web.whatsapp.com',443,150,350,50),
+    ('Instagram','social','https','www.instagram.com',443,150,350,60),
+    ('Netflix','streaming','https','www.netflix.com',443,180,400,70),
+    ('Mobile Legends','gaming','tcp','www.mobilelegends.com',443,80,150,80),
+    ('PUBG Mobile','gaming','tcp','www.pubgmobile.com',443,80,150,90),
+    ('Riot Games','gaming','https','www.riotgames.com',443,80,150,100)
+  `)
   await db.query(`ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS details LONGTEXT NULL`);
   await db.query(`ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS site_id BIGINT UNSIGNED NULL`);
   await tryQuery(`CREATE INDEX IF NOT EXISTS idx_audit_target ON audit_logs(entity_type, entity_id)`, 'audit index');
