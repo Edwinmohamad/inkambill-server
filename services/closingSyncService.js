@@ -224,10 +224,12 @@ async function countPendingCashData({ db, closingId, start, end }) {
     [start, end]
   );
   const unsyncedRows = await selectUnsyncedCashRows({ db, closingId, start, end });
-  const unsyncedApproved = unsyncedRows.reduce((count, row) => (mapCashRowToEntry(row).skip ? count : count + 1), 0);
+  const invalidApproved = unsyncedRows.filter(row=>Boolean(mapCashRowToEntry(row).skip)).length;
+  const unsyncedApproved = unsyncedRows.length-invalidApproved;
   const plan = await planSyncedReconciliation({ db, closingId, start, end });
   const staleSynced = plan.filter((item) => item.action !== 'keep').length;
-  return { pendingApproval: Number(pendingRow?.n || 0), unsyncedApproved, staleSynced, needsSync: unsyncedApproved + staleSynced };
+  // Invalid site/zero-value APPROVED rows cannot be silently excluded at lock time.
+  return { pendingApproval: Number(pendingRow?.n || 0), unsyncedApproved, invalidApproved, staleSynced, needsSync: unsyncedApproved + invalidApproved + staleSynced };
 }
 
 module.exports = { syncCashDataIntoClosing, syncCashTransactionsIntoDraftAutoClosing, countPendingCashData, selectUnsyncedCashRows, planSyncedReconciliation, mapCashRowToEntry, toDateKey };
