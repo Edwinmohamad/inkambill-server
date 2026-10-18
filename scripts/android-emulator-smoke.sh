@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 api_level="${1:?API level wajib diisi}"
 artifact_dir="${2:?Direktori artifact wajib diisi}"
-apk_file="${artifact_dir}/INKAMNET-GO-v1.3.2.apk"
+apk_file=""
 package_file="${artifact_dir}/package-name.txt"
 launch_log="emulator-launch-${api_level}.txt"
 screen_file="emulator-smoke-${api_level}.png"
@@ -13,6 +13,13 @@ logcat_file="emulator-logcat-${api_level}.txt"
 : > "${launch_log}"
 trap 'adb logcat -d > "${logcat_file}" 2>/dev/null || true' EXIT
 
+shopt -s nullglob
+apk_candidates=("${artifact_dir}"/INKAMNET-GO-v*.apk)
+if [ "${#apk_candidates[@]}" -ne 1 ]; then
+  echo "Artifact harus berisi tepat satu APK INKAMNET GO." >&2
+  exit 1
+fi
+apk_file="${apk_candidates[0]}"
 test -s "${apk_file}"
 test -s "${package_file}"
 package_name="$(tr -d '\r\n' < "${package_file}")"
