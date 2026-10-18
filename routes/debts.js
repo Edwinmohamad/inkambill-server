@@ -60,7 +60,7 @@ function installmentSchedule(record) {
 // v1.26 -- payment channel options for a cicilan/payment entry. Mirrors the cash/transfer/qris/other
 // vocabulary already used by Payments & Cash so `statusLabel()` (middleware/common.js) renders the
 // same Indonesian labels (Tunai/Transfer/QRIS/Lainnya) without any extra translation table here.
-const PAYMENT_METHODS = new Set(['cash', 'transfer', 'qris', 'other']);
+const PAYMENT_METHODS = new Set(['cash', 'transfer']);
 const PERIOD_OPTIONS = new Set(['today', 'month', 'custom']);
 
 // v1.26 -- optional "Lampiran Bukti" attachment for a debt/receivable payment. Same
@@ -329,7 +329,8 @@ async function recordPayment(req, res) {
     const id = Number(req.params.id || req.body.debt_id);
     const paid = amount(req.body.amount);
     const paymentDate = validDate(req.body.payment_date) ? req.body.payment_date : '';
-    const method = PAYMENT_METHODS.has(String(req.body.payment_method || '').toLowerCase()) ? String(req.body.payment_method).toLowerCase() : 'cash';
+    const method = String(req.body.payment_method || '').toLowerCase();
+    if(!PAYMENT_METHODS.has(method))throw new Error('Metode pembayaran hutang/piutang hanya Cash atau Transfer.');
     const notes = String(req.body.notes || '').trim().slice(0, 500) || null;
     if (!Number.isInteger(id) || id < 1 || paid <= 0 || !paymentDate) {
       req.session.flash = { type: 'danger', message: 'Pembayaran tidak valid. Periksa nominal dan tanggal pembayaran.' };
