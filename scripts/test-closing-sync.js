@@ -73,7 +73,9 @@ function fakeDb(pendingApprovalCount) {
   // memang tidak akan pernah bisa disinkron).
   const pending = await countPendingCashData({ db: fakeDb(4), closingId: 42, start: '2026-08-01', end: '2026-08-31' });
   assert.equal(pending.pendingApproval, 4, 'jumlah PENDING_APPROVAL harus diteruskan apa adanya dari query');
-  assert.equal(pending.unsyncedApproved, 3, 'hanya baris mappable & nominal>0 yang dihitung (101,102,106) — 103 & 104 dikecualikan');
+  assert.equal(pending.unsyncedApproved, 3, 'baris mappable belum disinkron');
+  assert.equal(pending.invalidApproved, 2, 'kas tanpa site valid / nominal nol harus memblokir Closing');
+  assert.equal(pending.needsSync, 5, 'semua anomali sumber harus ditangani sebelum Closing');
 
 
   // v3.2 — REGRESI BUG: transaksi Data Kas yang sudah pernah disinkron lalu
