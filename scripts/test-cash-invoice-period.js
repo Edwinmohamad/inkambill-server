@@ -1,10 +1,10 @@
 const assert=require('assert');
-const { invoicePeriodBookDate }=require('../services/paymentVerificationService');
+const { invoicePeriodBookDate,postCashTransaction }=require('../services/paymentVerificationService');
 
 assert.strictEqual(
   invoicePeriodBookDate({periodMonth:9,periodYear:2026,referenceDate:'2026-10-02'}),
   '2026-09-02',
-  'pembayaran Oktober untuk tagihan September harus masuk saldo September'
+  'helper lama tetap bisa membaca periode referensi invoice historis; bukan aturan jurnal baru'
 );
 assert.strictEqual(
   invoicePeriodBookDate({periodMonth:2,periodYear:2026,referenceDate:'2026-03-31'}),
@@ -18,4 +18,5 @@ assert.strictEqual(
 );
 assert.throws(()=>invoicePeriodBookDate({periodMonth:13,periodYear:2026,referenceDate:'2026-10-02'}),/Periode bulan\/tahun faktur/);
 
+assert.match(postCashTransaction.toString(),/const ledgerDate=isoDate\(bookDate\)/,'posting baru harus memakai tanggal penerimaan kas');
 console.log('cash-invoice-period: PASS');

@@ -10,8 +10,8 @@ const {emptyBillingMonitor}=require('../services/dashboardBillingMonitorService'
   assert.deepEqual(out,['20 Oktober 2026','20 Oktober 2026','2026-10-32']);
  }
  const fin=fs.readFileSync('routes/finance.js','utf8'),reports=fs.readFileSync('routes/reports.js','utf8');
- assert(fin.includes("${site?'1=1':'ct.internal_transfer_key IS NULL'}"));
- assert(reports.includes("if(!f.site)where.push('ct.internal_transfer_key IS NULL')"));
+ assert(fin.includes("WHERE ct.internal_transfer_key IS NULL"));
+ assert(reports.includes("where.push('ct.internal_transfer_key IS NULL')"));
  const view=fs.readFileSync('views/finance/cash.ejs','utf8');assert(view.includes('if(!editable)'));assert(!view.includes('Boleh diedit/dihapus manual seperti transaksi kas biasa'));
  console.log('Audit regressions: billing failure fallback, dates in 3 timezones, consolidated transfers and cash UI PASS');
 })().catch(e=>{console.error(e);process.exitCode=1;});

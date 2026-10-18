@@ -136,7 +136,7 @@ router.post('/',requireAdmin,async(req,res)=>{
   const ids=selectedInvoiceIds(req.body);
   if(!ids.length)throw new Error('Pilih minimal satu faktur yang akan dibayar.');
   const {method,notes,collector_user_id}=req.body;
-  const normalizedMethod=['transfer','cash','qris'].includes(method)?method:'transfer';
+  const normalizedMethod=['transfer','cash'].includes(method)?method:'transfer';
   const paidDate=isoDate(req.body.paid_at)||isoDate(new Date());
   const requestKey=String(req.body.idempotency_key||crypto.randomUUID()).slice(0,150);
   let bankName=null;
@@ -662,6 +662,8 @@ async function settleCashPayments(conn,{paymentIds,settlementDate,actorId,mode='
   const collectors=[...new Set(done.map(p=>Number(p.collector_user_id||p.received_by||0)))];
   const resolvedCollector=collectorId||(collectors.length===1&&collectors[0]?collectors[0]:null);
   const difference=handedAmount==null?0:Math.round((Number(handedAmount)-total)*100)/100;
+  // Never treat physically unmatched money as if the batch journal reconciled.
+  if(handedAmount!=null && Math.abs(difference)>0.001) throw new Error('Nominal diserahkan tidak sama dengan total pembayaran terpilih. Selisih harus direkonsiliasi terpisah; setoran dibatalkan.');
   await conn.execute(`UPDATE cash_settlements SET code=?,collector_user_id=?,payment_count=?,total_amount=?,difference_amount=? WHERE id=?`,[code,resolvedCollector,done.length,total,difference,settlementId]);
   return {settlementId,code,done,skipped,total,difference};
 }

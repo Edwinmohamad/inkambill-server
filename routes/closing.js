@@ -101,8 +101,14 @@ function manualExpenseRow(row) {
   };
 }
 
-async function loadClosing(start, end) {
-  const [[period]] = await db.execute('SELECT * FROM closing_periods WHERE period_start=? AND period_end=? LIMIT 1', [start, end]);
+async function loadClosing(start, end, queryDb = db) {
+  const [[period]] = await queryDb.execute('SELECT * FROM closing_periods WHERE period_start=? AND period_end=? LIMIT 1', [start, end]);
+  if (period?.status === 'LOCKED' && period.snapshot_json) {
+    // Historical payouts must not silently change after the period is locked.
+    const snapshot = JSON.parse(period.snapshot_json);
+    if (!snapshot?.blocks || !snapshot?.closing) throw new Error('Snapshot Closing terkunci tidak valid.');
+    return { ...snapshot, closing: { ...snapshot.closing, status: 'LOCKED' }, period, frozenSnapshot: true };
+  }
   const closing = period || { status: 'DRAFT', mode: 'MANUAL', manual_revenue: 0, manual_expense: 0, manual_carry: 0, manual_salary_agung: 500000, manual_salary_padilah: 1000000, notes: '' };
   const selectedMode = String(closing.mode || 'MANUAL').toUpperCase() === 'AUTO' ? 'auto' : 'manual';
 
@@ -113,8 +119,8 @@ async function loadClosing(start, end) {
   // /closing/sync menarik transaksi Data Kas APPROVED ke closing_entries (masih
   // bisa diedit/ditambah manual di atasnya). Baik manual maupun sync selalu
   // masuk lewat closing_entries, jadi kalkulasi di bawah ini sama untuk keduanya.
-  const [adjustments] = period ? await db.execute('SELECT * FROM closing_adjustments WHERE closing_id=? ORDER BY id', [period.id]) : [[]];
-  const [allEntries] = period ? await db.execute('SELECT * FROM closing_entries WHERE closing_id=? ORDER BY entry_date DESC,id DESC', [period.id]) : [[]];
+  const [adjustments] = period ? await queryDb.execute('SELECT * FROM closing_adjustments WHERE closing_id=? ORDER BY id', [period.id]) : [[]];
+  const [allEntries] = period ? await queryDb.execute('SELECT * FROM closing_entries WHERE closing_id=? ORDER BY entry_date DESC,id DESC', [period.id]) : [[]];
   // Baris cash_sync yang "dihapus" dari Closing ditandai excluded_at (soft-exclude,
   // lihat /entries/:id/delete) bukan benar-benar DELETE, supaya cash_transaction_id-nya
   // tetap dianggap "sudah pernah ditarik" dan tidak tertarik ulang membingungkan pada
@@ -476,14 +482,14 @@ router.post('/period-lock', async (req, res, next) => {
     conn=await db.getConnection();await conn.beginTransaction();
     const period=await ensureDraftPeriod(conn,start,end,req.session.user.id);
     // Financial integrity: an incomplete AUTO reconciliation must never be frozen.
-    // A user-facing force_lock toggle is not an acceptable bypass for financial consistency.
+    // Do not allow bypassing the financial reconciliation guard when freezing a period.
     if (String(period.mode||'MANUAL').toUpperCase()==='AUTO') {
       const pending = await countPendingCashData({ db: conn, closingId: period.id, start, end });
       if (pending.pendingApproval > 0 || pending.needsSync > 0) {
         throw new Error(`Closing belum dapat dikunci: ${pending.pendingApproval} kas menunggu approval, ${pending.unsyncedApproved} kas belum sinkron, ${pending.staleSynced} kas berubah. Selesaikan approval dan sinkronisasi terlebih dahulu.`);
       }
     }
-    const data=await loadClosing(start,end);
+    const data=await loadClosing(start,end,conn);
     // Guard audit: when detailed rows exist, summary must reconcile exactly to
     // the rows that will be frozen in the Closing snapshot.
     if (data.lineItems.length) {

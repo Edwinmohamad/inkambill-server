@@ -187,10 +187,12 @@ function buildClosingCalculation({ payments = [], expenses = [], heldCash = [], 
     return money(value);
   };
 
+  const cdsJon=money(blocks.krwclm.profit*.25), cdsBopung=money(blocks.krwclm.profit*.25);
+  const cdsEdwin=money(blocks.krwclm.profit)-cdsJon-cdsBopung;
   blocks.krwclm.shares = [
-    { name: 'Edwin', percent: 50, gross: money(blocks.krwclm.profit * .50), amount: adjusted('Edwin', 'krwclm', blocks.krwclm.profit * .50, true) },
-    { name: 'Jon', percent: 25, gross: money(blocks.krwclm.profit * .25), amount: adjusted('Jon', 'krwclm', blocks.krwclm.profit * .25, true) },
-    { name: 'Bopung', percent: 25, gross: money(blocks.krwclm.profit * .25), amount: adjusted('Bopung', 'krwclm', blocks.krwclm.profit * .25, true) }
+    { name: 'Edwin', percent: 50, gross: cdsEdwin, amount: adjusted('Edwin', 'krwclm', cdsEdwin, true) },
+    { name: 'Jon', percent: 25, gross: cdsJon, amount: adjusted('Jon', 'krwclm', cdsJon, true) },
+    { name: 'Bopung', percent: 25, gross: cdsBopung, amount: adjusted('Bopung', 'krwclm', cdsBopung, true) }
   ];
 
   const pool = blocks.kbg.profit * .65;
@@ -208,11 +210,15 @@ function buildClosingCalculation({ payments = [], expenses = [], heldCash = [], 
     poolName: 'INKAMNET (internal)', poolPercent: 65, poolAmount: money(pool),
     internalPercent, blendedPercent, internalSplit
   });
+  const kbgAli=money(blocks.kbg.profit*.35);
+  const kbgPool=money(blocks.kbg.profit)-kbgAli;
+  const kbgJon=money(kbgPool*.1814),kbgBopung=money(kbgPool*.1814);
+  const kbgEdwin=kbgPool-kbgJon-kbgBopung;
   blocks.kbg.shares = [
-    { name: 'Edwin', percent: 41.418, gross: money(pool * .6372), amount: adjusted('Edwin', 'kbg', pool * .6372), breakdown: kbgBreakdown(63.72, 41.418) },
-    { name: 'Jon', percent: 11.791, displayPercent: 18.14, gross: money(pool * .1814), amount: adjusted('Jon', 'kbg', pool * .1814), breakdown: kbgBreakdown(18.14, 11.791) },
-    { name: 'Bopung', percent: 11.791, displayPercent: 18.14, gross: money(pool * .1814), amount: adjusted('Bopung', 'kbg', pool * .1814), breakdown: kbgBreakdown(18.14, 11.791) },
-    { name: 'Mang Ali', percent: 35, gross: money(blocks.kbg.profit * .35), amount: adjusted('Mang Ali', 'kbg', blocks.kbg.profit * .35) }
+    { name: 'Edwin', percent: 41.418, gross: kbgEdwin, amount: adjusted('Edwin', 'kbg', kbgEdwin), breakdown: kbgBreakdown(63.72, 41.418) },
+    { name: 'Jon', percent: 11.791, displayPercent: 18.14, gross: kbgJon, amount: adjusted('Jon', 'kbg', kbgJon), breakdown: kbgBreakdown(18.14, 11.791) },
+    { name: 'Bopung', percent: 11.791, displayPercent: 18.14, gross: kbgBopung, amount: adjusted('Bopung', 'kbg', kbgBopung), breakdown: kbgBreakdown(18.14, 11.791) },
+    { name: 'Mang Ali', percent: 35, gross: kbgAli, amount: adjusted('Mang Ali', 'kbg', kbgAli) }
   ];
 
   return {

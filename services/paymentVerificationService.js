@@ -69,7 +69,10 @@ async function billingCategory(conn,name='Pendapatan Billing'){
 async function postCashTransaction(conn,{paymentId,invoiceId,amount,reference,bookDate,categoryName='Pendapatan Billing',prefix='Pembayaran',actorUserId=null}){
   const meta=await paymentCashMeta(conn,invoiceId);
   if(!meta)throw new Error('Data faktur/pelanggan untuk jurnal kas tidak ditemukan. Transaksi dibatalkan.');
-  const ledgerDate=invoicePeriodBookDate({periodMonth:meta.period_month,periodYear:meta.period_year,referenceDate:bookDate});
+  // Cash-basis ledger: received money belongs to its receipt/settlement booking date.
+  // The invoice's service period remains in invoice metadata; it is not the cash receipt period.
+  const ledgerDate=isoDate(bookDate);
+  if(!ledgerDate)throw new Error('Tanggal penerimaan kas tidak valid.');
   await assertDateOpen(conn,ledgerDate);
   const isPsb=Number(meta.is_psb)===1;
   const incomeCategory=isPsb?'Pendapatan Pemasangan Baru':categoryName;
@@ -100,33 +103,10 @@ async function postCashTransaction(conn,{paymentId,invoiceId,amount,reference,bo
 // Koreksi data lama yang telanjur memakai bulan bayar/setor. Periode Closing yang
 // sudah LOCKED tidak disentuh; operator harus membukanya dahulu agar audit trail
 // dan angka Closing yang telah dikunci tidak berubah diam-diam.
+// Historical journals are intentionally not re-dated automatically.
+// Finance staff must review and approve any past-period reclassification.
 async function reconcilePaymentCashTransactionPeriods(){
-  const conn=await db.getConnection();let corrected=0,locked=0;
-  try{
-    await conn.beginTransaction();
-    const [rows]=await conn.execute(`SELECT ct.id,ct.category_id,ct.transaction_date,p.verified_by,p.settled_by,
-      i.period_month,i.period_year
-      FROM cash_transactions ct
-      JOIN payments p ON ct.source_type='payment' AND p.id=ct.source_id
-      JOIN invoices i ON i.id=p.invoice_id
-      WHERE (MONTH(ct.transaction_date)<>i.period_month OR YEAR(ct.transaction_date)<>i.period_year)
-      ORDER BY ct.id FOR UPDATE`);
-    for(const row of rows){
-      const oldDate=isoDate(row.transaction_date);
-      const targetDate=invoicePeriodBookDate({periodMonth:row.period_month,periodYear:row.period_year,referenceDate:oldDate});
-      const oldLock=await lockedPeriodForDateSafe(conn,oldDate);
-      const targetLock=await lockedPeriodForDateSafe(conn,targetDate);
-      if(oldLock||targetLock){locked++;continue;}
-      await conn.execute(`DELETE ce FROM closing_entries ce JOIN closing_periods cp ON cp.id=ce.closing_id
-        WHERE ce.cash_transaction_id=? AND ce.source_type='cash_sync' AND cp.status='DRAFT'`,[row.id]);
-      await conn.execute(`UPDATE cash_transactions SET transaction_date=? WHERE id=?`,[targetDate,row.id]);
-      await assignCashTransactionCode(conn,row.id,row.category_id,new Date(`${targetDate}T12:00:00`));
-      await syncCashTransactionsIntoDraftAutoClosing({conn,cashTransactionIds:[row.id],userId:row.settled_by||row.verified_by||null});
-      await financialAudit({conn,userId:null,action:'repair_invoice_period',entityType:'cash_transaction',entityId:row.id,before:{transaction_date:oldDate},after:{transaction_date:targetDate},reason:'Koreksi otomatis jurnal pembayaran agar mengikuti bulan tagihan',ip:null});
-      corrected++;
-    }
-    await conn.commit();return {corrected,locked};
-  }catch(error){await conn.rollback();throw error;}finally{conn.release();}
+  return { corrected: 0, locked: 0, skipped: true, reason: 'Historical backdating disabled; manual audited reconciliation required' };
 }
 
 async function lockedPeriodForDateSafe(conn,date){

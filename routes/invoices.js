@@ -599,7 +599,11 @@ router.post('/:id/reset-unpaid',requireAdmin,async(req,res)=>{
     const [invoiceRows]=await conn.execute(`SELECT id,invoice_number,period_year,period_month,total,paid_amount,outstanding,status,due_date FROM invoices WHERE id=? FOR UPDATE`,[req.params.id]);
     invoice=invoiceRows[0];
     if(!invoice)throw new Error('Tagihan tidak ditemukan.');
-    const [payments]=await conn.execute(`SELECT id,amount,status,method,reference,notes,paid_at,booked_at,settled_at FROM payments WHERE invoice_id=? AND status IN ('confirmed','pending') FOR UPDATE`,[invoice.id]);
+    const [payments]=await conn.execute(`SELECT id,amount,status,method,settlement_status,settlement_id,reference,notes,paid_at,booked_at,settled_at FROM payments WHERE invoice_id=? AND status IN ('confirmed','pending') FOR UPDATE`,[invoice.id]);
+    // Reversing collected cash without settling the collector/batch is not a valid accounting operation.
+    if(payments.some(p=>p.method==='cash'&&p.status==='confirmed')){
+      throw new Error('Pembayaran cash telah disetujui. Batalkan dan rekonsiliasi penerimaan/setoran melalui modul Cash terlebih dahulu; reset langsung akan menyebabkan saldo collector atau batch setoran tidak cocok.');
+    }
     const ids=payments.map(x=>Number(x.id));
     reversedTotal=payments.filter(x=>x.status==='confirmed').reduce((a,x)=>a+Number(x.amount||0),0);
     reversedCount=payments.length;
@@ -609,11 +613,17 @@ router.post('/:id/reset-unpaid',requireAdmin,async(req,res)=>{
       // pendapatan billing biasa serta jurnal pemasangan baru/komisi yang memakai payment id sama.
       const [cashRows]=await conn.execute(`SELECT id,transaction_date FROM cash_transactions WHERE source_id IN (${marks}) AND source_type IN ('payment','install_income','install_commission_technician','install_commission_sales','payment_commission_technician','payment_commission_sales') FOR UPDATE`,ids);
       for(const row of cashRows)await assertDateOpen(conn,row.transaction_date);
+      // Do not retain stale draft Closing lines pointing to deleted payment journals.
+      for(const row of cashRows){
+        await conn.execute(`DELETE ce FROM closing_entries ce JOIN closing_periods cp ON cp.id=ce.closing_id WHERE ce.cash_transaction_id=? AND cp.status='DRAFT' AND ce.source_type='cash_sync'`,[row.id]);
+      }
       await conn.execute(`DELETE FROM cash_transactions WHERE source_id IN (${marks}) AND source_type IN ('payment','install_income','install_commission_technician','install_commission_sales','payment_commission_technician','payment_commission_sales')`,ids);
       const correction=`[KOREKSI ADMIN ${new Date().toISOString().slice(0,19).replace('T',' ')}] Pembayaran dibatalkan agar tagihan kembali belum lunas.`;
       await conn.execute(`UPDATE payments SET status='failed',settlement_status='not_applicable',notes=CONCAT_WS('\\n',NULLIF(notes,''),?) WHERE id IN (${marks})`,[correction,...ids]);
     }
     await conn.execute(`UPDATE invoices SET paid_amount=0,outstanding=total,status=CASE WHEN due_date<CURDATE() THEN 'overdue' ELSE 'unpaid' END WHERE id=?`,[invoice.id]);
+    const { financialAudit } = require('../services/financialControlService');
+    await financialAudit({conn,userId:req.session.user.id,action:'reset_invoice_unpaid',entityType:'invoice',entityId:invoice.id,before:{status:invoice.status,paid_amount:invoice.paid_amount},after:{status:'unpaid',reversedTotal,reversedCount},reason:String(req.body.reason||'Koreksi pembayaran invoice melalui reset-unpaid'),ip:req.ip});
     await conn.commit();
     await audit({userId:req.session.user.id,action:'financial_correction',entityType:'invoice',entityId:invoice.id,description:`Koreksi tagihan ${invoice.invoice_number} menjadi belum lunas. ${reversedCount} transaksi pembayaran dibatalkan, pendapatan terkonfirmasi dikurangi Rp${reversedTotal}. Nominal tagihan tetap Rp${Number(invoice.total||0)}.`,ip:req.ip});
     req.session.flash={type:'success',message:`Tagihan ${invoice.invoice_number} dikoreksi menjadi belum lunas. ${reversedCount} transaksi pembayaran terkait dibatalkan dan pendapatan otomatis dikurangi Rp${reversedTotal.toLocaleString('id-ID')}.`};
