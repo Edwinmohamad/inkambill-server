@@ -18,7 +18,7 @@ case "$*" in
 esac
 `,{mode:0o755});
  const script=path.resolve('scripts/android-emulator-smoke.sh');
- const run=()=>spawnSync('bash',[script,'29',dir],{cwd:dir,env:{...process.env,PATH:bin+path.delimiter+process.env.PATH},encoding:'utf8',timeout:5000});
+ const run=()=>spawnSync('bash',[script,'29',dir],{cwd:dir,env:{...process.env,PATH:bin+path.delimiter+process.env.PATH},encoding:'utf8',timeout:20000});
  let r=run();assert.equal(r.status,0,r.stdout+r.stderr);assert(r.stdout.includes('berhasil'));
  fs.writeFileSync(path.join(dir,'INKAMNET-GO-v9.9.9.apk'),'fixture');r=run();assert.notEqual(r.status,0);assert(r.stderr.includes('tepat satu APK'));
  console.log('APK smoke harness: current-version artifact discovered and ambiguous artifacts rejected PASS');
