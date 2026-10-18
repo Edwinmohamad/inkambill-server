@@ -24,6 +24,9 @@ const CHECKS = {
     JOIN payments p ON ct.source_type='payment' AND ct.source_id=p.id
     WHERE COALESCE(ct.approval_status,'APPROVED')='APPROVED'
       AND (p.status<>'confirmed' OR (p.method='cash' AND p.settlement_status<>'settled'))`,
+  orphanApprovedCash: `SELECT COUNT(*) total FROM cash_transactions ct LEFT JOIN payments p ON ct.source_type='payment' AND ct.source_id=p.id WHERE ct.source_type='payment' AND p.id IS NULL AND COALESCE(ct.approval_status,'APPROVED')='APPROVED'`,
+  journalAmountMismatch: `SELECT COUNT(*) total FROM cash_transactions ct JOIN payments p ON ct.source_type='payment' AND ct.source_id=p.id WHERE COALESCE(ct.approval_status,'APPROVED')='APPROVED' AND ABS(ct.amount-p.amount)>0.01`,
+  pendingPaymentJournal: `SELECT COUNT(*) total FROM payments p JOIN cash_transactions ct ON ct.source_type='payment' AND ct.source_id=p.id WHERE p.status='pending' AND COALESCE(ct.approval_status,'APPROVED')='APPROVED'`,
   debtOverpaid: `SELECT COUNT(*) total FROM finance_debts d
     LEFT JOIN (SELECT debt_id,SUM(amount) paid FROM finance_debt_payments GROUP BY debt_id) p ON p.debt_id=d.id
     WHERE COALESCE(p.paid,0)>d.principal_amount+0.01`
