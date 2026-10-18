@@ -1,5 +1,6 @@
 <link rel="stylesheet" href="/css/network-infrastructure.css">
-<section class="noc-shell" data-wall="<%= wallMode?1:0 %>" data-initial='<%- safeJson(initial) %>'>
+<script id="infraInitial" type="application/json"><%- safeJson(initial) %></script>
+<section class="noc-shell" data-wall="<%= wallMode?1:0 %>">
 <header class="noc-head"><div><div class="noc-kicker">INKAMNET · NETWORK OPERATIONS CENTER</div><h1><%= wallMode?'NOC Wall':'Network Infrastructure' %></h1><p>Live topology, customer experience, infrastructure health, configuration, dan history.</p></div><div class="noc-actions"><span class="btn-tech"><i class="status-dot online"></i> <span data-updated>LIVE</span></span><% if(!wallMode){ %><a class="btn-tech primary" href="/network/infrastructure/wall" target="_blank"><i class="bi bi-display"></i>NOC Wall</a><% }else{ %><button class="btn-tech" data-fullscreen><i class="bi bi-arrows-fullscreen"></i>Fullscreen</button><% } %></div></header>
 <div class="noc-tabs wall-hide"><button class="noc-tab active" data-tab="live">LIVE</button><button class="noc-tab" data-tab="physical">PHYSICAL</button><button class="noc-tab" data-tab="logical">LOGICAL</button><button class="noc-tab" data-tab="experience">EXPERIENCE</button><button class="noc-tab" data-tab="config">CONFIG</button><button class="noc-tab" data-tab="history">HISTORY</button></div>
 <section class="noc-panel active" data-panel="live">
