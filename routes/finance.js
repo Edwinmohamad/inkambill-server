@@ -9,7 +9,7 @@ const { assignCashTransactionCode,normalizeCategoryCode,approveCashTransaction,r
 const { formatCashExpenseName }=require('../services/cashNamingService');
 const { isVendorCashCategory }=require('../services/cashCategoryService');
 const { audit }=require('../services/auditService');
-const { assertDateOpen }=require('../services/financialControlService');
+const { assertDateOpen, financialAudit }=require('../services/financialControlService');
 const router=express.Router();
 const MONTH_NAMES_ID=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 // v1.25.5 (susulan) — "Nominal Tetap" & "Tanggal Jatuh Tempo" only ever mean something when a category is
@@ -348,15 +348,15 @@ router.post('/cash/:id/force-delete',requireMasterAdmin,async(req,res)=>{
   const conn=await db.getConnection();
   try{
     await conn.beginTransaction();
-    const [rows]=await conn.execute(`SELECT id,proof_path,name,transaction_date,source_type,COALESCE(approval_status,'APPROVED') approval_status FROM cash_transactions WHERE id=? FOR UPDATE`,[req.params.id]);
+    const [rows]=await conn.execute(`SELECT *,COALESCE(approval_status,'APPROVED') approval_status FROM cash_transactions WHERE id=? FOR UPDATE`,[req.params.id]);
     const tx=rows[0];if(!tx)throw new Error('Transaksi kas tidak ditemukan.');
     await assertDateOpen(conn,tx.transaction_date);
     if(tx.source_type && tx.source_type!=='manual')throw new Error('Jurnal otomatis/payment-linked tidak boleh dihapus dari Data Kas. Batalkan/koreksi dari Payment atau Tagihan.');
-    if(tx.approval_status==='APPROVED')throw new Error('Jurnal APPROVED tidak boleh dihapus permanen. Gunakan koreksi/reversal pada periode yang masih terbuka.');
+    await financialAudit({conn,userId:req.session.user.id,action:'force_delete',entityType:'cash_transaction',entityId:tx.id,before:tx,after:null,reason:'Hapus Paksa oleh Master Admin dari Data Kas',ip:req.ip});
     await conn.execute(`DELETE FROM cash_transactions WHERE id=?`,[tx.id]);
     await conn.commit();
     if(tx.proof_path)await removeCashProof(tx.proof_path);
-    await audit({userId:req.session.user.id,action:'force_delete',entityType:'cash_transaction',entityId:tx.id,description:`Hapus permanen transaksi non-approved ${tx.name}`,ip:req.ip});
+    await audit({userId:req.session.user.id,action:'force_delete',entityType:'cash_transaction',entityId:tx.id,description:`Hapus paksa transaksi ${tx.approval_status} ${tx.name}`,ip:req.ip});
     req.session.flash={type:'success',message:`Transaksi ${tx.name} dihapus.`};
   }catch(e){try{await conn.rollback();}catch(_){}req.session.flash={type:'danger',message:`Hapus gagal: ${e.message}`};}finally{conn.release();}
   res.redirect(returnCtx);

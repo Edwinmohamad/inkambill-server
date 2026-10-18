@@ -11,8 +11,8 @@ const fakeDb={
     ]);
     if(sql.includes('NOT EXISTS (SELECT 1 FROM payments pp'))return result([{cycle:15,customer_id:1,customer_name:'Belum Bayar',customer_code:'KRW-15-001',site_code:'KRW',outstanding:170000,days_late:2}]);
     if(sql.includes("WHERE p.status='pending'")&&sql.includes('GROUP BY i.id'))return result([{cycle:30,customer_id:2,customer_name:'Pending',customer_code:'KRW-30-001',site_code:'KRW',pending_amount:240000}]);
-    if(sql.includes('DATE_SUB(CURDATE(),INTERVAL 1 DAY)'))return result([{amount:500000}]);
-    if(sql.includes("DATE(CASE WHEN p.method='cash' THEN p.settled_at ELSE p.verified_at END)=CURDATE()"))return result([{tx_count:3,amount:680000,transfer_amount:410000,qris_amount:100000,cash_amount:170000}]);
+    if(sql.includes('DATE_SUB(?,INTERVAL 1 DAY)'))return result([{amount:500000}]);
+    if(sql.includes("DATE(CASE WHEN p.method='cash' THEN p.settled_at ELSE p.verified_at END)=?"))return result([{tx_count:3,amount:680000,transfer_amount:410000,qris_amount:100000,cash_amount:170000}]);
     if(sql.includes("p.status='pending' AND i.period_year=?"))return result([{tx_count:2,amount:410000}]);
     if(sql.includes('ORDER BY recognized_at DESC'))return result([{payment_id:9,amount:170000,method:'transfer',recognized_at:'2026-09-30 10:00:00',cycle:15,customer_id:1,customer_name:'Budi',site_code:'KRW'}]);
     if(sql.includes('GROUP BY DAY(CASE WHEN p.method'))return result([{day_no:15,tx_count:2,amount:340000},{day_no:30,tx_count:3,amount:680000}]);
