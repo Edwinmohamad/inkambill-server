@@ -1,0 +1,10 @@
+const assert=require('node:assert/strict'),fs=require('node:fs');
+const inv=fs.readFileSync('routes/invoices.js','utf8'),pay=fs.readFileSync('routes/payments.js','utf8');
+const reset=inv.slice(inv.indexOf("router.post('/:id/reset-unpaid'"),inv.indexOf("router.post('/:id/cancel'"));
+assert.match(reset,/payments.some\(p=>p.status==='confirmed'\)/,'confirmed bank and cash receipts must never be erased by reset');
+assert.match(reset,/DELETE ce FROM closing_entries/,'draft closing rows must be reconciled');
+const method=pay.slice(pay.indexOf("router.post('/:id/method-to-cash'"),pay.indexOf("router.post('/:id/proof'"));
+assert.match(method,/cp.status='LOCKED'/);
+const cancel=pay.slice(pay.indexOf('async function cancelSettledPayment'),pay.indexOf('function cancelReason'));
+assert.match(cancel,/cp.status='LOCKED'/);
+console.log('PASS reversal and locked closing guards (static)');
