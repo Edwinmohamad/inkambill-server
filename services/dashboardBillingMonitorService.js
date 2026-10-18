@@ -254,4 +254,17 @@ async function loadDashboardBillingMonitor({month,year,siteId=null,cycle='all',t
   };
 }
 
-module.exports={loadDashboardBillingMonitor,normalizeCycle,normalizeTrendMonths,pct,paymentTimingLabel,buildProgressSeries,buildRevenueSeries,buildTrend,RECOGNIZED_AT_EXPR,CASH_POSTED_EXISTS};
+// Keep the dashboard renderable if the billing monitor's optional queries fail.
+function emptyBillingMonitor({year,month,cycle='all',trendMonths=6,incomeDate='',now=new Date()}){
+  const cycles={'15':emptyCycle(15),'30':emptyCycle(30)};
+  const blankTiming=()=>({early:0,on_time:0,h1_3:0,late:0,total:0});
+  return {unavailable:true,filters:{cycle:normalizeCycle(cycle),trendMonths:normalizeTrendMonths(trendMonths),incomeDate},
+    today:{amount:0,count:0,transfer:0,qris:0,cash:0,yesterdayAmount:0,deltaPct:null,pendingCount:0,pendingAmount:0},
+    cycles,unpaid:{'15':[],'30':[]},pending:{'15':[],'30':[]},recent:[],
+    progress:buildProgressSeries({year,month,cycles,nominalEvents:[],completionEvents:[],now}),
+    trend:buildTrend({year,month,trendMonths:normalizeTrendMonths(trendMonths),rows:[]}),
+    revenueSeries:buildRevenueSeries({year,month,rows:[]}),
+    timing:{...blankTiming(),cycles:{'15':blankTiming(),'30':blankTiming()}}};
+}
+
+module.exports={emptyBillingMonitor,loadDashboardBillingMonitor,normalizeCycle,normalizeTrendMonths,pct,paymentTimingLabel,buildProgressSeries,buildRevenueSeries,buildTrend,RECOGNIZED_AT_EXPR,CASH_POSTED_EXISTS};

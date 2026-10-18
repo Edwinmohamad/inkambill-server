@@ -3,7 +3,7 @@ const db = require('../config/db');
 const { requirePermission } = require('../middleware/auth');
 const { getServerResourceSnapshot } = require('../services/serverMonitorService');
 const { getGatewayStatus, getQueueStats } = require('../services/whatsappGatewayService');
-const { loadDashboardBillingMonitor, normalizeCycle, normalizeTrendMonths } = require('../services/dashboardBillingMonitorService');
+const { emptyBillingMonitor, loadDashboardBillingMonitor, normalizeCycle, normalizeTrendMonths } = require('../services/dashboardBillingMonitorService');
 const router = express.Router();
 
 // v1.21.0 — Dashboard Section 1, item 1: countdown to the next billing "closing" (isolir) date, derived
@@ -103,7 +103,11 @@ router.get('/', async (req, res) => {
   const offSite=offSiteCode?siteOptions.find(s=>s.code===offSiteCode):null,offScope=offSite?` AND c.site_id=?`:'',offParams=offSite?[offSite.id]:[];
   // Start the billing monitor queries immediately; the service runs its independent reads in parallel.
   // We await it near render time so existing dashboard queries can continue unchanged.
-  const billingMonitorPromise=loadDashboardBillingMonitor({month:selectedMonth,year:selectedYear,siteId,cycle:selectedCycle,trendMonths,incomeDate:selectedIncomeDate,now});
+  const billingOptions={month:selectedMonth,year:selectedYear,siteId,cycle:selectedCycle,trendMonths,incomeDate:selectedIncomeDate,now};
+  const billingMonitorPromise=loadDashboardBillingMonitor(billingOptions).catch(error=>{
+    console.error('Ringkasan billing dashboard gagal:',error.message);
+    return emptyBillingMonitor(billingOptions);
+  });
 
   const [[customerStats]] = await db.execute(`SELECT
     COUNT(*) total,

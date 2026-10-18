@@ -31,6 +31,16 @@ jobs:
           fi
           git reset --hard origin/main
 
+      - name: Validate candidate before production restart
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /opt/inkambilling
+          CANDIDATE_IMAGE="inkambilling-validation:${{ github.sha }}"
+          trap 'docker image rm "$CANDIDATE_IMAGE" >/dev/null 2>&1 || true' EXIT
+          docker build -t "$CANDIDATE_IMAGE" .
+          docker run --rm --network none "$CANDIDATE_IMAGE" npm run test:audit
+
       - name: Backup production database
         shell: bash
         run: |

@@ -68,6 +68,6 @@ for (const r of ["'/api/sync/preview'", "'/api/sync/commit'", "'/api/secrets/:id
 ok(routes.includes('requireNetworkControl') && read('middleware/auth.js').includes("'network_control'"), 'RBAC kontrol jaringan');
 ok(control.includes('dropActive') && control.includes('caller-id') && control.includes('audited('), 'aksi drop sesi / lock mac / audit');
 ok(read('routes/n8n.js').includes("'/nms/ppp-event'"), 'webhook n8n PPP event');
-ok(read('views/nms/_bar.ejs').includes('ROUTER UNREACHABLE / OFFLINE (SHOWING CACHED DATA)') && read('views/nms/_bar.ejs').includes('nmsSiteSelect'), 'offline badge + site filter');
-ok(read('public/css/nms-noc.css').includes('#0B0F19') && read('public/css/nms-noc.css').includes('#10B981'), 'NOC palette');
+ok(read('views/nms/_bar.ejs').includes('id="nmsOfflineBadge"') && read('views/nms/_bar.ejs').includes('cache terakhir') && read('views/nms/_bar.ejs').includes('nmsSiteSelect'), 'offline badge + site filter');
+ok(read('public/css/nms-noc.css').includes('--x-bg:var(--bg') && read('public/css/nms-noc.css').includes('--x-green:'), 'NOC palette');
 console.log(`NMS v2 test OK: ${checks} checks.`);
