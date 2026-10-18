@@ -43,7 +43,7 @@ async function customerReport(f){
 }
 
 async function billingReport(f){
-  const where=[`c.customer_status='active'`,'c.archived_at IS NULL','i.period_month=?','i.period_year=?'],p=[f.month,f.year];
+  const where=['i.period_month=?','i.period_year=?'],p=[f.month,f.year];
   if(f.site){where.push('s.code=?');p.push(f.site);}
   if(f.cluster){where.push('c.cluster_id=?');p.push(Number(f.cluster));}
   if(f.package){where.push('pk.id=?');p.push(f.package);}
@@ -60,7 +60,7 @@ async function cashReport(f){
   const where=["ct.transaction_date BETWEEN ? AND ?","COALESCE(ct.approval_status,'APPROVED')='APPROVED'"],p=[f.from,f.to];
   where.push("(COALESCE(ct.source_type,'manual')<>'payment' OR (p.status='confirmed' AND (p.method<>'cash' OR p.settlement_status='settled')))");
   if(f.site){where.push('s.code=?');p.push(f.site);}
-  if(!f.site)where.push('ct.internal_transfer_key IS NULL');
+  where.push('ct.internal_transfer_key IS NULL');
   if(f.category){where.push('cc.id=?');p.push(f.category);}
   if(f.flow_type){where.push('cc.type=?');p.push(f.flow_type);}
   if(f.method){where.push('p.method=?');p.push(f.method);}
