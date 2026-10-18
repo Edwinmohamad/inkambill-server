@@ -1,0 +1,11 @@
+const assert=require('node:assert/strict'),fs=require('node:fs');
+const customers=fs.readFileSync('routes/customers.js','utf8');
+const service=fs.readFileSync('services/paymentVerificationService.js','utf8');
+const bulk=customers.slice(customers.indexOf("if(action==='force_delete')"),customers.indexOf("router.get('/:id/edit'"));
+const single=customers.slice(customers.indexOf("router.post('/:id/force-delete'"),customers.indexOf("router.post('/:id/whatsapp-status'"));
+assert.match(bulk,/Number\(history\.n\)>0/);
+assert.match(single,/Number\(invCount\.n\)>0/);
+assert.doesNotMatch(bulk,/DELETE FROM cash_transactions/);
+assert.doesNotMatch(single,/DELETE FROM cash_transactions/);
+assert.match(service,/Math\.abs\(Number\(exists\[0\]\.amount\)-Number\(amount\)\)>0\.01/);
+console.log('Financial history protection: PASS (static contract)');
