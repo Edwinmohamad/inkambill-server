@@ -136,6 +136,7 @@ router.post('/',requireAdmin,async(req,res)=>{
   const ids=selectedInvoiceIds(req.body);
   if(!ids.length)throw new Error('Pilih minimal satu faktur yang akan dibayar.');
   const {method,notes,collector_user_id}=req.body;
+  if(!['transfer','cash'].includes(method))throw new Error('Metode pembayaran baru hanya Cash atau Transfer.');
   const normalizedMethod=['transfer','cash'].includes(method)?method:'transfer';
   const paidDate=isoDate(req.body.paid_at)||isoDate(new Date());
   const requestKey=String(req.body.idempotency_key||crypto.randomUUID()).slice(0,150);
@@ -144,7 +145,7 @@ router.post('/',requireAdmin,async(req,res)=>{
     const [bankRows]=await db.execute(`SELECT id,bank_name,account_name,account_number FROM banks WHERE id=? AND is_active=1 AND type IN ('bank_transfer','virtual_account','other') LIMIT 1`,[req.body.bank_id||0]);
     if(!bankRows.length)throw new Error('Pilih bank tujuan yang aktif dari Pengaturan → Bank.');
     const bank=bankRows[0];bankName=`${bank.bank_name} · ${bank.account_number} · ${bank.account_name}`;
-  }else if(normalizedMethod==='qris')bankName='QRIS';
+  }
   const isAdmin=isAdminRole(req.session.user.role);
   const status='pending';
   const settlement='not_applicable';
