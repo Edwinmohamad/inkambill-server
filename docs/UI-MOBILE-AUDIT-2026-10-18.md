@@ -13,8 +13,9 @@ Base: 8405adc32d53fe48f1ee4d9ceaab269c784a1296.
 - Invalid or absent dates render a placeholder instead of throwing during template rendering. Pagination rejects oversized unsafe integer input.
 - Login copy clarifies that the checkbox remembers the username, removes a stale version label, and no longer claims all integrations are healthy without checking them.
 - Android 1.3.3 (code 8) distinguishes HTTP server failure from network loss and provides a home action on the recovery screen.
+- Emulator tests discover the built APK filename dynamically instead of retaining an older hardcoded version.
 - PR validation runs the web suite and the Android build/lint/emulator workflow. APK publication is limited to main so PR testing cannot publish an unmerged APK.
 
 ## Evidence and limits
 
-52/52 local test files pass, including syntax checks, EJS fixture rendering, mocked HTTP contracts, extracted production JS handlers and simulated APK history events. The production login screen was opened and visually inspected. Authenticated production desktop/mobile workflows could not be exercised because the browser is not signed in. No customer financial data was mutated. Android compiler/lint/emulator results are recorded in GitHub Actions; source validation alone does not prove installability or hardware compatibility.
+53/53 local test files pass, including syntax checks, EJS fixture rendering, mocked HTTP contracts, extracted production JS handlers and simulated APK history events. The production login screen was opened and visually inspected. Authenticated production desktop/mobile workflows could not be exercised because the browser is not signed in. No customer financial data was mutated. Android compiler/lint/emulator results are recorded in GitHub Actions; source validation alone does not prove installability or hardware compatibility.

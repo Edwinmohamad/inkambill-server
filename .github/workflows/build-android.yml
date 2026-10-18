@@ -7,11 +7,15 @@ on:
     paths:
       - "android/**"
       - ".github/workflows/build-android.yml"
+      - "scripts/android-*.sh"
+      - "scripts/test-android-*.js"
   push:
     branches: [main]
     paths:
       - "android/**"
       - ".github/workflows/build-android.yml"
+      - "scripts/android-*.sh"
+      - "scripts/test-android-*.js"
 
 permissions:
   contents: read
