@@ -6,6 +6,8 @@ const { allSnapshots, saveSecret, syncSecret, removeSecret, disconnectSecret, cu
 const { audit } = require('../services/auditService');
 const { proxyInfrastructure } = require('../services/infrastructureProxy');
 const { captureAllNmsTelemetry, getTrafficTrend, getSessionHistory, runRouterBackup, backupAllRouters } = require('../services/nmsTelemetryService');
+const { overview: infrastructureOverview, probeTargets, runExperienceProbes } = require('../services/networkInfrastructureService');
+const { encrypt } = require('../services/cryptoService');
 const router = express.Router();
 
 const INFRA_GROUPS=[
@@ -25,8 +27,49 @@ const INFRA_GROUPS=[
 function allInfrastructureTools(){return INFRA_GROUPS.flatMap(group=>group.tools.map(tool=>({...tool,groupKey:group.key,groupName:group.name})));}
 function infrastructureTool(key){return allInfrastructureTools().find(tool=>tool.key===String(key||''));}
 
-router.get('/infrastructure',(req,res)=>{
-  res.render('network/infrastructure',{title:'Network Infrastructure'});
+router.get('/infrastructure',async(req,res)=>{
+  const initial=await infrastructureOverview().catch(()=>({generatedAt:new Date().toISOString(),health:0,summary:{},sites:[],routers:[],probes:[],alerts:[],events:[],server:{}}));
+  const targets=await probeTargets().catch(()=>[]);
+  res.render('network/infrastructure',{title:'Network Infrastructure',initial,targets,wallMode:false});
+});
+router.get('/infrastructure/wall',async(req,res)=>{
+  const initial=await infrastructureOverview().catch(()=>({generatedAt:new Date().toISOString(),health:0,summary:{},sites:[],routers:[],probes:[],alerts:[],events:[],server:{}}));
+  res.render('network/infrastructure',{title:'INKAMNET NOC Wall',initial,targets:[],wallMode:true});
+});
+router.get('/api/infrastructure/live',async(req,res)=>{
+  try{res.set('Cache-Control','no-store').json({ok:true,...await infrastructureOverview()});}
+  catch(error){res.status(502).json({ok:false,error:error.message});}
+});
+router.post('/api/infrastructure/probe/run',requireAdmin,async(req,res)=>{
+  try{res.json({ok:true,result:await runExperienceProbes()});}
+  catch(error){res.status(502).json({ok:false,error:error.message});}
+});
+router.post('/api/infrastructure/probes',requireAdmin,async(req,res)=>{
+  try{
+    const id=Number(req.body.id||0),name=String(req.body.name||'').trim().slice(0,80),category=String(req.body.category||'custom'),probeType=String(req.body.probe_type||'icmp'),target=String(req.body.target||'').trim().slice(0,255);
+    if(!name||!target)throw new Error('Nama dan target probe wajib diisi.');
+    const allowedCategory=['internet','dns','video','social','gaming','streaming','custom'];const allowedType=['icmp','tcp','https'];
+    if(!allowedCategory.includes(category)||!allowedType.includes(probeType))throw new Error('Kategori / tipe probe tidak valid.');
+    const vals=[name,category,probeType,target,req.body.port?Number(req.body.port):null,Math.max(1,Number(req.body.warning_ms||80)),Math.max(1,Number(req.body.critical_ms||150)),req.body.is_active===false||String(req.body.is_active)==='0'?0:1,Number(req.body.sort_order||0)];
+    if(id)await db.execute(`UPDATE network_probe_targets SET name=?,category=?,probe_type=?,target=?,port=?,warning_ms=?,critical_ms=?,is_active=?,sort_order=? WHERE id=?`,[...vals,id]);
+    else await db.execute(`INSERT INTO network_probe_targets(name,category,probe_type,target,port,warning_ms,critical_ms,is_active,sort_order) VALUES(?,?,?,?,?,?,?,?,?)`,vals);
+    await audit({userId:req.session.user.id,action:id?'update':'create',entityType:'network_probe',entityId:id||null,description:`${id?'Ubah':'Tambah'} probe ${name}`,ip:req.ip});
+    res.json({ok:true});
+  }catch(error){res.status(400).json({ok:false,error:error.message});}
+});
+router.post('/api/infrastructure/register-server-admin',requireAdmin,async(req,res)=>{
+  try{
+    const [[site]]=await db.query(`SELECT id FROM sites WHERE code='KRW' AND is_active=1 LIMIT 1`);if(!site)throw new Error('Site KRW tidak ditemukan.');
+    const [[existing]]=await db.query(`SELECT id FROM routers WHERE name='SERVER-ADMIN' LIMIT 1`);
+    if(existing)return res.json({ok:true,routerId:existing.id,exists:true});
+    const password=String(req.body.password||'');if(!password)throw new Error('Password user inkambill-mon wajib diisi saat registrasi pertama.');
+    const [r]=await db.execute(`INSERT INTO routers(site_id,name,base_url,username,password_enc,verify_tls,is_active,connector_type,device_role,pppoe_enabled,legacy_host,legacy_port,wan_interface)
+      VALUES(?,?,?,?,?,0,1,'legacy_api','infrastructure',0,'192.168.100.1',8728,'ether1-WAN')`,
+      [site.id,'SERVER-ADMIN','legacy://192.168.100.1:8728','inkambill-mon',encrypt(password)]);
+    await audit({userId:req.session.user.id,action:'create',entityType:'router',entityId:r.insertId,description:'Register SERVER-ADMIN sebagai infrastructure router KRW',ip:req.ip});
+    const poller=require('../services/nms/poller');await poller.loadRouters().catch(()=>{});
+    res.json({ok:true,routerId:r.insertId});
+  }catch(error){res.status(400).json({ok:false,error:error.message});}
 });
 
 router.get('/tools',(req,res)=>{
