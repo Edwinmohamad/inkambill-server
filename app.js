@@ -27,6 +27,7 @@ const { requireAuth, loadPermissions, requirePermission, requireAnyPermission, r
 const { generateMonthlyInvoices } = require('./services/invoiceService');
 const { runAutoIsolation } = require('./services/networkService');
 const { captureAllNmsTelemetry, backupAllRouters } = require('./services/nmsTelemetryService');
+const { runExperienceProbes } = require('./services/networkInfrastructureService');
 const { ensureNmsV2Schema, purgeNmsHistory } = require('./services/nms/schema');
 const nmsPoller = require('./services/nms/poller');
 const nmsAutomation = require('./services/nms/automation');
@@ -444,6 +445,11 @@ async function bootstrap() {
   // NMS telemetry and stock alerts are deliberately low-frequency. The public
   // monitor page remains responsive because it reads the persisted samples,
   // while router polling happens in one bounded Promise.all batch.
+  cron.schedule('*/2 * * * *', async () => {
+    try { const result=await runExperienceProbes(); if(result.saved) console.log('Experience probe:',result.saved,'sample(s)'); }
+    catch (err) { console.error('Experience probe gagal:',err.message); }
+  }, { timezone: 'Asia/Jakarta' });
+
   cron.schedule('*/5 * * * *', async () => {
     try { const result = await captureAllNmsTelemetry(); console.log('NMS telemetry:', result.routers, 'router(s)'); }
     catch (err) { console.error('NMS telemetry gagal:', err.message); }
