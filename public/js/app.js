@@ -165,7 +165,9 @@
 
 
   // Bootstrap modals are moved to <body> to avoid stacking-context bugs caused by animated page containers.
-  document.querySelectorAll('.page-enter .modal').forEach(modal => document.body.appendChild(modal));
+  document.querySelectorAll('.modal').forEach(modal => {
+    if (modal.parentElement !== document.body) document.body.appendChild(modal);
+  });
   document.querySelectorAll('.modal').forEach(modal => {
     modal.addEventListener('shown.bs.modal', () => modal.querySelector('input:not([type="hidden"]),select,textarea,button')?.focus());
   });
