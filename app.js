@@ -84,6 +84,7 @@ app.use(session({
   store: sessionStore,
   resave: false,
   saveUninitialized: false,
+  rolling: true,
   cookie: { httpOnly: true, sameSite: 'lax', secure: process.env.COOKIE_SECURE === 'true', maxAge: 1000*60*60*12 }
 }));
 app.use(loadPermissions);
