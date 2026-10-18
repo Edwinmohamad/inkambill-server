@@ -41,7 +41,7 @@ function fakeConnection({meta=true,category=true,existing=false,settlementStatus
   assert(insert,'jurnal cash_transactions wajib dibuat');
   assert(insert.sql.includes("'APPROVED'"),'jurnal setoran wajib langsung APPROVED');
   assert(insert.sql.includes('reviewed_by')&&insert.sql.includes('reviewed_at'),'reviewer jurnal otomatis wajib tercatat');
-  assert.strictEqual(insert.params[0],'2026-09-02','tanggal jurnal harus masuk bulan tagihan, bukan bulan setoran');
+  assert.strictEqual(insert.params[0],'2026-10-02','jurnal penerimaan kas harus mengikuti tanggal uang diterima, bukan bulan invoice');
   assert.strictEqual(insert.params[4],150000,'nominal jurnal harus sama dengan setoran');
   const closingInsert=conn.calls.find(call=>call.sql.startsWith('INSERT INTO closing_entries'));
   assert(closingInsert,'jurnal setoran wajib langsung disinkronkan ke Closing AUTO yang masih DRAFT');
