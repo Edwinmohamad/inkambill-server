@@ -6,7 +6,7 @@ const schema=fs.readFileSync('services/schemaService.js','utf8');
 const invoice=fs.readFileSync('services/invoiceService.js','utf8');
 const checks=[
   [schema.includes("'KOMISI-TEK','Komisi Teknisi Pemasangan'")&&schema.includes("'KOMISI-SLS','Komisi Sales Pemasangan'"),'seed kategori komisi'],
-  [invoice.includes("sourceType: 'install_commission_technician'")&&invoice.includes("sourceType: 'install_commission_sales'"),'jurnal komisi otomatis'],
+  [!invoice.includes('await settleNewInstallCommission(conn'),'generator tagihan tidak membukukan komisi PSB non-kas'],
   [route.includes('SELECT * FROM cash_categories WHERE is_active=1 ORDER BY type,COALESCE(is_system,0),name'),'kategori sistem tersedia untuk filter'],
   [cash.includes("categories.filter(c=>!Number(c.is_system||0)).forEach"),'kategori otomatis tidak dapat dipilih untuk input manual'],
   [cash.includes("Number(c.is_system||0)?'disabled':''"),'kategori otomatis terkunci saat edit'],

@@ -83,10 +83,18 @@ function formatRupiah(value) {
 }
 function formatDateIndo(value) {
   if (!value) return '-';
-  const d = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(d.getTime())) return String(value);
-  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+  // SQL DATE has no timezone. Preserve its calendar day on every server timezone.
+  if(typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)){
+    const [year,month,day]=value.split('-').map(Number);
+    const d=new Date(Date.UTC(year,month-1,day));
+    if(d.getUTCFullYear()!==year||d.getUTCMonth()!==month-1||d.getUTCDate()!==day)return value;
+    return `${day} ${MONTHS[month-1]} ${year}`;
+  }
+  const d=value instanceof Date?value:new Date(value);
+  if(Number.isNaN(d.getTime()))return String(value);
+  return new Intl.DateTimeFormat('id-ID',{timeZone:'Asia/Jakarta',day:'numeric',month:'long',year:'numeric'}).format(d);
 }
+
 function packageLabel(name, speed) {
   const n = String(name || '').trim(); const s = String(speed || '').trim();
   if (!n) return s || '-';

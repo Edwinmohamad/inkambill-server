@@ -10,7 +10,7 @@ async function run({sourceType='manual',status='APPROVED',locked=false,auditFail
     if(sql.startsWith('SELECT'))return [[{id:1,name:'Test',transaction_date:'2026-10-18',source_type:sourceType,approval_status:status}]];
     events.push('delete');return [{affectedRows:1}];
   },commit:async()=>events.push('commit'),rollback:async()=>events.push('rollback'),release:()=>events.push('release')};
-  vm.runInNewContext(source.slice(start,end),{router:{post:(_p,_guard,h)=>handler=h},requireMasterAdmin:()=>{},cashReturn:()=>'/cash',db:{getConnection:async()=>conn},assertDateOpen:async()=>{if(locked)throw Error('locked');},financialAudit:async data=>{assert.equal(data.before.approval_status,status);events.push('audit');if(auditFails)throw Error('audit failed');},audit:async()=>{},removeCashProof:async()=>{}});
+  vm.runInNewContext(source.slice(source.indexOf('function assertManualCash('),source.indexOf('const MONTH_NAMES_ID'))+source.slice(start,end),{router:{post:(_p,_guard,h)=>handler=h},requireMasterAdmin:()=>{},cashReturn:()=>'/cash',db:{getConnection:async()=>conn},assertDateOpen:async()=>{if(locked)throw Error('locked');},financialAudit:async data=>{assert.equal(data.before.approval_status,status);events.push('audit');if(auditFails)throw Error('audit failed');},audit:async()=>{},removeCashProof:async()=>{}});
   const req={params:{id:'1'},query:{},body:{},session:{user:{id:1}},ip:'127.0.0.1'};
   await handler(req,{redirect:()=>{}});return {events,flash:req.session.flash};
 }

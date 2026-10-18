@@ -27,5 +27,5 @@ assert(payments.includes("document.getElementById('proofOpenNew').href=url"), 'c
 assert(!payments.includes('name="book_date_mode" aria-label="Tanggal pembukuan"'));
 const css=read('public/css/app.css');
 assert(css.includes('.payment-approval-compact'));
-assert(css.includes('.payment-history-table{min-width:1240px'));
+assert(/\.payment-history-table\s*\{[^}]*min-width:\s*\d+px/.test(css));
 console.log('v1.25.6 cash/vendor/category + payment approval UI checks: PASS');

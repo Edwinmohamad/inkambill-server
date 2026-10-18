@@ -27,7 +27,7 @@ assert(!payment.includes('payment_commission_technician')&&!payment.includes('pa
 for(const column of ['psb_team_payment','psb_sales_amount','psb_technician_amount','psb_settled_at','psb_settled_by'])assert(schema.includes(column),`schema missing ${column}`);
 assert(form.includes('Pembayaran instalasi pelanggan dibagikan ke teknisi dan sales?'),'PSB yes/no control missing');
 assert(form.includes('tidak membuat tagihan, pemasukan, pengeluaran, atau jurnal kas'),'non-cash explanation missing');
-assert(list.includes('PSB <%= psbMonth %>'),'PSB month tag missing from list');
+assert(list.includes("include('../partials/customer-new-subtitle'") && fs.readFileSync('views/partials/customer-new-subtitle.ejs','utf8').includes('isRecentNewCustomer(customer)'),'PSB month tag missing from list');
 assert(detail.includes('DAMPAK KAS PERUSAHAAN')&&detail.includes('Rp0'),'PSB cash impact missing from detail');
 assert(detail.includes('Mulai bulan depan')&&detail.includes('Tidak ada tagihan pada bulan instalasi'),'PSB billing state is misleading');
 

@@ -11,6 +11,11 @@ const { isVendorCashCategory }=require('../services/cashCategoryService');
 const { audit }=require('../services/auditService');
 const { assertDateOpen, financialAudit }=require('../services/financialControlService');
 const router=express.Router();
+function assertManualCash(tx){
+  if(tx.internal_transfer_key||tx.warehouse_transfer_id||tx.warehouse_purchase_id)throw new Error('Transaksi transfer internal dikunci sebagai pasangan atau terhubung dokumen gudang. Koreksi dari Pengadaan.');
+  if(tx.source_type&&tx.source_type!=='manual')throw new Error('Jurnal otomatis/payment-linked tidak boleh dihapus atau diedit dari Data Kas. Koreksi dari Payment/Tagihan.');
+}
+
 const MONTH_NAMES_ID=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 // v1.25.5 (susulan) — "Nominal Tetap" & "Tanggal Jatuh Tempo" only ever mean something when a category is
 // flagged Wajib Bulanan; if the checkbox is off both are forced back to NULL regardless of what the
@@ -158,11 +163,11 @@ router.get('/cash',async(req,res)=>{
   // Include system categories in filters so every category visible in the chart/ledger can be traced.
   // The view excludes them only from Add/Edit manual transaction selectors.
   const pageResult=await paginate(db,sql,params,req,50);const transactions=pageResult.rows;res.locals.pagination=pageResult.pagination;const [categories]=await db.query(`SELECT * FROM cash_categories WHERE is_active=1 ORDER BY type,COALESCE(is_system,0),name`);const [sites]=await db.query(`SELECT id,code,name FROM sites WHERE is_active=1 ORDER BY code`);
-  const summarySql=`SELECT COALESCE(SUM(CASE WHEN cc.type='income' THEN ct.amount ELSE 0 END),0) income,COALESCE(SUM(CASE WHEN cc.type='expense' THEN ct.amount ELSE 0 END),0) expense FROM cash_transactions ct JOIN cash_categories cc ON cc.id=ct.category_id LEFT JOIN sites s ON s.id=ct.site_id LEFT JOIN payments source_payment ON ct.source_type='payment' AND source_payment.id=ct.source_id WHERE COALESCE(ct.approval_status,'APPROVED')='APPROVED' AND (COALESCE(ct.source_type,'manual')<>'payment' OR (source_payment.status='confirmed' AND (source_payment.method<>'cash' OR source_payment.settlement_status='settled'))) AND MONTH(ct.transaction_date)=? AND YEAR(ct.transaction_date)=?${site?` AND s.code=?`:''}`;
+  const summarySql=`SELECT COALESCE(SUM(CASE WHEN cc.type='income' THEN ct.amount ELSE 0 END),0) income,COALESCE(SUM(CASE WHEN cc.type='expense' THEN ct.amount ELSE 0 END),0) expense FROM cash_transactions ct JOIN cash_categories cc ON cc.id=ct.category_id LEFT JOIN sites s ON s.id=ct.site_id LEFT JOIN payments source_payment ON ct.source_type='payment' AND source_payment.id=ct.source_id WHERE ${site?'1=1':'ct.internal_transfer_key IS NULL'} AND COALESCE(ct.approval_status,'APPROVED')='APPROVED' AND (COALESCE(ct.source_type,'manual')<>'payment' OR (source_payment.status='confirmed' AND (source_payment.method<>'cash' OR source_payment.settlement_status='settled'))) AND MONTH(ct.transaction_date)=? AND YEAR(ct.transaction_date)=?${site?` AND s.code=?`:''}`;
   const [[summary]]=await db.execute(summarySql,[month,year,...(site?[site]:[])]);summary.balance=Number(summary.income)-Number(summary.expense);
   const [[collection]]=await db.execute(`SELECT COALESCE(SUM(CASE WHEN p.method='cash' AND p.status='confirmed' AND p.settlement_status='held_by_staff' THEN p.amount ELSE 0 END),0) cash_held,COUNT(CASE WHEN p.method='cash' AND p.status='confirmed' AND p.settlement_status='held_by_staff' THEN 1 END) held_count FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id LEFT JOIN sites s ON s.id=c.site_id WHERE MONTH(p.paid_at)=? AND YEAR(p.paid_at)=?${site?` AND s.code=?`:''}`,[month,year,...(site?[site]:[])]);
-  const [categoryChartRows]=await db.execute(`SELECT cc.name label,COALESCE(SUM(ct.amount),0) amount FROM cash_transactions ct JOIN cash_categories cc ON cc.id=ct.category_id LEFT JOIN sites s ON s.id=ct.site_id LEFT JOIN payments source_payment ON ct.source_type='payment' AND source_payment.id=ct.source_id WHERE COALESCE(ct.approval_status,'APPROVED')='APPROVED' AND (COALESCE(ct.source_type,'manual')<>'payment' OR (source_payment.status='confirmed' AND (source_payment.method<>'cash' OR source_payment.settlement_status='settled'))) AND cc.type='expense' AND MONTH(ct.transaction_date)=? AND YEAR(ct.transaction_date)=?${site?` AND s.code=?`:''} GROUP BY cc.id,cc.name HAVING amount>0 ORDER BY amount DESC`,[month,year,...(site?[site]:[])]);
-  const [dailyChartRows]=await db.execute(`SELECT DAY(ct.transaction_date) day_no,COALESCE(SUM(CASE WHEN cc.type='income' THEN ct.amount ELSE 0 END),0) income,COALESCE(SUM(CASE WHEN cc.type='expense' THEN ct.amount ELSE 0 END),0) expense FROM cash_transactions ct JOIN cash_categories cc ON cc.id=ct.category_id LEFT JOIN sites s ON s.id=ct.site_id LEFT JOIN payments source_payment ON ct.source_type='payment' AND source_payment.id=ct.source_id WHERE COALESCE(ct.approval_status,'APPROVED')='APPROVED' AND (COALESCE(ct.source_type,'manual')<>'payment' OR (source_payment.status='confirmed' AND (source_payment.method<>'cash' OR source_payment.settlement_status='settled'))) AND MONTH(ct.transaction_date)=? AND YEAR(ct.transaction_date)=?${site?` AND s.code=?`:''} GROUP BY DAY(ct.transaction_date) ORDER BY day_no`,[month,year,...(site?[site]:[])]);
+  const [categoryChartRows]=await db.execute(`SELECT cc.name label,COALESCE(SUM(ct.amount),0) amount FROM cash_transactions ct JOIN cash_categories cc ON cc.id=ct.category_id LEFT JOIN sites s ON s.id=ct.site_id LEFT JOIN payments source_payment ON ct.source_type='payment' AND source_payment.id=ct.source_id WHERE ${site?'1=1':'ct.internal_transfer_key IS NULL'} AND COALESCE(ct.approval_status,'APPROVED')='APPROVED' AND (COALESCE(ct.source_type,'manual')<>'payment' OR (source_payment.status='confirmed' AND (source_payment.method<>'cash' OR source_payment.settlement_status='settled'))) AND cc.type='expense' AND MONTH(ct.transaction_date)=? AND YEAR(ct.transaction_date)=?${site?` AND s.code=?`:''} GROUP BY cc.id,cc.name HAVING amount>0 ORDER BY amount DESC`,[month,year,...(site?[site]:[])]);
+  const [dailyChartRows]=await db.execute(`SELECT DAY(ct.transaction_date) day_no,COALESCE(SUM(CASE WHEN cc.type='income' THEN ct.amount ELSE 0 END),0) income,COALESCE(SUM(CASE WHEN cc.type='expense' THEN ct.amount ELSE 0 END),0) expense FROM cash_transactions ct JOIN cash_categories cc ON cc.id=ct.category_id LEFT JOIN sites s ON s.id=ct.site_id LEFT JOIN payments source_payment ON ct.source_type='payment' AND source_payment.id=ct.source_id WHERE ${site?'1=1':'ct.internal_transfer_key IS NULL'} AND COALESCE(ct.approval_status,'APPROVED')='APPROVED' AND (COALESCE(ct.source_type,'manual')<>'payment' OR (source_payment.status='confirmed' AND (source_payment.method<>'cash' OR source_payment.settlement_status='settled'))) AND MONTH(ct.transaction_date)=? AND YEAR(ct.transaction_date)=?${site?` AND s.code=?`:''} GROUP BY DAY(ct.transaction_date) ORDER BY day_no`,[month,year,...(site?[site]:[])]);
   const daysInMonth=new Date(year,month,0).getDate(),daily={labels:Array.from({length:daysInMonth},(_,i)=>String(i+1)),income:Array(daysInMonth).fill(0),expense:Array(daysInMonth).fill(0)};
   dailyChartRows.forEach(row=>{const i=Number(row.day_no)-1;daily.income[i]=Number(row.income||0);daily.expense[i]=Number(row.expense||0);});
   const cashCharts={categories:categoryChartRows.map(row=>({label:row.label,amount:Number(row.amount||0)})),daily};
@@ -247,7 +252,7 @@ router.post('/cash',async(req,res)=>{
     const conn=await db.getConnection();let saved=null,createdId=0,createdCode='';
     try{
       await conn.beginTransaction();
-      const [categoryRows]=await conn.execute(`SELECT id,name,type,code FROM cash_categories WHERE id=? AND is_active=1 LIMIT 1`,[b.category_id]);
+      const [categoryRows]=await conn.execute(`SELECT id,name,type,code FROM cash_categories WHERE id=? AND is_active=1 AND COALESCE(is_system,0)=0 LIMIT 1`,[b.category_id]);
       const category=categoryRows[0];if(!category)throw new Error('Kategori kas tidak ditemukan atau sudah tidak aktif. Silakan pilih ulang kategori.');
       const vendor=vendorMeta(category,b),isExpense=category.type==='expense';
       const purchaseChannel=isExpense&&!vendor.isVendor&&['online','offline'].includes(b.purchase_channel)?b.purchase_channel:null;
@@ -277,28 +282,14 @@ router.post('/cash/:id/update',requireAdmin,async(req,res)=>{
   const fallbackReturn=cashReturn(req.body);
   try{
   await assertDateOpen(db,req.body.transaction_date);
-  // v1.24.5 — baris "AUTO BILLING" (source_type='payment') kini boleh diedit sama seperti transaksi
-  // manual (belum terhubung payment gateway, jadi bookkeeping kas masih perlu bisa dikoreksi manual).
-  // Edit tetap mengembalikan baris ke PENDING_APPROVAL supaya Master Admin meninjau ulang nilainya.
+  // Only manual, unlinked rows may be edited here; source documents own automatic journals.
   const b=req.body;const amount=Number(b.amount);if(!Number.isFinite(amount)||amount<=0)throw new Error('Nominal transaksi harus lebih dari 0.');const conn=await db.getConnection();let saved=null,oldProof=null;
   try{await conn.beginTransaction();const [rows]=await conn.execute(`SELECT * FROM cash_transactions WHERE id=? FOR UPDATE`,[req.params.id]);if(!rows.length){req.session.flash={type:'warning',message:'Transaksi kas tidak ditemukan.'};await conn.rollback();return res.redirect(cashReturn(b));}
   await assertDateOpen(conn,rows[0].transaction_date);
   await assertDateOpen(conn,b.transaction_date);
+  assertManualCash(rows[0]);
   if(rows[0].source_type && rows[0].source_type!=='manual'){await conn.rollback();req.session.flash={type:'danger',message:'Jurnal otomatis dari pembayaran tidak dapat diedit dari Data Kas. Koreksi harus dilakukan dari Payment/Tagihan agar invoice, payment, dan kas tetap sinkron.'};return res.redirect(cashReturn(b));}
-  // v1.25 audit: "AUTO BILLING" (source_type='payment') rows mirror a real confirmed payment/invoice.
-  // The v1.24.5 unlock let these be edited like manual rows, but nothing stopped category/amount from
-  // silently drifting away from the payment they represent (e.g. reassigning an income row to an expense
-  // category while payments.amount/invoices stay untouched). Cosmetic fields (date/notes/proof/vendor
-  // info) stay editable; category and amount are locked to the source payment — use
-  // /invoices/:id/reset-unpaid to actually correct those.
-  if(rows[0].source_type==='payment'){
-    if(Number(b.category_id)!==Number(rows[0].category_id)||Math.abs(amount-Number(rows[0].amount))>0.01){
-      await conn.rollback();
-      req.session.flash={type:'danger',message:'Baris AUTO BILLING terhubung ke pembayaran & invoice asli — kategori dan nominal tidak boleh diubah dari sini. Gunakan "Reset ke Belum Lunas" di menu Tagihan bila nominal/kategorinya memang salah.'};
-      return res.redirect(cashReturn(b));
-    }
-  }
-  const [categoryRows]=await conn.execute(`SELECT id,name,type,code FROM cash_categories WHERE id=? AND is_active=1 LIMIT 1`,[b.category_id]);const category=categoryRows[0];if(!category)throw new Error('Kategori kas tidak ditemukan atau sudah tidak aktif.');const vendor=vendorMeta(category,b),purchaseChannel=category.type==='expense'&&!vendor.isVendor&&['online','offline'].includes(b.purchase_channel)?b.purchase_channel:null;const formattedName=category.type==='expense'?formatCashExpenseName({categoryCode:category.code,categoryName:category.name,rawName:b.name,shopName:b.purchase_shop_name,vendorName:vendor.name}):String(b.name||'').trim();oldProof=rows[0].proof_path;if(req.file)saved=await saveCashProof(req.file);await conn.execute(`UPDATE cash_transactions SET transaction_date=?,name=?,category_id=?,site_id=?,amount=?,notes=?,purchase_channel=?,purchase_shop_name=?,vendor_name=?,vendor_duration=?,vendor_duration_unit=?,proof_path=COALESCE(?,proof_path),proof_original_name=COALESCE(?,proof_original_name),proof_mime=COALESCE(?,proof_mime),proof_size=COALESCE(?,proof_size),proof_uploaded_by=CASE WHEN ? IS NULL THEN proof_uploaded_by ELSE ? END,proof_uploaded_at=CASE WHEN ? IS NULL THEN proof_uploaded_at ELSE NOW() END,approval_status='PENDING_APPROVAL',approval_reason=NULL,reviewed_by=NULL,reviewed_at=NULL WHERE id=?`,[b.transaction_date,formattedName,b.category_id,b.site_id||null,amount,b.notes||null,purchaseChannel,purchaseChannel?String(b.purchase_shop_name||'').trim()||null:null,vendor.name,vendor.duration,vendor.unit,saved?.filename||null,saved?.originalName||null,saved?.mime||null,saved?.size||null,saved?.filename||null,req.session.user.id,saved?.filename||null,req.params.id]);await assignCashTransactionCode(conn,req.params.id,b.category_id,b.transaction_date);await conn.commit();if(saved&&oldProof)await removeCashProof(oldProof);req.session.flash={type:'success',message:'Data kas diperbarui dan dikembalikan ke PENDING_APPROVAL. Saldo real belum berubah sampai disetujui Master Admin.'};}catch(e){await conn.rollback();if(saved)await removeCashProof(saved.filename);throw e;}finally{conn.release();}
+  const [categoryRows]=await conn.execute(`SELECT id,name,type,code FROM cash_categories WHERE id=? AND is_active=1 AND COALESCE(is_system,0)=0 LIMIT 1`,[b.category_id]);const category=categoryRows[0];if(!category)throw new Error('Kategori kas tidak ditemukan atau sudah tidak aktif.');const vendor=vendorMeta(category,b),purchaseChannel=category.type==='expense'&&!vendor.isVendor&&['online','offline'].includes(b.purchase_channel)?b.purchase_channel:null;const formattedName=category.type==='expense'?formatCashExpenseName({categoryCode:category.code,categoryName:category.name,rawName:b.name,shopName:b.purchase_shop_name,vendorName:vendor.name}):String(b.name||'').trim();oldProof=rows[0].proof_path;if(req.file)saved=await saveCashProof(req.file);await conn.execute(`UPDATE cash_transactions SET transaction_date=?,name=?,category_id=?,site_id=?,amount=?,notes=?,purchase_channel=?,purchase_shop_name=?,vendor_name=?,vendor_duration=?,vendor_duration_unit=?,proof_path=COALESCE(?,proof_path),proof_original_name=COALESCE(?,proof_original_name),proof_mime=COALESCE(?,proof_mime),proof_size=COALESCE(?,proof_size),proof_uploaded_by=CASE WHEN ? IS NULL THEN proof_uploaded_by ELSE ? END,proof_uploaded_at=CASE WHEN ? IS NULL THEN proof_uploaded_at ELSE NOW() END,approval_status='PENDING_APPROVAL',approval_reason=NULL,reviewed_by=NULL,reviewed_at=NULL WHERE id=?`,[b.transaction_date,formattedName,b.category_id,b.site_id||null,amount,b.notes||null,purchaseChannel,purchaseChannel?String(b.purchase_shop_name||'').trim()||null:null,vendor.name,vendor.duration,vendor.unit,saved?.filename||null,saved?.originalName||null,saved?.mime||null,saved?.size||null,saved?.filename||null,req.session.user.id,saved?.filename||null,req.params.id]);await assignCashTransactionCode(conn,req.params.id,b.category_id,b.transaction_date);await conn.commit();if(saved&&oldProof)await removeCashProof(oldProof);req.session.flash={type:'success',message:'Data kas diperbarui dan dikembalikan ke PENDING_APPROVAL. Saldo real belum berubah sampai disetujui Master Admin.'};}catch(e){await conn.rollback();if(saved)await removeCashProof(saved.filename);throw e;}finally{conn.release();}
   return res.redirect(cashReturn(b));
   }catch(e){
     console.error('Update Data Kas gagal:',e);
@@ -321,28 +312,24 @@ router.post('/cash/:id/reject',requireMasterAdmin,async(req,res)=>{
   res.redirect(localReturn(req.body.return_to,cashReturn(req.body)));
 });
 
-// v1.20: guarded against hard-deleting a transaction that already reached APPROVED — that state is
-// "official journal" per the Arsip vs Hapus Permanen rule and has already affected the real cash
-// balance elsewhere in the app, so wiping the row would silently desync reports. PENDING_APPROVAL and
-// REJECTED rows (never touched real balance) may still be hard-deleted freely.
-// v1.24.5 — the source_type='payment' ("AUTO BILLING") exclusion was removed: these rows now follow the
-// exact same rule as manual entries (blocked only while APPROVED; Master Admin can still Hapus Paksa).
+// Ordinary deletion excludes APPROVED rows; every deletion records an atomic audit snapshot.
 router.post('/cash/:id/delete',requireAdmin,async(req,res)=>{
-  const [rows]=await db.execute(`SELECT proof_path,transaction_date,source_type,COALESCE(approval_status,'APPROVED') approval_status FROM cash_transactions WHERE id=? LIMIT 1`,[req.params.id]);
-  if(!rows.length){req.session.flash={type:'warning',message:'Transaksi kas tidak ditemukan.'};return res.redirect(cashReturn(req.body));}
-  try{await assertDateOpen(db,rows[0].transaction_date);}catch(e){req.session.flash={type:'danger',message:e.message};return res.redirect(cashReturn(req.body));}
-  if(rows[0].source_type&&rows[0].source_type!=='manual'){req.session.flash={type:'danger',message:'Jurnal otomatis/payment-linked tidak dapat dihapus dari Data Kas.'};return res.redirect(cashReturn(req.body));}
-  if(rows[0].approval_status==='APPROVED'){req.session.flash={type:'danger',message:'Transaksi ini sudah APPROVED dan menjadi bagian dari jurnal kas resmi, sehingga tidak dapat dihapus permanen. Gunakan Hapus Paksa (Master Admin) bila memang perlu.'};return res.redirect(cashReturn(req.body));}
-  const [result]=await db.execute(`DELETE FROM cash_transactions WHERE id=? AND COALESCE(approval_status,'APPROVED')<>'APPROVED'`,[req.params.id]);
-  if(result.affectedRows&&rows[0]?.proof_path)await removeCashProof(rows[0].proof_path);
-  req.session.flash={type:result.affectedRows?'success':'warning',message:result.affectedRows?'Data kas berhasil dihapus.':'Transaksi tidak dapat dihapus.'};
+  const conn=await db.getConnection();
+  try{
+    await conn.beginTransaction();
+    const [rows]=await conn.execute(`SELECT *,COALESCE(approval_status,'APPROVED') approval_status FROM cash_transactions WHERE id=? FOR UPDATE`,[req.params.id]);
+    const tx=rows[0];if(!tx)throw new Error('Transaksi kas tidak ditemukan.');
+    assertManualCash(tx);await assertDateOpen(conn,tx.transaction_date);
+    if(tx.approval_status==='APPROVED')throw new Error('Transaksi sudah APPROVED. Gunakan Hapus Paksa (Master Admin).');
+    await financialAudit({conn,userId:req.session.user.id,action:'delete',entityType:'cash_transaction',entityId:tx.id,before:tx,after:null,reason:'Hapus transaksi kas manual non-approved',ip:req.ip});
+    await conn.execute(`DELETE FROM cash_transactions WHERE id=?`,[tx.id]);
+    await conn.commit();if(tx.proof_path)await removeCashProof(tx.proof_path);
+    req.session.flash={type:'success',message:'Data kas berhasil dihapus.'};
+  }catch(e){await conn.rollback();req.session.flash={type:'danger',message:e.message};}finally{conn.release();}
   res.redirect(cashReturn(req.body));
 });
 
-// v1.21.1 — "Hapus Paksa" (Force Delete), Master Admin only. Bypasses ONLY the APPROVED-status guard
-// above.
-// v1.24.5 — the source_type='payment' ("AUTO BILLING") exclusion was removed: belum terhubung payment
-// gateway, jadi baris kas dari pembayaran perlu tetap bisa dikoreksi/dihapus manual oleh Master Admin.
+// Master Admin may force-delete approved manual journals in open periods.
 router.post('/cash/:id/force-delete',requireMasterAdmin,async(req,res)=>{
   const returnCtx=cashReturn({...req.query,...req.body});
   const conn=await db.getConnection();
@@ -351,68 +338,60 @@ router.post('/cash/:id/force-delete',requireMasterAdmin,async(req,res)=>{
     const [rows]=await conn.execute(`SELECT *,COALESCE(approval_status,'APPROVED') approval_status FROM cash_transactions WHERE id=? FOR UPDATE`,[req.params.id]);
     const tx=rows[0];if(!tx)throw new Error('Transaksi kas tidak ditemukan.');
     await assertDateOpen(conn,tx.transaction_date);
+    assertManualCash(tx);
     if(tx.source_type && tx.source_type!=='manual')throw new Error('Jurnal otomatis/payment-linked tidak boleh dihapus dari Data Kas. Batalkan/koreksi dari Payment atau Tagihan.');
     await financialAudit({conn,userId:req.session.user.id,action:'force_delete',entityType:'cash_transaction',entityId:tx.id,before:tx,after:null,reason:'Hapus Paksa oleh Master Admin dari Data Kas',ip:req.ip});
     await conn.execute(`DELETE FROM cash_transactions WHERE id=?`,[tx.id]);
     await conn.commit();
     if(tx.proof_path)await removeCashProof(tx.proof_path);
-    await audit({userId:req.session.user.id,action:'force_delete',entityType:'cash_transaction',entityId:tx.id,description:`Hapus paksa transaksi ${tx.approval_status} ${tx.name}`,ip:req.ip});
+    // The financial audit was committed atomically with deletion above.
     req.session.flash={type:'success',message:`Transaksi ${tx.name} dihapus.`};
   }catch(e){try{await conn.rollback();}catch(_){}req.session.flash={type:'danger',message:`Hapus gagal: ${e.message}`};}finally{conn.release();}
   res.redirect(returnCtx);
 });
 
-// v1.22 — checkbox-based bulk delete for Data Kas, mirroring the same per-row guards used by the
-// single-row routes above (never a bulk UPDATE/DELETE, always a per-row loop so the exact same rules
-// apply): 'delete' skips APPROVED rows; 'force_delete' (Master Admin only) bypasses the APPROVED guard.
-// v1.24.5 — the source_type='payment' ("AUTO BILLING") exclusion was removed from both actions below,
-// same reasoning as the single-row routes above.
+// Bulk deletion applies the same source, period, and audit rules as single-row deletion.
 router.post('/cash/bulk',requireAdmin,async(req,res)=>{
   const action=String(req.body.action||'').trim();
-  const ids=[...new Set([].concat(req.body.cash_ids||[]).map(x=>Number(x)).filter(Boolean))];
-  // return context (month/year/site/q) arrives via the bulk button's action URL query string, since
-  // the generic bulk-delete JS helper only posts action + id fields.
+  const ids=[...new Set([].concat(req.body.cash_ids||[]).map(Number).filter(n=>Number.isSafeInteger(n)&&n>0))].sort((a,b)=>a-b);
   const returnCtx=cashReturn({...req.query,...req.body});
-  if(!ids.length){req.session.flash={type:'warning',message:'Pilih minimal satu transaksi kas terlebih dahulu.'};return res.redirect(returnCtx);}
-  if(ids.length>500){req.session.flash={type:'danger',message:'Maksimal 500 transaksi per aksi massal.'};return res.redirect(returnCtx);}
-  const placeholders=ids.map(()=>'?').join(',');
-  if(action==='delete'){
-    const [rows]=await db.execute(`SELECT id,name,proof_path,COALESCE(approval_status,'APPROVED') approval_status FROM cash_transactions WHERE id IN (${placeholders})`,ids);
-    const eligible=rows.filter(r=>r.approval_status!=='APPROVED');
-    const skipped=ids.length-eligible.length;
-    if(!eligible.length){req.session.flash={type:'danger',message:'Semua transaksi terpilih sudah APPROVED, sehingga tidak dapat dihapus massal. Gunakan Hapus Paksa Massal (Master Admin).'};return res.redirect(returnCtx);}
-    const eligibleIds=eligible.map(r=>r.id);const eligiblePlaceholders=eligibleIds.map(()=>'?').join(',');
-    await db.execute(`DELETE FROM cash_transactions WHERE id IN (${eligiblePlaceholders})`,eligibleIds);
-    for(const r of eligible)if(r.proof_path)await removeCashProof(r.proof_path);
-    await audit({userId:req.session.user.id,action:'bulk_delete',entityType:'cash_transaction',entityId:null,description:`Hapus massal ${eligible.length} transaksi kas: ${eligible.map(r=>r.name).slice(0,20).join(', ')}${eligible.length>20?', ...':''}${skipped?` (${skipped} dilewati karena APPROVED)`:''}`,ip:req.ip});
-    req.session.flash={type:'success',message:`${eligible.length} transaksi kas dihapus permanen.${skipped?` ${skipped} transaksi dilewati karena sudah APPROVED.`:''}`};
-    return res.redirect(returnCtx);
-  }
-  if(action==='force_delete'){
-    if(!isMasterAdminRole(req.session.user.role)){
-      req.session.flash={type:'danger',message:'Hapus Paksa hanya dapat dilakukan oleh Master Admin.'};
-      return res.redirect(returnCtx);
+  if(!['delete','force_delete'].includes(action)){req.session.flash={type:'danger',message:'Aksi massal tidak dikenali.'};return res.redirect(returnCtx);}
+  if(action==='force_delete'&&!isMasterAdminRole(req.session.user.role)){req.session.flash={type:'danger',message:'Hapus Paksa hanya dapat dilakukan oleh Master Admin.'};return res.redirect(returnCtx);}
+  if(!ids.length||ids.length>500){req.session.flash={type:'warning',message:'Pilih 1 sampai 500 transaksi kas.'};return res.redirect(returnCtx);}
+  const conn=await db.getConnection();
+  try{
+    await conn.beginTransaction();
+    const [rows]=await conn.execute(`SELECT *,COALESCE(approval_status,'APPROVED') approval_status FROM cash_transactions WHERE id IN (${ids.map(()=>'?').join(',')}) ORDER BY id FOR UPDATE`,ids);
+    const eligible=rows.filter(tx=>action==='force_delete'||tx.approval_status!=='APPROVED');
+    if(!eligible.length)throw new Error('Tidak ada transaksi yang dapat dihapus. Untuk APPROVED gunakan Hapus Paksa (Master Admin).');
+    // Validate every row before deleting any row; a protected row rolls back the entire selection.
+    for(const tx of eligible){assertManualCash(tx);await assertDateOpen(conn,tx.transaction_date);}
+    for(const tx of eligible){
+      await financialAudit({conn,userId:req.session.user.id,action:action==='force_delete'?'bulk_force_delete':'bulk_delete',entityType:'cash_transaction',entityId:tx.id,before:tx,after:null,reason:'Hapus massal Data Kas',ip:req.ip});
+      await conn.execute(`DELETE FROM cash_transactions WHERE id=?`,[tx.id]);
     }
-    const [rows]=await db.execute(`SELECT id,name,proof_path FROM cash_transactions WHERE id IN (${placeholders})`,ids);
-    if(!rows.length){req.session.flash={type:'warning',message:'Transaksi kas tidak ditemukan.'};return res.redirect(returnCtx);}
-    const rowIds=rows.map(r=>r.id);const rowPlaceholders=rowIds.map(()=>'?').join(',');
-    await db.execute(`DELETE FROM cash_transactions WHERE id IN (${rowPlaceholders})`,rowIds);
-    for(const r of rows)if(r.proof_path)await removeCashProof(r.proof_path);
-    await audit({userId:req.session.user.id,action:'bulk_force_delete',entityType:'cash_transaction',entityId:null,description:`HAPUS PAKSA massal ${rows.length} transaksi kas (Master Admin override): ${rows.map(r=>r.name).slice(0,20).join(', ')}${rows.length>20?', ...':''}`,ip:req.ip});
-    req.session.flash={type:'success',message:`${rows.length} transaksi kas dihapus paksa permanen.`};
-    return res.redirect(returnCtx);
-  }
-  req.session.flash={type:'danger',message:'Aksi massal tidak dikenali.'};
+    await conn.commit();
+    for(const tx of eligible)if(tx.proof_path)await removeCashProof(tx.proof_path);
+    const skipped=rows.length-eligible.length;
+    req.session.flash={type:'success',message:`${eligible.length} transaksi kas dihapus.${skipped?` ${skipped} transaksi APPROVED dilewati.`:''}`};
+  }catch(e){await conn.rollback();req.session.flash={type:'danger',message:`Hapus massal gagal: ${e.message}`};}finally{conn.release();}
   res.redirect(returnCtx);
 });
 
-router.post('/cash/delete-all',requireAdmin,async(req,res)=>{const now=new Date();const month=intInRange(req.body.month,1,12,now.getMonth()+1),year=intInRange(req.body.year,2020,2100,now.getFullYear()),site=String(req.body.site||'').trim();let where=`MONTH(ct.transaction_date)=? AND YEAR(ct.transaction_date)=? AND (ct.source_type IS NULL OR ct.source_type='manual') AND COALESCE(ct.approval_status,'APPROVED')<>'APPROVED'`;const params=[month,year];if(site){where+=` AND s.code=?`;params.push(site);}const [[skippedRow]]=await db.execute(`SELECT COUNT(*) n FROM cash_transactions ct LEFT JOIN sites s ON s.id=ct.site_id WHERE MONTH(ct.transaction_date)=? AND YEAR(ct.transaction_date)=? AND (ct.source_type IS NULL OR ct.source_type='manual') AND COALESCE(ct.approval_status,'APPROVED')='APPROVED'${site?` AND s.code=?`:''}`,[month,year,...(site?[site]:[])]);const [proofs]=await db.execute(`SELECT ct.proof_path FROM cash_transactions ct LEFT JOIN sites s ON s.id=ct.site_id WHERE ${where}`,params);const [result]=await db.execute(`DELETE ct FROM cash_transactions ct LEFT JOIN sites s ON s.id=ct.site_id WHERE ${where}`,params);for(const p of proofs)if(p.proof_path)await removeCashProof(p.proof_path);const skipped=Number(skippedRow?.n||0);req.session.flash={type:'success',message:`${result.affectedRows} transaksi kas manual periode terpilih dihapus.${skipped?` ${skipped} transaksi APPROVED dilewati karena sudah menjadi jurnal resmi.`:''} Transaksi otomatis pembayaran tetap aman.`};
-  // v1.25.5 (susulan #13) — "Hapus Semua" tetap menghapus seluruh transaksi manual non-APPROVED pada
-  // periode+site terpilih (TIDAK dipersempit oleh filter Kategori/Tipe, supaya cakupan aksi destruktif
-  // ini tidak berubah diam-diam). category/type di sini HANYA dibawa balik ke URL redirect supaya
-  // tampilan filter yang sedang dipakai user tetap sama setelah aksi selesai.
-  const returnCategory=String(req.body.category||'').trim(),returnType=['income','expense'].includes(req.body.type)?req.body.type:'';
-  const returnParams=new URLSearchParams();returnParams.set('month',month);returnParams.set('year',year);if(site)returnParams.set('site',site);if(returnCategory)returnParams.set('category',returnCategory);if(returnType)returnParams.set('type',returnType);
-  res.redirect(`/cash?${returnParams.toString()}`);});
-
+router.post('/cash/delete-all',requireAdmin,async(req,res)=>{
+  const now=new Date(),month=intInRange(req.body.month,1,12,now.getMonth()+1),year=intInRange(req.body.year,2020,2100,now.getFullYear()),site=String(req.body.site||'').trim();
+  const conn=await db.getConnection();
+  try{
+    await conn.beginTransaction();
+    const [rows]=await conn.execute(`SELECT ct.* FROM cash_transactions ct LEFT JOIN sites s ON s.id=ct.site_id WHERE MONTH(ct.transaction_date)=? AND YEAR(ct.transaction_date)=? AND (ct.source_type IS NULL OR ct.source_type='manual') AND COALESCE(ct.approval_status,'APPROVED')<>'APPROVED' AND ct.internal_transfer_key IS NULL AND ct.warehouse_transfer_id IS NULL AND ct.warehouse_purchase_id IS NULL${site?' AND s.code=?':''} ORDER BY ct.id FOR UPDATE`,[month,year,...(site?[site]:[])]);
+    for(const tx of rows){assertManualCash(tx);await assertDateOpen(conn,tx.transaction_date);}
+    for(const tx of rows){
+      await financialAudit({conn,userId:req.session.user.id,action:'delete_period',entityType:'cash_transaction',entityId:tx.id,before:tx,after:null,reason:'Hapus kas manual non-approved periode terpilih',ip:req.ip});
+      await conn.execute(`DELETE FROM cash_transactions WHERE id=?`,[tx.id]);
+    }
+    await conn.commit();for(const tx of rows)if(tx.proof_path)await removeCashProof(tx.proof_path);
+    req.session.flash={type:'success',message:`${rows.length} transaksi kas manual non-APPROVED dihapus. Transaksi otomatis, dokumen gudang, dan APPROVED tetap disimpan.`};
+  }catch(e){await conn.rollback();req.session.flash={type:'danger',message:`Hapus periode gagal: ${e.message}`};}finally{conn.release();}
+  res.redirect(cashReturn({return_month:month,return_year:year,return_site:site,return_category:req.body.category,return_type:req.body.type}));
+});
 module.exports=router;
