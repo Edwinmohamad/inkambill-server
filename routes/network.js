@@ -25,6 +25,10 @@ const INFRA_GROUPS=[
 function allInfrastructureTools(){return INFRA_GROUPS.flatMap(group=>group.tools.map(tool=>({...tool,groupKey:group.key,groupName:group.name})));}
 function infrastructureTool(key){return allInfrastructureTools().find(tool=>tool.key===String(key||''));}
 
+router.get('/infrastructure',(req,res)=>{
+  res.render('network/infrastructure',{title:'Network Infrastructure'});
+});
+
 router.get('/tools',(req,res)=>{
   const groupKey=String(req.query.group||'').trim();
   const requested=String(req.query.tool||'').trim();
