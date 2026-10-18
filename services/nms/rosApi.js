@@ -3,6 +3,7 @@
 // - Maks 2 request paralel per router supaya CPU MikroTik tetap rendah.
 // - Semua pemanggilan RouterOS dari modul NMS WAJIB lewat file ini.
 const mt = require('../mikrotikRest');
+const legacy = require('./legacyApi');
 const { summarizePing, normalizeHealth } = require('./analytics');
 
 const MAX_INFLIGHT = Number(process.env.NMS_ROUTER_MAX_INFLIGHT || 2);
@@ -33,6 +34,7 @@ function schedule(routerId, task) {
   });
 }
 
+function isLegacy(router){ return String(router.connector_type||'rest').toLowerCase()==='legacy_api'; }
 async function call(router, method, path, body = null, timeoutMs = 8000, { bypassBreaker = false } = {}) {
   const b = breaker(router.id);
   if (!bypassBreaker && b.openUntil > Date.now()) throw new RouterUnreachableError(router, b.lastError);
@@ -59,29 +61,39 @@ module.exports = {
   breakerState: id => ({ ...breaker(id) }),
   resetBreaker: id => breakers.delete(id),
   async resource(router) {
+    if(isLegacy(router)) return list(await schedule(router.id,()=>legacy.resource(router)))[0] || {};
     const r = await call(router, 'GET', '/system/resource?.proplist=uptime,cpu-load,free-memory,total-memory,free-hdd-space,total-hdd-space,board-name,version,architecture-name');
     return list(r)[0] || {};
   },
   async health(router) {
-    try { return normalizeHealth(await call(router, 'GET', '/system/health')); }
+    try {
+      if(isLegacy(router)) {
+        const rows=await schedule(router.id,()=>legacy.health(router));
+        const shaped={}; for(const row of rows){ if(row.name) shaped[row.name]=row.value; }
+        return normalizeHealth(shaped);
+      }
+      return normalizeHealth(await call(router, 'GET', '/system/health'));
+    }
     catch (err) { if (err.code === 'ROUTER_UNREACHABLE') throw err; return { temperature: null, voltage: null, unsupported: true }; }
   },
-  async interfaces(router) { return list(await call(router, 'GET', '/interface?.proplist=name,type,comment,running,disabled')); },
+  async interfaces(router) { return isLegacy(router) ? list(await schedule(router.id,()=>legacy.interfaces(router))) : list(await call(router, 'GET', '/interface?.proplist=name,type,comment,running,disabled')); },
   async interfaceCounters(router, name) {
-    const rows = list(await call(router, 'GET', `/interface?name=${enc(name)}&.proplist=name,rx-byte,tx-byte,running`));
+    const rows = isLegacy(router) ? list(await schedule(router.id,()=>legacy.interfaceCounters(router,name))) : list(await call(router, 'GET', `/interface?name=${enc(name)}&.proplist=name,rx-byte,tx-byte,running`));
     return rows[0] || null;
   },
   async active(router, username) {
+    if(isLegacy(router)) return list(await schedule(router.id,()=>legacy.active(router,username)));
     const q = username ? `name=${enc(username)}&` : '';
     return list(await call(router, 'GET', `/ppp/active?${q}.proplist=.id,name,address,uptime,caller-id,service,session-id`, null, 12000));
   },
   async secrets(router) {
+    if(isLegacy(router)) return list(await schedule(router.id,()=>legacy.secrets(router)));
     return list(await call(router, 'GET', '/ppp/secret?.proplist=.id,name,password,service,profile,local-address,remote-address,caller-id,disabled,comment,last-logged-out', null, 20000));
   },
   async secretByName(router, username) {
     return list(await call(router, 'GET', `/ppp/secret?name=${enc(username)}&.proplist=.id,name,profile,disabled,comment,caller-id,remote-address`))[0] || null;
   },
-  async profiles(router) { return list(await call(router, 'GET', '/ppp/profile?.proplist=.id,name,rate-limit')); },
+  async profiles(router) { return isLegacy(router) ? list(await schedule(router.id,()=>legacy.profiles(router))) : list(await call(router, 'GET', '/ppp/profile?.proplist=.id,name,rate-limit')); },
   async patchSecret(router, rosId, patch) { return call(router, 'PATCH', `/ppp/secret/${enc(rosId)}`, patch); },
   async createSecret(router, body) { return call(router, 'PUT', '/ppp/secret', body, 12000); },
   /** 1 sampel rx/tx bps untuk interface dinamis PPPoE (<pppoe-username>). */
@@ -104,5 +116,5 @@ module.exports = {
     for (const r of rows) await call(router, 'DELETE', `/ip/firewall/address-list/${enc(r['.id'])}`);
     return rows.length;
   },
-  async logs(router) { return list(await call(router, 'GET', '/log?.proplist=.id,time,topics,message', null, 15000)); }
+  async logs(router) { return isLegacy(router) ? list(await schedule(router.id,()=>legacy.logs(router))) : list(await call(router, 'GET', '/log?.proplist=.id,time,topics,message', null, 15000)); }
 };
