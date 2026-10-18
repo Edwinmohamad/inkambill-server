@@ -136,7 +136,7 @@ router.post('/',requireAdmin,async(req,res)=>{
   const ids=selectedInvoiceIds(req.body);
   if(!ids.length)throw new Error('Pilih minimal satu faktur yang akan dibayar.');
   const {method,notes,collector_user_id}=req.body;
-  const normalizedMethod=['transfer','cash','qris'].includes(method)?method:'transfer';
+  const normalizedMethod=['transfer','cash'].includes(method)?method:'transfer';
   const paidDate=isoDate(req.body.paid_at)||isoDate(new Date());
   const requestKey=String(req.body.idempotency_key||crypto.randomUUID()).slice(0,150);
   let bankName=null;
