@@ -39,13 +39,11 @@ async function latestProbes(){
 async function overview(){
   const [snapshots,probeRows]=await Promise.all([poller.routerSnapshots(),latestProbes()]);
   const [siteRows]=await db.query(`SELECT s.id,s.code,s.name,
-    COUNT(DISTINCT c.id) customers,
-    SUM(CASE WHEN p.is_online=1 AND p.is_isolated=0 THEN 1 ELSE 0 END) ppp_online,
-    SUM(CASE WHEN p.is_online=0 AND p.is_isolated=0 AND p.disabled=0 THEN 1 ELSE 0 END) ppp_offline,
-    SUM(CASE WHEN p.is_isolated=1 THEN 1 ELSE 0 END) isolated
-    FROM sites s LEFT JOIN customers c ON c.site_id=s.id AND c.archived_at IS NULL
-    LEFT JOIN ppp_secrets p ON p.site_id=s.id AND p.removed_on_router_at IS NULL
-    WHERE s.is_active=1 GROUP BY s.id,s.code,s.name ORDER BY s.code`).catch(()=>[[]]);
+    (SELECT COUNT(*) FROM customers c WHERE c.site_id=s.id AND c.archived_at IS NULL) customers,
+    (SELECT COUNT(*) FROM ppp_secrets p WHERE p.site_id=s.id AND p.removed_on_router_at IS NULL AND p.is_online=1 AND p.is_isolated=0) ppp_online,
+    (SELECT COUNT(*) FROM ppp_secrets p WHERE p.site_id=s.id AND p.removed_on_router_at IS NULL AND p.is_online=0 AND p.is_isolated=0 AND p.disabled=0) ppp_offline,
+    (SELECT COUNT(*) FROM ppp_secrets p WHERE p.site_id=s.id AND p.removed_on_router_at IS NULL AND p.is_isolated=1) isolated
+    FROM sites s WHERE s.is_active=1 ORDER BY s.code`).catch(()=>[[]]);
   const [alerts]=await db.query(`SELECT a.*,r.name router_name,s.code site_code FROM nms_alerts a LEFT JOIN routers r ON r.id=a.router_id LEFT JOIN sites s ON s.id=a.site_id WHERE a.resolved_at IS NULL ORDER BY FIELD(a.severity,'critical','warning','info'),a.opened_at DESC LIMIT 30`).catch(()=>[[]]);
   const [events]=await db.query(`SELECT 'infra' source,event_type,severity,title,created_at FROM network_infra_events
     UNION ALL SELECT 'nms',event_type,'info',CONCAT(COALESCE(username,'Network'),' · ',COALESCE(message,event_type)),occurred_at FROM nms_ppp_events
