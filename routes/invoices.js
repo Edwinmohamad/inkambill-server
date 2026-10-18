@@ -600,9 +600,10 @@ router.post('/:id/reset-unpaid',requireAdmin,async(req,res)=>{
     invoice=invoiceRows[0];
     if(!invoice)throw new Error('Tagihan tidak ditemukan.');
     const [payments]=await conn.execute(`SELECT id,amount,status,method,settlement_status,settlement_id,reference,notes,paid_at,booked_at,settled_at FROM payments WHERE invoice_id=? AND status IN ('confirmed','pending') FOR UPDATE`,[invoice.id]);
-    // Reversing collected cash without settling the collector/batch is not a valid accounting operation.
-    if(payments.some(p=>p.method==='cash'&&p.status==='confirmed')){
-      throw new Error('Pembayaran cash telah disetujui. Batalkan dan rekonsiliasi penerimaan/setoran melalui modul Cash terlebih dahulu; reset langsung akan menyebabkan saldo collector atau batch setoran tidak cocok.');
+    // A confirmed payment represents received money; removing it from the ledger is not a refund.
+    // Pending submissions can be voided, but confirmed receipts need a dedicated audited reversal.
+    if(payments.some(p=>p.status==='confirmed')){
+      throw new Error('Invoice memiliki pembayaran terkonfirmasi. Reset langsung ditolak; lakukan koreksi/refund yang tercatat agar saldo bank, cash, dan jurnal tidak hilang.');
     }
     const ids=payments.map(x=>Number(x.id));
     reversedTotal=payments.filter(x=>x.status==='confirmed').reduce((a,x)=>a+Number(x.amount||0),0);
