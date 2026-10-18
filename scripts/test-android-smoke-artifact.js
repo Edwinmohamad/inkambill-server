@@ -15,7 +15,7 @@ assert(smoke.includes('Emulator smoke test Android'),'smoke test must report suc
 
 const dir=fs.mkdtempSync(path.join(os.tmpdir(),'inkam-apk-test-'));
 try{
-  const discover=()=>fs.readdirSync(dir).filter(name=>/^INKAMNET-GO-v.*\\.apk$/.test(name)).sort();
+  const discover=()=>fs.readdirSync(dir).filter(name=>name.startsWith('INKAMNET-GO-v')&&name.endsWith('.apk')).sort();
   fs.writeFileSync(path.join(dir,'INKAMNET-GO-v1.3.3.apk'),'fixture');
   fs.writeFileSync(path.join(dir,'package-name.txt'),'id.my.edwinpxmx.inkamnetgo');
   let candidates=discover();
