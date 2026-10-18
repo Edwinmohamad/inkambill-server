@@ -86,7 +86,6 @@ public final class MainActivity extends FragmentActivity {
         CrashReporter.install(this);
         NotificationHelper.createChannel(this);
         AlertWorker.schedule(this);
-        applyNativeAppleTheme();
 
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.rgb(245, 245, 247));
@@ -115,6 +114,8 @@ public final class MainActivity extends FragmentActivity {
         root.addView(splashView, matchParent());
 
         setContentView(root);
+        // PhoneWindow needs its decor view before accessing the Android 11+ insets controller.
+        applyNativeAppleTheme();
         applySystemBarInsets(root);
         configureWebView();
         UpdateChecker.check(this);

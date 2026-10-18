@@ -1,4 +1,9 @@
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),{spawnSync}=require('node:child_process'),assert=require('node:assert/strict');
+const activity=fs.readFileSync('android/app/src/main/java/id/my/edwinpxmx/inkamnetgo/MainActivity.java','utf8');
+assert(activity.indexOf('setContentView(root)')<activity.indexOf('applyNativeAppleTheme();'),'system-bar styling must wait for decor initialization on Android 11+');
+const workflow=fs.readFileSync('.github/workflows/build-android.yml','utf8');
+assert(workflow.includes("needs.build-apk.outputs.variant == 'release'"),'debug APK must not replace production');
+assert(workflow.includes('steps.package.outputs.variant'),'release variant must come from the actual build step');
 const dir=fs.mkdtempSync(path.join(os.tmpdir(),'inkam-apk-test-')),bin=path.join(dir,'bin');fs.mkdirSync(bin);
 try{
  fs.writeFileSync(path.join(dir,'INKAMNET-GO-v1.3.3.apk'),'fixture');fs.writeFileSync(path.join(dir,'package-name.txt'),'id.my.edwinpxmx.inkamnetgo');

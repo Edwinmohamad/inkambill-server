@@ -12,9 +12,10 @@ Base: 8405adc32d53fe48f1ee4d9ceaab269c784a1296.
 - API session expiry, permission failures, CSRF errors and 404/500 responses return JSON when requested. Browser errors have an independent responsive recovery screen. Partially-sent responses are forwarded rather than written twice.
 - Invalid or absent dates render a placeholder instead of throwing during template rendering. Pagination rejects oversized unsafe integer input.
 - Login copy clarifies that the checkbox remembers the username, removes a stale version label, and no longer claims all integrations are healthy without checking them.
+- Emulator testing reproduced a startup NullPointerException on Android 31/34/35: PhoneWindow insets access preceded decor initialization. Native system-bar styling now runs after setContentView.
 - Android 1.3.3 (code 8) distinguishes HTTP server failure from network loss and provides a home action on the recovery screen.
 - Emulator tests discover the built APK filename dynamically instead of retaining an older hardcoded version.
-- PR validation runs the web suite and the Android build/lint/emulator workflow. APK publication is limited to main so PR testing cannot publish an unmerged APK.
+- PR validation runs the web suite and the Android build/lint/emulator workflow. APK publication is limited to signed release builds on main so PR testing or temporary debug signing cannot replace the production download. CI currently produces debug builds because the release-signing configuration is incomplete; debug artifacts remain test-only until stable release signing is configured.
 
 ## Evidence and limits
 
