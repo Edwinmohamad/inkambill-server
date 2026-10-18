@@ -10,9 +10,9 @@ assert(view.includes('data-instant-filter-row'), 'Baris transaksi belum bisa dif
 assert(view.includes('data-instant-search-value='), 'Indeks pencarian lokal tidak ditemukan');
 assert(!view.includes('class="btn-tech cash-search-submit"'), 'Tombol Cari lama masih tampil');
 assert(app.includes("input.addEventListener('input',apply)"), 'Pencarian belum bereaksi langsung saat mengetik');
-assert(app.includes("input.removeAttribute('name')"), 'Pencarian lokal masih terkirim ke server saat filter lain berubah');
+assert(app.includes("input.name='q'"), 'Pencarian harus mendukung fallback server');
 assert(app.includes("word.startsWith(query)"), 'Pencarian harus mencocokkan awalan kata');
-assert(app.includes("if(event.key==='Enter')event.preventDefault()"), 'Enter masih dapat memicu reload');
+assert(app.includes("event.preventDefault();submitFilter(form)"), 'Enter harus mencari seluruh data di server');
 assert(app.includes("row.hidden=!match"), 'Baris tidak disaring tanpa request server');
 
 console.log('Instant Data Kas search regression test OK.');

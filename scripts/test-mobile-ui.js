@@ -38,7 +38,7 @@ const required=[
   ,[css,'body.inkamnet-go-app .operation-loader{','operation loader stays above APK bottom nav']
   ,[js,'a[target="_blank"]','target blank fallback in WebView']
   ,[js,'closeMobileActionPopovers','stale action popover recovery']
-  ,[js,"document.addEventListener('shown.bs.modal'",'modal history integration']
+  ,[js,"document.addEventListener('show.bs.modal'",'modal history integration']
   ,[cashView,'data-go-cash-open','stable quick cash action target']
   ,[js,"item.dataset.type===cashAction",'quick income/expense category selection']
   ,[clientJs,"delete form.dataset.filterSubmitting",'filter state recovery after Android back']

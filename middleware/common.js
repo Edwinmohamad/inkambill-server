@@ -38,13 +38,18 @@ function commonLocals(req,res,next){
   res.locals.currentPath=req.originalUrl?req.originalUrl.split('?')[0]:req.path||'/';
   res.locals.queryParams={...req.query};
   res.locals.pagination=null;
+  res.locals.rowNumber=(index)=>Number(res.locals.pagination?.from||1)+Number(index||0);
   res.locals.flash=req.session?.flash||null;
   if(req.session?.flash)delete req.session.flash;
   res.locals.formatRupiah=(value)=>new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(Number(value||0));
-  res.locals.formatDate=(value)=>{if(!value)return '-';return new Intl.DateTimeFormat(language==='en'?'en-GB':'id-ID',{dateStyle:'medium',timeZone:'Asia/Jakarta'}).format(new Date(value));};
-  // v1.26 -- date+time formatting for activity/history timelines (e.g. Piutang & Hutang riwayat transaksi).
-  res.locals.formatDateTime=(value)=>{if(!value)return '-';return new Intl.DateTimeFormat(language==='en'?'en-GB':'id-ID',{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Jakarta'}).format(new Date(value));};
-  res.locals.formatTime=(value)=>{if(!value)return '';return new Intl.DateTimeFormat(language==='en'?'en-GB':'id-ID',{timeStyle:'short',timeZone:'Asia/Jakarta'}).format(new Date(value));};
+  const displayDate=(value,options,empty='-')=>{
+    if(!value)return empty;
+    const date=new Date(value);if(!Number.isFinite(date.getTime()))return empty;
+    return new Intl.DateTimeFormat(language==='en'?'en-GB':'id-ID',{...options,timeZone:'Asia/Jakarta'}).format(date);
+  };
+  res.locals.formatDate=value=>displayDate(value,{dateStyle:'medium'});
+  res.locals.formatDateTime=value=>displayDate(value,{dateStyle:'medium',timeStyle:'short'});
+  res.locals.formatTime=value=>displayDate(value,{timeStyle:'short'},'');
   // Label "Pelanggan Baru" berlaku tepat 30 hari sejak aktivasi. `is_new_customer`
   // disediakan oleh query-query daftar agar database dan UI memakai patokan yang sama.
   res.locals.isRecentNewCustomer=(customer)=>{

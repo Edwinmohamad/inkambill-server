@@ -1,4 +1,6 @@
 const db = require('../config/db');
+const {wantsJson}=require('./httpErrors');
+const needLogin=(req,res)=>wantsJson(req)?res.status(401).json({ok:false,error:'Sesi berakhir. Silakan masuk kembali.',loginUrl:'/login'}):res.redirect('/login');
 
 const PERMISSIONS = [
   'dashboard', 'customers', 'billing', 'warehouse', 'support',
@@ -56,15 +58,16 @@ async function loadPermissions(req, res, next) {
 }
 
 function requireAuth(req, res, next) {
-  if (!req.session.user) return res.redirect('/login');
+  if (!req.session?.user) return needLogin(req,res);
   res.locals.user = req.session.user;
   next();
 }
 
 function requirePermission(permission) {
   return (req, res, next) => {
-    if (!req.session.user) return res.redirect('/login');
+    if (!req.session?.user) return needLogin(req,res);
     if ((req.permissions || []).includes(permission)) return next();
+    if(wantsJson(req))return res.status(403).json({ok:false,error:'Akses ke fitur ini dibatasi.'});
     return res.status(403).render('errors/403', {
       title: 'Akses Dibatasi',
       requiredPermission: permission
@@ -78,8 +81,9 @@ function requirePermission(permission) {
 // routes still apply their own stricter guards (requireAdmin/requireMasterAdmin).
 function requireAnyPermission(...permissions) {
   return (req, res, next) => {
-    if (!req.session.user) return res.redirect('/login');
+    if (!req.session?.user) return needLogin(req,res);
     if (permissions.some(permission => (req.permissions || []).includes(permission))) return next();
+    if(wantsJson(req))return res.status(403).json({ok:false,error:'Akses ke fitur ini dibatasi.'});
     return res.status(403).render('errors/403', {
       title: 'Akses Dibatasi',
       requiredPermission: permissions.join(' atau ')
@@ -88,8 +92,9 @@ function requireAnyPermission(...permissions) {
 }
 
 function requireAdmin(req, res, next) {
-  if (!req.session.user) return res.redirect('/login');
+  if (!req.session?.user) return needLogin(req,res);
   if (!isAdminRole(req.session.user.role)) {
+    if(wantsJson(req))return res.status(403).json({ok:false,error:'Akses hanya untuk Admin.'});
     req.session.flash = { type: 'danger', message: 'Akses hanya untuk Admin.' };
     return res.redirect('/');
   }
@@ -97,8 +102,9 @@ function requireAdmin(req, res, next) {
 }
 
 function requireMasterAdmin(req, res, next) {
-  if (!req.session.user) return res.redirect('/login');
+  if (!req.session?.user) return needLogin(req,res);
   if (!isMasterAdminRole(req.session.user.role)) {
+    if(wantsJson(req))return res.status(403).json({ok:false,error:'Tindakan ini hanya dapat dilakukan oleh Master Admin.'});
     req.session.flash = { type: 'danger', message: 'Tindakan ini hanya dapat dilakukan oleh Master Admin.' };
     return res.redirect(req.originalUrl.startsWith('/settings') ? '/settings?tab=roles' : '/payments');
   }

@@ -72,6 +72,7 @@
     if(event.defaultPrevented)return;
     const button = event.submitter;
     // Form tanpa method/action ditangani controller AJAX halaman (mis. NMS) dan memiliki loading sendiri.
+    if (form.target==='_blank'||form.hasAttribute('data-no-loading')) return;
     if (!button || button.dataset.noLoading === 'true' || (!form.hasAttribute('method')&&!form.hasAttribute('action'))) return;
     if(form.dataset.submitting==='true'){event.preventDefault();return;}
     form.dataset.submitting='true';form.setAttribute('aria-busy','true');
@@ -86,15 +87,16 @@
   // Shared "something is happening" cue for both link navigation and instant filters,
   // so a filter change gets the exact same immediate feedback a link click already had.
   // GET filters react immediately to select/date/year changes; text search still submits with Enter.
+  const submitFilter=form=>{
+    if(form.dataset.filterSubmitting==='true'||!form.reportValidity())return;
+    const pageField=form.querySelector('[name="page"]');if(pageField)pageField.value='1';
+    form.dataset.filterSubmitting='true';
+    try{sessionStorage.setItem('inkamnet-instant-filter','1')}catch(_){}
+    form.setAttribute('aria-busy','true');form.classList.add('is-filtering');startProgress();
+    HTMLFormElement.prototype.submit.call(form);
+  };
   document.querySelectorAll('form[method="get"],form[method="GET"]').forEach(form=>{
-    const submit=()=>{
-      if(form.dataset.filterSubmitting==='true')return;form.dataset.filterSubmitting='true';
-      try{sessionStorage.setItem('inkamnet-instant-filter','1')}catch(_){}
-      form.setAttribute('aria-busy','true');
-      form.classList.add('is-filtering');
-      startProgress();
-      HTMLFormElement.prototype.submit.call(form);
-    };
+    const submit=()=>submitFilter(form);
     form.querySelectorAll('select,input[type="date"],input[type="month"],input[type="number"],input[type="radio"],input[type="checkbox"]').forEach(field=>field.addEventListener('change',submit));
     if(form.hasAttribute('data-auto-filter'))form.classList.add('auto-filter-enabled');
   });
@@ -107,12 +109,11 @@
     const input=form.querySelector('[data-instant-prefix-input]');
     const target=document.getElementById(form.dataset.instantTarget||'');
     if(!input||!target)return;
-    // Do not send the live text to the server when Site/Kategori/Tipe changes; otherwise clearing
-    // the field afterwards could not restore rows that the server had already excluded.
-    input.removeAttribute('name');
+    // Keep q for server-backed Enter/search beyond the currently rendered page.
+    input.name='q';
     const rows=[...target.querySelectorAll('[data-instant-filter-row]')];
     const empty=target.querySelector('[data-instant-empty]');
-    const count=document.querySelector('[data-instant-result-count]');
+    const count=target.closest('.data-card')?.querySelector('[data-instant-result-count]');
     const siteSuffix=count?.textContent.match(/\s·\s.+$/)?.[0]||'';
     const apply=()=>{
       const queries=normalizeInstantSearch(input.value).split(/\s+/).filter(Boolean);
@@ -121,15 +122,15 @@
         const words=normalizeInstantSearch(row.dataset.instantSearchValue).split(/[^a-z0-9]+/).filter(Boolean);
         const match=!queries.length||queries.every(query=>words.some(word=>word.startsWith(query)));
         row.hidden=!match;
-        if(match){visible+=1;const number=row.querySelector('[data-instant-number]');if(number)number.textContent=String(visible);}
+        if(match){visible+=1;}
         else row.querySelectorAll('[data-row-check]:checked').forEach(box=>{box.checked=false;box.dispatchEvent(new Event('change',{bubbles:true}));});
       });
       if(empty)empty.hidden=visible!==0;
       if(count)count.textContent=queries.length?`${visible} dari ${rows.length} transaksi${siteSuffix}`:`${rows.length} transaksi${siteSuffix}`;
     };
     input.addEventListener('input',apply);
-    input.addEventListener('keydown',event=>{if(event.key==='Enter')event.preventDefault();});
-    form.addEventListener('submit',event=>{if(document.activeElement===input)event.preventDefault();});
+    input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();submitFilter(form);}});
+    form.addEventListener('submit',event=>{if(document.activeElement===input){event.preventDefault();submitFilter(form);}});
     apply();
   });
 
@@ -137,17 +138,23 @@
   // are narrowed immediately; pressing Enter no longer causes a page reload or loading overlay.
   document.querySelectorAll('form[method="get"] input[name="q"],form[method="GET"] input[name="q"]').forEach(input=>{
     if(input.hasAttribute('data-instant-prefix-input'))return;
-    const rows=[...document.querySelectorAll('.page-enter table.app-table tbody>tr')].filter(row=>!row.querySelector('.empty-state'));
-    if(!rows.length)return;
-    input.setAttribute('autocomplete','off');input.dataset.universalInstantSearch='1';
     const form=input.closest('form');
+    const scope=form.closest('[data-search-scope],.data-card,.log-page,.inventory-page')||document.querySelector('.page-enter');
+    const table=scope?.querySelector('table.app-table');
+    const rows=[...table?.querySelectorAll('tbody>tr')||[]].filter(row=>row.querySelectorAll('td').length>1&&!row.querySelector('.empty-state')&&!row.hasAttribute('data-instant-empty'));
+    if(!rows.length)return;
+    const noResults=document.createElement('tr');noResults.hidden=true;noResults.dataset.universalEmpty='1';
+    const emptyCell=document.createElement('td');emptyCell.colSpan=table.querySelectorAll('thead tr:last-child th').length||rows[0].cells.length;
+    const emptyState=document.createElement('div');emptyState.className='empty-state';emptyState.setAttribute('role','status');emptyState.textContent='Tidak ada hasil pada halaman ini. Tekan Enter untuk mencari seluruh data.';
+    emptyCell.appendChild(emptyState);noResults.appendChild(emptyCell);table.querySelector('tbody')?.appendChild(noResults);
+    input.setAttribute('autocomplete','off');input.dataset.universalInstantSearch='1';
     let badge=input.closest('.search-box')?.querySelector('.universal-search-count');
     if(!badge&&input.closest('.search-box')){badge=document.createElement('span');badge.className='universal-search-count';input.closest('.search-box').appendChild(badge);}
-    const apply=()=>{const queries=normalizeInstantSearch(input.value).split(/\s+/).filter(Boolean);let visible=0;rows.forEach(row=>{const words=normalizeInstantSearch(row.textContent).split(/[^a-z0-9]+/).filter(Boolean);const match=!queries.length||queries.every(q=>words.some(word=>word.startsWith(q)));row.hidden=!match;if(match)visible+=1;});if(badge){badge.textContent=queries.length?`${visible} hasil`:'';badge.hidden=!queries.length;}return visible;};
+    const apply=()=>{const queries=normalizeInstantSearch(input.value).split(/\s+/).filter(Boolean);let visible=0;rows.forEach(row=>{const words=normalizeInstantSearch(row.textContent).split(/[^a-z0-9]+/).filter(Boolean);const match=!queries.length||queries.every(q=>words.some(word=>word.startsWith(q)));row.hidden=!match;if(match)visible+=1;else row.querySelectorAll('[data-row-check]:checked').forEach(box=>{box.checked=false;box.dispatchEvent(new Event('change',{bubbles:true}));});});noResults.hidden=!queries.length||visible>0;if(badge){badge.textContent=queries.length?`${visible} hasil`:'';badge.hidden=!queries.length;}return visible;};
     input.addEventListener('input',apply);
     // Typing is always zero-wait against the rows already rendered. Enter remains a real
     // server search, so a record outside the current page can never become unreachable.
-    input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();if(form?.hasAttribute('data-server-search-fallback')&&input.value.trim()){HTMLFormElement.prototype.submit.call(form);return;}apply();}});
+    input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();submitFilter(form);}});
   });
 
   document.addEventListener('click', event => {
@@ -741,13 +748,14 @@
       const eventName = attr === 'onsubmit' ? 'submit' : 'click';
       el.addEventListener(eventName, function (e) {
         if (el.dataset.iosConfirmed === '1') { delete el.dataset.iosConfirmed; return; }
+        const submitter=eventName==='submit'?e.submitter:null;
         e.preventDefault();
         e.stopImmediatePropagation();
         window.iosConfirm(m[2]).then(function (ok) {
           if (!ok) return;
           el.dataset.iosConfirmed = '1';
           if (eventName === 'submit') {
-            if (el.requestSubmit) el.requestSubmit(); else el.submit();
+            if (el.requestSubmit) el.requestSubmit(submitter||undefined); else el.submit();
           } else if (el.form) {
             el.form.requestSubmit(el);
           } else {
