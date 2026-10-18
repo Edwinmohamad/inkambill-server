@@ -73,7 +73,7 @@
         <span><i class="bi bi-receipt-cutoff"></i>Billing Real-time</span>
         <span><i class="bi bi-diagram-3-fill"></i>Multi-Site Control</span>
       </div>
-      <div class="login-hero-status"><span class="online-dot"></span><span>Sistem online · Semua layanan berjalan normal</span></div>
+      <div class="login-hero-status"><span class="online-dot"></span><span>Pusat kendali operasional INKAMNET</span></div>
     </div>
   </section>
   <section class="login-formside">
@@ -84,14 +84,14 @@
       <form method="post" action="/login" id="loginForm"><input type="hidden" name="_csrf" value="<%= csrfToken %>">
         <label class="field"><span>Username</span><span class="input-wrap"><i class="bi bi-person"></i><input name="username" placeholder="Masukkan username" autocomplete="username" required autofocus></span></label>
         <label class="field"><span>Password</span><span class="input-wrap"><i class="bi bi-shield-lock"></i><input id="loginPassword" type="password" name="password" placeholder="Masukkan password" autocomplete="current-password" required><button class="password-toggle" id="passwordToggle" type="button" aria-label="Tampilkan password"><i class="bi bi-eye"></i></button></span></label>
-        <label class="remember"><input id="rememberDevice" type="checkbox"><span>Ingat perangkat ini</span></label>
+        <label class="remember"><input id="rememberDevice" type="checkbox"><span>Ingat username</span></label>
         <button class="login-button" id="loginButton" type="submit"><span>Masuk</span> <i class="bi bi-arrow-right"></i></button>
       </form>
       <div class="card-foot"><span class="online-dot" style="width:7px;height:7px"></span><span>Koneksi aman &middot; TLS</span></div>
     </div>
   </section>
 </div>
-<footer class="legal">INKAMNET GO &middot; v1.3.0</footer>
+<footer class="legal">INKAMNET GO &middot; Web Billing</footer>
 <script>
 const password=document.getElementById('loginPassword'),toggle=document.getElementById('passwordToggle'),username=document.querySelector('input[name="username"]'),remember=document.getElementById('rememberDevice');
 try{const saved=localStorage.getItem('inkamnet_go_username');if(saved){username.value=saved;remember.checked=true;password.focus()}}catch{}

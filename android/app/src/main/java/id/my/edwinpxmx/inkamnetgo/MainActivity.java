@@ -69,6 +69,8 @@ public final class MainActivity extends FragmentActivity {
     private ProgressBar progressBar;
     private View splashView;
     private View offlineView;
+    private TextView offlineTitle;
+    private TextView offlineBody;
     private View lockView;
     private ValueCallback<Uri[]> fileCallback;
     private Uri cameraOutputUri;
@@ -84,7 +86,6 @@ public final class MainActivity extends FragmentActivity {
         CrashReporter.install(this);
         NotificationHelper.createChannel(this);
         AlertWorker.schedule(this);
-        applyNativeAppleTheme();
 
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.rgb(245, 245, 247));
@@ -113,6 +114,8 @@ public final class MainActivity extends FragmentActivity {
         root.addView(splashView, matchParent());
 
         setContentView(root);
+        // PhoneWindow needs its decor view before accessing the Android 11+ insets controller.
+        applyNativeAppleTheme();
         applySystemBarInsets(root);
         configureWebView();
         UpdateChecker.check(this);
@@ -165,6 +168,8 @@ public final class MainActivity extends FragmentActivity {
             public void onPageStarted(WebView view, String url, Bitmap favicon) {
                 progressBar.setVisibility(View.VISIBLE);
                 offlineView.setVisibility(View.GONE);
+                offlineTitle.setText(R.string.offline_title);
+                offlineBody.setText(R.string.offline_body);
             }
 
             @Override
@@ -195,7 +200,11 @@ public final class MainActivity extends FragmentActivity {
 
             @Override
             public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse response) {
-                if (request.isForMainFrame() && response.getStatusCode() >= 500) showOffline();
+                if (request.isForMainFrame() && response.getStatusCode() >= 500) {
+                    showOffline();
+                    offlineTitle.setText("Server sementara bermasalah");
+                    offlineBody.setText("Permintaan belum berhasil diproses (HTTP " + response.getStatusCode() + "). Coba lagi nanti atau kembali ke halaman utama.");
+                }
             }
 
             @Override
@@ -350,16 +359,16 @@ public final class MainActivity extends FragmentActivity {
         TextView symbol = text("↯", 42, Color.rgb(108, 75, 255), true);
         panel.addView(symbol);
 
-        TextView title = text(getString(R.string.offline_title), 22, Color.rgb(29, 29, 31), true);
+        offlineTitle = text(getString(R.string.offline_title), 22, Color.rgb(29, 29, 31), true);
         LinearLayout.LayoutParams titleParams = wrapContent();
         titleParams.topMargin = dp(14);
-        panel.addView(title, titleParams);
+        panel.addView(offlineTitle, titleParams);
 
-        TextView body = text(getString(R.string.offline_body), 14, Color.rgb(110, 110, 115), false);
+        offlineBody = text(getString(R.string.offline_body), 14, Color.rgb(110, 110, 115), false);
         LinearLayout.LayoutParams bodyParams = wrapContent();
         bodyParams.topMargin = dp(8);
         bodyParams.bottomMargin = dp(22);
-        panel.addView(body, bodyParams);
+        panel.addView(offlineBody, bodyParams);
 
         Button retry = new Button(this);
         retry.setText(R.string.retry);
@@ -370,6 +379,11 @@ public final class MainActivity extends FragmentActivity {
         retry.setPadding(dp(22), dp(5), dp(22), dp(5));
         retry.setOnClickListener(v -> loadUrl(webView.getUrl() == null ? HOME_URL : webView.getUrl()));
         panel.addView(retry, new LinearLayout.LayoutParams(dp(150), dp(48)));
+        Button home = new Button(this);
+        home.setText("Halaman utama");
+        home.setAllCaps(false);
+        home.setOnClickListener(v -> loadUrl(HOME_URL));
+        panel.addView(home, new LinearLayout.LayoutParams(dp(150), dp(48)));
         return panel;
     }
 

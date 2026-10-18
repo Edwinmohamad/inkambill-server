@@ -47,7 +47,7 @@
     <% }) %></div><% } else { %><div class="empty-state compact"><i class="bi bi-shield-check"></i><strong>Tidak ada kas menunggu approval</strong><small>Semua pengajuan kas manual sudah ditindaklanjuti.</small></div><% } %>
   </article>
 
-  <form class="filter-card" method="get" action="/payments">
+  <form class="filter-card" method="get" data-server-search-fallback action="/payments">
     <div class="filter-grid payment-filter-grid">
       <div class="filter-group"><label>CARI</label><div class="search-box"><i class="bi bi-search"></i><input name="q" value="<%= filters.q %>" placeholder="Nama, Customer ID, faktur, referensi..."></div></div>
       <div class="filter-group"><label>SITE / POP</label><select class="form-select" name="site"><option value="">Semua Site</option><% sites.forEach(s=>{ %><option value="<%= s.code %>" <%= filters.site===s.code?'selected':'' %>><%= s.code %> · <%= s.name %></option><% }) %></select></div>
@@ -93,7 +93,7 @@
           <% payments.forEach((p,idx)=>{ %>
           <tr>
             <% if(isMasterAdmin){ %><td class="app-check-col"><input type="checkbox" class="form-check-input" data-row-check value="<%= p.id %>" <%= p.status==='pending'?'':'disabled' %> aria-label="Pilih pembayaran <%= p.reference||p.id %> untuk approve massal"></td><% } %>
-            <td><span class="cell-main"><%= idx+1 %></span></td>
+            <td><span class="cell-main"><%= rowNumber(idx) %></span></td>
             <td><span class="cell-main"><%= p.customer_name %></span><%- include('../partials/customer-new-subtitle',{customer:p}) %><span class="cell-sub"><%= p.customer_code %></span></td>
             <td><span class="cell-main"><%= p.site_code %></span><span class="cell-sub">Cluster <%= p.cluster_name||'-' %></span></td>
             <td><span class="cell-main"><%= paymentMonthNames[Number(p.period_month)-1] %> <%= p.period_year %></span><span class="cell-sub"><%= p.invoice_number %></span></td>

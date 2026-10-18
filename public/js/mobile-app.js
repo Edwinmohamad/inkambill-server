@@ -18,7 +18,8 @@
     closeAllOverlays({consumeHistory:false,restoreFocus:false});
     node._goReturnFocus=document.activeElement;node.classList.add('open');node.setAttribute('aria-hidden','false');syncBody();
     const focus=node.querySelector('[data-go-menu-close],[data-go-sheet-close],a,button');focus?.focus({preventScroll:true});
-    history.pushState({...(history.state||{}),inkamnetGoLayer:{kind:'overlay',id:node.id}},'',location.href);
+    const state={...(history.state||{}),inkamnetGoLayer:{kind:'overlay',id:node.id}};
+    if(layerState())history.replaceState(state,'',location.href);else history.pushState(state,'',location.href);
   };
   document.querySelector('[data-go-menu-open]')?.addEventListener('click',()=>openOverlay(menu));
   document.querySelector('[data-go-menu-close]')?.addEventListener('click',()=>closeOverlay(menu));
@@ -83,10 +84,11 @@
   };
   window.addEventListener('orientationchange',()=>setTimeout(closeMobileActionPopovers,80));
 
-  document.addEventListener('show.bs.modal',()=>closeAllOverlays({consumeHistory:false,restoreFocus:false}));
-  document.addEventListener('shown.bs.modal',event=>{
+  document.addEventListener('show.bs.modal',event=>{
+    closeAllOverlays({consumeHistory:false,restoreFocus:false});
     const modal=event.target;if(!modal?.classList.contains('modal'))return;
-    if(layerState()?.kind!=='modal'||layerState()?.id!==modal.id)history.pushState({...(history.state||{}),inkamnetGoLayer:{kind:'modal',id:modal.id}},'',location.href);
+    const state={...(history.state||{}),inkamnetGoLayer:{kind:'modal',id:modal.id}};
+    if(layerState())history.replaceState(state,'',location.href);else history.pushState(state,'',location.href);
   });
   document.addEventListener('hidden.bs.modal',event=>{
     const modal=event.target;if(layerState()?.kind==='modal'&&layerState()?.id===modal.id)history.back();
@@ -96,5 +98,5 @@
   // Arriving (via Back) on an entry that was pushed for a modal/overlay — e.g. after a form in a
   // modal was submitted — skip it so one Back press returns to the previous screen.
   if(layerState())history.back();
-  window.addEventListener('pageshow',event=>{if(!event.persisted)return;closeAllOverlays({consumeHistory:false,restoreFocus:false});closeMobileActionPopovers();if(layerState()){history.back();}document.querySelectorAll('.go-tapped').forEach(node=>node.classList.remove('go-tapped'));document.querySelectorAll('.modal.show').forEach(node=>{node.classList.remove('show');node.style.display='none';node.setAttribute('aria-hidden','true');});body.classList.remove('modal-open');body.style.removeProperty('overflow');body.style.removeProperty('padding-right');document.querySelectorAll('.modal-backdrop').forEach(node=>node.remove());});
+  window.addEventListener('pageshow',event=>{if(!event.persisted)return;closeAllOverlays({consumeHistory:false,restoreFocus:false});closeMobileActionPopovers();if(layerState()){history.back();}document.querySelectorAll('.go-tapped').forEach(node=>node.classList.remove('go-tapped'));document.querySelectorAll('.modal.show').forEach(node=>{window.bootstrap?.Modal.getInstance(node)?.dispose();node.classList.remove('show');node.style.display='none';node.setAttribute('aria-hidden','true');node.removeAttribute('aria-modal');node.removeAttribute('role');});body.classList.remove('modal-open');body.style.removeProperty('overflow');body.style.removeProperty('padding-right');document.querySelectorAll('.modal-backdrop').forEach(node=>node.remove());});
 })();

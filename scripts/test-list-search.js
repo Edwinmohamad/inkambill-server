@@ -2,7 +2,7 @@ const fs=require('fs');
 const must=(file,value,label)=>{if(!fs.readFileSync(file,'utf8').includes(value))throw new Error(`${label} missing in ${file}`);};
 must('routes/customers.js','paginate(db,sql,params,req,500,500)','customer search window');
 must('routes/invoices.js','paginate(db,listSql,listParams,req,500,500)','invoice search window');
-must('public/js/app.js',"form?.hasAttribute('data-server-search-fallback')",'server-search Enter fallback');
+must('public/js/app.js',"submitFilter(form)",'server-search Enter fallback');
 must('views/customers/index.ejs','data-server-search-fallback','customer server fallback');
 must('views/invoices/index.ejs','data-server-search-fallback','invoice server fallback');
 must('public/js/mobile-app.js',"heading.insertAdjacentElement('afterend',primaryFilter)",'mobile filter placement');

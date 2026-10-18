@@ -288,10 +288,9 @@ app.use('/wa-gateway', requireAuth, require('./routes/waCrm'));
 app.use('/wa-gateway', requireAuth, require('./routes/whatsappGateway'));
 app.use('/wa-inbox', requireAuth, require('./routes/waInbox'));
 
-app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500).send(`Terjadi error: ${process.env.NODE_ENV === 'production' ? 'cek log server' : err.message}`);
-});
+const {notFound,errorHandler}=require('./middleware/httpErrors');
+app.use(notFound);
+app.use(errorHandler);
 
 async function bootstrap() {
   if (process.env.NODE_ENV === 'production') {
