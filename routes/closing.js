@@ -475,17 +475,12 @@ router.post('/period-lock', async (req, res, next) => {
     await autoSyncBeforeReport({ start, end, userId: req.session.user.id, ip: req.ip });
     conn=await db.getConnection();await conn.beginTransaction();
     const period=await ensureDraftPeriod(conn,start,end,req.session.user.id);
-    // v2.1 — kalau mode AUTO, jangan biarkan periode dikunci padahal masih ada
-    // transaksi Data Kas APPROVED yang belum ditarik (gampang kelewat kalau
-    // approve-nya belakangan). Master Admin bisa tetap lanjut dengan menyentang
-    // "kunci walau belum sync semua" di form kalau memang itu yang dimaksud.
-    if (String(period.mode||'MANUAL').toUpperCase()==='AUTO' && String(req.body.force_lock||'')!=='1') {
+    // Financial integrity: an incomplete AUTO reconciliation must never be frozen.
+    // A user-facing force_lock toggle is not an acceptable bypass for financial consistency.
+    if (String(period.mode||'MANUAL').toUpperCase()==='AUTO') {
       const pending = await countPendingCashData({ db: conn, closingId: period.id, start, end });
-      if (pending.needsSync > 0) {
-        const detail = [];
-        if (pending.unsyncedApproved) detail.push(`${pending.unsyncedApproved} transaksi APPROVED belum ditarik`);
-        if (pending.staleSynced) detail.push(`${pending.staleSynced} baris sudah berubah di Data Kas (lokasi/kategori/nominal/tanggal/dihapus)`);
-        throw new Error(`Closing belum sama dengan Data Kas: ${detail.join(', ')}. Klik "Sync dari Data Kas" dulu, atau centang "Kunci walau belum sync semua" kalau memang sengaja.`);
+      if (pending.pendingApproval > 0 || pending.needsSync > 0) {
+        throw new Error(`Closing belum dapat dikunci: ${pending.pendingApproval} kas menunggu approval, ${pending.unsyncedApproved} kas belum sinkron, ${pending.staleSynced} kas berubah. Selesaikan approval dan sinkronisasi terlebih dahulu.`);
       }
     }
     const data=await loadClosing(start,end);

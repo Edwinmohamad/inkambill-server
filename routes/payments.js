@@ -210,6 +210,12 @@ router.post('/:id/method-to-cash',requireMasterAdmin,async(req,res)=>{
     const [staffRows]=await conn.execute('SELECT id,name FROM users WHERE id=? AND is_active=1 LIMIT 1',[collectorId]);
     if(!staffRows.length)throw new Error('Admin/collector tidak ditemukan atau sudah tidak aktif.');
     if(payment.status==='confirmed'){
+      const [linked]=await conn.execute("SELECT id,transaction_date FROM cash_transactions WHERE source_type='payment' AND source_id=? FOR UPDATE",[payment.id]);
+      for(const journal of linked){
+        await assertDateOpen(conn,journal.transaction_date);
+        // Drop draft-derived closing rows before deleting the underlying payment journal.
+        await conn.execute(`DELETE ce FROM closing_entries ce JOIN closing_periods cp ON cp.id=ce.closing_id WHERE ce.cash_transaction_id=? AND cp.status='DRAFT' AND ce.source_type='cash_sync'`,[journal.id]);
+      }
       await conn.execute("DELETE FROM cash_transactions WHERE source_type='payment' AND source_id=?",[payment.id]);
     }
     await conn.execute(`UPDATE payments SET method='cash',bank_name=NULL,collector_user_id=?,settlement_status=? WHERE id=?`,[

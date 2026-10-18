@@ -10,6 +10,7 @@ const { formatCashExpenseName }=require('../services/cashNamingService');
 const { isVendorCashCategory }=require('../services/cashCategoryService');
 const { audit }=require('../services/auditService');
 const { assertDateOpen, financialAudit }=require('../services/financialControlService');
+const { syncCashTransactionsIntoDraftAutoClosing }=require('../services/closingSyncService');
 const router=express.Router();
 function assertManualCash(tx){
   if(tx.internal_transfer_key||tx.warehouse_transfer_id||tx.warehouse_purchase_id)throw new Error('Transaksi transfer internal dikunci sebagai pasangan atau terhubung dokumen gudang. Koreksi dari Pengadaan.');
@@ -300,7 +301,7 @@ router.post('/cash/:id/update',requireAdmin,async(req,res)=>{
 
 router.post('/cash/:id/approve',requireMasterAdmin,async(req,res)=>{
   const conn=await db.getConnection();
-  try{await conn.beginTransaction();const tx=await approveCashTransaction(conn,req.params.id,req.session.user.id);await conn.commit();await audit({userId:req.session.user.id,action:'approve',entityType:'cash_transaction',entityId:req.params.id,description:`Approval kas ${tx.transaction_code||tx.id} · ${tx.name}`,ip:req.ip});req.session.flash={type:'success',message:`${tx.transaction_code||'Transaksi kas'} disetujui. Nilainya sekarang masuk saldo dan laporan keuangan real.`};}
+  try{await conn.beginTransaction();const tx=await approveCashTransaction(conn,req.params.id,req.session.user.id);await syncCashTransactionsIntoDraftAutoClosing({conn,cashTransactionIds:[tx.id],userId:req.session.user.id});await financialAudit({conn,userId:req.session.user.id,action:'approve_cash',entityType:'cash_transaction',entityId:tx.id,before:{approval_status:'PENDING_APPROVAL'},after:{approval_status:'APPROVED'},reason:'Approval transaksi kas manual',ip:req.ip});await conn.commit();await audit({userId:req.session.user.id,action:'approve',entityType:'cash_transaction',entityId:req.params.id,description:`Approval kas ${tx.transaction_code||tx.id} · ${tx.name}`,ip:req.ip});req.session.flash={type:'success',message:`${tx.transaction_code||'Transaksi kas'} disetujui. Nilainya sekarang masuk saldo dan laporan keuangan real.`};}
   catch(e){await conn.rollback();req.session.flash={type:'danger',message:`Approval kas gagal: ${e.message}`};}finally{conn.release();}
   res.redirect(localReturn(req.body.return_to,cashReturn(req.body)));
 });
