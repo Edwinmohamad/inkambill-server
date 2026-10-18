@@ -1,0 +1,14 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs'),path=require('node:path');
+const read=(p)=>fs.readFileSync(path.join(__dirname,'..',p),'utf8');
+const payments=read('routes/payments.js'),finance=read('routes/finance.js');
+const integrity=read('services/financialIntegrityService.js');
+const calculator=read('services/closingCalculator.js');
+assert.match(payments,/const normalizedMethod=\['transfer','cash'\]/);
+assert.match(finance,/WHERE ct\.internal_transfer_key IS NULL/);
+assert.match(integrity,/orphanApprovedCash/);
+assert.match(integrity,/journalAmountMismatch/);
+assert.match(integrity,/pendingPaymentJournal/);
+assert.match(calculator,/const cdsEdwin=money\(blocks\.krwclm\.profit\)-cdsJon-cdsBopung/);
+assert.match(calculator,/const kbgEdwin=kbgPool-kbgJon-kbgBopung/);
+console.log('PASS static finance hardening contracts; live accounting reconciliation NOT verified');
