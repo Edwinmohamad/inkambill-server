@@ -11,7 +11,7 @@ function fakeConnection({meta=true,category=true,existing=false,settlementStatus
       if(sql.includes("FROM closing_periods")&&sql.includes("status='LOCKED'"))return [[]];
       if(sql.includes('FROM cash_categories')&&sql.includes("type='income'"))return [category?[{id:11}]:[]];
       if(sql.includes('SELECT method,status,settlement_status FROM payments'))return [[{method:'cash',status:'confirmed',settlement_status:settlementStatus}]];
-      if(sql.includes("source_type IN ('payment','install_income')"))return [existing?[{id:99}]:[]];
+      if(sql.includes("source_type IN ('payment','install_income')"))return [existing?[{id:99,amount:150000,approval_status:'APPROVED'}]:[]];
       if(sql.startsWith('INSERT INTO cash_transactions'))return [{insertId:123}];
       if(sql.includes('SELECT code,name,type FROM cash_categories'))return [[{code:'SETOR',name:'Setoran Cash Pelanggan',type:'income'}]];
       if(sql.startsWith('UPDATE cash_transactions SET transaction_code='))return [{affectedRows:1}];
