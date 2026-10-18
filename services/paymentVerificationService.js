@@ -82,8 +82,12 @@ async function postCashTransaction(conn,{paymentId,invoiceId,amount,reference,bo
   if(!sourcePayment||sourcePayment.status!=='confirmed')throw new Error('Pembayaran belum dikonfirmasi. Jurnal Data Kas tidak boleh dibuat.');
   if(sourcePayment.method==='cash'&&sourcePayment.settlement_status!=='settled')throw new Error('Cash masih di collector dan belum diterima perusahaan. Saldo kas belum boleh bertambah.');
   // Cross-source idempotency: legacy install_income and the new payment journal represent the same money.
-  const [exists]=await conn.execute(`SELECT id FROM cash_transactions WHERE source_id=? AND source_type IN ('payment','install_income') LIMIT 1`,[paymentId]);
+  const [exists]=await conn.execute(`SELECT id,amount,COALESCE(approval_status,'APPROVED') approval_status FROM cash_transactions WHERE source_id=? AND source_type IN ('payment','install_income') FOR UPDATE`,[paymentId]);
   if(exists.length){
+    // Do not let an invalid or mismatched legacy journal suppress a valid payment journal.
+    if(exists.length!==1 || exists[0].approval_status!=='APPROVED' || Math.abs(Number(exists[0].amount)-Number(amount))>0.01){
+      throw new Error('Jurnal pembayaran lama tidak konsisten (duplikat/status/nominal). Approval/setoran dibatalkan; rekonsiliasi manual diperlukan.');
+    }
     const closing=await syncCashTransactionsIntoDraftAutoClosing({conn,cashTransactionIds:[exists[0].id],userId:actorUserId});
     if(closing.inserted)await financialAudit({conn,userId:actorUserId,action:'sync_closing_cash',entityType:'cash_transaction',entityId:exists[0].id,before:null,after:{closing_entries_inserted:closing.inserted},reason:'Sinkron langsung jurnal pembayaran/setoran ke Closing AUTO',ip:null});
     return {id:exists[0].id,created:false,closingInserted:closing.inserted};
