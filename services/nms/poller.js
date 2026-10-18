@@ -31,7 +31,7 @@ function stateFor(router) {
     status: 'unknown', lastOkAt: null, lastError: null, offlineTicks: 0, telemetry: null, wan: { interface: router.wan_interface || null, rxBps: 0, txBps: 0, peakRxBps: 0, peakTxBps: 0, history: [] },
     counters: null, active: null, activeSeeded: false, tick: 0, persistedAt: 0, lastLogId: null });
   const s = state.get(router.id);
-  Object.assign(s, { name: router.name, siteId: router.site_id, siteCode: router.site_code, siteName: router.site_name });
+  Object.assign(s, { name: router.name, siteId: router.site_id, siteCode: router.site_code, siteName: router.site_name, deviceRole: router.device_role || 'core', connectorType: router.connector_type || 'rest', pppoeEnabled: Number(router.pppoe_enabled ?? 1) === 1 });
   if (router.wan_interface) s.wan.interface = router.wan_interface;
   return s;
 }
@@ -125,6 +125,7 @@ async function recordPppEvents(router, rows, type) {
 
 async function activeRouter(router) {
   const s = stateFor(router);
+  if (Number(router.pppoe_enabled ?? 1) !== 1) { s.activeSeeded = false; s.active = []; s.activeCount = 0; return; }
   if (s.status === 'offline') { s.activeSeeded = false; return; }
   let current;
   try { current = await ros.active(router); }
@@ -210,7 +211,7 @@ async function ingestEvent({ router, username, type, address = null, callerId = 
 
 function publicState(s) {
   const stale = s.status !== 'online';
-  return { routerId: s.id, name: s.name, siteId: s.siteId, siteCode: s.siteCode, siteName: s.siteName, status: s.status, stale, lastOkAt: s.lastOkAt ? new Date(s.lastOkAt).toISOString() : null, lastError: s.lastError,
+  return { routerId: s.id, name: s.name, siteId: s.siteId, siteCode: s.siteCode, siteName: s.siteName, deviceRole: s.deviceRole || 'core', connectorType: s.connectorType || 'rest', pppoeEnabled: s.pppoeEnabled !== false, status: s.status, stale, lastOkAt: s.lastOkAt ? new Date(s.lastOkAt).toISOString() : null, lastError: s.lastError,
     telemetry: s.telemetry, wan: { interface: s.wan.interface, rxBps: stale ? 0 : s.wan.rxBps, txBps: stale ? 0 : s.wan.txBps, peakRxBps: s.wan.peakRxBps, peakTxBps: s.wan.peakTxBps, running: s.wan.running ?? null, history: s.wan.history.slice(-HISTORY_POINTS) },
     activeSessions: s.activeCount ?? null };
 }
@@ -233,7 +234,7 @@ async function routerSnapshots(siteId = null) {
 }
 
 async function refreshSecrets(siteId = null) {
-  const targets = (await store.activeRouters(siteId));
+  const targets = (await store.activeRouters(siteId)).filter(r => Number(r.pppoe_enabled ?? 1) === 1);
   const results = [];
   for (const r of targets) {
     try { results.push({ ok: true, ...(await store.syncRouterSecrets(r)) }); const cur = await ros.active(r); await store.applyActive(r, cur); }
@@ -264,7 +265,7 @@ function start() {
     cache.del('nms:widgets');
     await evaluateMassDisconnect();
   });
-  const secretsTick = guard('secrets', async () => { for (const r of routers) { if (stateFor(r).status === 'online') await store.syncRouterSecrets(r).catch(err => console.error(`NMS secret sync ${r.name}:`, err.message)); } });
+  const secretsTick = guard('secrets', async () => { for (const r of routers) { if (Number(r.pppoe_enabled ?? 1) !== 1) continue; if (stateFor(r).status === 'online') await store.syncRouterSecrets(r).catch(err => console.error(`NMS secret sync ${r.name}:`, err.message)); } });
   const logsTick = guard('logs', async () => { await Promise.all(routers.map(pollLogs)); });
   loadRouters().then(async () => { await telemetryTick(); await secretsTick(); await activeTick(); }).catch(err => console.error('NMS poller init:', err.message));
   every(60000, () => loadRouters().catch(() => {}));
