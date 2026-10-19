@@ -79,7 +79,7 @@ module.exports={
   command,
   resource:r=>command(r,proplist('/system/resource/print','uptime,cpu-load,free-memory,total-memory,free-hdd-space,total-hdd-space,board-name,version,architecture-name')),
   health:r=>command(r,proplist('/system/health/print','name,value')),
-  interfaces:r=>command(r,proplist('/interface/print','name,type,comment,running,disabled')),
+  interfaces:r=>command(r,proplist('/interface/print','name,type,comment,running,disabled,rx-byte,tx-byte,rx-packet,tx-packet,rx-drop,tx-drop,rx-error,tx-error,mtu,actual-mtu,mac-address,last-link-up-time,last-link-down-time,link-downs')),
   interfaceCounters:(r,name)=>command(r,proplist('/interface/print','name,rx-byte,tx-byte,running',[`?name=${name}`])),
   active:(r,username)=>command(r,proplist('/ppp/active/print','.id,name,address,uptime,caller-id,service,session-id',username?[`?name=${username}`]:[]),12000),
   secrets:r=>command(r,proplist('/ppp/secret/print','.id,name,password,service,profile,local-address,remote-address,caller-id,disabled,comment,last-logged-out'),20000),
