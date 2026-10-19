@@ -2,6 +2,14 @@
 <script id="infraInitial" type="application/json"><%- safeJson(initial) %></script>
 <section class="noc-shell" data-wall="<%= wallMode?1:0 %>">
 <header class="noc-head"><div><div class="noc-kicker">INKAMNET · NETWORK OPERATIONS CENTER</div><h1><%= wallMode?'NOC Wall':'Network Infrastructure' %></h1><p>Live topology, customer experience, infrastructure health, configuration, dan history.</p></div><div class="noc-actions"><span class="btn-tech"><i class="status-dot online"></i> <span data-updated>LIVE</span></span><% if(!wallMode){ %><a class="btn-tech primary" href="/network/infrastructure/wall" target="_blank"><i class="bi bi-display"></i>NOC Wall</a><% }else{ %><button class="btn-tech" data-fullscreen><i class="bi bi-arrows-fullscreen"></i>Fullscreen</button><% } %></div></header>
+<nav class="infra-module-nav wall-hide" aria-label="Network Operations">
+  <a href="/network"><i class="bi bi-speedometer2"></i>Overview</a>
+  <a href="/network/subscribers"><i class="bi bi-people-fill"></i>Subscribers</a>
+  <a href="/network/access"><i class="bi bi-hdd-network-fill"></i>Access / OLT</a>
+  <a class="active" href="/network/infrastructure"><i class="bi bi-diagram-3-fill"></i>Infrastructure</a>
+  <a href="/network/devices"><i class="bi bi-router-fill"></i>Devices</a>
+  <a href="/network/incidents"><i class="bi bi-exclamation-triangle-fill"></i>Incidents</a>
+</nav>
 <div class="noc-tabs wall-hide"><button class="noc-tab active" data-tab="live">LIVE</button><button class="noc-tab" data-tab="physical">PHYSICAL</button><button class="noc-tab" data-tab="logical">LOGICAL</button><button class="noc-tab" data-tab="experience">EXPERIENCE</button><button class="noc-tab" data-tab="config">CONFIG</button><button class="noc-tab" data-tab="history">HISTORY</button></div>
 <section class="noc-panel active" data-panel="live">
 <div class="noc-metrics"><article class="noc-metric"><small>NETWORK HEALTH</small><strong data-health><%= initial.health||0 %>%</strong><span>weighted live health</span></article><article class="noc-metric"><small>ROUTERS</small><strong data-metric="routers">-</strong><span>online / total</span></article><article class="noc-metric"><small>OLT</small><strong data-metric="olts">-</strong><span>reachable / registered</span></article><article class="noc-metric"><small>PPPoE ACTIVE</small><strong data-metric="ppp">-</strong><span>customer sessions</span></article><article class="noc-metric"><small>CUSTOMERS</small><strong data-metric="customers">-</strong><span>registered</span></article><article class="noc-metric"><small>TRAFFIC ↓ / ↑</small><strong><span data-metric="rx">-</span> / <span data-metric="tx">-</span></strong><span>aggregate WAN</span></article><article class="noc-metric"><small>CRITICAL</small><strong data-metric="alerts">-</strong><span>active incidents</span></article></div>
