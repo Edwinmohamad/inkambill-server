@@ -1,9 +1,9 @@
 const fs=require('fs');const assert=require('assert');
 const read=file=>fs.readFileSync(file,'utf8');
-const app=read('app.js'),ui=read('public/js/app.js'),schema=read('services/schemaService.js'),acs=read('routes/acs.js'),acsService=read('services/acsService.js'),nmsView=read('views/nms/dashboard.ejs'),nmsRoute=read('routes/nms.js'),layout=read('views/partials/layout.ejs'),networkWorkspace=read('views/network/workspace.ejs');
+const app=read('app.js'),ui=read('public/js/app.js'),schema=read('services/schemaService.js'),acs=read('routes/acs.js'),acsService=read('services/acsService.js'),nmsView=read('views/nms/dashboard.ejs'),nmsRoute=read('routes/nms.js'),layout=read('views/partials/layout.ejs'),networkWorkspace=read('views/network/workspace.ejs'),networkControl=read('public/js/network-control-center.js');
 assert(ui.includes('input.dataset.universalInstantSearch')&&ui.includes("word=>word.startsWith(q)"),'Universal instant search belum aktif');
 assert(ui.includes("if(event.key==='Enter'){event.preventDefault()"),'Enter masih memicu reload');
-assert(app.includes("app.use('/nms'")&&layout.includes('href="/network"')&&networkWorkspace.includes('href="/nms"')&&!app.includes("app.use('/noc'"),'NMS v2 harus tetap terdaftar dan reachable melalui Network Operations workspace');
+assert(app.includes("app.use('/nms'")&&layout.includes('href="/network"')&&(networkWorkspace.includes('href="/nms/secrets"')||networkWorkspace.includes('href="/nms"'))&&!app.includes("app.use('/noc'"),'NMS v2 harus tetap reachable melalui Network Control Center');
 assert(nmsView.includes('Ringkasan Site')&&nmsView.includes('Traffic WAN')&&nmsView.includes('Log PPP')&&nmsView.includes('nmsAlerts'),'NOC Dashboard belum lengkap');
 assert(schema.includes('network_map_nodes')&&schema.includes('network_map_links')&&schema.includes('ensureV43Schema'),'Skema geographic map belum lengkap');
 assert(!acs.includes("'/map/nodes'")&&!acs.includes("'/map/links'")&&!fs.existsSync('views/acs/map.ejs'),'Network Map seharusnya sudah dihapus');
@@ -11,4 +11,5 @@ assert(nmsRoute.includes("'/api/stream'")&&nmsRoute.includes('requireNetworkCont
 assert(acsService.includes("new Set(['refreshObject','reboot','setParameterValues'])"),'Allowlist aksi ACS tidak ditemukan');
 assert(acs.includes("String(req.body.confirm||'')!==String(device.serial_number||device.device_id)"),'Reboot ONT belum dilindungi konfirmasi serial');
 assert(acs.includes('acs_action_logs')&&acs.includes('reboot_ont'),'Audit aksi ONT belum lengkap');
-console.log('Powerful network suite regression test OK: instant search, consolidated Network Operations access, NMS v2, and protected ACS actions.');
+assert(networkControl.includes('inkamnet-network-scope')&&networkControl.includes('data-network-search')&&networkControl.includes('data-net-inspector'),'Network Control Center power features belum lengkap');
+console.log('Powerful network suite regression test OK: object-centric Network Control Center, NMS v2, site scope, command search, inspector, and protected ACS actions.');
