@@ -106,6 +106,44 @@ router.get('/api/control-search',async(req,res,next)=>{
     res.set('Cache-Control','no-store').json({ok:true,results});
   }catch(err){next(err);}
 });
+router.post('/api/maintenance',requireAdmin,async(req,res)=>{
+  try{
+    const title=String(req.body.title||'').trim().slice(0,160);
+    const scope=cleanScope(req.body.site_code);
+    const routerId=req.body.router_id?Number(req.body.router_id):null;
+    const startsAt=new Date(req.body.starts_at);
+    const endsAt=new Date(req.body.ends_at);
+    const notes=String(req.body.notes||'').trim().slice(0,500)||null;
+    if(!title)throw new Error('Judul maintenance wajib diisi.');
+    if(Number.isNaN(startsAt.getTime())||Number.isNaN(endsAt.getTime())||endsAt<=startsAt)throw new Error('Waktu maintenance tidak valid.');
+    let siteId=null;
+    if(scope){const [[s]]=await db.query(`SELECT id FROM sites WHERE code=? AND is_active=1 LIMIT 1`,[scope]);if(!s)throw new Error('Site tidak ditemukan.');siteId=s.id;}
+    if(routerId){const [[r]]=await db.query(`SELECT id,site_id FROM routers WHERE id=? AND is_active=1 LIMIT 1`,[routerId]);if(!r)throw new Error('Router tidak ditemukan.');if(siteId&&Number(r.site_id)!==Number(siteId))throw new Error('Router tidak berada pada site maintenance.');if(!siteId)siteId=r.site_id;}
+    const [result]=await db.execute(`INSERT INTO network_maintenance_windows(title,site_id,router_id,starts_at,ends_at,notes,created_by) VALUES(?,?,?,?,?,?,?)`,
+      [title,siteId,routerId,startsAt,endsAt,notes,req.session.user.id]);
+    await audit({userId:req.session.user.id,action:'create',entityType:'network_maintenance',entityId:result.insertId,description:`Maintenance ${title}`,siteId,ip:req.ip});
+    res.json({ok:true,id:result.insertId});
+  }catch(error){res.status(400).json({ok:false,error:error.message});}
+});
+router.post('/api/maintenance/:id/cancel',requireAdmin,async(req,res)=>{
+  try{
+    const id=Number(req.params.id);if(!id)throw new Error('Maintenance tidak valid.');
+    const [[row]]=await db.query(`SELECT id,title,site_id FROM network_maintenance_windows WHERE id=? AND cancelled_at IS NULL LIMIT 1`,[id]);
+    if(!row)throw new Error('Maintenance tidak ditemukan atau sudah dibatalkan.');
+    await db.execute(`UPDATE network_maintenance_windows SET cancelled_at=NOW() WHERE id=?`,[id]);
+    await audit({userId:req.session.user.id,action:'cancel',entityType:'network_maintenance',entityId:id,description:`Batalkan maintenance ${row.title}`,siteId:row.site_id,ip:req.ip});
+    res.json({ok:true});
+  }catch(error){res.status(400).json({ok:false,error:error.message});}
+});
+router.get('/api/config-drift',async(req,res)=>{
+  try{
+    const scope=cleanScope(req.query.site);const params=[];let where='';
+    if(scope){where=' WHERE o.site_id=(SELECT id FROM sites WHERE code=? LIMIT 1)';params.push(scope);}
+    const [rows]=await db.query(`SELECT o.*,s.code site_code FROM network_config_observations o LEFT JOIN sites s ON s.id=o.site_id${where} ORDER BY FIELD(o.drift_status,'drifted','unknown','in_sync'),o.updated_at DESC LIMIT 200`,params);
+    res.set('Cache-Control','no-store').json({ok:true,rows});
+  }catch(error){res.status(500).json({ok:false,error:error.message});}
+});
+
 router.post('/api/infrastructure/probe/run',requireAdmin,async(req,res)=>{
   try{res.json({ok:true,result:await runExperienceProbes()});}
   catch(error){res.status(502).json({ok:false,error:error.message});}
