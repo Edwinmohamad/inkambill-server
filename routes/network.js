@@ -8,7 +8,7 @@ const { proxyInfrastructure } = require('../services/infrastructureProxy');
 const { captureAllNmsTelemetry, getTrafficTrend, getSessionHistory, runRouterBackup, backupAllRouters } = require('../services/nmsTelemetryService');
 const { overview: infrastructureOverview, probeTargets, runExperienceProbes } = require('../services/networkInfrastructureService');
 const { encrypt } = require('../services/cryptoService');
-const { networkWorkspace } = require('../services/networkWorkspaceService');
+const { networkWorkspace, cleanScope } = require('../services/networkWorkspaceService');
 const router = express.Router();
 
 const INFRA_GROUPS=[
@@ -30,27 +30,41 @@ function infrastructureTool(key){return allInfrastructureTools().find(tool=>tool
 
 router.get('/',async(req,res,next)=>{
   try{
-    const data=await networkWorkspace('overview');
-    res.render('network/workspace',{title:'Network Operations',data,section:'overview'});
+    const scope=cleanScope(req.query.site);
+    const data=await networkWorkspace('overview',scope);
+    res.render('network/workspace',{title:'Network Control Center',data,section:'overview'});
   }catch(err){next(err);}
 });
 router.get('/subscribers',async(req,res,next)=>{
-  try{res.render('network/workspace',{title:'Subscriber Network',data:await networkWorkspace('subscribers'),section:'subscribers'});}catch(err){next(err);}
+  try{
+    const scope=cleanScope(req.query.site);
+    res.render('network/workspace',{title:'Subscribers',data:await networkWorkspace('subscribers',scope),section:'subscribers'});
+  }catch(err){next(err);}
 });
-router.get('/access',async(req,res,next)=>{
-  try{res.render('network/workspace',{title:'Access Network · OLT',data:await networkWorkspace('access'),section:'access'});}catch(err){next(err);}
+// Legacy routes remain compatible, but the UI no longer exposes them as top-level modules.
+router.get('/access',(req,res)=>{
+  const site=cleanScope(req.query.site);res.redirect(302,`/network/infrastructure${site?`?site=${encodeURIComponent(site)}`:''}#olt`);
 });
-router.get('/devices',async(req,res,next)=>{
-  try{res.render('network/workspace',{title:'Network Devices',data:await networkWorkspace('devices'),section:'devices'});}catch(err){next(err);}
+router.get('/devices',(req,res)=>{
+  const site=cleanScope(req.query.site);res.redirect(302,`/network/infrastructure${site?`?site=${encodeURIComponent(site)}`:''}#devices`);
 });
 router.get('/incidents',async(req,res,next)=>{
-  try{res.render('network/workspace',{title:'Network Incidents',data:await networkWorkspace('incidents'),section:'incidents'});}catch(err){next(err);}
+  try{
+    const scope=cleanScope(req.query.site);
+    res.render('network/workspace',{title:'Incident Center',data:await networkWorkspace('incidents',scope),section:'incidents'});
+  }catch(err){next(err);}
 });
 
-router.get('/infrastructure',async(req,res)=>{
-  const initial=await infrastructureOverview().catch(()=>({generatedAt:new Date().toISOString(),health:0,summary:{},sites:[],routers:[],probes:[],alerts:[],events:[],server:{}}));
+router.get('/infrastructure',async(req,res,next)=>{
+  try{
+    const scope=cleanScope(req.query.site);
+    res.render('network/workspace',{title:'Infrastructure',data:await networkWorkspace('infrastructure',scope),section:'infrastructure'});
+  }catch(err){next(err);}
+});
+router.get('/infrastructure/detail',async(req,res)=>{
+  const initial=await infrastructureOverview().catch(()=>({generatedAt:new Date().toISOString(),health:0,summary:{},sites:[],routers:[],olts:[],probes:[],alerts:[],events:[],server:{}}));
   const targets=await probeTargets().catch(()=>[]);
-  res.render('network/infrastructure',{title:'Network Infrastructure',initial,targets,wallMode:false});
+  res.render('network/infrastructure',{title:'Infrastructure Deep Dive',initial,targets,wallMode:false});
 });
 router.get('/infrastructure/wall',async(req,res)=>{
   const initial=await infrastructureOverview().catch(()=>({generatedAt:new Date().toISOString(),health:0,summary:{},sites:[],routers:[],probes:[],alerts:[],events:[],server:{}}));
