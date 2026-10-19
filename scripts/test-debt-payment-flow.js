@@ -10,7 +10,8 @@ async function run() {
     beginTransaction: async () => queries.push('BEGIN'),
     execute: async (sql, params) => {
       queries.push({ sql, params });
-      if (sql.startsWith('SELECT id,status,principal_amount')) return [[{ id: 7, status: 'ACTIVE', principal_amount: 500000 }]];
+      if (sql.startsWith('SELECT id,status,principal_amount')) return [[{ id: 7, status: 'ACTIVE', principal_amount: 500000,record_type:'RECEIVABLE',site_code:'KBG' }]];
+      if (sql.includes("FROM closing_periods") && sql.includes("status='LOCKED'")) return [[]];
       if (sql.startsWith('SELECT COALESCE(SUM(amount),0) paid_amount')) return [[{ paid_amount: 100000 }]];
       return [{ affectedRows: 1, insertId: 11 }];
     },
@@ -37,6 +38,11 @@ async function run() {
   const insert = queries.find(item => item.sql?.startsWith('INSERT INTO finance_debt_payments'));
   assert(insert, 'insert pembayaran tidak dijalankan');
   assert.deepStrictEqual(insert.params.slice(0, 5), [7, '2026-10-06', 150000, 'transfer', 'Tes']);
+  const financing = queries.find(item => item.sql?.includes('INSERT INTO finance_debt_cash_movements'));
+  assert(financing,'arus kas pembiayaan wajib tercatat dalam transaksi yang sama');
+  assert.deepStrictEqual(financing.params,[11,7,'2026-10-06','KBG','transfer','IN',150000,3]);
+  const audit = queries.find(item => item.sql?.includes('INSERT INTO financial_audit_logs'));
+  assert(audit,'audit trail keuangan wajib tersimpan atomik');
   assert(queries.includes('COMMIT'), 'transaksi pembayaran tidak di-commit');
   assert(!queries.includes('ROLLBACK'), 'transaksi sukses tidak boleh di-rollback');
   assert.strictEqual(res.redirectUrl, '/debts?scope=INTERNAL');
