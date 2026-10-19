@@ -5,6 +5,7 @@ const route=fs.readFileSync('routes/acs.js','utf8');
 const schema=fs.readFileSync('services/schemaService.js','utf8');
 const app=fs.readFileSync('app.js','utf8');
 const layout=fs.readFileSync('views/partials/layout.ejs','utf8');
+const networkWorkspace=fs.readFileSync('views/network/workspace.ejs','utf8');
 [
   [schema.includes('async function ensureV42Schema()'),'schema V42'],
   [schema.includes('UNIQUE KEY uq_acs_device_id'),'unique device'],
@@ -18,6 +19,6 @@ const layout=fs.readFileSync('views/partials/layout.ejs','utf8');
   [app.includes("app.use('/acs'"),'route mount'],
   [app.includes('await ensureV42Schema()'),'schema bootstrap'],
   [app.includes('syncAcsDevices()'),'scheduled sync'],
-  [layout.includes('href="/network/access"') && app.includes("app.use('/acs'"),'ACS accessible through Network Access workspace']
+  [layout.includes('href="/network/subscribers"')&&networkWorkspace.includes('href="/acs"'),'subscriber workspace access']
 ].forEach(([ok,label])=>assert(ok,`ACS check gagal: ${label}`));
-console.log('ACS monitoring validation passed: 13 checks.');
+console.log('ACS monitoring validation passed: 13 checks, including consolidated subscriber workspace access.');
