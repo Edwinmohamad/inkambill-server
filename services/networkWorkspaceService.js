@@ -11,7 +11,7 @@ async function networkWorkspace(section='overview',scope=''){
   const pppClause=siteScope?' AND p.site_id=(SELECT id FROM sites WHERE code=? LIMIT 1)':'';
   const incidentClause=siteScope?' AND a.site_id=(SELECT id FROM sites WHERE code=? LIMIT 1)':'';
 
-  const [ppp,ont,devices,incidentCounts,siteOptions]=await Promise.all([
+  const [ppp,ont,devices,incidentCounts,siteOptions,maintenanceRows,driftSummary]=await Promise.all([
     scalar(`SELECT COUNT(*) total,
       SUM(p.is_online=1 AND p.is_isolated=0) online,
       SUM(p.is_online=0 AND p.is_isolated=0 AND p.disabled=0) offline,
@@ -39,7 +39,21 @@ async function networkWorkspace(section='overview',scope=''){
       SUM(a.severity='warning') warning,
       SUM(a.acknowledged_by IS NOT NULL) acknowledged
       FROM nms_alerts a WHERE a.resolved_at IS NULL${incidentClause}`,siteScope?[siteScope]:[]),
-    db.query(`SELECT code,name FROM sites WHERE is_active=1 AND code IN ('KRW','KBG','CLM') ORDER BY FIELD(code,'KRW','KBG','CLM')`).then(([rows])=>rows).catch(()=>[])
+    db.query(`SELECT code,name FROM sites WHERE is_active=1 AND code IN ('KRW','KBG','CLM') ORDER BY FIELD(code,'KRW','KBG','CLM')`).then(([rows])=>rows).catch(()=>[]),
+    db.query(`SELECT m.id,m.title,m.site_id,m.router_id,m.starts_at,m.ends_at,m.notes,s.code site_code,r.name router_name,
+      CASE WHEN NOW() BETWEEN m.starts_at AND m.ends_at THEN 'active' WHEN m.starts_at>NOW() THEN 'upcoming' ELSE 'expired' END status
+      FROM network_maintenance_windows m
+      LEFT JOIN sites s ON s.id=m.site_id
+      LEFT JOIN routers r ON r.id=m.router_id
+      WHERE m.cancelled_at IS NULL AND m.ends_at>=DATE_SUB(NOW(),INTERVAL 1 HOUR)
+      ${siteScope?' AND (s.code=? OR m.site_id IS NULL)':''}
+      ORDER BY CASE WHEN NOW() BETWEEN m.starts_at AND m.ends_at THEN 0 ELSE 1 END,m.starts_at
+      LIMIT 30`,siteScope?[siteScope]:[]).then(([rows])=>rows).catch(()=>[]),
+    scalar(`SELECT COUNT(*) total,
+      SUM(drift_status='drifted') drifted,
+      SUM(drift_status='in_sync') in_sync,
+      SUM(drift_status='unknown') unknown
+      FROM network_config_observations WHERE 1=1${siteScope?' AND site_id=(SELECT id FROM sites WHERE code=? LIMIT 1)':''}`,siteScope?[siteScope]:[])
   ]);
 
   const baseSites=siteScope?(base.sites||[]).filter(s=>s.code===siteScope):(base.sites||[]);
@@ -94,6 +108,35 @@ async function networkWorkspace(section='overview',scope=''){
     ? Math.max(0,Math.round(((baseRouters.length?scopedRouterOnline/baseRouters.length:1)*60)+((baseProbes.length?baseProbes.reduce((a,b)=>a+Number(b.score||0),0)/baseProbes.length:100)*.4)-Number(incidentCounts.critical||0)*8))
     : Number(base.health||0);
 
+  const activeMaintenance=maintenanceRows.filter(m=>m.status==='active');
+  const incidentGroups=[];
+  const claimed=new Set();
+  for(const a of alerts){
+    if(claimed.has(a.id))continue;
+    const related=alerts.filter(x=>!claimed.has(x.id)&&x.id!==a.id&&(
+      (a.router_id&&x.router_id===a.router_id) ||
+      (a.site_id&&x.site_id===a.site_id&&a.severity!=='info')
+    ));
+    const root=(a.alert_type==='router_down'||a.severity==='critical')?a:null;
+    const members=[a,...related].slice(0,12);
+    members.forEach(x=>claimed.add(x.id));
+    incidentGroups.push({
+      id:a.id,
+      rootCause:root?root.title:(members.length>1?`Multiple symptoms at ${a.site_code||'network'}`:a.title),
+      severity:members.some(x=>x.severity==='critical')?'critical':members.some(x=>x.severity==='warning')?'warning':'info',
+      siteCode:a.site_code||null,
+      routerName:a.router_name||null,
+      count:members.length,
+      affected:members.map(x=>x.title)
+    });
+  }
+  const healthBreakdown={
+    routerAvailability:baseRouters.length?Math.round(scopedRouterOnline/baseRouters.length*100):100,
+    experience:baseProbes.length?Math.round(baseProbes.reduce((a,b)=>a+Number(b.score||0),0)/baseProbes.length):100,
+    criticalPenalty:Number(incidentCounts.critical||0)*8,
+    maintenanceActive:activeMaintenance.length
+  };
+
   return {
     section,scope:siteScope,scopeOptions:siteOptions,generatedAt:new Date().toISOString(),health:scopedHealth,
     summary:siteScope?{
@@ -108,7 +151,10 @@ async function networkWorkspace(section='overview',scope=''){
     ont:{total:Number(ont.total||0),online:Number(ont.online||0),offline:Number(ont.offline||0),warning:Number(ont.warning||0),critical:Number(ont.critical||0)},
     devices:{routers:Number(devices.routers||0),olts:Number(devices.olts||0),sites:Number(devices.sites||0),onts:Number(devices.onts||0)},
     incidents:{total:Number(incidentCounts.total||0),critical:Number(incidentCounts.critical||0),warning:Number(incidentCounts.warning||0),acknowledged:Number(incidentCounts.acknowledged||0)},
-    alerts,events,subscribers,experience:Object.values(experience)
+    alerts,events,subscribers,experience:Object.values(experience),incidentGroups,
+    healthBreakdown,
+    maintenance:{active:activeMaintenance.length,upcoming:maintenanceRows.filter(m=>m.status==='upcoming').length,rows:maintenanceRows},
+    configDrift:{total:Number(driftSummary.total||0),drifted:Number(driftSummary.drifted||0),inSync:Number(driftSummary.in_sync||0),unknown:Number(driftSummary.unknown||0)}
   };
 }
 module.exports={networkWorkspace,cleanScope};
