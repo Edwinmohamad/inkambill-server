@@ -83,7 +83,7 @@
       <% if(can('finance')||can('reports')){ %><section><h3>Keuangan</h3><div class="go-menu-grid">
         <% if(can('finance')){ %><a href="/cash"><i class="bi bi-cash-stack"></i><span>Arus Kas</span></a><a href="/analytics"><i class="bi bi-pie-chart-fill"></i><span>Analitik</span></a><a href="/debts"><i class="bi bi-journal-check"></i><span>Hutang Piutang</span></a><a href="/cash/categories"><i class="bi bi-tags-fill"></i><span><%= t('cashCategories') %></span></a><% } %><% if(can('reports')){ %><a href="/reports"><i class="bi bi-bar-chart-line-fill"></i><span>Laporan</span></a><% } %><% if(canClosing){ %><a href="/closing"><i class="bi bi-calculator-fill"></i><span>Closing</span></a><% } %>
       </div></section><% } %>
-      <% if(can('network')){ %><section><h3>Jaringan</h3><div class="go-menu-grid"><a href="/nms"><i class="bi bi-activity"></i><span>NOC Dashboard</span></a><a href="/nms/secrets"><i class="bi bi-person-lines-fill"></i><span>PPP Secrets</span></a><a href="/acs"><i class="bi bi-broadcast-pin"></i><span>Monitoring ONT</span></a><a href="/monitoring"><i class="bi bi-grid-1x2-fill"></i><span>Kelola Perangkat</span></a><a href="/routers"><i class="bi bi-router-fill"></i><span>Router</span></a><a href="/olt"><i class="bi bi-hdd-network-fill"></i><span>Registry OLT</span></a><a href="/sites"><i class="bi bi-hdd-rack-fill"></i><span>Site / POP</span></a><a href="/clusters"><i class="bi bi-diagram-3-fill"></i><span>Cluster & ODP</span></a><a href="/network/infrastructure"><i class="bi bi-diagram-3-fill"></i><span>Infrastruktur Network</span></a><a href="/network/tools"><i class="bi bi-hdd-stack-fill"></i><span>Infrastructure Hub</span></a></div></section><% } %>
+      <% if(can('network')){ %><section><h3>Network Operations</h3><div class="go-menu-grid"><a href="/network"><i class="bi bi-speedometer2"></i><span>Overview</span></a><a href="/network/subscribers"><i class="bi bi-people-fill"></i><span>Subscribers</span></a><a href="/network/access"><i class="bi bi-hdd-network-fill"></i><span>Access / OLT</span></a><a href="/network/infrastructure"><i class="bi bi-diagram-3-fill"></i><span>Infrastructure</span></a><a href="/network/devices"><i class="bi bi-router-fill"></i><span>Devices</span></a><a href="/network/incidents"><i class="bi bi-exclamation-triangle-fill"></i><span>Incidents</span></a></div></section><% } %>
       <% if(can('support')||can('warehouse')){ %><section><h3>Operasional</h3><div class="go-menu-grid"><% if(can('support')){ %><a href="/operations"><i class="bi bi-kanban-fill"></i><span>Operation Center</span></a><a href="/tickets"><i class="bi bi-life-preserver"></i><span>Ticketing</span></a><a href="/schedules"><i class="bi bi-calendar2-check-fill"></i><span>Jadwal Teknisi</span></a><a href="/team-kpi"><i class="bi bi-bar-chart-steps"></i><span>KPI Tim</span></a><a href="/server-duty"><i class="bi bi-shield-check"></i><span><%= t('serverDuty') %></span></a><% } %><% if(can('warehouse')){ %><a href="/inventory"><i class="bi bi-box-seam-fill"></i><span>Gudang</span></a><a href="/inventory/movements"><i class="bi bi-arrow-left-right"></i><span><%= t('movements') %></span></a><a href="/inventory/usage"><i class="bi bi-tools"></i><span><%= t('material') %></span></a><a href="/inventory/suppliers"><i class="bi bi-truck"></i><span><%= t('supplier') %></span></a><% } %></div></section><% } %>
       <section><h3>Akun & Sistem</h3><div class="go-menu-grid"><a href="/profile"><i class="bi bi-person-circle"></i><span>Profil Saya</span></a><a href="/my-cash"><i class="bi bi-wallet2"></i><span>Cash Saya</span></a><% if(can('billing')||can('support')||can('customers')||can('settings')){ %><a href="/wa-inbox"><i class="bi bi-chat-dots-fill"></i><span>WA Inbox</span></a><% } %><% if(can('settings')){ %><a href="/settings"><i class="bi bi-sliders2"></i><span>Pengaturan</span></a><a href="/wa-gateway"><i class="bi bi-whatsapp"></i><span>WA Gateway</span></a><% } %><% if(can('logs')){ %><a href="/logs"><i class="bi bi-terminal-fill"></i><span><%= t('activityLog') %></span></a><% } %></div></section>
     </div>
@@ -160,31 +160,24 @@
         <% } %>
 
         <% if(can('network')){ %>
-        <% const netDetailOpen = currentPath.startsWith('/sites') || currentPath.startsWith('/routers') || currentPath.startsWith('/olt') || currentPath.startsWith('/clusters'); %>
-        <div class="sidebar-section-label"><%= language==='en'?'NETWORK':'JARINGAN' %></div>
+        <% const networkArea = currentPath.startsWith('/network') || currentPath.startsWith('/nms') || currentPath.startsWith('/acs') || currentPath.startsWith('/monitoring') || currentPath.startsWith('/routers') || currentPath.startsWith('/olt') || currentPath.startsWith('/sites') || currentPath.startsWith('/clusters'); %>
+        <% const networkConfigOpen = currentPath.startsWith('/routers') || currentPath.startsWith('/sites') || currentPath.startsWith('/clusters') || currentPath.startsWith('/network/tools'); %>
+        <div class="sidebar-section-label">NETWORK</div>
         <nav class="sidebar-nav">
-          <a class="sidebar-link <%= currentPath==='/nms' ? 'active' : '' %>" href="/nms"><i class="bi bi-speedometer2"></i><span>NOC Dashboard</span><em class="badge-live">LIVE</em></a>
-          <a class="sidebar-link <%= currentPath.startsWith('/nms/secrets') ? 'active' : '' %>" href="/nms/secrets"><i class="bi bi-person-lines-fill"></i><span>MikroTik NMS · PPP</span></a>
-          <a class="sidebar-link <%= currentPath.startsWith('/acs') ? 'active' : '' %>" href="/acs"><i class="bi bi-broadcast-pin"></i><span>Monitoring ONT</span></a>
-          <!-- v-rebuild: "Kelola Perangkat" is the unified monitoring dashboard (MikroTik + OLT + ONT,
-               with ping/reboot/ganti SSID/password actions) -- promoted out of "Detail & Pengaturan" to
-               sit alongside the other live monitoring pages, since it's a live board, not a settings page. -->
-          <a class="sidebar-link <%= currentPath.startsWith('/monitoring') ? 'active' : '' %>" href="/monitoring"><i class="bi bi-grid-1x2-fill"></i><span>Kelola Perangkat</span><em class="badge-live">LIVE</em></a>
-          <a class="sidebar-link <%= currentPath.startsWith('/network/infrastructure') ? 'active' : '' %>" href="/network/infrastructure"><i class="bi bi-diagram-3-fill"></i><span>Infrastruktur Network</span><em>MAP</em></a>
-          <!-- "Detail & Pengaturan" now only holds device-integration/registry pages (connecting &
-               configuring routers, OLTs, sites, clusters) -- no monitoring/NMS pages left in here. -->
-          <details class="sidebar-nav-group infra-sidebar-group" <%= netDetailOpen ? 'open' : '' %>>
-            <summary class="sidebar-link <%= netDetailOpen ? 'active' : '' %>"><i class="bi bi-hdd-rack-fill"></i><span>Detail & Pengaturan</span><em><i class="bi bi-chevron-down"></i></em></summary>
+          <a class="sidebar-link <%= currentPath==='/network' ? 'active' : '' %>" href="/network"><i class="bi bi-speedometer2"></i><span>Overview</span><em class="badge-live">LIVE</em></a>
+          <a class="sidebar-link <%= currentPath.startsWith('/network/subscribers') || currentPath.startsWith('/nms') || currentPath.startsWith('/acs') ? 'active' : '' %>" href="/network/subscribers"><i class="bi bi-people-fill"></i><span>Subscribers</span></a>
+          <a class="sidebar-link <%= currentPath.startsWith('/network/access') || currentPath.startsWith('/olt') ? 'active' : '' %>" href="/network/access"><i class="bi bi-hdd-network-fill"></i><span>Access / OLT</span></a>
+          <a class="sidebar-link <%= currentPath.startsWith('/network/infrastructure') ? 'active' : '' %>" href="/network/infrastructure"><i class="bi bi-diagram-3-fill"></i><span>Infrastructure</span></a>
+          <a class="sidebar-link <%= currentPath.startsWith('/network/devices') || currentPath.startsWith('/monitoring') ? 'active' : '' %>" href="/network/devices"><i class="bi bi-router-fill"></i><span>Devices</span></a>
+          <a class="sidebar-link <%= currentPath.startsWith('/network/incidents') ? 'active' : '' %>" href="/network/incidents"><i class="bi bi-exclamation-triangle-fill"></i><span>Incidents</span></a>
+          <details class="sidebar-nav-group infra-sidebar-group" <%= networkConfigOpen ? 'open' : '' %>>
+            <summary class="sidebar-link <%= networkConfigOpen ? 'active' : '' %>"><i class="bi bi-sliders2"></i><span>Configuration</span><em><i class="bi bi-chevron-down"></i></em></summary>
             <div class="sidebar-subnav infra-sidebar-subnav">
-              <a class="<%= currentPath.startsWith('/routers') ? 'active' : '' %>" href="/routers"><i class="bi bi-router-fill"></i><%= t('routers') %></a>
-              <a class="<%= currentPath.startsWith('/olt') ? 'active' : '' %>" href="/olt"><i class="bi bi-hdd-network-fill"></i>Registry OLT</a>
-              <a class="<%= currentPath.startsWith('/sites') ? 'active' : '' %>" href="/sites"><i class="bi bi-hdd-rack-fill"></i><%= t('sites') %></a>
-              <a class="<%= currentPath.startsWith('/clusters') ? 'active' : '' %>" href="/clusters"><i class="bi bi-diagram-3-fill"></i><%= t('clusters') %></a>
+              <a class="<%= currentPath.startsWith('/routers') ? 'active' : '' %>" href="/routers"><i class="bi bi-router-fill"></i>Router Registry</a>
+              <a class="<%= currentPath.startsWith('/sites') ? 'active' : '' %>" href="/sites"><i class="bi bi-hdd-rack-fill"></i>Site / POP</a>
+              <a class="<%= currentPath.startsWith('/clusters') ? 'active' : '' %>" href="/clusters"><i class="bi bi-diagram-3-fill"></i>Cluster & ODP</a>
+              <a class="<%= currentPath.startsWith('/network/tools') ? 'active' : '' %>" href="/network/tools"><i class="bi bi-server"></i>Infrastructure Tools</a>
             </div>
-          </details>
-          <details class="sidebar-nav-group infra-sidebar-group" <%= currentPath.startsWith('/network/tools') ? 'open' : '' %>>
-            <summary class="sidebar-link <%= currentPath.startsWith('/network/tools') ? 'active' : '' %>"><i class="bi bi-grid-1x2-fill"></i><span>Infrastructure Hub</span><em><i class="bi bi-chevron-down"></i></em></summary>
-            <div class="sidebar-subnav infra-sidebar-subnav"><a href="/network/tools"><i class="bi bi-grid"></i>Workspace Overview</a><a href="/network/tools?group=server"><i class="bi bi-server"></i>Server & OS</a><a href="/network/tools?group=management"><i class="bi bi-router-fill"></i>TR-069 & Management</a><a href="/network/tools?group=containers"><i class="bi bi-box-seam-fill"></i>Container Services</a></div>
           </details>
         </nav>
         <% } %>
@@ -247,6 +240,17 @@
 
       <main class="content-wrap">
         <% if(flash){ %><div class="alert alert-<%= flash.type %> alert-modern alert-dismissible fade show" role="alert"><i class="bi bi-info-circle-fill me-2"></i><%= flash.message %><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><% } %>
+        <% const networkContextActive = can('network') && (currentPath.startsWith('/network') || currentPath.startsWith('/nms') || currentPath.startsWith('/acs') || currentPath.startsWith('/monitoring') || currentPath.startsWith('/routers') || currentPath.startsWith('/olt') || currentPath.startsWith('/sites') || currentPath.startsWith('/clusters')); %>
+        <% if(networkContextActive){ %>
+        <nav class="network-context-nav" aria-label="Network Operations">
+          <a class="<%= currentPath==='/network'?'active':'' %>" href="/network"><i class="bi bi-speedometer2"></i><span>Overview</span></a>
+          <a class="<%= currentPath.startsWith('/network/subscribers')||currentPath.startsWith('/nms')||currentPath.startsWith('/acs')?'active':'' %>" href="/network/subscribers"><i class="bi bi-people-fill"></i><span>Subscribers</span></a>
+          <a class="<%= currentPath.startsWith('/network/access')||currentPath.startsWith('/olt')?'active':'' %>" href="/network/access"><i class="bi bi-hdd-network-fill"></i><span>Access</span></a>
+          <a class="<%= currentPath.startsWith('/network/infrastructure')?'active':'' %>" href="/network/infrastructure"><i class="bi bi-diagram-3-fill"></i><span>Infrastructure</span></a>
+          <a class="<%= currentPath.startsWith('/network/devices')||currentPath.startsWith('/monitoring')||currentPath.startsWith('/routers')||currentPath.startsWith('/sites')||currentPath.startsWith('/clusters')||currentPath.startsWith('/network/tools')?'active':'' %>" href="/network/devices"><i class="bi bi-router-fill"></i><span>Devices</span></a>
+          <a class="<%= currentPath.startsWith('/network/incidents')?'active':'' %>" href="/network/incidents"><i class="bi bi-exclamation-triangle-fill"></i><span>Incidents</span></a>
+        </nav>
+        <% } %>
         <div class="page-enter"><%- body %></div>
         <link rel="stylesheet" href="/css/ui-coherence.css?v=<%= assetVersion %>">
         <%- include('pagination') %>
