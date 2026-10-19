@@ -8,6 +8,7 @@ const { proxyInfrastructure } = require('../services/infrastructureProxy');
 const { captureAllNmsTelemetry, getTrafficTrend, getSessionHistory, runRouterBackup, backupAllRouters } = require('../services/nmsTelemetryService');
 const { overview: infrastructureOverview, probeTargets, runExperienceProbes } = require('../services/networkInfrastructureService');
 const { encrypt } = require('../services/cryptoService');
+const { networkWorkspace } = require('../services/networkWorkspaceService');
 const router = express.Router();
 
 const INFRA_GROUPS=[
@@ -26,6 +27,25 @@ const INFRA_GROUPS=[
 ];
 function allInfrastructureTools(){return INFRA_GROUPS.flatMap(group=>group.tools.map(tool=>({...tool,groupKey:group.key,groupName:group.name})));}
 function infrastructureTool(key){return allInfrastructureTools().find(tool=>tool.key===String(key||''));}
+
+router.get('/',async(req,res,next)=>{
+  try{
+    const data=await networkWorkspace('overview');
+    res.render('network/workspace',{title:'Network Operations',data,section:'overview'});
+  }catch(err){next(err);}
+});
+router.get('/subscribers',async(req,res,next)=>{
+  try{res.render('network/workspace',{title:'Subscriber Network',data:await networkWorkspace('subscribers'),section:'subscribers'});}catch(err){next(err);}
+});
+router.get('/access',async(req,res,next)=>{
+  try{res.render('network/workspace',{title:'Access Network · OLT',data:await networkWorkspace('access'),section:'access'});}catch(err){next(err);}
+});
+router.get('/devices',async(req,res,next)=>{
+  try{res.render('network/workspace',{title:'Network Devices',data:await networkWorkspace('devices'),section:'devices'});}catch(err){next(err);}
+});
+router.get('/incidents',async(req,res,next)=>{
+  try{res.render('network/workspace',{title:'Network Incidents',data:await networkWorkspace('incidents'),section:'incidents'});}catch(err){next(err);}
+});
 
 router.get('/infrastructure',async(req,res)=>{
   const initial=await infrastructureOverview().catch(()=>({generatedAt:new Date().toISOString(),health:0,summary:{},sites:[],routers:[],probes:[],alerts:[],events:[],server:{}}));
