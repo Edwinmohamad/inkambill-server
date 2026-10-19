@@ -83,4 +83,38 @@ async function pingOneOlt(id){
   }
 }
 
-module.exports={oltSummaryRows,pingAllOlts,pingOneOlt};
+async function oltDetailRows(){
+  const olts=await oltSummaryRows();
+  const [ports]=await db.query(`
+    SELECT d.olt_name,d.pon_port,
+      COUNT(*) onu_total,
+      SUM(d.online_status='online') onu_online,
+      SUM(d.online_status='offline') onu_offline,
+      SUM(d.signal_status='warning') onu_warning,
+      SUM(d.signal_status='critical') onu_critical,
+      AVG(d.rx_power) avg_rx,
+      MIN(d.rx_power) min_rx,
+      MAX(d.rx_power) max_rx
+    FROM acs_devices d
+    WHERE d.olt_name IS NOT NULL AND d.olt_name<>'' AND d.pon_port IS NOT NULL AND d.pon_port<>''
+    GROUP BY d.olt_name,d.pon_port
+    ORDER BY d.olt_name,d.pon_port
+  `).catch(()=>[[]]);
+  const byName=new Map();
+  for(const p of ports){
+    const key=String(p.olt_name||'');
+    if(!byName.has(key))byName.set(key,[]);
+    byName.get(key).push({
+      ponPort:p.pon_port,onuTotal:Number(p.onu_total||0),onuOnline:Number(p.onu_online||0),onuOffline:Number(p.onu_offline||0),
+      onuWarning:Number(p.onu_warning||0),onuCritical:Number(p.onu_critical||0),
+      avgRx:p.avg_rx===null?null:Math.round(Number(p.avg_rx)*100)/100,
+      minRx:p.min_rx===null?null:Math.round(Number(p.min_rx)*100)/100,
+      maxRx:p.max_rx===null?null:Math.round(Number(p.max_rx)*100)/100
+    });
+  }
+  const [siteRows]=await db.query(`SELECT id,code FROM sites`).catch(()=>[[]]);
+  const siteMap=new Map(siteRows.map(s=>[Number(s.id),s.code]));
+  return olts.map(o=>({...o,site_code:o.site_id?siteMap.get(Number(o.site_id))||null:null,ponPorts:byName.get(String(o.name||''))||[]}));
+}
+
+module.exports={oltSummaryRows,oltDetailRows,pingAllOlts,pingOneOlt};
