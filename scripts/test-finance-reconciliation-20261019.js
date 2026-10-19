@@ -6,9 +6,9 @@ const snapshot=read('scripts/audit-finance-snapshot.js'),workflow=read('.github/
 assert.match(schema,/async function ensureV65Schema/);
 assert.match(app,/await ensureV65Schema\(\)/);
 assert.match(schema,/UNIQUE KEY uq_financing_payment\(debt_payment_id\)/);
-assert.match(debt,/INSERT INTO finance_debt_cash_movements/);
-assert.match(debt,/record\.record_type === 'RECEIVABLE' \? 'IN'/);
-assert.match(debt,/financialAudit\(\{conn,userId:req\.session\.user\.id,action:'record_debt_cash_movement'/);
+assert.doesNotMatch(debt,/INSERT INTO finance_debt_cash_movements/);
+assert.match(debt,/installment_number/);
+assert.match(debt,/financialAudit\(\{conn,userId:req\.session\.user\.id,action:'record_debt_installment'/);
 assert.match(debt,/if\(financing\)throw new Error/);
 assert.match(closing,/manual_carry_kbg/);
 assert.match(view,/name="manual_carry_kbg"/);
