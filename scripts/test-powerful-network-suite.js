@@ -3,7 +3,7 @@ const read=file=>fs.readFileSync(file,'utf8');
 const app=read('app.js'),ui=read('public/js/app.js'),schema=read('services/schemaService.js'),acs=read('routes/acs.js'),acsService=read('services/acsService.js'),nmsView=read('views/nms/dashboard.ejs'),nmsRoute=read('routes/nms.js'),layout=read('views/partials/layout.ejs');
 assert(ui.includes('input.dataset.universalInstantSearch')&&ui.includes("word=>word.startsWith(q)"),'Universal instant search belum aktif');
 assert(ui.includes("if(event.key==='Enter'){event.preventDefault()"),'Enter masih memicu reload');
-assert(app.includes("app.use('/nms'")&&layout.includes('NOC Dashboard')&&!app.includes("app.use('/noc'"),'NOC Dashboard (NMS v2) belum terdaftar / NOC Terpadu belum dihapus');
+assert(app.includes("app.use('/nms'")&&app.includes("app.use('/network'")&&layout.includes('network-context-nav')&&!app.includes("app.use('/noc'"),'NOC/NMS route atau Network workspace baru belum terdaftar');
 assert(nmsView.includes('Ringkasan Site')&&nmsView.includes('Traffic WAN')&&nmsView.includes('Log PPP')&&nmsView.includes('nmsAlerts'),'NOC Dashboard belum lengkap');
 assert(schema.includes('network_map_nodes')&&schema.includes('network_map_links')&&schema.includes('ensureV43Schema'),'Skema geographic map belum lengkap');
 assert(!acs.includes("'/map/nodes'")&&!acs.includes("'/map/links'")&&!fs.existsSync('views/acs/map.ejs'),'Network Map seharusnya sudah dihapus');
