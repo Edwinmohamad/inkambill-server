@@ -18,6 +18,6 @@ const layout=fs.readFileSync('views/partials/layout.ejs','utf8');
   [app.includes("app.use('/acs'"),'route mount'],
   [app.includes('await ensureV42Schema()'),'schema bootstrap'],
   [app.includes('syncAcsDevices()'),'scheduled sync'],
-  [layout.includes('Monitoring ONT')&&layout.includes('href="/acs"'),'sidebar link']
+  [layout.includes('href="/network/access"') && app.includes("app.use('/acs'"),'ACS accessible through Network Access workspace']
 ].forEach(([ok,label])=>assert(ok,`ACS check gagal: ${label}`));
 console.log('ACS monitoring validation passed: 13 checks.');
