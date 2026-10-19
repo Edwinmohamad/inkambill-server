@@ -8,7 +8,7 @@ assert.doesNotMatch(charts,/site\?'1=1'/,'site filter must not change accounting
 assert.match(finance,/WHERE ct\.internal_transfer_key IS NULL AND cc\.code NOT IN \('FINPRIN','FINPROUT'\) AND COALESCE\(ct\.approval_status/,'summary excludes internal transfer and manually paid loan principal');
 assert.match(sync,/ct\.transaction_date BETWEEN \? AND \?\s+AND ct\.internal_transfer_key IS NULL/,'AUTO Closing unsynced excludes transfers');
 assert.match(sync,/WHERE ct\.id IN \(\$\{marks\}\)\s+AND ct\.internal_transfer_key IS NULL/,'direct Closing sync excludes transfers');
-assert.match(sync,/if \(row\.internal_transfer_key\) \{ plan\.push\(\{ \.\.\.base, action: 'delete'/,'existing internal transfer Closing entries must be removed on re-sync');
+assert.match(sync,/if \(row\.internal_transfer_key \|\| \['FINPRIN','FINPROUT'\]\.includes\(row\.category_code\)\)/,'existing internal or nonoperating Closing entries must be removed on re-sync');
 assert.match(finance,/WHERE p\.method='cash' AND p\.status='confirmed' AND p\.settlement_status='held_by_staff'/,'collector-held cash must include all months');
 assert.doesNotMatch(finance.slice(finance.indexOf('const [[collection]]'),finance.indexOf('const [categoryChartRows]')), /MONTH\(p\.paid_at\)/,'held cash is stock, not current month flow');
 assert.match(view,/Bukan saldo rekening\/bank aktual/);
