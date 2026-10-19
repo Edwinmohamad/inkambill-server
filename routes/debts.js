@@ -114,7 +114,7 @@ async function refreshStatus(conn, id) {
   await conn.execute(`UPDATE finance_debts d
     SET d.status=CASE
       WHEN d.status='ARCHIVED' THEN 'ARCHIVED'
-      WHEN (SELECT COALESCE(SUM(p.amount),0) FROM finance_debt_payments p WHERE p.debt_id=d.id)>=d.principal_amount THEN 'PAID'
+      WHEN (SELECT COALESCE(SUM(p.amount),0) FROM finance_debt_payments p WHERE p.debt_id=d.id AND p.voided_at IS NULL)>=d.principal_amount THEN 'PAID'
       ELSE 'ACTIVE' END
     WHERE d.id=?`, [id]);
 }
@@ -147,13 +147,13 @@ router.get('/', async (req, res, next) => {
       GREATEST(d.principal_amount-COALESCE(SUM(p.amount),0),0) remaining_amount,
       CASE WHEN d.status='ACTIVE' AND d.due_date IS NOT NULL AND d.due_date<CURDATE() THEN 1 ELSE 0 END is_overdue,
       DATEDIFF(d.due_date,CURDATE()) days_to_due
-      FROM finance_debts d LEFT JOIN finance_debt_payments p ON p.debt_id=d.id
+      FROM finance_debts d LEFT JOIN finance_debt_payments p ON p.debt_id=d.id AND p.voided_at IS NULL
       LEFT JOIN employees e ON e.id=d.employee_id LEFT JOIN positions pos ON pos.id=e.position_id LEFT JOIN users u ON u.id=d.user_id
       WHERE ${conditions.join(' AND ')} GROUP BY d.id ORDER BY is_overdue DESC,d.due_date IS NULL,d.due_date,d.id DESC`, params);
     if (records.length) {
       const ids = records.map((row) => Number(row.id));
       const placeholders = ids.map(() => '?').join(',');
-      const [payments] = await db.execute(`SELECT id,debt_id,installment_number,payment_date,amount,payment_method,notes,proof_path,proof_original_name,created_at FROM finance_debt_payments WHERE debt_id IN (${placeholders}) ORDER BY payment_date DESC,id DESC`, ids);
+      const [payments] = await db.execute(`SELECT id,debt_id,installment_number,payment_date,amount,payment_method,notes,proof_path,proof_original_name,created_at,voided_at,void_reason FROM finance_debt_payments WHERE debt_id IN (${placeholders}) ORDER BY payment_date DESC,id DESC`, ids);
       const [items] = await db.execute(`SELECT id,debt_id,item_name,quantity,unit_price,notes FROM finance_debt_items WHERE debt_id IN (${placeholders}) ORDER BY debt_id,id`, ids);
       const grouped = new Map();
       const groupedItems = new Map();
@@ -166,7 +166,8 @@ router.get('/', async (req, res, next) => {
         groupedItems.get(Number(item.debt_id)).push(item);
       });
       records.forEach((record) => {
-        record.payments = grouped.get(Number(record.id)) || [];
+        record.payments = (grouped.get(Number(record.id)) || []).filter(p=>!p.voided_at);
+        record.allPaymentHistory = grouped.get(Number(record.id)) || [];
         record.items = groupedItems.get(Number(record.id)) || [];
         record.installments = installmentSchedule(record);
         const nextInstallment = record.installments.find((item) => item.status !== 'PAID');
@@ -177,13 +178,13 @@ router.get('/', async (req, res, next) => {
         // plus every payment, each carrying its own running "sisa saldo" so the UI never has to
         // recompute a balance client-side. Newest activity first, the original entry always last.
         const principal = Number(record.principal_amount || 0);
-        const paymentsAsc = [...record.payments].sort((a, b) => {
+        const paymentsAsc = [...record.allPaymentHistory].sort((a, b) => {
           if (a.payment_date === b.payment_date) return Number(a.id) - Number(b.id);
           return a.payment_date < b.payment_date ? -1 : 1;
         });
         let cumulative = 0;
         const paymentEntries = paymentsAsc.map((p) => {
-          cumulative += Number(p.amount);
+          if(!p.voided_at)cumulative += Number(p.amount);
           const remainingAfter = Math.max(0, principal - cumulative);
           return {
             kind: 'payment',
@@ -193,10 +194,12 @@ router.get('/', async (req, res, next) => {
             amount: Number(p.amount),
             method: p.payment_method || 'cash',
             installmentNumber: p.installment_number ? Number(p.installment_number) : null,
+            voided: Boolean(p.voided_at),
+            voidReason: p.void_reason || null,
             notes: p.notes,
             hasProof: Boolean(p.proof_path),
             remainingAfter,
-            entryStatus: remainingAfter <= 0 ? 'LUNAS' : 'DICICIL'
+            entryStatus: p.voided_at ? 'BATAL' : remainingAfter <= 0 ? 'LUNAS' : 'DICICIL'
           };
         });
         record.timeline = [...paymentEntries].reverse().concat([{
@@ -224,7 +227,7 @@ router.get('/', async (req, res, next) => {
       SUM(GREATEST(d.principal_amount-COALESCE(x.paid,0),0)) remaining,
       SUM(CASE WHEN d.due_date<CURDATE() THEN GREATEST(d.principal_amount-COALESCE(x.paid,0),0) ELSE 0 END) overdue,
       COUNT(*) total
-      FROM finance_debts d LEFT JOIN (SELECT debt_id,SUM(amount) paid FROM finance_debt_payments GROUP BY debt_id) x ON x.debt_id=d.id
+      FROM finance_debts d LEFT JOIN (SELECT debt_id,SUM(amount) paid FROM finance_debt_payments WHERE voided_at IS NULL GROUP BY debt_id) x ON x.debt_id=d.id
       WHERE d.status='ACTIVE' GROUP BY d.scope,d.record_type`);
     const blank = () => ({ remaining: 0, overdue: 0, total: 0 });
     const summary = { DEBT: blank(), RECEIVABLE: blank(), INTERNAL: { DEBT: blank(), RECEIVABLE: blank() }, EXTERNAL: { DEBT: blank(), RECEIVABLE: blank() } };
@@ -314,7 +317,7 @@ router.post('/:id/edit',requireAdmin,async(req,res,next)=>{
     conn=await db.getConnection();await conn.beginTransaction();
     const [[before]]=await conn.execute('SELECT * FROM finance_debts WHERE id=? FOR UPDATE',[id]);if(!before)throw new Error('Data Hutang tidak ditemukan.');
     if(before.status==='ARCHIVED')throw new Error('Data arsip tidak dapat diedit.');
-    const [[paid]]=await conn.execute('SELECT COALESCE(SUM(amount),0) total FROM finance_debt_payments WHERE debt_id=?',[id]);
+    const [[paid]]=await conn.execute('SELECT COALESCE(SUM(amount),0) total FROM finance_debt_payments WHERE debt_id=? AND voided_at IS NULL',[id]);
     if(principal<Number(paid.total||0))throw new Error('Pokok tidak boleh lebih kecil dari total pembayaran yang sudah tercatat.');
     // Changing the schedule after recorded installments would silently reassign payments.
     if(Number(paid.total)>0 && (principal!==amount(before.principal_amount)
@@ -368,7 +371,7 @@ async function recordPayment(req, res) {
     await conn.beginTransaction();
     const [[record]] = await conn.execute('SELECT id,status,principal_amount,record_type,site_code,payment_method,installment_months,issue_date,due_date FROM finance_debts WHERE id=? FOR UPDATE', [id]);
     if (!record) throw new Error('Data hutang/piutang tidak ditemukan.');
-    const [previousPayments] = await conn.execute('SELECT id,amount,payment_date,installment_number FROM finance_debt_payments WHERE debt_id=? ORDER BY payment_date,id', [id]);
+    const [previousPayments] = await conn.execute('SELECT id,amount,payment_date,installment_number FROM finance_debt_payments WHERE debt_id=? AND voided_at IS NULL ORDER BY payment_date,id', [id]);
     const paidTotal=previousPayments.reduce((n,p)=>n+amount(p.amount),0);
     const remaining=Math.max(0,amount(record.principal_amount)-paidTotal);
     const schedule=installmentSchedule({...record,due_date:record.due_date,issue_date:record.issue_date,
@@ -453,21 +456,21 @@ router.post('/:id/payments/:paymentId/delete', async (req, res, next) => {
     const [[record]] = await conn.execute('SELECT id,status FROM finance_debts WHERE id=? FOR UPDATE', [id]);
     if (!record) { await conn.rollback(); return res.status(404).send('Data tidak ditemukan.'); }
     if (record.status === 'ARCHIVED') { await conn.rollback(); return res.status(409).send('Data arsip tidak dapat diubah.'); }
-    const [[paymentRow]] = await conn.execute('SELECT proof_path FROM finance_debt_payments WHERE id=? AND debt_id=? FOR UPDATE', [paymentId, id]);
+    const [[paymentRow]] = await conn.execute('SELECT * FROM finance_debt_payments WHERE id=? AND debt_id=? FOR UPDATE', [paymentId, id]);
+    if(!paymentRow || paymentRow.voided_at)throw new Error('Pembayaran tidak ditemukan atau sudah dibatalkan.');
     const [[financing]] = await conn.execute('SELECT id FROM finance_debt_cash_movements WHERE debt_payment_id=? FOR UPDATE',[paymentId]);
     if(financing)throw new Error('Pembayaran legacy telah tercatat dalam ledger pembiayaan. Koreksi memerlukan review administrasi; histori lama tetap dilindungi.');
     const reason=String(req.body.reason||'').trim();
     if(reason.length<5)throw new Error('Alasan pembatalan pembayaran minimal 5 karakter wajib diisi.');
-    const [removed] = await conn.execute('DELETE FROM finance_debt_payments WHERE id=? AND debt_id=?', [paymentId, id]);
+    const [removed] = await conn.execute('UPDATE finance_debt_payments SET voided_at=NOW(),voided_by=?,void_reason=? WHERE id=? AND debt_id=? AND voided_at IS NULL', [req.session.user.id,reason,paymentId, id]);
     if (!removed.affectedRows) { await conn.rollback(); return res.status(404).send('Riwayat pembayaran tidak ditemukan.'); }
     await refreshStatus(conn, id);
     await financialAudit({conn,userId:req.session.user.id,action:'void_debt_installment',entityType:'finance_debt_payment',
-      entityId:paymentId,before:{debt_id:id,proof_path:paymentRow?.proof_path},after:null,reason,ip:req.ip});
+      entityId:paymentId,before:paymentRow,after:{voided:true,void_reason:reason},reason,ip:req.ip});
     await conn.commit();
-    removedProof = paymentRow?.proof_path || null;
-    if (removedProof) await removeDebtProof(removedProof);
-    await audit({userId:req.session.user.id,action:'delete_payment',entityType:'finance_debt',entityId:id,description:`Pembayaran #${paymentId} pada dokumen hutang #${id} dihapus`,ip:req.ip,details:{payment_id:paymentId,had_proof:Boolean(removedProof)}});
-    req.session.flash = { type: 'success', message: 'Pembayaran dihapus dan sisa dihitung ulang.' };
+    // Keep original proof and payment row permanently for audit.
+    await audit({userId:req.session.user.id,action:'delete_payment',entityType:'finance_debt',entityId:id,description:`Pembayaran #${paymentId} pada dokumen hutang #${id} dibatalkan`,ip:req.ip,details:{payment_id:paymentId,had_proof:Boolean(removedProof)}});
+    req.session.flash = { type: 'success', message: 'Pembayaran dibatalkan (histori dan bukti tetap tersimpan); sisa cicilan dihitung ulang.' };
     res.redirect(backTo(req));
   } catch (err) { if (conn) await conn.rollback(); next(err); } finally { if (conn) conn.release(); }
 });
