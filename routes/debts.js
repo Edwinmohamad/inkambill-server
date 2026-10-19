@@ -64,7 +64,7 @@ function installmentSchedule(record) {
       applied[i]+=take;unallocated-=take;
     }
   }
-  const firstDue=dateKey(record.due_date || record.issue_date);
+  const firstDue=dateKey(record.due_date || (record.payment_method==='INSTALLMENT' ? addMonths(record.issue_date,1) : record.issue_date));
   const today=localDate();
   return targets.map((target,index)=>{
     const paid=Math.max(0,applied[index]);
@@ -287,6 +287,7 @@ router.post('/', async (req, res, next) => {
     const installmentMonths = method === 'INSTALLMENT' ? Math.max(2, Math.min(60, Number.parseInt(req.body.installment_months, 10) || 2)) : 1;
     if (!['DEBT', 'RECEIVABLE'].includes(type) || !['GLOBAL', 'CDS', 'KBG'].includes(site) || !['ONCE', 'INSTALLMENT'].includes(method)) return res.status(400).send('Jenis, lokasi, atau metode pembayaran tidak valid.');
     if (!party || !purpose || principal <= 0 || !issueDate || !items.length) return res.status(400).send('Pihak, keperluan, tanggal, dan minimal satu rincian pembelian wajib diisi.');
+    if(method==='INSTALLMENT'&&installmentMonths>principal)return res.status(400).send('Jumlah cicilan tidak boleh melebihi nominal rupiah hutang.');
     if (dueDate && dueDate < issueDate) return res.status(400).send('Jatuh tempo tidak boleh sebelum tanggal pencatatan.');
     conn = await db.getConnection();
     await conn.beginTransaction();
@@ -313,6 +314,7 @@ router.post('/:id/edit',requireAdmin,async(req,res,next)=>{
     const principal=amount(b.principal_amount),issueDate=validDate(b.issue_date)?String(b.issue_date):'',dueDate=validDate(b.due_date)?String(b.due_date):null;
     const site=['GLOBAL','CDS','KBG'].includes(String(b.site_code||'').toUpperCase())?String(b.site_code).toUpperCase():'GLOBAL';
     if(principal<=0||!issueDate||!String(b.purpose||'').trim())throw new Error('Pokok, tanggal, dan keperluan wajib diisi.');
+    if(b.payment_method==='INSTALLMENT'&&Math.max(1,Math.min(60,Number(b.installment_months)||1))>principal)throw new Error('Jumlah cicilan melebihi nominal pokok.');
     if(dueDate&&dueDate<issueDate)throw new Error('Jatuh tempo tidak boleh sebelum tanggal pencatatan.');
     conn=await db.getConnection();await conn.beginTransaction();
     const [[before]]=await conn.execute('SELECT * FROM finance_debts WHERE id=? FOR UPDATE',[id]);if(!before)throw new Error('Data Hutang tidak ditemukan.');
@@ -398,7 +400,9 @@ async function recordPayment(req, res) {
     await refreshStatus(conn, id);
     await conn.commit();
     committed = true;
-    await audit({userId:req.session.user.id,action:'payment',entityType:'finance_debt',entityId:id,description:`Pembayaran hutang #${id} Rp${paid.toLocaleString('id-ID')} dicatat`,ip:req.ip,details:{payment_date:paymentDate,amount:paid,method,has_proof:Boolean(saved)}});
+    // The authoritative financial audit was committed in the payment transaction.
+    // Ancillary activity logging must not make a successfully posted payment look failed.
+    await audit({userId:req.session.user.id,action:'payment',entityType:'finance_debt',entityId:id,description:`Pembayaran hutang #${id} Rp${paid.toLocaleString('id-ID')} dicatat`,ip:req.ip,details:{payment_date:paymentDate,amount:paid,method,installment_number:selected,has_proof:Boolean(saved)}}).catch(err=>console.error('Activity audit unavailable after committed payment:',err.message));
     req.session.flash = { type: 'success', message: `Pembayaran cicilan ke-${selected} berhasil dicatat. Data Kas tidak berubah; catat Cash/Transfer manual bila uang benar-benar berpindah.` };
     res.redirect(backTo(req));
   } catch (err) {
@@ -469,7 +473,7 @@ router.post('/:id/payments/:paymentId/delete', async (req, res, next) => {
       entityId:paymentId,before:paymentRow,after:{voided:true,void_reason:reason},reason,ip:req.ip});
     await conn.commit();
     // Keep original proof and payment row permanently for audit.
-    await audit({userId:req.session.user.id,action:'delete_payment',entityType:'finance_debt',entityId:id,description:`Pembayaran #${paymentId} pada dokumen hutang #${id} dibatalkan`,ip:req.ip,details:{payment_id:paymentId,had_proof:Boolean(removedProof)}});
+    await audit({userId:req.session.user.id,action:'delete_payment',entityType:'finance_debt',entityId:id,description:`Pembayaran #${paymentId} pada dokumen hutang #${id} dibatalkan`,ip:req.ip,details:{payment_id:paymentId,had_proof:Boolean(removedProof)}}).catch(err=>console.error('Activity audit unavailable after committed void:',err.message));
     req.session.flash = { type: 'success', message: 'Pembayaran dibatalkan (histori dan bukti tetap tersimpan); sisa cicilan dihitung ulang.' };
     res.redirect(backTo(req));
   } catch (err) { if (conn) await conn.rollback(); next(err); } finally { if (conn) conn.release(); }
