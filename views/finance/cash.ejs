@@ -24,7 +24,7 @@
 
   <div class="cash-summary-grid">
     <article class="cash-summary-card income"><div><span>Pendapatan</span><strong><%= formatRupiah(summary.income) %></strong></div><i class="bi bi-graph-up-arrow"></i></article>
-    <article class="cash-summary-card balance"><div><span>Saldo</span><strong><%= formatRupiah(summary.balance) %></strong></div><i class="bi bi-wallet2"></i></article>
+    <article class="cash-summary-card balance"><div><span>Selisih Operasional Periode</span><strong><%= formatRupiah(summary.balance) %></strong><small>Bukan saldo rekening/bank aktual</small></div><i class="bi bi-wallet2"></i></article>
     <article class="cash-summary-card expense"><div><span>Pengeluaran</span><strong><%= formatRupiah(summary.expense) %></strong></div><i class="bi bi-graph-down-arrow"></i></article>
     <article class="cash-summary-card pending"><div><span>Menunggu Approval</span><strong><%= Number(approvalSummary.pending_count||0) %></strong><small><%= formatRupiah(approvalSummary.pending_total||0) %></small></div><i class="bi bi-hourglass-split"></i></article>
   </div>
