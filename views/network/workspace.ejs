@@ -1,144 +1,212 @@
 <link rel="stylesheet" href="/css/network-workspace.css">
-<section class="netws">
+<script id="networkControlData" type="application/json"><%- safeJson(data) %></script>
+<section class="netws" data-network-control>
   <header class="netws-head">
     <div>
-      <div class="module-kicker">NETWORK OPERATIONS</div>
+      <div class="module-kicker">INKAMNET · NETWORK CONTROL CENTER</div>
       <h1><%= title %></h1>
       <p>
-        <% if(section==='overview'){ %>Ringkasan kondisi jaringan tanpa memenuhi layar dengan telemetry teknis.<% } %>
-        <% if(section==='subscribers'){ %>PPPoE dan ONT pelanggan dalam satu area kerja.<% } %>
-        <% if(section==='access'){ %>OLT, PON, ONU, dan kesehatan optical access layer.<% } %>
-        <% if(section==='devices'){ %>Perangkat jaringan dan jalur menuju konfigurasi atau troubleshooting.<% } %>
-        <% if(section==='incidents'){ %>Alert aktif dan kejadian terbaru untuk investigasi NOC.<% } %>
+        <% if(section==='overview'){ %>Status jaringan, pengalaman user, dan perhatian utama dalam satu layar.<% } %>
+        <% if(section==='subscribers'){ %>Customer, PPPoE, dan ONT dalam satu konteks operasional.<% } %>
+        <% if(section==='infrastructure'){ %>Router, OLT, server, dan jalur menuju observability atau konfigurasi.<% } %>
+        <% if(section==='incidents'){ %>Incident aktif, acknowledgement, dampak, dan riwayat kejadian.<% } %>
       </p>
     </div>
     <div class="netws-head-actions">
+      <button class="btn-tech" type="button" data-network-search><i class="bi bi-search"></i>Search</button>
       <a class="btn-tech" href="/network/infrastructure/wall" target="_blank"><i class="bi bi-display"></i>NOC Wall</a>
-      <a class="btn-tech primary" href="/network/infrastructure"><i class="bi bi-diagram-3-fill"></i>Infrastructure</a>
     </div>
   </header>
 
-  <nav class="netws-tabs" aria-label="Network Operations sections">
-    <a class="<%= section==='overview'?'active':'' %>" href="/network"><i class="bi bi-speedometer2"></i><span>Overview</span></a>
-    <a class="<%= section==='subscribers'?'active':'' %>" href="/network/subscribers"><i class="bi bi-people-fill"></i><span>Subscribers</span></a>
-    <a class="<%= section==='access'?'active':'' %>" href="/network/access"><i class="bi bi-hdd-network-fill"></i><span>Access / OLT</span></a>
-    <a href="/network/infrastructure"><i class="bi bi-diagram-3-fill"></i><span>Infrastructure</span></a>
-    <a class="<%= section==='devices'?'active':'' %>" href="/network/devices"><i class="bi bi-router-fill"></i><span>Devices</span></a>
-    <a class="<%= section==='incidents'?'active':'' %>" href="/network/incidents"><i class="bi bi-exclamation-triangle-fill"></i><span>Incidents</span><% if(data.incidents?.total){ %><em><%= data.incidents.total %></em><% } %></a>
-  </nav>
-
-  <% if(section==='overview'){ %>
-  <div class="netws-health">
-    <div class="netws-health-score"><small>NETWORK HEALTH</small><strong><%= data.health %>%</strong><span><%= data.incidents.critical ? data.incidents.critical+' critical incident' : 'No critical incident' %></span></div>
-    <div class="netws-kpi"><small>POP</small><strong><%= data.devices.sites %></strong><span>active site</span></div>
-    <div class="netws-kpi"><small>ROUTER</small><strong><%= data.summary.routersOnline||0 %>/<%= data.summary.routersTotal||0 %></strong><span>online</span></div>
-    <div class="netws-kpi"><small>PPPoE</small><strong><%= data.ppp.online %></strong><span>active session</span></div>
-    <div class="netws-kpi"><small>ONT</small><strong><%= data.ont.online %>/<%= data.ont.total %></strong><span>online</span></div>
-    <div class="netws-kpi"><small>OLT</small><strong><%= (data.olts||[]).filter(o=>o.last_status==='online').length %>/<%= (data.olts||[]).filter(o=>o.is_registered).length %></strong><span>reachable</span></div>
+  <div class="netws-controlbar">
+    <nav class="netws-tabs" aria-label="Network Control Center">
+      <a class="<%= section==='overview'?'active':'' %>" href="/network<%= data.scope?'?site='+data.scope:'' %>"><i class="bi bi-speedometer2"></i><span>Overview</span></a>
+      <a class="<%= section==='subscribers'?'active':'' %>" href="/network/subscribers<%= data.scope?'?site='+data.scope:'' %>"><i class="bi bi-people-fill"></i><span>Subscribers</span></a>
+      <a class="<%= section==='infrastructure'?'active':'' %>" href="/network/infrastructure<%= data.scope?'?site='+data.scope:'' %>"><i class="bi bi-diagram-3-fill"></i><span>Infrastructure</span></a>
+      <a class="<%= section==='incidents'?'active':'' %>" href="/network/incidents<%= data.scope?'?site='+data.scope:'' %>"><i class="bi bi-exclamation-triangle-fill"></i><span>Incidents</span><% if(data.incidents?.total){ %><em><%= data.incidents.total %></em><% } %></a>
+    </nav>
+    <div class="netws-scope" data-scope-picker>
+      <button type="button" class="<%= !data.scope?'active':'' %>" data-site="">All Sites</button>
+      <% (data.scopeOptions||[]).forEach(s=>{ %><button type="button" class="<%= data.scope===s.code?'active':'' %>" data-site="<%= s.code %>"><%= s.code %></button><% }) %>
+    </div>
   </div>
 
-  <div class="netws-section-title"><div><small>WORKSPACES</small><h2>Pilih area kerja</h2></div><span>5 area utama</span></div>
-  <div class="netws-workspaces">
-    <a href="/network/subscribers" class="netws-workspace-card">
-      <span class="netws-icon"><i class="bi bi-people-fill"></i></span><div><small>SUBSCRIBERS</small><h3>Subscriber Network</h3><p>PPPoE, secret, isolir, Smart Sync, ONT dan TR-069.</p></div><em><%= data.ppp.online %> PPPoE · <%= data.ont.online %> ONT</em>
-    </a>
-    <a href="/network/access" class="netws-workspace-card">
-      <span class="netws-icon"><i class="bi bi-hdd-network-fill"></i></span><div><small>ACCESS</small><h3>Access / OLT</h3><p>OLT registry, PON port, ONU dan optical health.</p></div><em><%= data.devices.olts %> OLT</em>
-    </a>
-    <a href="/network/infrastructure" class="netws-workspace-card">
-      <span class="netws-icon"><i class="bi bi-diagram-3-fill"></i></span><div><small>INFRASTRUCTURE</small><h3>Infrastructure</h3><p>Topology, interfaces, server infra, probes dan logical network.</p></div><em><%= data.health %>% health</em>
-    </a>
-    <a href="/network/devices" class="netws-workspace-card">
-      <span class="netws-icon"><i class="bi bi-router-fill"></i></span><div><small>DEVICES</small><h3>Devices</h3><p>MikroTik, OLT, ONT, site dan device actions.</p></div><em><%= data.devices.routers + data.devices.olts %> core devices</em>
-    </a>
-    <a href="/network/incidents" class="netws-workspace-card <%= data.incidents.critical?'attention':'' %>">
-      <span class="netws-icon"><i class="bi bi-exclamation-triangle-fill"></i></span><div><small>INCIDENTS</small><h3>Alerts & Incidents</h3><p>Root cause, alert aktif, recovery dan event history.</p></div><em><%= data.incidents.total %> active</em>
-    </a>
-
+  <% if(section==='overview'){ %>
+  <div class="netws-pulse">
+    <article class="netws-health-score">
+      <small>NETWORK PULSE</small>
+      <strong><%= data.health %></strong>
+      <span><%= data.incidents.critical ? data.incidents.critical+' critical incident' : 'Stable across '+(data.scope||'all POPs') %></span>
+    </article>
+    <article class="netws-kpi"><small>ROUTER</small><strong><%= data.summary.routersOnline||0 %>/<%= data.summary.routersTotal||0 %></strong><span>online</span></article>
+    <article class="netws-kpi"><small>OLT</small><strong><%= (data.olts||[]).filter(o=>o.last_status==='online').length %>/<%= (data.olts||[]).filter(o=>o.is_registered).length %></strong><span>reachable</span></article>
+    <article class="netws-kpi"><small>PPPoE</small><strong><%= data.ppp.online %></strong><span>active</span></article>
+    <article class="netws-kpi"><small>ONT</small><strong><%= data.ont.online %>/<%= data.ont.total %></strong><span>online</span></article>
+    <article class="netws-kpi <%= data.incidents.critical?'danger':'' %>"><small>CRITICAL</small><strong><%= data.incidents.critical %></strong><span>incident</span></article>
   </div>
 
   <div class="netws-overview-grid">
     <article class="netws-card">
-      <header><div><small>USER EXPERIENCE</small><h3>Internet quality</h3></div><a href="/network/infrastructure#experience">Detail</a></header>
+      <header><div><small>NETWORK MAP</small><h3><%= data.scope||'All Sites' %></h3></div><a href="/network/infrastructure<%= data.scope?'?site='+data.scope:'' %>">Infrastructure</a></header>
+      <div class="netws-site-strip">
+        <% if(!(data.sites||[]).length){ %><div class="netws-empty">Tidak ada site pada scope ini.</div><% } %>
+        <% (data.sites||[]).forEach(s=>{ const r=(s.routers||[]).find(x=>(x.deviceRole||'core')!=='infrastructure')||{}; %>
+          <button type="button" class="netws-site-card" data-inspect-router="<%= r.routerId||'' %>">
+            <span><i class="netws-state <%= r.status==='online'?'up':'down' %>"></i><b><%= s.code %></b></span>
+            <small><%= s.provider||'ISP' %></small>
+            <em><%= Number(s.ppp_online||0) %> PPPoE</em>
+          </button>
+        <% }) %>
+      </div>
+      <div class="netws-flow-line">
+        <span>Internet</span><i></i><span>KRW</span><i></i><span>KBG / CLM</span><i></i><span>Customers</span>
+      </div>
+    </article>
+
+    <article class="netws-card">
+      <header><div><small>USER EXPERIENCE</small><h3>What users feel now</h3></div></header>
       <div class="netws-experience">
         <% if(!(data.experience||[]).length){ %><div class="netws-empty">Belum ada sample experience.</div><% } %>
         <% (data.experience||[]).slice(0,6).forEach(x=>{ %>
-          <div><span><%= String(x.category||'other').toUpperCase() %></span><strong><%= x.score %></strong><em><%= x.down ? x.down+' down' : 'healthy' %></em></div>
-        <% }) %>
-      </div>
-    </article>
-    <article class="netws-card">
-      <header><div><small>ATTENTION</small><h3>Butuh perhatian</h3></div><a href="/network/incidents">Semua</a></header>
-      <div class="netws-attention">
-        <% if(!(data.alerts||[]).length){ %><div class="netws-empty good"><i class="bi bi-check-circle-fill"></i>Tidak ada alert aktif.</div><% } %>
-        <% (data.alerts||[]).slice(0,6).forEach(a=>{ %>
-          <div><i class="netws-severity <%= a.severity %>"></i><span><b><%= a.title %></b><small><%= a.site_code||'NETWORK' %> · <%= a.router_name||'System' %></small></span></div>
+          <div><span><%= String(x.category||'other').toUpperCase() %></span><strong><%= x.score %></strong><em><%= x.down ? x.down+' down' : x.score>=90?'Excellent':x.score>=75?'Good':'Degraded' %></em></div>
         <% }) %>
       </div>
     </article>
   </div>
+
+  <article class="netws-card">
+    <header><div><small>ATTENTION</small><h3>What needs action</h3></div><a href="/network/incidents<%= data.scope?'?site='+data.scope:'' %>">Open Incident Center</a></header>
+    <div class="netws-attention">
+      <% if(!(data.alerts||[]).length){ %><div class="netws-empty good"><i class="bi bi-check-circle-fill"></i>Tidak ada alert aktif.</div><% } %>
+      <% (data.alerts||[]).slice(0,7).forEach(a=>{ %>
+        <div><i class="netws-severity <%= a.severity %>"></i><span><b><%= a.title %></b><small><%= a.site_code||'NETWORK' %> · <%= a.router_name||'System' %></small></span><em><%= String(a.severity||'info').toUpperCase() %></em></div>
+      <% }) %>
+    </div>
+  </article>
   <% } %>
 
   <% if(section==='subscribers'){ %>
-  <div class="netws-health compact">
-    <div class="netws-kpi"><small>PPPoE ONLINE</small><strong><%= data.ppp.online %></strong><span>of <%= data.ppp.total %></span></div>
-    <div class="netws-kpi"><small>PPPoE OFFLINE</small><strong><%= data.ppp.offline %></strong><span>customer sessions</span></div>
-    <div class="netws-kpi"><small>ISOLATED</small><strong><%= data.ppp.isolated %></strong><span>billing/network</span></div>
-    <div class="netws-kpi"><small>UNSYNCED</small><strong><%= data.ppp.unsynced %></strong><span>needs mapping</span></div>
-    <div class="netws-kpi"><small>ONT ONLINE</small><strong><%= data.ont.online %></strong><span>of <%= data.ont.total %></span></div>
-    <div class="netws-kpi"><small>OPTICAL CRITICAL</small><strong><%= data.ont.critical %></strong><span>ONT</span></div>
+  <div class="netws-pulse compact">
+    <article class="netws-kpi"><small>PPPoE ONLINE</small><strong><%= data.ppp.online %></strong><span>of <%= data.ppp.total %></span></article>
+    <article class="netws-kpi"><small>OFFLINE</small><strong><%= data.ppp.offline %></strong><span>session</span></article>
+    <article class="netws-kpi"><small>ISOLATED</small><strong><%= data.ppp.isolated %></strong><span>customer</span></article>
+    <article class="netws-kpi"><small>ONT ONLINE</small><strong><%= data.ont.online %></strong><span>of <%= data.ont.total %></span></article>
+    <article class="netws-kpi warning"><small>OPTICAL WARN</small><strong><%= data.ont.warning %></strong><span>ONT</span></article>
+    <article class="netws-kpi danger"><small>OPTICAL CRIT</small><strong><%= data.ont.critical %></strong><span>ONT</span></article>
   </div>
-  <div class="netws-action-grid">
-    <a href="/nms/secrets"><i class="bi bi-person-lines-fill"></i><span><small>PPPoE</small><b>Sessions & Secrets</b><em>Synced, unsynced, profile, isolate</em></span></a>
-    <a href="/acs"><i class="bi bi-broadcast-pin"></i><span><small>ONT</small><b>Subscriber Access</b><em>Online, optical, TR-069, customer mapping</em></span></a>
-    <a href="/nms"><i class="bi bi-activity"></i><span><small>NMS</small><b>Advanced NMS</b><em>Telemetry, automation, anomalies</em></span></a>
-    <a href="/customers"><i class="bi bi-people-fill"></i><span><small>CUSTOMER</small><b>Customer Records</b><em>Billing identity and package</em></span></a>
-  </div>
+
+  <article class="netws-card">
+    <header><div><small>SUBSCRIBER NETWORK</small><h3>Customer ↔ PPPoE ↔ ONT</h3></div><div class="netws-inline-actions"><a href="/nms/secrets">PPPoE Deep Dive</a><a href="/acs">ONT Deep Dive</a></div></header>
+    <div class="netws-table-wrap">
+      <table class="netws-table">
+        <thead><tr><th>Customer</th><th>Site</th><th>Package</th><th>PPPoE</th><th>ONT</th><th>Optical</th><th></th></tr></thead>
+        <tbody>
+        <% if(!(data.subscribers||[]).length){ %><tr><td colspan="7"><div class="netws-empty">Tidak ada subscriber pada scope ini.</div></td></tr><% } %>
+        <% (data.subscribers||[]).forEach(r=>{ %>
+          <tr>
+            <td><b><%= r.name %></b><small><%= r.customer_code||'-' %> · <%= r.pppoe_username||'No PPPoE' %></small></td>
+            <td><%= r.site_code %></td>
+            <td><%= r.package_name||'-' %></td>
+            <td><span class="netws-status <%= r.is_isolated?'warning':r.ppp_online?'up':'down' %>"><%= r.is_isolated?'ISOLATED':r.ppp_online?'ONLINE':'OFFLINE' %></span></td>
+            <td><span class="netws-status <%= r.ont_status==='online'?'up':r.ont_status==='offline'?'down':'' %>"><%= String(r.ont_status||'UNMAPPED').toUpperCase() %></span><small><%= r.serial_number||'' %></small></td>
+            <td><b><%= r.rx_power==null?'—':Number(r.rx_power).toFixed(2)+' dBm' %></b><small><%= String(r.signal_status||'unknown').toUpperCase() %></small></td>
+            <td><button class="netws-row-action" type="button" data-inspect-subscriber="<%= r.id %>"><i class="bi bi-chevron-right"></i></button></td>
+          </tr>
+        <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </article>
   <% } %>
 
-  <% if(section==='access'){ %>
-  <div class="netws-health compact">
-    <div class="netws-kpi"><small>OLT</small><strong><%= data.devices.olts %></strong><span>registered</span></div>
-    <div class="netws-kpi"><small>ONT</small><strong><%= data.ont.total %></strong><span>observed</span></div>
-    <div class="netws-kpi"><small>ONLINE</small><strong><%= data.ont.online %></strong><span>ONU/ONT</span></div>
-    <div class="netws-kpi"><small>OFFLINE</small><strong><%= data.ont.offline %></strong><span>ONU/ONT</span></div>
-    <div class="netws-kpi"><small>WARNING</small><strong><%= data.ont.warning %></strong><span>optical</span></div>
-    <div class="netws-kpi"><small>CRITICAL</small><strong><%= data.ont.critical %></strong><span>optical</span></div>
+  <% if(section==='infrastructure'){ %>
+  <div class="netws-pulse compact">
+    <article class="netws-kpi"><small>ROUTERS</small><strong><%= data.summary.routersOnline||0 %>/<%= data.summary.routersTotal||0 %></strong><span>online</span></article>
+    <article class="netws-kpi"><small>OLT</small><strong><%= (data.olts||[]).filter(o=>o.last_status==='online').length %>/<%= (data.olts||[]).filter(o=>o.is_registered).length %></strong><span>reachable</span></article>
+    <article class="netws-kpi"><small>WAN RX</small><strong><%= ((Number(data.summary.rxBps||0)/1000000)).toFixed(0) %></strong><span>Mbps</span></article>
+    <article class="netws-kpi"><small>WAN TX</small><strong><%= ((Number(data.summary.txBps||0)/1000000)).toFixed(0) %></strong><span>Mbps</span></article>
+    <article class="netws-kpi"><small>ONT</small><strong><%= data.ont.online %>/<%= data.ont.total %></strong><span>online</span></article>
+    <article class="netws-kpi <%= data.incidents.critical?'danger':'' %>"><small>CRITICAL</small><strong><%= data.incidents.critical %></strong><span>incident</span></article>
   </div>
-  <div class="netws-olt-list">
-    <% if(!(data.olts||[]).length){ %><div class="netws-empty">Belum ada OLT yang terdaftar.</div><% } %>
-    <% (data.olts||[]).forEach(o=>{ %>
-      <article><header><div><i class="netws-severity <%= o.last_status==='online'?'info':o.last_status==='offline'?'critical':'warning' %>"></i><span><b><%= o.name %></b><small><%= o.vendor||'Unknown vendor' %> · <%= o.management_ip||'No management IP' %></small></span></div><strong><%= String(o.last_status||'unknown').toUpperCase() %></strong></header>
-      <div><span><small>ONU</small><b><%= o.onu_online %>/<%= o.onu_total %></b></span><span><small>OFFLINE</small><b><%= o.onu_offline %></b></span><span><small>PON USED</small><b><%= o.pon_ports_used %></b></span><span><small>AVG RX</small><b><%= o.avg_rx==null?'—':o.avg_rx+' dBm' %></b></span></div></article>
-    <% }) %>
-  </div>
-  <div class="netws-footer-actions"><a class="btn-tech primary" href="/olt"><i class="bi bi-hdd-network-fill"></i>Kelola OLT</a><a class="btn-tech" href="/acs"><i class="bi bi-broadcast-pin"></i>Monitoring ONT</a></div>
-  <% } %>
 
-  <% if(section==='devices'){ %>
-  <div class="netws-action-grid">
-    <a href="/monitoring"><i class="bi bi-grid-1x2-fill"></i><span><small>LIVE ACTIONS</small><b>Unified Device Board</b><em>Ping, status dan action lintas perangkat</em></span></a>
-    <a href="/routers"><i class="bi bi-router-fill"></i><span><small>MIKROTIK</small><b>Router Registry</b><em>Endpoint, credential dan site mapping</em></span></a>
-    <a href="/olt"><i class="bi bi-hdd-network-fill"></i><span><small>OLT</small><b>OLT Registry</b><em>Management IP, vendor dan capacity</em></span></a>
-    <a href="/sites"><i class="bi bi-hdd-rack-fill"></i><span><small>TOPOLOGY</small><b>Site / POP</b><em>KRW, KBG, CLM dan site metadata</em></span></a>
-    <a href="/clusters"><i class="bi bi-diagram-3-fill"></i><span><small>ACCESS</small><b>Cluster & ODP</b><em>Distribution grouping</em></span></a>
-    <a href="/network/tools"><i class="bi bi-server"></i><span><small>INFRA TOOLS</small><b>Infrastructure Hub</b><em>Proxmox, CasaOS, GenieACS dan services</em></span></a>
+  <div class="netws-section-title" id="devices"><div><small>INFRASTRUCTURE OBJECTS</small><h2>Observe first. Configure when needed.</h2></div><a class="btn-tech" href="/network/infrastructure/detail"><i class="bi bi-activity"></i>Deep Dive</a></div>
+
+  <div class="netws-object-groups">
+    <section>
+      <header><div><small>ROUTERS</small><h3>MikroTik</h3></div><a href="/routers">Configure</a></header>
+      <div class="netws-object-grid">
+        <% if(!(data.routers||[]).length){ %><div class="netws-empty">Tidak ada router pada scope ini.</div><% } %>
+        <% (data.routers||[]).forEach(r=>{ %>
+          <button type="button" class="netws-object-card" data-inspect-router="<%= r.routerId %>">
+            <span class="netws-object-title"><i class="netws-state <%= r.status==='online'?'up':'down' %>"></i><b><%= r.name %></b></span>
+            <small><%= r.siteCode||'-' %> · <%= r.telemetry?.board||'MikroTik' %></small>
+            <div><span>CPU <b><%= r.telemetry?.cpuPct??'-' %>%</b></span><span>↓ <b><%= ((Number(r.wan?.rxBps||0)/1000000)).toFixed(1) %>M</b></span><span>↑ <b><%= ((Number(r.wan?.txBps||0)/1000000)).toFixed(1) %>M</b></span></div>
+          </button>
+        <% }) %>
+      </div>
+    </section>
+
+    <section id="olt">
+      <header><div><small>ACCESS LAYER</small><h3>OLT</h3></div><a href="/olt">Configure</a></header>
+      <div class="netws-object-grid">
+        <% if(!(data.olts||[]).length){ %><div class="netws-empty">Tidak ada OLT pada scope ini.</div><% } %>
+        <% (data.olts||[]).forEach(o=>{ %>
+          <button type="button" class="netws-object-card" data-inspect-olt="<%= o.id||0 %>">
+            <span class="netws-object-title"><i class="netws-state <%= o.last_status==='online'?'up':o.last_status==='offline'?'down':'' %>"></i><b><%= o.name %></b></span>
+            <small><%= o.site_code||'UNMAPPED' %> · <%= o.management_ip||'No management IP' %></small>
+            <div><span>ONU <b><%= o.onu_online %>/<%= o.onu_total %></b></span><span>PON <b><%= o.pon_ports_used %></b></span><span>RX <b><%= o.avg_rx==null?'—':o.avg_rx %></b></span></div>
+          </button>
+        <% }) %>
+      </div>
+    </section>
+
+    <section>
+      <header><div><small>SERVERS & SERVICES</small><h3>Infrastructure Services</h3></div><a href="/network/tools">Tools</a></header>
+      <div class="netws-service-grid">
+        <% (data.server?.services||[]).forEach(s=>{ %>
+          <a href="/network/tools"><i class="bi bi-server"></i><span><b><%= s[0] %></b><small><%= s[1] %> · <%= s[2] %></small></span></a>
+        <% }) %>
+      </div>
+    </section>
   </div>
   <% } %>
 
   <% if(section==='incidents'){ %>
-  <div class="netws-health compact">
-    <div class="netws-kpi"><small>ACTIVE</small><strong><%= data.incidents.total %></strong><span>alert</span></div>
-    <div class="netws-kpi danger"><small>CRITICAL</small><strong><%= data.incidents.critical %></strong><span>needs action</span></div>
-    <div class="netws-kpi warning"><small>WARNING</small><strong><%= data.incidents.warning %></strong><span>degraded</span></div>
-    <div class="netws-kpi"><small>ACK</small><strong><%= data.incidents.acknowledged %></strong><span>acknowledged</span></div>
+  <div class="netws-pulse compact">
+    <article class="netws-kpi"><small>ACTIVE</small><strong><%= data.incidents.total %></strong><span>alert</span></article>
+    <article class="netws-kpi danger"><small>CRITICAL</small><strong><%= data.incidents.critical %></strong><span>needs action</span></article>
+    <article class="netws-kpi warning"><small>WARNING</small><strong><%= data.incidents.warning %></strong><span>degraded</span></article>
+    <article class="netws-kpi"><small>ACK</small><strong><%= data.incidents.acknowledged %></strong><span>acknowledged</span></article>
   </div>
   <article class="netws-card">
-    <header><div><small>ACTIVE INCIDENTS</small><h3>Alert queue</h3></div></header>
+    <header><div><small>INCIDENT CENTER</small><h3>Active queue</h3></div></header>
     <div class="netws-incident-list">
       <% if(!(data.alerts||[]).length){ %><div class="netws-empty good"><i class="bi bi-check-circle-fill"></i>No active incident.</div><% } %>
-      <% (data.alerts||[]).forEach(a=>{ %><div><i class="netws-severity <%= a.severity %>"></i><span><b><%= a.title %></b><small><%= a.site_code||'NETWORK' %> · <%= a.router_name||'System' %> · <%= formatDateTime(a.opened_at) %></small></span><em><%= String(a.severity).toUpperCase() %></em></div><% }) %>
+      <% (data.alerts||[]).forEach(a=>{ %>
+        <button type="button" class="netws-incident-row" data-inspect-incident="<%= a.id %>">
+          <i class="netws-severity <%= a.severity %>"></i>
+          <span><b><%= a.title %></b><small><%= a.site_code||'NETWORK' %> · <%= a.router_name||'System' %> · <%= formatDateTime(a.opened_at) %></small></span>
+          <em><%= String(a.severity||'info').toUpperCase() %></em>
+        </button>
+      <% }) %>
     </div>
   </article>
   <% } %>
 </section>
+
+<aside class="netws-inspector" data-net-inspector aria-hidden="true">
+  <button class="netws-inspector-backdrop" type="button" data-inspector-close aria-label="Close"></button>
+  <section class="netws-inspector-panel">
+    <header><div><small>QUICK INSPECT</small><h2 data-inspector-title>Network object</h2></div><button type="button" data-inspector-close><i class="bi bi-x-lg"></i></button></header>
+    <div data-inspector-body></div>
+  </section>
+</aside>
+
+<div class="netws-command" data-network-command aria-hidden="true">
+  <button type="button" class="netws-command-backdrop" data-network-search-close aria-label="Close search"></button>
+  <section>
+    <header><i class="bi bi-search"></i><input type="search" placeholder="Search customer, router, OLT, site..." data-network-search-input><kbd>ESC</kbd></header>
+    <div data-network-search-results></div>
+  </section>
+</div>
+<script src="/js/network-control-center.js"></script>
