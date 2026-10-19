@@ -2,6 +2,7 @@ const db=require('../config/db');
 const poller=require('./nms/poller');
 const ros=require('./nms/rosApi');
 const store=require('./nms/secretStore');
+const { oltDetailRows }=require('./oltService');
 
 const SITE_META={
   KRW:{provider:'NETLAND',wan:'103.155.167.110/30',gateway:'103.155.167.109',role:'Core / Hub',accent:'blue',
@@ -37,7 +38,7 @@ async function latestProbes(){
   return rows.map(r=>({...r,score:scoreStatus(r.latency_ms,r.packet_loss,r.status,r.warning_ms,r.critical_ms)}));
 }
 async function overview(){
-  const [snapshots,probeRows]=await Promise.all([poller.routerSnapshots(),latestProbes()]);
+  const [snapshots,probeRows,olts]=await Promise.all([poller.routerSnapshots(),latestProbes(),oltDetailRows().catch(()=>[])]);
   const [siteRows]=await db.query(`SELECT s.id,s.code,s.name,
     (SELECT COUNT(*) FROM customers c WHERE c.site_id=s.id AND c.archived_at IS NULL) customers,
     (SELECT COUNT(*) FROM ppp_secrets p WHERE p.site_id=s.id AND p.removed_on_router_at IS NULL AND p.is_online=1 AND p.is_isolated=0) ppp_online,
@@ -60,7 +61,7 @@ async function overview(){
   return {
     generatedAt:new Date().toISOString(),health,
     summary:{routersOnline:online,routersTotal:relevant.length,pppOnline:siteRows.reduce((a,b)=>a+n(b.ppp_online),0),customers:siteRows.reduce((a,b)=>a+n(b.customers),0),rxBps:routers.reduce((a,b)=>a+b.rxBps,0),txBps:routers.reduce((a,b)=>a+b.txBps,0),criticalAlerts:critical},
-    sites:Object.values(bySite),routers,probes:probeRows,alerts,events,server:SERVER_META
+    sites:Object.values(bySite),routers,olts,probes:probeRows,alerts,events,server:SERVER_META
   };
 }
 async function probeRouter(router,target){
