@@ -241,7 +241,8 @@
         <datalist id="closingExpenseCategories"><option value="Petty cash"><option value="Maintenance"><option value="Operasional"><option value="Internet / ISP"><option value="Transportasi"><option value="Material jaringan"><option value="Gaji / Honor"><option value="Lain-lain"></datalist>
         <form class="closing-settings-grid" method="post" action="/closing/save">
           <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="from" value="<%= start %>"><input type="hidden" name="to" value="<%= end %>">
-          <label><span>Carry-over</span><input class="form-control form-control-sm" type="number" step="1" name="manual_carry" value="<%= closing.manual_carry || 0 %>"></label>
+          <label><span>Carry-over CDS (KRW–CLM)</span><input class="form-control form-control-sm" type="number" step="1" name="manual_carry" value="<%= closing.manual_carry ?? 0 %>"></label>
+          <label><span>Carry-over KBG</span><input class="form-control form-control-sm" type="number" step="1" name="manual_carry_kbg" value="<%= closing.manual_carry_kbg ?? 0 %>"></label>
           <label><span>Gaji Agung</span><input class="form-control form-control-sm" type="number" min="0" step="1" name="manual_salary_agung" value="<%= closing.manual_salary_agung ?? 500000 %>"></label>
           <label><span>Gaji Padilah</span><input class="form-control form-control-sm" type="number" min="0" step="1" name="manual_salary_padilah" value="<%= closing.manual_salary_padilah ?? 1000000 %>"></label>
           <label class="closing-notes-field"><span>Catatan closing</span><input class="form-control form-control-sm" name="notes" maxlength="2000" value="<%= closing.notes || '' %>" placeholder="Catatan untuk arsip/PDF"></label>
