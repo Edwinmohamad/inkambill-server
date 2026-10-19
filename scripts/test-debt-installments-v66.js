@@ -14,6 +14,9 @@ const paid=installmentSchedule({...basic,payments:[
 assert.deepEqual(paid.map(x=>x.paid),[333333,150000,0]);
 assert.deepEqual(paid.map(x=>x.status),['PAID','PARTIAL','UPCOMING']);
 assert.equal(paid[1].remaining,183333);
+const monthly=installmentSchedule({...basic,issue_date:'2099-01-31',due_date:null});
+assert.equal(monthly[0].dueDate,'2099-02-28','first due is one month after origination when no due date is specified');
+assert.equal(monthly[1].dueDate,'2099-03-28','subsequent installments remain monthly and valid');
 const arbitrary=installmentSchedule({...basic,payments:[{id:5,payment_date:'2099-01-02',amount:200000,installment_number:3}]});
 assert.deepEqual(arbitrary.map(x=>x.paid),[0,0,200000]);
 const route=fs.readFileSync('routes/debts.js','utf8'),schema=fs.readFileSync('services/schemaService.js','utf8');
