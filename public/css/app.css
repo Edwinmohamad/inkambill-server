@@ -2579,3 +2579,11 @@ html[data-theme="light"] .bm-revenue-card{background:linear-gradient(150deg,rgba
 @media(max-width:1399.98px){.ops-filter{grid-template-columns:repeat(4,minmax(0,1fr))}.ops-search-field{grid-column:span 2}.ops-summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.ops-module-nav{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:899.98px){.ops-filter{grid-template-columns:repeat(2,minmax(0,1fr))}.ops-grid-two{grid-template-columns:1fr}.ops-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.ops-detail-summary{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:575.98px){.ops-module-nav,.ops-filter,.ops-summary-grid,.ops-detail-summary{grid-template-columns:1fr}.ops-search-field{grid-column:auto}.ops-module-nav>a{padding:9px}.ops-ticket{grid-template-columns:1fr}.ops-ticket-meta{text-align:left;display:flex;gap:8px;align-items:center}.ops-activity{grid-template-columns:30px minmax(0,1fr)}.ops-activity time{grid-column:2}.ops-site-rule-grid form{grid-template-columns:1fr}.ops-site-rule-grid header,.ops-site-rule-grid button{grid-column:auto}}
+
+/* Unified Network Operations context bar */
+.network-context-nav{display:flex;gap:5px;align-items:center;overflow:auto;margin:0 0 12px;padding:5px;border:1px solid var(--line);border-radius:14px;background:color-mix(in srgb,var(--panel) 92%,transparent);backdrop-filter:blur(14px);position:sticky;top:68px;z-index:20}
+.network-context-nav a{display:flex;align-items:center;gap:6px;min-width:max-content;padding:8px 11px;border-radius:9px;color:var(--muted);text-decoration:none;font-size:.61rem;font-weight:700;transition:background .16s ease,color .16s ease}
+.network-context-nav a:hover{background:var(--panel-2);color:var(--text)}
+.network-context-nav a.active{background:var(--panel-3);color:var(--text);box-shadow:inset 0 0 0 1px var(--line)}
+.network-context-nav a i{font-size:.7rem}
+@media(max-width:768px){.network-context-nav{top:58px;margin-inline:-2px}.network-context-nav a{padding:7px 9px;font-size:.56rem}.network-context-nav a span{display:inline}}
