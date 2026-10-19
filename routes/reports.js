@@ -61,6 +61,7 @@ async function cashReport(f){
   where.push("(COALESCE(ct.source_type,'manual')<>'payment' OR (p.status='confirmed' AND (p.method<>'cash' OR p.settlement_status='settled')))");
   if(f.site){where.push('s.code=?');p.push(f.site);}
   where.push('ct.internal_transfer_key IS NULL');
+  where.push("cc.code NOT IN ('FINPRIN','FINPROUT')");
   if(f.category){where.push('cc.id=?');p.push(f.category);}
   if(f.flow_type){where.push('cc.type=?');p.push(f.flow_type);}
   if(f.method){where.push('p.method=?');p.push(f.method);}
