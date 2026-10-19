@@ -400,3 +400,17 @@ html[data-theme="light"] .hp-modal .hp-sheet{background:var(--panel)}
 @media(max-width:479.98px){
   .debt-standard-page .hp-stats.metric-grid{grid-template-columns:1fr}
 }
+
+
+/* Numbered debt installments: restrained, responsive, per-row payment actions. */
+.hp-installment-row{display:grid!important;grid-template-columns:minmax(0,1.3fr) minmax(120px,.8fr) auto;gap:12px;align-items:center;min-height:66px}
+.hp-installment-title{display:flex;flex-direction:column;gap:3px;min-width:0}
+.hp-installment-title>b{font-size:13px;font-weight:650}
+.hp-installment-title>small,.hp-installment-amount>small{font-size:11px;color:var(--muted);display:block;font-weight:450}
+.hp-installment-amount{text-align:right;font-size:13px;white-space:nowrap}
+.hp-installment-pay{min-width:96px;justify-content:center;white-space:nowrap;font-size:12px;padding:7px 11px}
+.hp-installment-done{color:var(--muted);font-size:12px;white-space:nowrap;text-align:right}
+.hp-payment-target{font-size:12px;font-weight:650;color:var(--text);margin:12px 0 8px}
+.hp-installment-row.sched-overdue .hp-installment-amount>small{color:var(--hp-red,#e05252)}
+.hp-installment-row.sched-paid .hp-installment-amount>small{color:var(--hp-green,#27b482)}
+@media(max-width:560px){.hp-installment-row{grid-template-columns:minmax(0,1fr) auto;gap:8px}.hp-installment-title{grid-column:1}.hp-installment-amount{grid-column:2}.hp-installment-pay,.hp-installment-done{grid-column:1/-1;justify-self:end;min-width:110px}}
