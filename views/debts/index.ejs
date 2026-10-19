@@ -150,7 +150,7 @@
     </div>
   </section>
 
-  <div class="alert alert-modern hp-footnote"><i class="bi bi-info-circle-fill"></i><span>Nominal di modul ini tidak otomatis masuk ke Closing sebagai pendapatan/pengeluaran agar tidak dihitung dua kali. Hutang internal teknisi tetap ditampilkan di Closing dan PDF Closing sebagai rincian informasi.</span></div>
+  <div class="alert alert-modern hp-footnote"><i class="bi bi-info-circle-fill"></i><span>Pembayaran hutang/piutang hanya mengurangi sisa cicilan. Tidak otomatis membuat transaksi Data Kas atau laba Closing. Jika uang benar-benar berpindah, catat Cash/Transfer manual dengan kategori Pokok Hutang/Piutang Nonoperasional agar tidak dihitung sebagai laba. Hutang internal teknisi tetap ditampilkan di Closing dan PDF Closing sebagai rincian informasi.</span></div>
 </div>
 
 <%# ---------- Sheet detail per catatan ---------- %>
@@ -220,7 +220,7 @@
                     data-debt-installment-number="<%= item.number %>" data-debt-installment-remaining="<%= item.remaining %>">
                     <%= item.paid > 0 ? 'Lanjut Bayar' : 'Bayar' %>
                   </button>
-                <% } else { %><span class="hp-installment-done"><i class="bi bi-check-circle"></i> Lunas</span><% } %>
+                <% } else { %><span class="hp-installment-done"><i class="bi <%= item.status === 'PAID' ? 'bi-check-circle' : 'bi-archive' %>"></i> <%= item.status === 'PAID' ? 'Lunas' : 'Diarsipkan' %></span><% } %>
               </div><% }) %>
             </div>
           </div>
@@ -230,12 +230,12 @@
               <div class="hp-tl-item tl-<%= k %>">
                 <span class="hp-tl-dot"></span>
                 <div class="hp-tl-body">
-                  <div class="hp-tl-top"><strong><%= entry.kind === 'created' ? 'Dicatat' : (entry.entryStatus === 'LUNAS' ? 'Pembayaran · Lunas' : (entry.installmentNumber ? `Pembayaran Cicilan ke-${entry.installmentNumber}` : 'Pembayaran lama')) %></strong><span><%= formatDate(entry.date) %><% if (entry.time) { %> · <%= formatTime(entry.time) %><% } %></span></div>
+                  <div class="hp-tl-top"><strong><%= entry.kind === 'created' ? 'Dicatat' : entry.voided ? 'Pembayaran Dibatalkan' : (entry.entryStatus === 'LUNAS' ? 'Pembayaran · Lunas' : (entry.installmentNumber ? `Pembayaran Cicilan ke-${entry.installmentNumber}` : 'Pembayaran lama')) %></strong><span><%= formatDate(entry.date) %><% if (entry.time) { %> · <%= formatTime(entry.time) %><% } %></span></div>
                   <div class="hp-tl-amount"><%= entry.kind === 'created' ? '' : '− ' %><%= rp(entry.amount) %><% if (entry.method) { %><em><%= statusLabel(entry.method) %></em><% } %></div>
-                  <small>Sisa <%= rp(entry.remainingAfter) %><%= entry.notes ? ` · ${entry.notes}` : '' %></small>
+                  <small>Sisa <%= rp(entry.remainingAfter) %><%= entry.voided ? ` · BATAL: ${entry.voidReason || 'Pembayaran dibatalkan'}` : '' %><%= entry.notes ? ` · ${entry.notes}` : '' %></small>
                   <div class="hp-tl-actions">
                     <% if (entry.hasProof) { %><a href="/debts/<%= row.id %>/payments/<%= entry.id %>/proof" target="_blank" rel="noopener"><i class="bi bi-paperclip"></i>Bukti</a><% } %>
-                    <% if (entry.kind === 'payment' && row.status !== 'ARCHIVED') { %><form method="post" action="/debts/<%= row.id %>/payments/<%= entry.id %>/delete" onsubmit="const reason=prompt('Alasan pembatalan pembayaran wajib diisi (minimal 5 karakter):');if(!reason||reason.trim().length<5)return false;this.querySelector('[name=reason]').value=reason.trim();return true;"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="reason"><button type="submit" class="danger"><i class="bi bi-trash"></i>Batalkan</button></form><% } %>
+                    <% if (entry.kind === 'payment' && !entry.voided && row.status !== 'ARCHIVED') { %><form method="post" action="/debts/<%= row.id %>/payments/<%= entry.id %>/delete" onsubmit="const reason=prompt('Alasan pembatalan pembayaran wajib diisi (minimal 5 karakter):');if(!reason||reason.trim().length<5)return false;this.querySelector('[name=reason]').value=reason.trim();return true;"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="reason"><button type="submit" class="danger"><i class="bi bi-trash"></i>Batalkan</button></form><% } %>
                   </div>
                 </div>
               </div>
