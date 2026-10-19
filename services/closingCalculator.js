@@ -149,6 +149,7 @@ function buildClosingCalculation({ payments = [], expenses = [], heldCash = [], 
   // sumber pendapatan/pengeluaran, jadi selalu berlaku baik mode manual maupun
   // otomatis.
   blocks.krwclm.profit += money(closing.manual_carry);
+  blocks.kbg.profit += money(closing.manual_carry_kbg);
 
   // Cash held belongs to the block where the transaction is installed. It must
   // never be applied to both CDS and KBG.
