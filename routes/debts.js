@@ -46,15 +46,32 @@ function installmentSchedule(record) {
   const months = record.payment_method === 'INSTALLMENT' ? Math.max(1, Math.min(60, Number(record.installment_months || 1))) : 1;
   const principal = amount(record.principal_amount);
   const base = Math.floor(principal / months);
-  let paidLeft = amount(record.paid_amount);
-  const firstDue = dateKey(record.due_date || record.issue_date);
-  return Array.from({ length: months }, (_, index) => {
-    const target = index === months - 1 ? principal - (base * (months - 1)) : base;
-    const applied = Math.min(target, Math.max(0, paidLeft));
-    paidLeft -= applied;
-    const dueDate = addMonths(firstDue, index);
-    const status = applied >= target ? 'PAID' : applied > 0 ? 'PARTIAL' : dueDate < localDate() ? 'OVERDUE' : 'UPCOMING';
-    return { number: index + 1, dueDate, target, paid: applied, remaining: target - applied, status };
+  const targets = Array.from({length:months},(_,i)=>i===months-1?principal-base*(months-1):base);
+  const applied = Array(months).fill(0);
+  const payments = Array.isArray(record.payments) ? [...record.payments].sort((a,b)=>String(a.payment_date).localeCompare(String(b.payment_date))||Number(a.id)-Number(b.id)) : [];
+  // Allocate explicitly numbered payments first so each instalment keeps its own history.
+  for (const p of payments) {
+    const n=Number(p.installment_number);
+    if (Number.isInteger(n) && n>=1 && n<=months) applied[n-1]+=amount(p.amount);
+  }
+  // Legacy unnumbered payments are projected oldest-first; never mutate their history.
+  for (const p of payments) {
+    const n=Number(p.installment_number);
+    if (Number.isInteger(n) && n>=1 && n<=months) continue;
+    let unallocated=amount(p.amount);
+    for(let i=0;i<months&&unallocated>0;i++){
+      const take=Math.min(Math.max(0,targets[i]-applied[i]),unallocated);
+      applied[i]+=take;unallocated-=take;
+    }
+  }
+  const firstDue=dateKey(record.due_date || record.issue_date);
+  const today=localDate();
+  return targets.map((target,index)=>{
+    const paid=Math.max(0,applied[index]);
+    const dueDate=addMonths(firstDue,index);
+    const remaining=Math.max(0,target-paid);
+    const status=remaining===0?'PAID':dueDate<today?'OVERDUE':paid>0?'PARTIAL':'UPCOMING';
+    return {number:index+1,dueDate,target,paid,remaining,status,overdue:dueDate<today&&remaining>0};
   });
 }
 
@@ -136,7 +153,7 @@ router.get('/', async (req, res, next) => {
     if (records.length) {
       const ids = records.map((row) => Number(row.id));
       const placeholders = ids.map(() => '?').join(',');
-      const [payments] = await db.execute(`SELECT id,debt_id,payment_date,amount,payment_method,notes,proof_path,proof_original_name,created_at FROM finance_debt_payments WHERE debt_id IN (${placeholders}) ORDER BY payment_date DESC,id DESC`, ids);
+      const [payments] = await db.execute(`SELECT id,debt_id,installment_number,payment_date,amount,payment_method,notes,proof_path,proof_original_name,created_at FROM finance_debt_payments WHERE debt_id IN (${placeholders}) ORDER BY payment_date DESC,id DESC`, ids);
       const [items] = await db.execute(`SELECT id,debt_id,item_name,quantity,unit_price,notes FROM finance_debt_items WHERE debt_id IN (${placeholders}) ORDER BY debt_id,id`, ids);
       const grouped = new Map();
       const groupedItems = new Map();
@@ -175,6 +192,7 @@ router.get('/', async (req, res, next) => {
             time: p.created_at,
             amount: Number(p.amount),
             method: p.payment_method || 'cash',
+            installmentNumber: p.installment_number ? Number(p.installment_number) : null,
             notes: p.notes,
             hasProof: Boolean(p.proof_path),
             remainingAfter,
@@ -438,3 +456,4 @@ router.post('/:id/payments/:paymentId/delete', async (req, res, next) => {
 
 module.exports = router;
 module.exports.recordPayment = recordPayment;
+module.exports.installmentSchedule = installmentSchedule;
