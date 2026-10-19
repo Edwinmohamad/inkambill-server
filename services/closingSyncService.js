@@ -47,6 +47,7 @@ async function selectUnsyncedCashRows({ db, closingId, start, end }) {
      LEFT JOIN sites s ON s.id = ct.site_id
      LEFT JOIN payments source_payment ON ct.source_type='payment' AND source_payment.id=ct.source_id
      WHERE ct.transaction_date BETWEEN ? AND ?
+       AND ct.internal_transfer_key IS NULL
        AND COALESCE(ct.approval_status,'APPROVED') = 'APPROVED'
        AND (COALESCE(ct.source_type,'manual')<>'payment' OR (source_payment.status='confirmed' AND (source_payment.method<>'cash' OR source_payment.settlement_status='settled')))${excludeSql}
      ORDER BY ct.transaction_date, ct.id`,
@@ -74,7 +75,7 @@ async function planSyncedReconciliation({ db, closingId, start, end }) {
   const [rows] = await db.execute(
     `SELECT ce.id entry_id, ce.cash_transaction_id, ce.entry_type, ce.site_code entry_site, ce.cluster_name entry_cluster,
             ce.category entry_category, ce.amount entry_amount, ce.entry_date, ce.description entry_description, ce.excluded_at,
-            ct.id src_id, ct.transaction_date, ct.name, ct.amount, ct.notes, COALESCE(ct.approval_status,'APPROVED') src_status,
+            ct.id src_id, ct.transaction_date, ct.name, ct.amount, ct.notes, ct.internal_transfer_key, COALESCE(ct.approval_status,'APPROVED') src_status,
             cc.type category_type, cc.name category_name, s.code site_code
      FROM closing_entries ce
      LEFT JOIN cash_transactions ct ON ct.id = ce.cash_transaction_id
@@ -88,6 +89,7 @@ async function planSyncedReconciliation({ db, closingId, start, end }) {
   for (const row of rows) {
     const base = { entryId: row.entry_id, cashTransactionId: row.cash_transaction_id, excluded: Boolean(row.excluded_at) };
     if (!row.src_id) { plan.push({ ...base, action: 'delete', reason: 'deleted' }); continue; }
+    if (row.internal_transfer_key) { plan.push({ ...base, action: 'delete', reason: 'internal_transfer_not_operating_cash' }); continue; }
     if (String(row.src_status).toUpperCase() !== 'APPROVED') {
       plan.push({ ...base, action: base.excluded ? 'keep' : 'delete', reason: 'not_approved' });
       continue;
@@ -188,6 +190,7 @@ async function syncCashTransactionsIntoDraftAutoClosing({ conn, cashTransactionI
      LEFT JOIN payments source_payment ON ct.source_type='payment' AND source_payment.id=ct.source_id
      JOIN closing_periods cp ON ct.transaction_date BETWEEN cp.period_start AND cp.period_end
      WHERE ct.id IN (${marks})
+       AND ct.internal_transfer_key IS NULL
        AND COALESCE(ct.approval_status,'APPROVED')='APPROVED'
        AND (COALESCE(ct.source_type,'manual')<>'payment' OR (source_payment.status='confirmed' AND (source_payment.method<>'cash' OR source_payment.settlement_status='settled')))
        AND cp.status='DRAFT' AND UPPER(COALESCE(cp.mode,'MANUAL'))='AUTO'
