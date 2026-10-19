@@ -116,17 +116,23 @@
         <% } %>
 
         <% if(can('billing')){ %>
+        <% const billingToolsOpen = currentPath.startsWith('/payments/reconciliation') || currentPath.startsWith('/custom-invoices') || currentPath.startsWith('/discounts') || currentPath.startsWith('/charges') || currentPath.startsWith('/wa-inbox') || currentPath.startsWith('/wa-gateway'); %>
         <div class="sidebar-section-label"><%= language==='en'?'BILLING':'TAGIHAN' %></div>
         <nav class="sidebar-nav">
           <a class="sidebar-link <%= currentPath.startsWith('/invoices') ? 'active' : '' %>" href="/invoices"><i class="bi bi-receipt-cutoff"></i><span><%= t('invoices') %></span></a>
           <a class="sidebar-link <%= currentPath === '/payments' ? 'active' : '' %>" href="/payments"><i class="bi bi-shield-check"></i><span><%= language==='en'?'Approval & Transactions':'Approval & Transaksi' %></span></a>
-          <% if(isAdmin){ %><a class="sidebar-link <%= currentPath.startsWith('/payments/reconciliation') ? 'active' : '' %>" href="/payments/reconciliation"><i class="bi bi-arrow-repeat"></i><span><%= t('reconciliation') %></span></a><% } %>
-          <a class="sidebar-link <%= currentPath.startsWith('/custom-invoices') ? 'active' : '' %>" href="/custom-invoices"><i class="bi bi-file-earmark-text-fill"></i><span><%= t('customInvoices') %></span></a>
-          <a class="sidebar-link <%= currentPath.startsWith('/discounts') ? 'active' : '' %>" href="/discounts"><i class="bi bi-percent"></i><span><%= t('discounts') %></span></a>
-          <a class="sidebar-link <%= currentPath.startsWith('/charges') ? 'active' : '' %>" href="/charges"><i class="bi bi-plus-square-fill"></i><span><%= t('charges') %></span></a>
-          <% if(can('billing')||can('support')||can('customers')||can('settings')){ %><a class="sidebar-link <%= currentPath.startsWith('/wa-inbox') ? 'active' : '' %>" href="/wa-inbox"><i class="bi bi-chat-dots-fill"></i><span>WA Inbox</span></a><% } %>
-          <% if(isAdmin){ %><a class="sidebar-link <%= currentPath.startsWith('/wa-gateway/broadcast') ? 'active' : '' %>" href="/wa-gateway/broadcast"><i class="bi bi-megaphone-fill"></i><span>Broadcast WA</span></a><% } %>
-          <% if(can('settings')){ %><a class="sidebar-link <%= currentPath.startsWith('/wa-gateway') && !currentPath.startsWith('/wa-gateway/broadcast') ? 'active' : '' %>" href="/wa-gateway"><i class="bi bi-whatsapp"></i><span>WA Gateway</span></a><% } %>
+          <details class="sidebar-nav-group" <%= billingToolsOpen ? 'open' : '' %>>
+            <summary class="sidebar-link <%= billingToolsOpen ? 'active' : '' %>"><i class="bi bi-sliders2"></i><span>Billing Tools</span><em><i class="bi bi-chevron-down"></i></em></summary>
+            <div class="sidebar-subnav">
+              <% if(isAdmin){ %><a class="<%= currentPath.startsWith('/payments/reconciliation') ? 'active' : '' %>" href="/payments/reconciliation"><%= t('reconciliation') %></a><% } %>
+              <a class="<%= currentPath.startsWith('/custom-invoices') ? 'active' : '' %>" href="/custom-invoices"><%= t('customInvoices') %></a>
+              <a class="<%= currentPath.startsWith('/discounts') ? 'active' : '' %>" href="/discounts"><%= t('discounts') %></a>
+              <a class="<%= currentPath.startsWith('/charges') ? 'active' : '' %>" href="/charges"><%= t('charges') %></a>
+              <% if(can('billing')||can('support')||can('customers')||can('settings')){ %><a class="<%= currentPath.startsWith('/wa-inbox') ? 'active' : '' %>" href="/wa-inbox">WA Inbox</a><% } %>
+              <% if(isAdmin){ %><a class="<%= currentPath.startsWith('/wa-gateway/broadcast') ? 'active' : '' %>" href="/wa-gateway/broadcast">Broadcast WA</a><% } %>
+              <% if(can('settings')){ %><a class="<%= currentPath.startsWith('/wa-gateway') && !currentPath.startsWith('/wa-gateway/broadcast') ? 'active' : '' %>" href="/wa-gateway">WA Gateway</a><% } %>
+            </div>
+          </details>
         </nav>
         <% } %>
 
@@ -148,14 +154,28 @@
         </nav>
         <% } %>
 
-        <% if(can('support')){ %>
-        <div class="sidebar-section-label"><%= language==='en'?'SUPPORT':'DUKUNGAN' %></div>
+        <% if(can('support')||can('warehouse')){ %>
+        <% const inventoryOpen = currentPath.startsWith('/inventory'); %>
+        <div class="sidebar-section-label"><%= language==='en'?'OPERATIONS':'OPERASIONAL' %></div>
         <nav class="sidebar-nav">
+          <% if(can('support')){ %>
           <a class="sidebar-link <%= currentPath.startsWith('/operations') ? 'active' : '' %>" href="/operations"><i class="bi bi-kanban-fill"></i><span>Operation Center</span><em>SPV</em></a>
           <a class="sidebar-link <%= currentPath.startsWith('/tickets') ? 'active' : '' %>" href="/tickets"><i class="bi bi-life-preserver"></i><span><%= t('tickets') %></span></a>
-          <a class="sidebar-link <%= currentPath.startsWith('/team-kpi') ? 'active' : '' %>" href="/team-kpi"><i class="bi bi-bar-chart-steps"></i><span><%= language==='en'?'Team KPI':'KPI Tim' %></span></a>
           <a class="sidebar-link <%= currentPath.startsWith('/schedules') ? 'active' : '' %>" href="/schedules"><i class="bi bi-calendar2-check-fill"></i><span><%= t('techSchedule') %></span></a>
+          <a class="sidebar-link <%= currentPath.startsWith('/team-kpi') ? 'active' : '' %>" href="/team-kpi"><i class="bi bi-bar-chart-steps"></i><span><%= language==='en'?'Team KPI':'KPI Tim' %></span></a>
           <a class="sidebar-link <%= currentPath.startsWith('/server-duty') ? 'active' : '' %>" href="/server-duty"><i class="bi bi-shield-check"></i><span><%= t('serverDuty') %></span></a>
+          <% } %>
+          <% if(can('warehouse')){ %>
+          <details class="sidebar-nav-group" <%= inventoryOpen ? 'open' : '' %>>
+            <summary class="sidebar-link <%= inventoryOpen ? 'active' : '' %>"><i class="bi bi-box-seam-fill"></i><span>Gudang & Material</span><em><i class="bi bi-chevron-down"></i></em></summary>
+            <div class="sidebar-subnav">
+              <a class="<%= currentPath === '/inventory' ? 'active' : '' %>" href="/inventory"><%= t('stock') %></a>
+              <a class="<%= currentPath.startsWith('/inventory/movements') ? 'active' : '' %>" href="/inventory/movements"><%= t('movements') %></a>
+              <a class="<%= currentPath.startsWith('/inventory/usage') ? 'active' : '' %>" href="/inventory/usage"><%= t('material') %></a>
+              <a class="<%= currentPath.startsWith('/inventory/suppliers') ? 'active' : '' %>" href="/inventory/suppliers"><%= t('supplier') %></a>
+            </div>
+          </details>
+          <% } %>
         </nav>
         <% } %>
 
@@ -179,16 +199,6 @@
               <a class="<%= currentPath.startsWith('/network/tools') ? 'active' : '' %>" href="/network/tools"><i class="bi bi-server"></i>Infrastructure Tools</a>
             </div>
           </details>
-        </nav>
-        <% } %>
-
-        <% if(can('warehouse')){ %>
-        <div class="sidebar-section-label"><%= language==='en'?'WAREHOUSE':'GUDANG' %></div>
-        <nav class="sidebar-nav">
-          <a class="sidebar-link <%= currentPath === '/inventory' ? 'active' : '' %>" href="/inventory"><i class="bi bi-box-seam-fill"></i><span><%= t('stock') %></span></a>
-          <a class="sidebar-link <%= currentPath.startsWith('/inventory/movements') ? 'active' : '' %>" href="/inventory/movements"><i class="bi bi-arrow-left-right"></i><span><%= t('movements') %></span></a>
-          <a class="sidebar-link <%= currentPath.startsWith('/inventory/usage') ? 'active' : '' %>" href="/inventory/usage"><i class="bi bi-tools"></i><span><%= t('material') %></span></a>
-          <a class="sidebar-link <%= currentPath.startsWith('/inventory/suppliers') ? 'active' : '' %>" href="/inventory/suppliers"><i class="bi bi-truck"></i><span><%= t('supplier') %></span></a>
         </nav>
         <% } %>
 
