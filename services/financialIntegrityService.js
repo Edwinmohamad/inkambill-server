@@ -10,6 +10,7 @@ const CLOSING_MISMATCH_SQL = `(
       ct.id IS NULL
       OR COALESCE(ct.approval_status,'APPROVED')<>'APPROVED'
       OR ct.internal_transfer_key IS NOT NULL
+      OR cc.code IN ('FINPRIN','FINPROUT')
       OR ct.transaction_date NOT BETWEEN cp.period_start AND cp.period_end
       OR ABS(ce.amount-ct.amount)>0.01
       OR ce.entry_type<>CASE WHEN cc.type='income' THEN 'INCOME' ELSE 'EXPENSE' END
