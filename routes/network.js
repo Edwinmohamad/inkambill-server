@@ -74,6 +74,38 @@ router.get('/api/infrastructure/live',async(req,res)=>{
   try{res.set('Cache-Control','no-store').json({ok:true,...await infrastructureOverview()});}
   catch(error){res.status(502).json({ok:false,error:error.message});}
 });
+router.get('/api/control-search',async(req,res,next)=>{
+  try{
+    const q=String(req.query.q||'').trim().slice(0,80);
+    const scope=cleanScope(req.query.site);
+    if(q.length<2)return res.json({ok:true,results:[]});
+    const like=`%${q}%`;
+    const siteSql=scope?' AND s.code=?':'';
+    const siteParams=scope?[scope]:[];
+    const [customers,routers_,olts_,alerts_]=await Promise.all([
+      db.query(`SELECT c.id,c.name,c.customer_code,c.pppoe_username,s.code site_code
+        FROM customers c JOIN sites s ON s.id=c.site_id
+        WHERE c.archived_at IS NULL AND (c.name LIKE ? OR c.customer_code LIKE ? OR c.pppoe_username LIKE ?)${siteSql}
+        ORDER BY c.name LIMIT 8`,[like,like,like,...siteParams]).then(([r])=>r),
+      db.query(`SELECT r.id,r.name,r.last_status,s.code site_code FROM routers r JOIN sites s ON s.id=r.site_id
+        WHERE r.is_active=1 AND (r.name LIKE ? OR s.code LIKE ?)${siteSql}
+        ORDER BY s.code,r.name LIMIT 6`,[like,like,...siteParams]).then(([r])=>r),
+      db.query(`SELECT o.id,o.name,o.management_ip,o.last_status,s.code site_code FROM olt_devices o LEFT JOIN sites s ON s.id=o.site_id
+        WHERE (o.name LIKE ? OR o.management_ip LIKE ?)${scope?' AND s.code=?':''}
+        ORDER BY o.name LIMIT 6`,[like,like,...siteParams]).then(([r])=>r),
+      db.query(`SELECT a.id,a.title,a.severity,s.code site_code FROM nms_alerts a LEFT JOIN sites s ON s.id=a.site_id
+        WHERE a.resolved_at IS NULL AND a.title LIKE ?${scope?' AND s.code=?':''}
+        ORDER BY FIELD(a.severity,'critical','warning','info'),a.opened_at DESC LIMIT 6`,[like,...siteParams]).then(([r])=>r)
+    ]);
+    const results=[
+      ...customers.map(x=>({type:'Customer',name:x.name,meta:`${x.site_code||''} · ${x.pppoe_username||x.customer_code||''}`,href:`/network/subscribers?site=${encodeURIComponent(x.site_code||'')}&focus=${x.id}`})),
+      ...routers_.map(x=>({type:'Router',name:x.name,meta:`${x.site_code||''} · ${x.last_status||'unknown'}`,href:`/network/infrastructure?site=${encodeURIComponent(x.site_code||'')}&focusRouter=${x.id}`})),
+      ...olts_.map(x=>({type:'OLT',name:x.name,meta:`${x.site_code||''} · ${x.management_ip||''}`,href:`/network/infrastructure${x.site_code?`?site=${encodeURIComponent(x.site_code)}&`:'?'}focusOlt=${x.id}`})),
+      ...alerts_.map(x=>({type:'Incident',name:x.title,meta:`${x.site_code||'NETWORK'} · ${x.severity||'info'}`,href:`/network/incidents${x.site_code?`?site=${encodeURIComponent(x.site_code)}&`:'?'}focusIncident=${x.id}`}))
+    ];
+    res.set('Cache-Control','no-store').json({ok:true,results});
+  }catch(err){next(err);}
+});
 router.post('/api/infrastructure/probe/run',requireAdmin,async(req,res)=>{
   try{res.json({ok:true,result:await runExperienceProbes()});}
   catch(error){res.status(502).json({ok:false,error:error.message});}
