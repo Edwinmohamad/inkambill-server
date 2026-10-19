@@ -4,7 +4,7 @@ const path = require('path');
 const crypto = require('crypto');
 const db = require('../config/db');
 const { audit } = require('../services/auditService');
-const { assertDateOpen, financialAudit } = require('../services/financialControlService');
+const { financialAudit } = require('../services/financialControlService');
 const { requireAdmin } = require('../middleware/auth');
 
 const router = express.Router();
@@ -316,6 +316,14 @@ router.post('/:id/edit',requireAdmin,async(req,res,next)=>{
     if(before.status==='ARCHIVED')throw new Error('Data arsip tidak dapat diedit.');
     const [[paid]]=await conn.execute('SELECT COALESCE(SUM(amount),0) total FROM finance_debt_payments WHERE debt_id=?',[id]);
     if(principal<Number(paid.total||0))throw new Error('Pokok tidak boleh lebih kecil dari total pembayaran yang sudah tercatat.');
+    // Changing the schedule after recorded installments would silently reassign payments.
+    if(Number(paid.total)>0 && (principal!==amount(before.principal_amount)
+      || String(issueDate)!==dateKey(before.issue_date)
+      || String(dueDate||'')!==String(before.due_date?dateKey(before.due_date):'')
+      || String(b.payment_method||'ONCE')!==String(before.payment_method)
+      || (b.payment_method==='INSTALLMENT'?Math.max(1,Math.min(60,Number(b.installment_months)||1)):1)!==Number(before.installment_months||1))){
+      throw new Error('Pokok, tanggal, dan jadwal cicilan tidak boleh diubah setelah ada pembayaran. Koreksi perlu proses audit khusus.');
+    }
     await conn.execute(`UPDATE finance_debts SET purpose=?,site_code=?,principal_amount=?,issue_date=?,due_date=?,payment_method=?,installment_months=?,responsible_name=?,notes=?,updated_by=? WHERE id=?`,[
       String(b.purpose).trim().slice(0,255),site,principal,issueDate,dueDate,b.payment_method==='INSTALLMENT'?'INSTALLMENT':'ONCE',Math.max(1,Math.min(60,Number(b.installment_months)||1)),String(b.responsible_name||'').trim().slice(0,160)||null,String(b.notes||'').trim().slice(0,2000)||null,req.session.user.id,id]);
     await refreshStatus(conn,id);await conn.commit();
@@ -347,6 +355,7 @@ async function recordPayment(req, res) {
     // parameterised URL as well so bookmarks/older rendered pages remain valid.
     const id = Number(req.params.id || req.body.debt_id);
     const paid = amount(req.body.amount);
+    const requestedInstallment = Number(req.body.installment_number || 0);
     const paymentDate = validDate(req.body.payment_date) ? req.body.payment_date : '';
     const method = String(req.body.payment_method || '').toLowerCase();
     if(!PAYMENT_METHODS.has(method))throw new Error('Metode pembayaran hutang/piutang hanya Cash atau Transfer.');
@@ -357,32 +366,37 @@ async function recordPayment(req, res) {
     }
     conn = await db.getConnection();
     await conn.beginTransaction();
-    const [[record]] = await conn.execute('SELECT id,status,principal_amount,record_type,site_code FROM finance_debts WHERE id=? FOR UPDATE', [id]);
+    const [[record]] = await conn.execute('SELECT id,status,principal_amount,record_type,site_code,payment_method,installment_months,issue_date,due_date FROM finance_debts WHERE id=? FOR UPDATE', [id]);
     if (!record) throw new Error('Data hutang/piutang tidak ditemukan.');
-    const [[totals]] = await conn.execute('SELECT COALESCE(SUM(amount),0) paid_amount FROM finance_debt_payments WHERE debt_id=?', [id]);
-    const remaining = Math.max(0, Number(record.principal_amount) - Number(totals.paid_amount));
+    const [previousPayments] = await conn.execute('SELECT id,amount,payment_date,installment_number FROM finance_debt_payments WHERE debt_id=? ORDER BY payment_date,id', [id]);
+    const paidTotal=previousPayments.reduce((n,p)=>n+amount(p.amount),0);
+    const remaining=Math.max(0,amount(record.principal_amount)-paidTotal);
+    const schedule=installmentSchedule({...record,due_date:record.due_date,issue_date:record.issue_date,
+      payment_method:record.payment_method,installment_months:record.installment_months,payments:previousPayments});
     if (record.status === 'ARCHIVED') throw new Error('Data yang diarsipkan tidak dapat menerima pembayaran.');
     if (remaining <= 0) throw new Error('Dokumen ini sudah lunas dan tidak dapat menerima pembayaran baru.');
     if (paid > remaining) throw new Error(`Pembayaran melebihi sisa Rp ${remaining.toLocaleString('id-ID')}.`);
-    await assertDateOpen(conn,paymentDate);
+    // An older client without an explicit number defaults to the oldest unpaid installment.
+    const selected=requestedInstallment===0?schedule.find(x=>x.remaining>0)?.number:requestedInstallment;
+    if(!Number.isInteger(selected)||selected<1||selected>schedule.length)throw new Error('Nomor cicilan tidak valid.');
+    const installment=schedule[selected-1];
+    if(paid>installment.remaining)throw new Error(`Cicilan ke-${selected} tersisa Rp ${installment.remaining.toLocaleString('id-ID')}. Nominal melebihi sisa cicilan.`);
+    // Debt tracking intentionally does NOT post to Data Kas or affect Closing.
+    // Data Kas is entered manually after actual cash/transfer verification.
     // Attachment is saved only after every business-rule check has passed, so a rejected
     // payment (over the remaining balance, archived record, ...) never leaves an orphan file.
     if (req.file) saved = await saveDebtProof(req.file);
-    const [posted] = await conn.execute('INSERT INTO finance_debt_payments(debt_id,payment_date,amount,payment_method,notes,proof_path,proof_original_name,proof_mime,created_by) VALUES(?,?,?,?,?,?,?,?,?)',
-      [id, paymentDate, paid, method, notes, saved?.filename || null, saved?.originalName || null, saved?.mime || null, req.session.user.id]);
+    const [posted] = await conn.execute('INSERT INTO finance_debt_payments(debt_id,installment_number,payment_date,amount,payment_method,notes,proof_path,proof_original_name,proof_mime,created_by) VALUES(?,?,?,?,?,?,?,?,?,?)',
+      [id,selected,paymentDate,paid,method,notes,saved?.filename||null,saved?.originalName||null,saved?.mime||null,req.session.user.id]);
     if(!posted.insertId)throw new Error('ID pembayaran hutang/piutang tidak tersedia; transaksi dibatalkan.');
-    const direction = record.record_type === 'RECEIVABLE' ? 'IN' : record.record_type === 'DEBT' ? 'OUT' : null;
-    if(!direction)throw new Error('Jenis dokumen hutang/piutang tidak valid.');
-    // Principal repayment is a financing cash movement, NEVER operational profit.
-    await conn.execute(`INSERT INTO finance_debt_cash_movements
-      (debt_payment_id,debt_id,book_date,site_code,method,direction,amount,actor_user_id)
-      VALUES(?,?,?,?,?,?,?,?)`,[posted.insertId,id,paymentDate,record.site_code || 'GLOBAL',method,direction,paid,req.session.user.id]);
-    await financialAudit({conn,userId:req.session.user.id,action:'record_debt_cash_movement',entityType:'finance_debt_payment',entityId:posted.insertId,before:null,after:{debt_id:id,amount:paid,book_date:paymentDate,method,direction,site_code:record.site_code},reason:'Pembayaran hutang/piutang beserta arus kas pembiayaan',ip:req.ip});
+    await financialAudit({conn,userId:req.session.user.id,action:'record_debt_installment',entityType:'finance_debt_payment',
+      entityId:posted.insertId,before:null,after:{debt_id:id,installment_number:selected,amount:paid,payment_date:paymentDate,method},
+      reason:'Pencatatan pembayaran cicilan hutang/piutang; kas dicatat manual terpisah',ip:req.ip});
     await refreshStatus(conn, id);
     await conn.commit();
     committed = true;
     await audit({userId:req.session.user.id,action:'payment',entityType:'finance_debt',entityId:id,description:`Pembayaran hutang #${id} Rp${paid.toLocaleString('id-ID')} dicatat`,ip:req.ip,details:{payment_date:paymentDate,amount:paid,method,has_proof:Boolean(saved)}});
-    req.session.flash = { type: 'success', message: 'Pembayaran berhasil dicatat dan sisa diperbarui.' };
+    req.session.flash = { type: 'success', message: `Pembayaran cicilan ke-${selected} berhasil dicatat. Data Kas tidak berubah; catat Cash/Transfer manual bila uang benar-benar berpindah.` };
     res.redirect(backTo(req));
   } catch (err) {
     if (conn && !committed) await conn.rollback();
@@ -441,10 +455,14 @@ router.post('/:id/payments/:paymentId/delete', async (req, res, next) => {
     if (record.status === 'ARCHIVED') { await conn.rollback(); return res.status(409).send('Data arsip tidak dapat diubah.'); }
     const [[paymentRow]] = await conn.execute('SELECT proof_path FROM finance_debt_payments WHERE id=? AND debt_id=? FOR UPDATE', [paymentId, id]);
     const [[financing]] = await conn.execute('SELECT id FROM finance_debt_cash_movements WHERE debt_payment_id=? FOR UPDATE',[paymentId]);
-    if(financing)throw new Error('Pembayaran sudah masuk arus kas pembiayaan. Penghapusan langsung dilarang; lakukan koreksi terpisah dengan jurnal pembalik yang diaudit.');
+    if(financing)throw new Error('Pembayaran legacy telah tercatat dalam ledger pembiayaan. Koreksi memerlukan review administrasi; histori lama tetap dilindungi.');
+    const reason=String(req.body.reason||'').trim();
+    if(reason.length<5)throw new Error('Alasan pembatalan pembayaran minimal 5 karakter wajib diisi.');
     const [removed] = await conn.execute('DELETE FROM finance_debt_payments WHERE id=? AND debt_id=?', [paymentId, id]);
     if (!removed.affectedRows) { await conn.rollback(); return res.status(404).send('Riwayat pembayaran tidak ditemukan.'); }
     await refreshStatus(conn, id);
+    await financialAudit({conn,userId:req.session.user.id,action:'void_debt_installment',entityType:'finance_debt_payment',
+      entityId:paymentId,before:{debt_id:id,proof_path:paymentRow?.proof_path},after:null,reason,ip:req.ip});
     await conn.commit();
     removedProof = paymentRow?.proof_path || null;
     if (removedProof) await removeDebtProof(removedProof);
