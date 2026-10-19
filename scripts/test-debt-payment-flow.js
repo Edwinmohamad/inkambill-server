@@ -10,7 +10,8 @@ async function run() {
     beginTransaction: async () => queries.push('BEGIN'),
     execute: async (sql, params) => {
       queries.push({ sql, params });
-      if (sql.startsWith('SELECT id,status,principal_amount')) return [[{ id: 7, status: 'ACTIVE', principal_amount: 500000,record_type:'RECEIVABLE',site_code:'KBG' }]];
+      if (sql.startsWith('SELECT id,status,principal_amount')) return [[{ id: 7, status: 'ACTIVE', principal_amount: 500000,record_type:'RECEIVABLE',site_code:'KBG',payment_method:'INSTALLMENT',installment_months:3,issue_date:'2026-10-01',due_date:'2026-10-15' }]];
+      if (sql.startsWith('SELECT id,amount,payment_date,installment_number FROM finance_debt_payments')) return [[]];
       if (sql.includes("FROM closing_periods") && sql.includes("status='LOCKED'")) return [[]];
       if (sql.startsWith('SELECT COALESCE(SUM(amount),0) paid_amount')) return [[{ paid_amount: 100000 }]];
       return [{ affectedRows: 1, insertId: 11 }];
@@ -26,7 +27,7 @@ async function run() {
   const router = require('../routes/debts');
   const req = {
     params: {},
-    body: { debt_id: '7', amount: '150000', payment_date: '2026-10-06', payment_method: 'transfer', notes: 'Tes' },
+    body: { debt_id: '7', installment_number:'1', amount: '150000', payment_date: '2026-10-06', payment_method: 'transfer', notes: 'Tes' },
     session: { user: { id: 3 } },
     get: () => 'http://localhost/debts?scope=INTERNAL',
     ip: '127.0.0.1'
@@ -37,10 +38,10 @@ async function run() {
 
   const insert = queries.find(item => item.sql?.startsWith('INSERT INTO finance_debt_payments'));
   assert(insert, 'insert pembayaran tidak dijalankan');
-  assert.deepStrictEqual(insert.params.slice(0, 5), [7, '2026-10-06', 150000, 'transfer', 'Tes']);
-  const financing = queries.find(item => item.sql?.includes('INSERT INTO finance_debt_cash_movements'));
-  assert(financing,'arus kas pembiayaan wajib tercatat dalam transaksi yang sama');
-  assert.deepStrictEqual(financing.params,[11,7,'2026-10-06','KBG','transfer','IN',150000,3]);
+  assert.deepStrictEqual(insert.params.slice(0, 5), [7, 1, '2026-10-06', 150000, 'transfer']);
+  assert(!queries.some(item => item.sql?.includes('INSERT INTO finance_debt_cash_movements')),'pembayaran hutang tidak boleh membuat mutasi keuangan otomatis');
+  assert(!queries.some(item => item.sql?.includes('INSERT INTO cash_transactions')),'Data Kas tidak boleh disinkron otomatis');
+  assert.deepStrictEqual(insert.params.slice(0,6),[7,1,'2026-10-06',150000,'transfer','Tes']);
   const audit = queries.find(item => item.sql?.includes('INSERT INTO financial_audit_logs'));
   assert(audit,'audit trail keuangan wajib tersimpan atomik');
   assert(queries.includes('COMMIT'), 'transaksi pembayaran tidak di-commit');
@@ -61,7 +62,7 @@ async function run() {
   assert(!failureQueries.some(item => item.sql?.startsWith('INSERT INTO finance_debt_payments')), 'pembayaran berlebih tidak boleh disimpan');
   assert.strictEqual(overpayRes.redirectUrl, '/debts?scope=INTERNAL');
   assert.strictEqual(overpayReq.session.flash.type, 'danger');
-  assert.match(overpayReq.session.flash.message, /melebihi sisa/);
+  assert.match(overpayReq.session.flash.message, /melebihi sisa cicilan/);
   console.log('Debt payment flow validation passed.');
 }
 

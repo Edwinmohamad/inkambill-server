@@ -1391,4 +1391,21 @@ async function ensureV65Schema() {
   )`);
 }
 
-module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema, ensureV58Schema, ensureV59Schema, ensureV60Schema, ensureV61Schema, ensureV62Schema, ensureV63Schema, ensureV64Schema, ensureV65Schema };
+async function ensureV66Schema() {
+  // Null installment_number preserves historical unnumbered payments.
+  await db.query(`ALTER TABLE finance_debt_payments ADD COLUMN IF NOT EXISTS installment_number SMALLINT UNSIGNED NULL AFTER debt_id`);
+  await db.query(`ALTER TABLE finance_debt_payments ADD COLUMN IF NOT EXISTS voided_at DATETIME NULL AFTER installment_number`);
+  await db.query(`ALTER TABLE finance_debt_payments ADD COLUMN IF NOT EXISTS voided_by BIGINT UNSIGNED NULL AFTER voided_at`);
+  await db.query(`ALTER TABLE finance_debt_payments ADD COLUMN IF NOT EXISTS void_reason VARCHAR(500) NULL AFTER voided_by`);
+  await db.query(`ALTER TABLE finance_debt_payments ADD INDEX IF NOT EXISTS idx_debt_installment (debt_id,installment_number)`);
+  // Non-operating cash movements are optional MANUAL entries; these categories
+  // must be excluded from operational surplus and Closing profit shares.
+  await db.query(`INSERT INTO cash_categories(code,name,type,description,is_active,is_system)
+    SELECT 'FINPRIN','Pengembalian Pokok Piutang','income','Mutasi nonoperasional; dicatat manual sesudah uang diterima',1,0
+    WHERE NOT EXISTS (SELECT 1 FROM cash_categories WHERE code='FINPRIN')`);
+  await db.query(`INSERT INTO cash_categories(code,name,type,description,is_active,is_system)
+    SELECT 'FINPROUT','Pembayaran Pokok Hutang','expense','Mutasi nonoperasional; dicatat manual sesudah uang dibayar',1,0
+    WHERE NOT EXISTS (SELECT 1 FROM cash_categories WHERE code='FINPROUT')`);
+}
+
+module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema, ensureV58Schema, ensureV59Schema, ensureV60Schema, ensureV61Schema, ensureV62Schema, ensureV63Schema, ensureV64Schema, ensureV65Schema, ensureV66Schema };

@@ -10,6 +10,7 @@ const CLOSING_MISMATCH_SQL = `(
       ct.id IS NULL
       OR COALESCE(ct.approval_status,'APPROVED')<>'APPROVED'
       OR ct.internal_transfer_key IS NOT NULL
+      OR cc.code IN ('FINPRIN','FINPROUT')
       OR ct.transaction_date NOT BETWEEN cp.period_start AND cp.period_end
       OR ABS(ce.amount-ct.amount)>0.01
       OR ce.entry_type<>CASE WHEN cc.type='income' THEN 'INCOME' ELSE 'EXPENSE' END
@@ -55,7 +56,7 @@ const CHECKS = {
     WHERE ce.source_type='cash_sync' AND ce.excluded_at IS NULL
       AND ${CLOSING_MISMATCH_SQL}`,
   debtOverpaid: `SELECT COUNT(*) total FROM finance_debts d
-    LEFT JOIN (SELECT debt_id,SUM(amount) paid FROM finance_debt_payments GROUP BY debt_id) p ON p.debt_id=d.id
+    LEFT JOIN (SELECT debt_id,SUM(amount) paid FROM finance_debt_payments WHERE voided_at IS NULL GROUP BY debt_id) p ON p.debt_id=d.id
     WHERE COALESCE(p.paid,0)>d.principal_amount+0.01`
 };
 

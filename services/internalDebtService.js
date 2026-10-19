@@ -40,7 +40,7 @@ async function loadInternalDebtSummary({ start, end, sites = null }) {
     if (!records.length) return empty;
     const ids = records.map((r) => Number(r.id));
     const ph = ids.map(() => '?').join(',');
-    const [payments] = await db.execute(`SELECT id,debt_id,payment_date,amount,payment_method,notes FROM finance_debt_payments WHERE debt_id IN (${ph}) AND payment_date<=? ORDER BY payment_date,id`, [...ids, end]);
+    const [payments] = await db.execute(`SELECT id,debt_id,payment_date,amount,payment_method,notes FROM finance_debt_payments WHERE debt_id IN (${ph}) AND voided_at IS NULL AND payment_date<=? ORDER BY payment_date,id`, [...ids, end]);
     const [items] = await db.execute(`SELECT debt_id,item_name,quantity,unit_price,notes FROM finance_debt_items WHERE debt_id IN (${ph}) ORDER BY debt_id,id`, ids);
     const payBy = new Map(); payments.forEach((p) => { const k = Number(p.debt_id); if (!payBy.has(k)) payBy.set(k, []); payBy.get(k).push(p); });
     const itemBy = new Map(); items.forEach((i) => { const k = Number(i.debt_id); if (!itemBy.has(k)) itemBy.set(k, []); itemBy.get(k).push(i); });

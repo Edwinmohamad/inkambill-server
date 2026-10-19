@@ -26,7 +26,7 @@ const checks = [
   [view.includes('Sisa Hutang') && view.includes('Sisa Piutang') && view.includes('Lewat Jatuh Tempo'), 'ringkasan monitoring'],
   [route.includes('function installmentSchedule(record)') && view.includes('debtTabSchedule') && view.includes('Tidak ada jadwal cicilan'), 'jadwal cicilan otomatis'],
   [view.includes('debtItemTemplate') && view.includes('Total otomatis'), 'input rincian item dinamis'],
-  [view.includes('tidak otomatis masuk ke Closing'), 'proteksi hitung ganda'],
+  [view.includes('Tidak otomatis membuat transaksi Data Kas atau laba Closing'), 'proteksi hitung ganda'],
   [view.includes('debt-page') && view.includes('debt-money-grid'), 'layout profesional dan kolom nominal'],
   [view.includes('data-debt-search') && view.includes("search?.addEventListener('input'"), 'pencarian instan'],
   [view.includes('data-auto-filter') && view.includes('debt-filter-reset'), 'filter otomatis dan reset'],

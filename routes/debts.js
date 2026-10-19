@@ -4,7 +4,7 @@ const path = require('path');
 const crypto = require('crypto');
 const db = require('../config/db');
 const { audit } = require('../services/auditService');
-const { assertDateOpen, financialAudit } = require('../services/financialControlService');
+const { financialAudit } = require('../services/financialControlService');
 const { requireAdmin } = require('../middleware/auth');
 
 const router = express.Router();
@@ -46,15 +46,32 @@ function installmentSchedule(record) {
   const months = record.payment_method === 'INSTALLMENT' ? Math.max(1, Math.min(60, Number(record.installment_months || 1))) : 1;
   const principal = amount(record.principal_amount);
   const base = Math.floor(principal / months);
-  let paidLeft = amount(record.paid_amount);
-  const firstDue = dateKey(record.due_date || record.issue_date);
-  return Array.from({ length: months }, (_, index) => {
-    const target = index === months - 1 ? principal - (base * (months - 1)) : base;
-    const applied = Math.min(target, Math.max(0, paidLeft));
-    paidLeft -= applied;
-    const dueDate = addMonths(firstDue, index);
-    const status = applied >= target ? 'PAID' : applied > 0 ? 'PARTIAL' : dueDate < localDate() ? 'OVERDUE' : 'UPCOMING';
-    return { number: index + 1, dueDate, target, paid: applied, remaining: target - applied, status };
+  const targets = Array.from({length:months},(_,i)=>i===months-1?principal-base*(months-1):base);
+  const applied = Array(months).fill(0);
+  const payments = Array.isArray(record.payments) ? [...record.payments].sort((a,b)=>String(a.payment_date).localeCompare(String(b.payment_date))||Number(a.id)-Number(b.id)) : [];
+  // Allocate explicitly numbered payments first so each instalment keeps its own history.
+  for (const p of payments) {
+    const n=Number(p.installment_number);
+    if (Number.isInteger(n) && n>=1 && n<=months) applied[n-1]+=amount(p.amount);
+  }
+  // Legacy unnumbered payments are projected oldest-first; never mutate their history.
+  for (const p of payments) {
+    const n=Number(p.installment_number);
+    if (Number.isInteger(n) && n>=1 && n<=months) continue;
+    let unallocated=amount(p.amount);
+    for(let i=0;i<months&&unallocated>0;i++){
+      const take=Math.min(Math.max(0,targets[i]-applied[i]),unallocated);
+      applied[i]+=take;unallocated-=take;
+    }
+  }
+  const firstDue=dateKey(record.due_date || (record.payment_method==='INSTALLMENT' ? addMonths(record.issue_date,1) : record.issue_date));
+  const today=localDate();
+  return targets.map((target,index)=>{
+    const paid=Math.max(0,applied[index]);
+    const dueDate=addMonths(firstDue,index);
+    const remaining=Math.max(0,target-paid);
+    const status=remaining===0?'PAID':dueDate<today?'OVERDUE':paid>0?'PARTIAL':'UPCOMING';
+    return {number:index+1,dueDate,target,paid,remaining,status,overdue:dueDate<today&&remaining>0};
   });
 }
 
@@ -97,7 +114,7 @@ async function refreshStatus(conn, id) {
   await conn.execute(`UPDATE finance_debts d
     SET d.status=CASE
       WHEN d.status='ARCHIVED' THEN 'ARCHIVED'
-      WHEN (SELECT COALESCE(SUM(p.amount),0) FROM finance_debt_payments p WHERE p.debt_id=d.id)>=d.principal_amount THEN 'PAID'
+      WHEN (SELECT COALESCE(SUM(p.amount),0) FROM finance_debt_payments p WHERE p.debt_id=d.id AND p.voided_at IS NULL)>=d.principal_amount THEN 'PAID'
       ELSE 'ACTIVE' END
     WHERE d.id=?`, [id]);
 }
@@ -130,13 +147,13 @@ router.get('/', async (req, res, next) => {
       GREATEST(d.principal_amount-COALESCE(SUM(p.amount),0),0) remaining_amount,
       CASE WHEN d.status='ACTIVE' AND d.due_date IS NOT NULL AND d.due_date<CURDATE() THEN 1 ELSE 0 END is_overdue,
       DATEDIFF(d.due_date,CURDATE()) days_to_due
-      FROM finance_debts d LEFT JOIN finance_debt_payments p ON p.debt_id=d.id
+      FROM finance_debts d LEFT JOIN finance_debt_payments p ON p.debt_id=d.id AND p.voided_at IS NULL
       LEFT JOIN employees e ON e.id=d.employee_id LEFT JOIN positions pos ON pos.id=e.position_id LEFT JOIN users u ON u.id=d.user_id
       WHERE ${conditions.join(' AND ')} GROUP BY d.id ORDER BY is_overdue DESC,d.due_date IS NULL,d.due_date,d.id DESC`, params);
     if (records.length) {
       const ids = records.map((row) => Number(row.id));
       const placeholders = ids.map(() => '?').join(',');
-      const [payments] = await db.execute(`SELECT id,debt_id,payment_date,amount,payment_method,notes,proof_path,proof_original_name,created_at FROM finance_debt_payments WHERE debt_id IN (${placeholders}) ORDER BY payment_date DESC,id DESC`, ids);
+      const [payments] = await db.execute(`SELECT id,debt_id,installment_number,payment_date,amount,payment_method,notes,proof_path,proof_original_name,created_at,voided_at,void_reason FROM finance_debt_payments WHERE debt_id IN (${placeholders}) ORDER BY payment_date DESC,id DESC`, ids);
       const [items] = await db.execute(`SELECT id,debt_id,item_name,quantity,unit_price,notes FROM finance_debt_items WHERE debt_id IN (${placeholders}) ORDER BY debt_id,id`, ids);
       const grouped = new Map();
       const groupedItems = new Map();
@@ -149,7 +166,8 @@ router.get('/', async (req, res, next) => {
         groupedItems.get(Number(item.debt_id)).push(item);
       });
       records.forEach((record) => {
-        record.payments = grouped.get(Number(record.id)) || [];
+        record.payments = (grouped.get(Number(record.id)) || []).filter(p=>!p.voided_at);
+        record.allPaymentHistory = grouped.get(Number(record.id)) || [];
         record.items = groupedItems.get(Number(record.id)) || [];
         record.installments = installmentSchedule(record);
         const nextInstallment = record.installments.find((item) => item.status !== 'PAID');
@@ -160,13 +178,13 @@ router.get('/', async (req, res, next) => {
         // plus every payment, each carrying its own running "sisa saldo" so the UI never has to
         // recompute a balance client-side. Newest activity first, the original entry always last.
         const principal = Number(record.principal_amount || 0);
-        const paymentsAsc = [...record.payments].sort((a, b) => {
+        const paymentsAsc = [...record.allPaymentHistory].sort((a, b) => {
           if (a.payment_date === b.payment_date) return Number(a.id) - Number(b.id);
           return a.payment_date < b.payment_date ? -1 : 1;
         });
         let cumulative = 0;
         const paymentEntries = paymentsAsc.map((p) => {
-          cumulative += Number(p.amount);
+          if(!p.voided_at)cumulative += Number(p.amount);
           const remainingAfter = Math.max(0, principal - cumulative);
           return {
             kind: 'payment',
@@ -175,10 +193,13 @@ router.get('/', async (req, res, next) => {
             time: p.created_at,
             amount: Number(p.amount),
             method: p.payment_method || 'cash',
+            installmentNumber: p.installment_number ? Number(p.installment_number) : null,
+            voided: Boolean(p.voided_at),
+            voidReason: p.void_reason || null,
             notes: p.notes,
             hasProof: Boolean(p.proof_path),
             remainingAfter,
-            entryStatus: remainingAfter <= 0 ? 'LUNAS' : 'DICICIL'
+            entryStatus: p.voided_at ? 'BATAL' : remainingAfter <= 0 ? 'LUNAS' : 'DICICIL'
           };
         });
         record.timeline = [...paymentEntries].reverse().concat([{
@@ -206,7 +227,7 @@ router.get('/', async (req, res, next) => {
       SUM(GREATEST(d.principal_amount-COALESCE(x.paid,0),0)) remaining,
       SUM(CASE WHEN d.due_date<CURDATE() THEN GREATEST(d.principal_amount-COALESCE(x.paid,0),0) ELSE 0 END) overdue,
       COUNT(*) total
-      FROM finance_debts d LEFT JOIN (SELECT debt_id,SUM(amount) paid FROM finance_debt_payments GROUP BY debt_id) x ON x.debt_id=d.id
+      FROM finance_debts d LEFT JOIN (SELECT debt_id,SUM(amount) paid FROM finance_debt_payments WHERE voided_at IS NULL GROUP BY debt_id) x ON x.debt_id=d.id
       WHERE d.status='ACTIVE' GROUP BY d.scope,d.record_type`);
     const blank = () => ({ remaining: 0, overdue: 0, total: 0 });
     const summary = { DEBT: blank(), RECEIVABLE: blank(), INTERNAL: { DEBT: blank(), RECEIVABLE: blank() }, EXTERNAL: { DEBT: blank(), RECEIVABLE: blank() } };
@@ -266,6 +287,7 @@ router.post('/', async (req, res, next) => {
     const installmentMonths = method === 'INSTALLMENT' ? Math.max(2, Math.min(60, Number.parseInt(req.body.installment_months, 10) || 2)) : 1;
     if (!['DEBT', 'RECEIVABLE'].includes(type) || !['GLOBAL', 'CDS', 'KBG'].includes(site) || !['ONCE', 'INSTALLMENT'].includes(method)) return res.status(400).send('Jenis, lokasi, atau metode pembayaran tidak valid.');
     if (!party || !purpose || principal <= 0 || !issueDate || !items.length) return res.status(400).send('Pihak, keperluan, tanggal, dan minimal satu rincian pembelian wajib diisi.');
+    if(method==='INSTALLMENT'&&installmentMonths>principal)return res.status(400).send('Jumlah cicilan tidak boleh melebihi nominal rupiah hutang.');
     if (dueDate && dueDate < issueDate) return res.status(400).send('Jatuh tempo tidak boleh sebelum tanggal pencatatan.');
     conn = await db.getConnection();
     await conn.beginTransaction();
@@ -292,12 +314,21 @@ router.post('/:id/edit',requireAdmin,async(req,res,next)=>{
     const principal=amount(b.principal_amount),issueDate=validDate(b.issue_date)?String(b.issue_date):'',dueDate=validDate(b.due_date)?String(b.due_date):null;
     const site=['GLOBAL','CDS','KBG'].includes(String(b.site_code||'').toUpperCase())?String(b.site_code).toUpperCase():'GLOBAL';
     if(principal<=0||!issueDate||!String(b.purpose||'').trim())throw new Error('Pokok, tanggal, dan keperluan wajib diisi.');
+    if(b.payment_method==='INSTALLMENT'&&Math.max(1,Math.min(60,Number(b.installment_months)||1))>principal)throw new Error('Jumlah cicilan melebihi nominal pokok.');
     if(dueDate&&dueDate<issueDate)throw new Error('Jatuh tempo tidak boleh sebelum tanggal pencatatan.');
     conn=await db.getConnection();await conn.beginTransaction();
     const [[before]]=await conn.execute('SELECT * FROM finance_debts WHERE id=? FOR UPDATE',[id]);if(!before)throw new Error('Data Hutang tidak ditemukan.');
     if(before.status==='ARCHIVED')throw new Error('Data arsip tidak dapat diedit.');
-    const [[paid]]=await conn.execute('SELECT COALESCE(SUM(amount),0) total FROM finance_debt_payments WHERE debt_id=?',[id]);
+    const [[paid]]=await conn.execute('SELECT COALESCE(SUM(amount),0) total FROM finance_debt_payments WHERE debt_id=? AND voided_at IS NULL',[id]);
     if(principal<Number(paid.total||0))throw new Error('Pokok tidak boleh lebih kecil dari total pembayaran yang sudah tercatat.');
+    // Changing the schedule after recorded installments would silently reassign payments.
+    if(Number(paid.total)>0 && (principal!==amount(before.principal_amount)
+      || String(issueDate)!==dateKey(before.issue_date)
+      || String(dueDate||'')!==String(before.due_date?dateKey(before.due_date):'')
+      || String(b.payment_method||'ONCE')!==String(before.payment_method)
+      || (b.payment_method==='INSTALLMENT'?Math.max(1,Math.min(60,Number(b.installment_months)||1)):1)!==Number(before.installment_months||1))){
+      throw new Error('Pokok, tanggal, dan jadwal cicilan tidak boleh diubah setelah ada pembayaran. Koreksi perlu proses audit khusus.');
+    }
     await conn.execute(`UPDATE finance_debts SET purpose=?,site_code=?,principal_amount=?,issue_date=?,due_date=?,payment_method=?,installment_months=?,responsible_name=?,notes=?,updated_by=? WHERE id=?`,[
       String(b.purpose).trim().slice(0,255),site,principal,issueDate,dueDate,b.payment_method==='INSTALLMENT'?'INSTALLMENT':'ONCE',Math.max(1,Math.min(60,Number(b.installment_months)||1)),String(b.responsible_name||'').trim().slice(0,160)||null,String(b.notes||'').trim().slice(0,2000)||null,req.session.user.id,id]);
     await refreshStatus(conn,id);await conn.commit();
@@ -329,6 +360,7 @@ async function recordPayment(req, res) {
     // parameterised URL as well so bookmarks/older rendered pages remain valid.
     const id = Number(req.params.id || req.body.debt_id);
     const paid = amount(req.body.amount);
+    const requestedInstallment = Number(req.body.installment_number || 0);
     const paymentDate = validDate(req.body.payment_date) ? req.body.payment_date : '';
     const method = String(req.body.payment_method || '').toLowerCase();
     if(!PAYMENT_METHODS.has(method))throw new Error('Metode pembayaran hutang/piutang hanya Cash atau Transfer.');
@@ -339,32 +371,39 @@ async function recordPayment(req, res) {
     }
     conn = await db.getConnection();
     await conn.beginTransaction();
-    const [[record]] = await conn.execute('SELECT id,status,principal_amount,record_type,site_code FROM finance_debts WHERE id=? FOR UPDATE', [id]);
+    const [[record]] = await conn.execute('SELECT id,status,principal_amount,record_type,site_code,payment_method,installment_months,issue_date,due_date FROM finance_debts WHERE id=? FOR UPDATE', [id]);
     if (!record) throw new Error('Data hutang/piutang tidak ditemukan.');
-    const [[totals]] = await conn.execute('SELECT COALESCE(SUM(amount),0) paid_amount FROM finance_debt_payments WHERE debt_id=?', [id]);
-    const remaining = Math.max(0, Number(record.principal_amount) - Number(totals.paid_amount));
+    const [previousPayments] = await conn.execute('SELECT id,amount,payment_date,installment_number FROM finance_debt_payments WHERE debt_id=? AND voided_at IS NULL ORDER BY payment_date,id', [id]);
+    const paidTotal=previousPayments.reduce((n,p)=>n+amount(p.amount),0);
+    const remaining=Math.max(0,amount(record.principal_amount)-paidTotal);
+    const schedule=installmentSchedule({...record,due_date:record.due_date,issue_date:record.issue_date,
+      payment_method:record.payment_method,installment_months:record.installment_months,payments:previousPayments});
     if (record.status === 'ARCHIVED') throw new Error('Data yang diarsipkan tidak dapat menerima pembayaran.');
     if (remaining <= 0) throw new Error('Dokumen ini sudah lunas dan tidak dapat menerima pembayaran baru.');
     if (paid > remaining) throw new Error(`Pembayaran melebihi sisa Rp ${remaining.toLocaleString('id-ID')}.`);
-    await assertDateOpen(conn,paymentDate);
+    // An older client without an explicit number defaults to the oldest unpaid installment.
+    const selected=requestedInstallment===0?schedule.find(x=>x.remaining>0)?.number:requestedInstallment;
+    if(!Number.isInteger(selected)||selected<1||selected>schedule.length)throw new Error('Nomor cicilan tidak valid.');
+    const installment=schedule[selected-1];
+    if(paid>installment.remaining)throw new Error(`Cicilan ke-${selected} tersisa Rp ${installment.remaining.toLocaleString('id-ID')}. Nominal melebihi sisa cicilan.`);
+    // Debt tracking intentionally does NOT post to Data Kas or affect Closing.
+    // Data Kas is entered manually after actual cash/transfer verification.
     // Attachment is saved only after every business-rule check has passed, so a rejected
     // payment (over the remaining balance, archived record, ...) never leaves an orphan file.
     if (req.file) saved = await saveDebtProof(req.file);
-    const [posted] = await conn.execute('INSERT INTO finance_debt_payments(debt_id,payment_date,amount,payment_method,notes,proof_path,proof_original_name,proof_mime,created_by) VALUES(?,?,?,?,?,?,?,?,?)',
-      [id, paymentDate, paid, method, notes, saved?.filename || null, saved?.originalName || null, saved?.mime || null, req.session.user.id]);
+    const [posted] = await conn.execute('INSERT INTO finance_debt_payments(debt_id,installment_number,payment_date,amount,payment_method,notes,proof_path,proof_original_name,proof_mime,created_by) VALUES(?,?,?,?,?,?,?,?,?,?)',
+      [id,selected,paymentDate,paid,method,notes,saved?.filename||null,saved?.originalName||null,saved?.mime||null,req.session.user.id]);
     if(!posted.insertId)throw new Error('ID pembayaran hutang/piutang tidak tersedia; transaksi dibatalkan.');
-    const direction = record.record_type === 'RECEIVABLE' ? 'IN' : record.record_type === 'DEBT' ? 'OUT' : null;
-    if(!direction)throw new Error('Jenis dokumen hutang/piutang tidak valid.');
-    // Principal repayment is a financing cash movement, NEVER operational profit.
-    await conn.execute(`INSERT INTO finance_debt_cash_movements
-      (debt_payment_id,debt_id,book_date,site_code,method,direction,amount,actor_user_id)
-      VALUES(?,?,?,?,?,?,?,?)`,[posted.insertId,id,paymentDate,record.site_code || 'GLOBAL',method,direction,paid,req.session.user.id]);
-    await financialAudit({conn,userId:req.session.user.id,action:'record_debt_cash_movement',entityType:'finance_debt_payment',entityId:posted.insertId,before:null,after:{debt_id:id,amount:paid,book_date:paymentDate,method,direction,site_code:record.site_code},reason:'Pembayaran hutang/piutang beserta arus kas pembiayaan',ip:req.ip});
+    await financialAudit({conn,userId:req.session.user.id,action:'record_debt_installment',entityType:'finance_debt_payment',
+      entityId:posted.insertId,before:null,after:{debt_id:id,installment_number:selected,amount:paid,payment_date:paymentDate,method},
+      reason:'Pencatatan pembayaran cicilan hutang/piutang; kas dicatat manual terpisah',ip:req.ip});
     await refreshStatus(conn, id);
     await conn.commit();
     committed = true;
-    await audit({userId:req.session.user.id,action:'payment',entityType:'finance_debt',entityId:id,description:`Pembayaran hutang #${id} Rp${paid.toLocaleString('id-ID')} dicatat`,ip:req.ip,details:{payment_date:paymentDate,amount:paid,method,has_proof:Boolean(saved)}});
-    req.session.flash = { type: 'success', message: 'Pembayaran berhasil dicatat dan sisa diperbarui.' };
+    // The authoritative financial audit was committed in the payment transaction.
+    // Ancillary activity logging must not make a successfully posted payment look failed.
+    await audit({userId:req.session.user.id,action:'payment',entityType:'finance_debt',entityId:id,description:`Pembayaran hutang #${id} Rp${paid.toLocaleString('id-ID')} dicatat`,ip:req.ip,details:{payment_date:paymentDate,amount:paid,method,installment_number:selected,has_proof:Boolean(saved)}}).catch(err=>console.error('Activity audit unavailable after committed payment:',err.message));
+    req.session.flash = { type: 'success', message: `Pembayaran cicilan ke-${selected} berhasil dicatat. Data Kas tidak berubah; catat Cash/Transfer manual bila uang benar-benar berpindah.` };
     res.redirect(backTo(req));
   } catch (err) {
     if (conn && !committed) await conn.rollback();
@@ -421,20 +460,25 @@ router.post('/:id/payments/:paymentId/delete', async (req, res, next) => {
     const [[record]] = await conn.execute('SELECT id,status FROM finance_debts WHERE id=? FOR UPDATE', [id]);
     if (!record) { await conn.rollback(); return res.status(404).send('Data tidak ditemukan.'); }
     if (record.status === 'ARCHIVED') { await conn.rollback(); return res.status(409).send('Data arsip tidak dapat diubah.'); }
-    const [[paymentRow]] = await conn.execute('SELECT proof_path FROM finance_debt_payments WHERE id=? AND debt_id=? FOR UPDATE', [paymentId, id]);
+    const [[paymentRow]] = await conn.execute('SELECT * FROM finance_debt_payments WHERE id=? AND debt_id=? FOR UPDATE', [paymentId, id]);
+    if(!paymentRow || paymentRow.voided_at)throw new Error('Pembayaran tidak ditemukan atau sudah dibatalkan.');
     const [[financing]] = await conn.execute('SELECT id FROM finance_debt_cash_movements WHERE debt_payment_id=? FOR UPDATE',[paymentId]);
-    if(financing)throw new Error('Pembayaran sudah masuk arus kas pembiayaan. Penghapusan langsung dilarang; lakukan koreksi terpisah dengan jurnal pembalik yang diaudit.');
-    const [removed] = await conn.execute('DELETE FROM finance_debt_payments WHERE id=? AND debt_id=?', [paymentId, id]);
+    if(financing)throw new Error('Pembayaran legacy telah tercatat dalam ledger pembiayaan. Koreksi memerlukan review administrasi; histori lama tetap dilindungi.');
+    const reason=String(req.body.reason||'').trim();
+    if(reason.length<5)throw new Error('Alasan pembatalan pembayaran minimal 5 karakter wajib diisi.');
+    const [removed] = await conn.execute('UPDATE finance_debt_payments SET voided_at=NOW(),voided_by=?,void_reason=? WHERE id=? AND debt_id=? AND voided_at IS NULL', [req.session.user.id,reason,paymentId, id]);
     if (!removed.affectedRows) { await conn.rollback(); return res.status(404).send('Riwayat pembayaran tidak ditemukan.'); }
     await refreshStatus(conn, id);
+    await financialAudit({conn,userId:req.session.user.id,action:'void_debt_installment',entityType:'finance_debt_payment',
+      entityId:paymentId,before:paymentRow,after:{voided:true,void_reason:reason},reason,ip:req.ip});
     await conn.commit();
-    removedProof = paymentRow?.proof_path || null;
-    if (removedProof) await removeDebtProof(removedProof);
-    await audit({userId:req.session.user.id,action:'delete_payment',entityType:'finance_debt',entityId:id,description:`Pembayaran #${paymentId} pada dokumen hutang #${id} dihapus`,ip:req.ip,details:{payment_id:paymentId,had_proof:Boolean(removedProof)}});
-    req.session.flash = { type: 'success', message: 'Pembayaran dihapus dan sisa dihitung ulang.' };
+    // Keep original proof and payment row permanently for audit.
+    await audit({userId:req.session.user.id,action:'delete_payment',entityType:'finance_debt',entityId:id,description:`Pembayaran #${paymentId} pada dokumen hutang #${id} dibatalkan`,ip:req.ip,details:{payment_id:paymentId,had_proof:Boolean(removedProof)}}).catch(err=>console.error('Activity audit unavailable after committed void:',err.message));
+    req.session.flash = { type: 'success', message: 'Pembayaran dibatalkan (histori dan bukti tetap tersimpan); sisa cicilan dihitung ulang.' };
     res.redirect(backTo(req));
   } catch (err) { if (conn) await conn.rollback(); next(err); } finally { if (conn) conn.release(); }
 });
 
 module.exports = router;
 module.exports.recordPayment = recordPayment;
+module.exports.installmentSchedule = installmentSchedule;

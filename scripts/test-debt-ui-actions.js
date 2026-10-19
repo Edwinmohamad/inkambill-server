@@ -35,7 +35,7 @@ const record = {
   issue_date: '2026-10-01', due_date: '2026-10-31', payment_method: 'INSTALLMENT', installment_months: 2,
   responsible_name: 'Admin', notes: 'Fixture UI', status: 'ACTIVE', payment_status: 'DICICIL', is_overdue: false, days_to_due: 29,
   items: [{ item_name: 'Kabel', quantity: 1, unit_price: 500000, notes: null }],
-  installments: [{ number: 1, dueDate: '2026-10-15', target: 250000, remaining: 150000, status: 'PARTIAL' }],
+  installments: [{ number: 1, dueDate: '2026-10-15', target: 250000,paid:100000, remaining: 150000, status: 'PARTIAL' }],next_installment:{number:1,remaining:150000},
   timeline: [{ kind: 'created', id: null, date: '2026-10-01', time: null, amount: 500000, method: null, notes: 'Material instalasi', hasProof: false, remainingAfter: 500000, entryStatus: 'DIBUAT' }]
 };
 const locals = {
