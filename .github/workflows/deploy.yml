@@ -69,11 +69,11 @@ jobs:
           docker compose logs app --tail=120
           exit 1
 
-      - name: Read-only finance reconciliation snapshot
-        # Diagnostic only; historical anomalies require manual review, not an automatic rewrite of money.
-        continue-on-error: true
+      - name: Report finance integrity and historical discrepancies
+        # Visible warnings for legacy anomalies; SQL/query failures still fail this step.
+        # Never alter historical money automatically or declare anomalies resolved.
         shell: bash
         run: |
           set -euo pipefail
           cd /opt/inkambilling
-          docker compose exec -T app node scripts/audit-finance-snapshot.js
+          docker compose exec -T app node scripts/audit-finance-snapshot.js --report-only

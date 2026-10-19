@@ -30,6 +30,15 @@ assert.equal(data.blocks.krwclm.shares.find((share) => share.name === 'Edwin').a
 assert.equal(data.blocks.krwclm.shares.find((share) => share.name === 'Jon').amount, 4275000);
 assert.equal(data.blocks.krwclm.shares.find((share) => share.name === 'Bopung').amount, 4375000);
 assert.equal(data.blocks.kbg.profit, 8000000);
+const withSeparateCarry=buildClosingCalculation({
+  mode:'manual', closing:{ manual_carry:-100000,manual_carry_kbg:-300000,manual_salary_agung:0,manual_salary_padilah:0 },
+  payments:[{site_code:'CDS',amount:1000000},{site_code:'KBG',amount:500000}],
+  expenses:[]
+});
+assert.equal(withSeparateCarry.blocks.krwclm.profit,900000);
+assert.equal(withSeparateCarry.blocks.kbg.profit,200000);
+assert.equal(withSeparateCarry.blocks.kbg.shares.reduce((n,p)=>n+p.gross,0),200000);
+assert.equal(withSeparateCarry.blocks.krwclm.shares.reduce((n,p)=>n+p.gross,0),900000);
 assert.equal(data.blocks.kbg.shares.find((share) => share.name === 'Jon').amount, 893280);
 assert.equal(data.blocks.kbg.shares.find((share) => share.name === 'Mang Ali').amount, 2800000);
 

@@ -1369,4 +1369,26 @@ async function ensureV64Schema() {
   if(periodRepair.locked)console.warn(`Rekonsiliasi periode Data Kas: ${periodRepair.locked} jurnal dilewati karena periode Closing sudah LOCKED.`);
 }
 
-module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema, ensureV58Schema, ensureV59Schema, ensureV60Schema, ensureV61Schema, ensureV62Schema, ensureV63Schema, ensureV64Schema };
+async function ensureV65Schema() {
+  // Carry-over is site-specific. Previous manual_carry remains the CDS value.
+  await db.query(`ALTER TABLE closing_periods ADD COLUMN IF NOT EXISTS manual_carry_kbg DECIMAL(16,2) NOT NULL DEFAULT 0 AFTER manual_carry`);
+  // Financing principal movements are cash movements, not profit or operational income.
+  // New records only; older debt payments require manual reconciliation before backfill.
+  await db.query(`CREATE TABLE IF NOT EXISTS finance_debt_cash_movements (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    debt_payment_id BIGINT UNSIGNED NOT NULL,
+    debt_id BIGINT UNSIGNED NOT NULL,
+    book_date DATE NOT NULL,
+    site_code VARCHAR(20) NOT NULL,
+    method ENUM('cash','transfer') NOT NULL,
+    direction ENUM('IN','OUT') NOT NULL,
+    amount DECIMAL(16,2) NOT NULL,
+    actor_user_id BIGINT UNSIGNED NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_financing_payment(debt_payment_id),
+    INDEX idx_financing_date_site(book_date,site_code),
+    INDEX idx_financing_debt(debt_id)
+  )`);
+}
+
+module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema, ensureV58Schema, ensureV59Schema, ensureV60Schema, ensureV61Schema, ensureV62Schema, ensureV63Schema, ensureV64Schema, ensureV65Schema };

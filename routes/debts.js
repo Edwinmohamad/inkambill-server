@@ -4,6 +4,7 @@ const path = require('path');
 const crypto = require('crypto');
 const db = require('../config/db');
 const { audit } = require('../services/auditService');
+const { assertDateOpen, financialAudit } = require('../services/financialControlService');
 const { requireAdmin } = require('../middleware/auth');
 
 const router = express.Router();
@@ -338,18 +339,27 @@ async function recordPayment(req, res) {
     }
     conn = await db.getConnection();
     await conn.beginTransaction();
-    const [[record]] = await conn.execute('SELECT id,status,principal_amount FROM finance_debts WHERE id=? FOR UPDATE', [id]);
+    const [[record]] = await conn.execute('SELECT id,status,principal_amount,record_type,site_code FROM finance_debts WHERE id=? FOR UPDATE', [id]);
     if (!record) throw new Error('Data hutang/piutang tidak ditemukan.');
     const [[totals]] = await conn.execute('SELECT COALESCE(SUM(amount),0) paid_amount FROM finance_debt_payments WHERE debt_id=?', [id]);
     const remaining = Math.max(0, Number(record.principal_amount) - Number(totals.paid_amount));
     if (record.status === 'ARCHIVED') throw new Error('Data yang diarsipkan tidak dapat menerima pembayaran.');
     if (remaining <= 0) throw new Error('Dokumen ini sudah lunas dan tidak dapat menerima pembayaran baru.');
     if (paid > remaining) throw new Error(`Pembayaran melebihi sisa Rp ${remaining.toLocaleString('id-ID')}.`);
+    await assertDateOpen(conn,paymentDate);
     // Attachment is saved only after every business-rule check has passed, so a rejected
     // payment (over the remaining balance, archived record, ...) never leaves an orphan file.
     if (req.file) saved = await saveDebtProof(req.file);
-    await conn.execute('INSERT INTO finance_debt_payments(debt_id,payment_date,amount,payment_method,notes,proof_path,proof_original_name,proof_mime,created_by) VALUES(?,?,?,?,?,?,?,?,?)',
+    const [posted] = await conn.execute('INSERT INTO finance_debt_payments(debt_id,payment_date,amount,payment_method,notes,proof_path,proof_original_name,proof_mime,created_by) VALUES(?,?,?,?,?,?,?,?,?)',
       [id, paymentDate, paid, method, notes, saved?.filename || null, saved?.originalName || null, saved?.mime || null, req.session.user.id]);
+    if(!posted.insertId)throw new Error('ID pembayaran hutang/piutang tidak tersedia; transaksi dibatalkan.');
+    const direction = record.record_type === 'RECEIVABLE' ? 'IN' : record.record_type === 'DEBT' ? 'OUT' : null;
+    if(!direction)throw new Error('Jenis dokumen hutang/piutang tidak valid.');
+    // Principal repayment is a financing cash movement, NEVER operational profit.
+    await conn.execute(`INSERT INTO finance_debt_cash_movements
+      (debt_payment_id,debt_id,book_date,site_code,method,direction,amount,actor_user_id)
+      VALUES(?,?,?,?,?,?,?,?)`,[posted.insertId,id,paymentDate,record.site_code || 'GLOBAL',method,direction,paid,req.session.user.id]);
+    await financialAudit({conn,userId:req.session.user.id,action:'record_debt_cash_movement',entityType:'finance_debt_payment',entityId:posted.insertId,before:null,after:{debt_id:id,amount:paid,book_date:paymentDate,method,direction,site_code:record.site_code},reason:'Pembayaran hutang/piutang beserta arus kas pembiayaan',ip:req.ip});
     await refreshStatus(conn, id);
     await conn.commit();
     committed = true;
@@ -411,7 +421,9 @@ router.post('/:id/payments/:paymentId/delete', async (req, res, next) => {
     const [[record]] = await conn.execute('SELECT id,status FROM finance_debts WHERE id=? FOR UPDATE', [id]);
     if (!record) { await conn.rollback(); return res.status(404).send('Data tidak ditemukan.'); }
     if (record.status === 'ARCHIVED') { await conn.rollback(); return res.status(409).send('Data arsip tidak dapat diubah.'); }
-    const [[paymentRow]] = await conn.execute('SELECT proof_path FROM finance_debt_payments WHERE id=? AND debt_id=?', [paymentId, id]);
+    const [[paymentRow]] = await conn.execute('SELECT proof_path FROM finance_debt_payments WHERE id=? AND debt_id=? FOR UPDATE', [paymentId, id]);
+    const [[financing]] = await conn.execute('SELECT id FROM finance_debt_cash_movements WHERE debt_payment_id=? FOR UPDATE',[paymentId]);
+    if(financing)throw new Error('Pembayaran sudah masuk arus kas pembiayaan. Penghapusan langsung dilarang; lakukan koreksi terpisah dengan jurnal pembalik yang diaudit.');
     const [removed] = await conn.execute('DELETE FROM finance_debt_payments WHERE id=? AND debt_id=?', [paymentId, id]);
     if (!removed.affectedRows) { await conn.rollback(); return res.status(404).send('Riwayat pembayaran tidak ditemukan.'); }
     await refreshStatus(conn, id);

@@ -34,6 +34,41 @@ const CHECKS = {
     WHERE COALESCE(p.paid,0)>d.principal_amount+0.01`
 };
 
+// Read-only row-level diagnostic for reconciliation. No customer PII or automatic writes.
+async function diagnoseClosingMismatches(limit = 30) {
+  const max = Math.max(1, Math.min(100, Number(limit)||30));
+  const [rows] = await db.query(`SELECT ce.id closing_entry_id,ce.closing_id,cp.status closing_status,
+    cp.period_start,cp.period_end,ce.cash_transaction_id,ce.entry_type,
+    ce.amount closing_amount,ce.entry_date,ce.site_code closing_site,
+    ct.id journal_id,ct.transaction_date journal_date,ct.amount journal_amount,
+    ct.approval_status journal_approval,cc.type journal_type,s.code journal_site
+    FROM closing_entries ce
+    JOIN closing_periods cp ON cp.id=ce.closing_id
+    LEFT JOIN cash_transactions ct ON ct.id=ce.cash_transaction_id
+    LEFT JOIN cash_categories cc ON cc.id=ct.category_id
+    LEFT JOIN sites s ON s.id=ct.site_id
+    WHERE ce.source_type='cash_sync' AND ce.excluded_at IS NULL
+    AND (ct.id IS NULL OR COALESCE(ct.approval_status,'APPROVED')<>'APPROVED'
+      OR ct.transaction_date NOT BETWEEN cp.period_start AND cp.period_end
+      OR ABS(ce.amount-ct.amount)>0.01
+      OR ce.entry_type<>CASE WHEN cc.type='income' THEN 'INCOME' ELSE 'EXPENSE' END)
+    ORDER BY cp.period_start,ce.id LIMIT ?`,[max]);
+  const date=v=>v instanceof Date? v.toISOString().slice(0,10):String(v||'').slice(0,10);
+  return rows.map(row=>{
+    const reasons=[];
+    if(!row.journal_id)reasons.push('source_journal_missing');
+    else{
+      if(row.journal_approval!=='APPROVED')reasons.push('not_approved');
+      if(date(row.journal_date)<date(row.period_start)||date(row.journal_date)>date(row.period_end))reasons.push('outside_closing_period');
+      if(Math.abs(Number(row.closing_amount)-Number(row.journal_amount))>0.01)reasons.push('amount_mismatch');
+      if(row.entry_type!==(row.journal_type==='income'?'INCOME':'EXPENSE'))reasons.push('flow_type_mismatch');
+    }
+    return {...row,period_start:date(row.period_start),period_end:date(row.period_end),
+      entry_date:date(row.entry_date),journal_date:date(row.journal_date),
+      reasons};
+  });
+}
+
 async function auditFinancialIntegrity() {
   const totals = {};
   for (const [name, sql] of Object.entries(CHECKS)) {
@@ -44,4 +79,4 @@ async function auditFinancialIntegrity() {
   return { checkedAt: new Date().toISOString(), anomalyCount, totals };
 }
 
-module.exports = { CHECKS, auditFinancialIntegrity };
+module.exports = { CHECKS, auditFinancialIntegrity, diagnoseClosingMismatches };
