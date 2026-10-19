@@ -1,7 +1,7 @@
 <% const monthNames=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember']; %>
 <section class="cash-page">
   <div class="module-head cash-page-head">
-    <div><div class="module-kicker">FINANCIAL OPERATIONS</div><h1>Data Kas</h1><p>Kelola pemasukan, pengeluaran, bukti transaksi, dan approval. Ringkasan saldo hanya menghitung transaksi APPROVED.</p></div>
+    <div><div class="module-kicker">FINANCIAL OPERATIONS</div><h1>Data Kas</h1><p>Kelola pemasukan, pengeluaran, bukti transaksi, dan approval. Ringkasan operasional hanya menghitung transaksi APPROVED; selisih periode bukan saldo aktual rekening.</p></div>
     <div class="module-actions"><a class="btn-tech" href="/cash/categories"><i class="bi bi-tags"></i>Kategori Kas</a><a class="btn-tech" href="/payments/reconciliation"><i class="bi bi-arrow-left-right"></i>Rekonsiliasi</a></div>
   </div>
 
@@ -24,7 +24,7 @@
 
   <div class="cash-summary-grid">
     <article class="cash-summary-card income"><div><span>Pendapatan</span><strong><%= formatRupiah(summary.income) %></strong></div><i class="bi bi-graph-up-arrow"></i></article>
-    <article class="cash-summary-card balance"><div><span>Saldo</span><strong><%= formatRupiah(summary.balance) %></strong></div><i class="bi bi-wallet2"></i></article>
+    <article class="cash-summary-card balance"><div><span>Selisih Operasional Periode</span><strong><%= formatRupiah(summary.balance) %></strong><small>Bukan saldo rekening/bank aktual</small></div><i class="bi bi-wallet2"></i></article>
     <article class="cash-summary-card expense"><div><span>Pengeluaran</span><strong><%= formatRupiah(summary.expense) %></strong></div><i class="bi bi-graph-down-arrow"></i></article>
     <article class="cash-summary-card pending"><div><span>Menunggu Approval</span><strong><%= Number(approvalSummary.pending_count||0) %></strong><small><%= formatRupiah(approvalSummary.pending_total||0) %></small></div><i class="bi bi-hourglass-split"></i></article>
   </div>
@@ -60,7 +60,7 @@
     <article class="data-card cash-chart-card"><div class="data-card-head"><div><h3>Arus Kas Harian</h3><small>Pemasukan dibanding pengeluaran setiap hari</small></div><i class="bi bi-graph-up-arrow"></i></div><div class="cash-chart-body"><canvas id="cashDailyChart"></canvas></div></article>
   </div>
 
-  <div class="cash-custody-strip"><div><span><i class="bi bi-person-vcard"></i> Cash masih di staff</span><strong><%= formatRupiah(collection.cash_held||0) %></strong><small><%= Number(collection.held_count||0) %> pembayaran belum disetor</small></div><a href="/payments/reconciliation">Buka Rekonsiliasi <i class="bi bi-arrow-right"></i></a></div>
+  <div class="cash-custody-strip"><div><span><i class="bi bi-person-vcard"></i> Cash masih di staff (semua periode)</span><strong><%= formatRupiah(collection.cash_held||0) %></strong><small><%= Number(collection.held_count||0) %> pembayaran belum disetor</small></div><a href="/payments/reconciliation">Buka Rekonsiliasi <i class="bi bi-arrow-right"></i></a></div>
 
   <div class="cash-action-bar">
     <button class="btn-tech primary" type="button" data-bs-toggle="modal" data-bs-target="#cashModal" data-go-cash-open><i class="bi bi-plus-lg"></i>Data Kas</button>
