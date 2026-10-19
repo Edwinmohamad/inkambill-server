@@ -24,4 +24,10 @@ assert(workspace.includes('Observe first. Configure when needed.'),'infrastructu
 assert(workspace.includes('href="/routers"')&&workspace.includes('href="/olt"'),'device configuration links must remain available');
 assert(workspace.includes('data-scope-picker'),'persistent site scope must remain visible');
 assert(workspace.includes('data-net-inspector')&&workspace.includes('data-network-command'),'inspector and command search must remain available');
+
+assert(workspace.includes('ROOT CAUSE VIEW'),'incident root-cause view must remain available');
+assert(workspace.includes('data-maintenance-form'),'maintenance workflow must remain available');
+assert(workspace.includes('data-save-network-view')&&workspace.includes('data-network-favorites'),'saved views and favorites must remain available');
+assert(network.includes("router.post('/api/maintenance'")&&network.includes("router.get('/api/config-drift'"),'maintenance and config drift APIs must remain available');
+
 console.log('Network Control Center consolidation contract PASS');
