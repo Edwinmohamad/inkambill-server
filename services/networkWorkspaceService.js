@@ -39,7 +39,7 @@ async function networkWorkspace(section='overview',scope=''){
       SUM(a.severity='warning') warning,
       SUM(a.acknowledged_by IS NOT NULL) acknowledged
       FROM nms_alerts a WHERE a.resolved_at IS NULL${incidentClause}`,siteScope?[siteScope]:[]),
-    db.query(`SELECT code,name FROM sites WHERE is_active=1 ORDER BY FIELD(code,'KRW','KBG','CLM'),code`).then(([rows])=>rows).catch(()=>[])
+    db.query(`SELECT code,name FROM sites WHERE is_active=1 AND code IN ('KRW','KBG','CLM') ORDER BY FIELD(code,'KRW','KBG','CLM')`).then(([rows])=>rows).catch(()=>[])
   ]);
 
   const baseSites=siteScope?(base.sites||[]).filter(s=>s.code===siteScope):(base.sites||[]);
@@ -103,7 +103,7 @@ async function networkWorkspace(section='overview',scope=''){
       rxBps:baseRouters.reduce((a,b)=>a+Number(b.wan?.rxBps||0),0),txBps:baseRouters.reduce((a,b)=>a+Number(b.wan?.txBps||0),0),
       criticalAlerts:Number(incidentCounts.critical||0)
     }:(base.summary||{}),
-    sites:baseSites,routers:baseRouters,olts:baseOlts,probes:baseProbes,server:base.server||{},
+    sites:baseSites,routers:baseRouters,olts:baseOlts,probes:baseProbes,server:(!siteScope||siteScope==='KRW')?(base.server||{}):{services:[]},
     ppp:{total:Number(ppp.total||0),online:Number(ppp.online||0),offline:Number(ppp.offline||0),isolated:Number(ppp.isolated||0),unsynced:Number(ppp.unsynced||0)},
     ont:{total:Number(ont.total||0),online:Number(ont.online||0),offline:Number(ont.offline||0),warning:Number(ont.warning||0),critical:Number(ont.critical||0)},
     devices:{routers:Number(devices.routers||0),olts:Number(devices.olts||0),sites:Number(devices.sites||0),onts:Number(devices.onts||0)},
