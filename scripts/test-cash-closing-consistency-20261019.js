@@ -25,6 +25,6 @@ const {planSyncedReconciliation}=require('../services/closingSyncService');
  const result=await planSyncedReconciliation({db:conn,closingId:7,start:'2026-10-01',end:'2026-10-31'});
  assert.equal(result.length,1);
  assert.equal(result[0].action,'delete');
- assert.equal(result[0].reason,'internal_transfer_not_operating_cash');
+ assert.equal(result[0].reason,'nonoperational_cash_not_profit');
  console.log('PASS Data Kas summary/chart/collector stock and Closing internal transfer parity');
 })().catch(e=>{console.error(e);process.exitCode=1});
