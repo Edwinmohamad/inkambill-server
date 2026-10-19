@@ -1,0 +1,137 @@
+<link rel="stylesheet" href="/css/network-workspace.css">
+<section class="netws">
+  <header class="netws-head">
+    <div>
+      <div class="module-kicker">NETWORK OPERATIONS</div>
+      <h1><%= title %></h1>
+      <p>
+        <% if(section==='overview'){ %>Ringkasan kondisi jaringan tanpa memenuhi layar dengan telemetry teknis.<% } %>
+        <% if(section==='subscribers'){ %>PPPoE dan ONT pelanggan dalam satu area kerja.<% } %>
+        <% if(section==='access'){ %>OLT, PON, ONU, dan kesehatan optical access layer.<% } %>
+        <% if(section==='devices'){ %>Perangkat jaringan dan jalur menuju konfigurasi atau troubleshooting.<% } %>
+        <% if(section==='incidents'){ %>Alert aktif dan kejadian terbaru untuk investigasi NOC.<% } %>
+      </p>
+    </div>
+    <div class="netws-head-actions">
+      <a class="btn-tech" href="/network/infrastructure/wall" target="_blank"><i class="bi bi-display"></i>NOC Wall</a>
+      <a class="btn-tech primary" href="/network/infrastructure"><i class="bi bi-diagram-3-fill"></i>Infrastructure</a>
+    </div>
+  </header>
+
+  <% if(section==='overview'){ %>
+  <div class="netws-health">
+    <div class="netws-health-score"><small>NETWORK HEALTH</small><strong><%= data.health %>%</strong><span><%= data.incidents.critical ? data.incidents.critical+' critical incident' : 'No critical incident' %></span></div>
+    <div class="netws-kpi"><small>POP</small><strong><%= data.devices.sites %></strong><span>active site</span></div>
+    <div class="netws-kpi"><small>ROUTER</small><strong><%= data.summary.routersOnline||0 %>/<%= data.summary.routersTotal||0 %></strong><span>online</span></div>
+    <div class="netws-kpi"><small>PPPoE</small><strong><%= data.ppp.online %></strong><span>active session</span></div>
+    <div class="netws-kpi"><small>ONT</small><strong><%= data.ont.online %>/<%= data.ont.total %></strong><span>online</span></div>
+    <div class="netws-kpi"><small>OLT</small><strong><%= (data.olts||[]).filter(o=>o.last_status==='online').length %>/<%= (data.olts||[]).filter(o=>o.is_registered).length %></strong><span>reachable</span></div>
+  </div>
+
+  <div class="netws-section-title"><div><small>WORKSPACES</small><h2>Pilih area kerja</h2></div><span>6 area utama</span></div>
+  <div class="netws-workspaces">
+    <a href="/network/subscribers" class="netws-workspace-card">
+      <span class="netws-icon"><i class="bi bi-people-fill"></i></span><div><small>SUBSCRIBERS</small><h3>Subscriber Network</h3><p>PPPoE, secret, isolir, Smart Sync, ONT dan TR-069.</p></div><em><%= data.ppp.online %> PPPoE · <%= data.ont.online %> ONT</em>
+    </a>
+    <a href="/network/access" class="netws-workspace-card">
+      <span class="netws-icon"><i class="bi bi-hdd-network-fill"></i></span><div><small>ACCESS</small><h3>Access / OLT</h3><p>OLT registry, PON port, ONU dan optical health.</p></div><em><%= data.devices.olts %> OLT</em>
+    </a>
+    <a href="/network/infrastructure" class="netws-workspace-card">
+      <span class="netws-icon"><i class="bi bi-diagram-3-fill"></i></span><div><small>INFRASTRUCTURE</small><h3>Infrastructure</h3><p>Topology, interfaces, server infra, probes dan logical network.</p></div><em><%= data.health %>% health</em>
+    </a>
+    <a href="/network/devices" class="netws-workspace-card">
+      <span class="netws-icon"><i class="bi bi-router-fill"></i></span><div><small>DEVICES</small><h3>Devices</h3><p>MikroTik, OLT, ONT, site dan device actions.</p></div><em><%= data.devices.routers + data.devices.olts %> core devices</em>
+    </a>
+    <a href="/network/incidents" class="netws-workspace-card <%= data.incidents.critical?'attention':'' %>">
+      <span class="netws-icon"><i class="bi bi-exclamation-triangle-fill"></i></span><div><small>INCIDENTS</small><h3>Alerts & Incidents</h3><p>Root cause, alert aktif, recovery dan event history.</p></div><em><%= data.incidents.total %> active</em>
+    </a>
+    <a href="/nms" class="netws-workspace-card">
+      <span class="netws-icon"><i class="bi bi-activity"></i></span><div><small>DEEP DIVE</small><h3>NMS Advanced</h3><p>Telemetry dan investigasi teknis mendalam saat dibutuhkan.</p></div><em>Advanced</em>
+    </a>
+  </div>
+
+  <div class="netws-overview-grid">
+    <article class="netws-card">
+      <header><div><small>USER EXPERIENCE</small><h3>Internet quality</h3></div><a href="/network/infrastructure#experience">Detail</a></header>
+      <div class="netws-experience">
+        <% if(!(data.experience||[]).length){ %><div class="netws-empty">Belum ada sample experience.</div><% } %>
+        <% (data.experience||[]).slice(0,6).forEach(x=>{ %>
+          <div><span><%= String(x.category||'other').toUpperCase() %></span><strong><%= x.score %></strong><em><%= x.down ? x.down+' down' : 'healthy' %></em></div>
+        <% }) %>
+      </div>
+    </article>
+    <article class="netws-card">
+      <header><div><small>ATTENTION</small><h3>Butuh perhatian</h3></div><a href="/network/incidents">Semua</a></header>
+      <div class="netws-attention">
+        <% if(!(data.alerts||[]).length){ %><div class="netws-empty good"><i class="bi bi-check-circle-fill"></i>Tidak ada alert aktif.</div><% } %>
+        <% (data.alerts||[]).slice(0,6).forEach(a=>{ %>
+          <div><i class="netws-severity <%= a.severity %>"></i><span><b><%= a.title %></b><small><%= a.site_code||'NETWORK' %> · <%= a.router_name||'System' %></small></span></div>
+        <% }) %>
+      </div>
+    </article>
+  </div>
+  <% } %>
+
+  <% if(section==='subscribers'){ %>
+  <div class="netws-health compact">
+    <div class="netws-kpi"><small>PPPoE ONLINE</small><strong><%= data.ppp.online %></strong><span>of <%= data.ppp.total %></span></div>
+    <div class="netws-kpi"><small>PPPoE OFFLINE</small><strong><%= data.ppp.offline %></strong><span>customer sessions</span></div>
+    <div class="netws-kpi"><small>ISOLATED</small><strong><%= data.ppp.isolated %></strong><span>billing/network</span></div>
+    <div class="netws-kpi"><small>UNSYNCED</small><strong><%= data.ppp.unsynced %></strong><span>needs mapping</span></div>
+    <div class="netws-kpi"><small>ONT ONLINE</small><strong><%= data.ont.online %></strong><span>of <%= data.ont.total %></span></div>
+    <div class="netws-kpi"><small>OPTICAL CRITICAL</small><strong><%= data.ont.critical %></strong><span>ONT</span></div>
+  </div>
+  <div class="netws-action-grid">
+    <a href="/nms/secrets"><i class="bi bi-person-lines-fill"></i><span><small>PPPoE</small><b>Sessions & Secrets</b><em>Synced, unsynced, profile, isolate</em></span></a>
+    <a href="/acs"><i class="bi bi-broadcast-pin"></i><span><small>ONT</small><b>Subscriber Access</b><em>Online, optical, TR-069, customer mapping</em></span></a>
+    <a href="/nms"><i class="bi bi-activity"></i><span><small>NMS</small><b>Advanced NMS</b><em>Telemetry, automation, anomalies</em></span></a>
+    <a href="/customers"><i class="bi bi-people-fill"></i><span><small>CUSTOMER</small><b>Customer Records</b><em>Billing identity and package</em></span></a>
+  </div>
+  <% } %>
+
+  <% if(section==='access'){ %>
+  <div class="netws-health compact">
+    <div class="netws-kpi"><small>OLT</small><strong><%= data.devices.olts %></strong><span>registered</span></div>
+    <div class="netws-kpi"><small>ONT</small><strong><%= data.ont.total %></strong><span>observed</span></div>
+    <div class="netws-kpi"><small>ONLINE</small><strong><%= data.ont.online %></strong><span>ONU/ONT</span></div>
+    <div class="netws-kpi"><small>OFFLINE</small><strong><%= data.ont.offline %></strong><span>ONU/ONT</span></div>
+    <div class="netws-kpi"><small>WARNING</small><strong><%= data.ont.warning %></strong><span>optical</span></div>
+    <div class="netws-kpi"><small>CRITICAL</small><strong><%= data.ont.critical %></strong><span>optical</span></div>
+  </div>
+  <div class="netws-olt-list">
+    <% if(!(data.olts||[]).length){ %><div class="netws-empty">Belum ada OLT yang terdaftar.</div><% } %>
+    <% (data.olts||[]).forEach(o=>{ %>
+      <article><header><div><i class="netws-severity <%= o.last_status==='online'?'info':o.last_status==='offline'?'critical':'warning' %>"></i><span><b><%= o.name %></b><small><%= o.vendor||'Unknown vendor' %> · <%= o.management_ip||'No management IP' %></small></span></div><strong><%= String(o.last_status||'unknown').toUpperCase() %></strong></header>
+      <div><span><small>ONU</small><b><%= o.onu_online %>/<%= o.onu_total %></b></span><span><small>OFFLINE</small><b><%= o.onu_offline %></b></span><span><small>PON USED</small><b><%= o.pon_ports_used %></b></span><span><small>AVG RX</small><b><%= o.avg_rx==null?'—':o.avg_rx+' dBm' %></b></span></div></article>
+    <% }) %>
+  </div>
+  <div class="netws-footer-actions"><a class="btn-tech primary" href="/olt"><i class="bi bi-hdd-network-fill"></i>Kelola OLT</a><a class="btn-tech" href="/acs"><i class="bi bi-broadcast-pin"></i>Monitoring ONT</a></div>
+  <% } %>
+
+  <% if(section==='devices'){ %>
+  <div class="netws-action-grid">
+    <a href="/monitoring"><i class="bi bi-grid-1x2-fill"></i><span><small>LIVE ACTIONS</small><b>Unified Device Board</b><em>Ping, status dan action lintas perangkat</em></span></a>
+    <a href="/routers"><i class="bi bi-router-fill"></i><span><small>MIKROTIK</small><b>Router Registry</b><em>Endpoint, credential dan site mapping</em></span></a>
+    <a href="/olt"><i class="bi bi-hdd-network-fill"></i><span><small>OLT</small><b>OLT Registry</b><em>Management IP, vendor dan capacity</em></span></a>
+    <a href="/sites"><i class="bi bi-hdd-rack-fill"></i><span><small>TOPOLOGY</small><b>Site / POP</b><em>KRW, KBG, CLM dan site metadata</em></span></a>
+    <a href="/clusters"><i class="bi bi-diagram-3-fill"></i><span><small>ACCESS</small><b>Cluster & ODP</b><em>Distribution grouping</em></span></a>
+    <a href="/network/tools"><i class="bi bi-server"></i><span><small>INFRA TOOLS</small><b>Infrastructure Hub</b><em>Proxmox, CasaOS, GenieACS dan services</em></span></a>
+  </div>
+  <% } %>
+
+  <% if(section==='incidents'){ %>
+  <div class="netws-health compact">
+    <div class="netws-kpi"><small>ACTIVE</small><strong><%= data.incidents.total %></strong><span>alert</span></div>
+    <div class="netws-kpi danger"><small>CRITICAL</small><strong><%= data.incidents.critical %></strong><span>needs action</span></div>
+    <div class="netws-kpi warning"><small>WARNING</small><strong><%= data.incidents.warning %></strong><span>degraded</span></div>
+    <div class="netws-kpi"><small>ACK</small><strong><%= data.incidents.acknowledged %></strong><span>acknowledged</span></div>
+  </div>
+  <article class="netws-card">
+    <header><div><small>ACTIVE INCIDENTS</small><h3>Alert queue</h3></div></header>
+    <div class="netws-incident-list">
+      <% if(!(data.alerts||[]).length){ %><div class="netws-empty good"><i class="bi bi-check-circle-fill"></i>No active incident.</div><% } %>
+      <% (data.alerts||[]).forEach(a=>{ %><div><i class="netws-severity <%= a.severity %>"></i><span><b><%= a.title %></b><small><%= a.site_code||'NETWORK' %> · <%= a.router_name||'System' %> · <%= formatDateTime(a.opened_at) %></small></span><em><%= String(a.severity).toUpperCase() %></em></div><% }) %>
+    </div>
+  </article>
+  <% } %>
+</section>
