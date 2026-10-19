@@ -33,11 +33,25 @@ const db=require('../config/db');
     FROM cash_transactions ct LEFT JOIN sites s ON s.id=ct.site_id
     WHERE ct.approval_status='PENDING_APPROVAL'
     GROUP BY COALESCE(s.code,'UNASSIGNED') ORDER BY site`);
-  const {auditFinancialIntegrity}=require('../services/financialIntegrityService');
+  const [financingRows]=await db.query(`
+    SELECT site_code site,method,
+      COALESCE(SUM(CASE WHEN direction='IN' THEN amount ELSE 0 END),0) inflow,
+      COALESCE(SUM(CASE WHEN direction='OUT' THEN amount ELSE 0 END),0) outflow,
+      COUNT(*) posted_payments
+    FROM finance_debt_cash_movements GROUP BY site_code,method ORDER BY site_code,method`);
+  const [[legacyRow]]=await db.query(`
+    SELECT COUNT(*) missing_financing_journal FROM finance_debt_payments dp
+    LEFT JOIN finance_debt_cash_movements fm ON fm.debt_payment_id=dp.id
+    WHERE fm.id IS NULL`);
+  const {auditFinancialIntegrity,diagnoseClosingMismatches}=require('../services/financialIntegrityService');
   const integrity=await auditFinancialIntegrity();
-  const snapshot={generated_at:new Date().toISOString(),basis:'ledger all-time; excludes internal transfers; opening balances and actual bank/cash count NOT included',site_ledger:siteRows.map(r=>({...r,net:Number(r.income)-Number(r.expense)})),cash_held:heldRows,pending_cash:pendingRows,integrity};
+  const closing_mismatch_details=integrity.totals.closingSyncedMismatch?await diagnoseClosingMismatches(30):[];
+  const reportOnly=process.argv.includes('--report-only');
+  const snapshot={generated_at:new Date().toISOString(),basis:'operational ledger + separate financing cashflows; opening balances and actual cash/bank count NOT included',site_ledger:siteRows.map(r=>({...r,net:Number(r.income)-Number(r.expense)})),cash_held:heldRows,pending_cash:pendingRows,financing_movements:financingRows.map(r=>({...r,net:Number(r.inflow)-Number(r.outflow)})),unposted_legacy_financing_payments:Number(legacyRow?.missing_financing_journal||0),integrity,closing_mismatch_details};
   console.log(JSON.stringify(snapshot,null,2));
-  process.exitCode=integrity.anomalyCount>0?2:0;
+  if(integrity.anomalyCount>0)console.warn(`::warning::Financial audit detected ${integrity.anomalyCount} anomaly/anomalies; review closing_mismatch_details. No historical records were changed.`);
+  if(snapshot.unposted_legacy_financing_payments>0)console.warn(`::warning::${snapshot.unposted_legacy_financing_payments} historical debt payments lack separate financing cash journal; manual reconciliation required.`);
+  process.exitCode=(!reportOnly&&integrity.anomalyCount>0)?2:0;
  }catch(e){console.error('Financial snapshot failed:',e.message);process.exitCode=1}
  finally{await db.end()}
 })();
