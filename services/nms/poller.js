@@ -29,7 +29,7 @@ let started = false;
 function stateFor(router) {
   if (!state.has(router.id)) state.set(router.id, { id: router.id, name: router.name, siteId: router.site_id, siteCode: router.site_code, siteName: router.site_name,
     status: 'unknown', lastOkAt: null, lastError: null, offlineTicks: 0, telemetry: null, wan: { interface: router.wan_interface || null, rxBps: 0, txBps: 0, peakRxBps: 0, peakTxBps: 0, history: [] },
-    counters: null, active: null, activeSeeded: false, tick: 0, persistedAt: 0, lastLogId: null });
+    counters: null, interfaces: [], interfaceCounters: new Map(), active: null, activeSeeded: false, tick: 0, persistedAt: 0, lastLogId: null });
   const s = state.get(router.id);
   Object.assign(s, { name: router.name, siteId: router.site_id, siteCode: router.site_code, siteName: router.site_name, deviceRole: router.device_role || 'core', connectorType: router.connector_type || 'rest', pppoeEnabled: Number(router.pppoe_enabled ?? 1) === 1 });
   if (router.wan_interface) s.wan.interface = router.wan_interface;
@@ -80,7 +80,12 @@ async function telemetryRouter(router) {
   try {
     if (!s.wan.interface) s.wan.interface = await detectWan(router);
     const wantHealth = s.tick % 4 === 1;
-    const [res, counters, health] = await Promise.all([ros.resource(router), ros.interfaceCounters(router, s.wan.interface), wantHealth ? ros.health(router) : Promise.resolve(null)]);
+    const [res, counters, health, interfaces] = await Promise.all([
+      ros.resource(router),
+      ros.interfaceCounters(router, s.wan.interface),
+      wantHealth ? ros.health(router) : Promise.resolve(null),
+      ros.interfaces(router)
+    ]);
     const totalMem = Number(res['total-memory']) || 0, freeMem = Number(res['free-memory']) || 0;
     const totalHdd = Number(res['total-hdd-space']) || 0, freeHdd = Number(res['free-hdd-space']) || 0;
     const prevHealth = s.telemetry?.health || { temperature: null, voltage: null };
@@ -90,6 +95,23 @@ async function telemetryRouter(router) {
       disk: { total: totalHdd, free: freeHdd, freePct: totalHdd ? Math.round(freeHdd / totalHdd * 1000) / 10 : null },
       health: health || prevHealth, board: res['board-name'] || null, version: res.version || null, sampledAt: new Date().toISOString()
     };
+    const ifaceNow=Date.now();
+    s.interfaces=(interfaces||[]).map(i=>{
+      const name=String(i.name||''),rx=Number(i['rx-byte'])||0,tx=Number(i['tx-byte'])||0,prev=s.interfaceCounters.get(name);
+      let rxBps=0,txBps=0;
+      if(prev && ifaceNow>prev.at && rx>=prev.rx && tx>=prev.tx){
+        const secs=(ifaceNow-prev.at)/1000;rxBps=Math.round((rx-prev.rx)*8/secs);txBps=Math.round((tx-prev.tx)*8/secs);
+      }
+      s.interfaceCounters.set(name,{rx,tx,at:ifaceNow});
+      return {
+        name,type:i.type||null,comment:i.comment||null,running:String(i.running)==='true',disabled:String(i.disabled)==='true',
+        rxBps,txBps,rxBytes:rx,txBytes:tx,rxPackets:Number(i['rx-packet'])||0,txPackets:Number(i['tx-packet'])||0,
+        rxDrop:Number(i['rx-drop'])||0,txDrop:Number(i['tx-drop'])||0,rxError:Number(i['rx-error'])||0,txError:Number(i['tx-error'])||0,
+        mtu:Number(i['actual-mtu']||i.mtu)||null,mac:i['mac-address']||null,linkDowns:Number(i['link-downs'])||0,
+        lastLinkUp:i['last-link-up-time']||null,lastLinkDown:i['last-link-down-time']||null
+      };
+    }).sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));
+    const liveNames=new Set(s.interfaces.map(i=>i.name));for(const name of s.interfaceCounters.keys())if(!liveNames.has(name))s.interfaceCounters.delete(name);
     if (counters) {
       const now = Date.now(), rx = Number(counters['rx-byte']) || 0, tx = Number(counters['tx-byte']) || 0;
       if (s.counters && now > s.counters.at && rx >= s.counters.rx && tx >= s.counters.tx) {
@@ -213,6 +235,7 @@ function publicState(s) {
   const stale = s.status !== 'online';
   return { routerId: s.id, name: s.name, siteId: s.siteId, siteCode: s.siteCode, siteName: s.siteName, deviceRole: s.deviceRole || 'core', connectorType: s.connectorType || 'rest', pppoeEnabled: s.pppoeEnabled !== false, status: s.status, stale, lastOkAt: s.lastOkAt ? new Date(s.lastOkAt).toISOString() : null, lastError: s.lastError,
     telemetry: s.telemetry, wan: { interface: s.wan.interface, rxBps: stale ? 0 : s.wan.rxBps, txBps: stale ? 0 : s.wan.txBps, peakRxBps: s.wan.peakRxBps, peakTxBps: s.wan.peakTxBps, running: s.wan.running ?? null, history: s.wan.history.slice(-HISTORY_POINTS) },
+    interfaces: (s.interfaces||[]).map(i=>({...i,rxBps:stale?0:i.rxBps,txBps:stale?0:i.txBps})),
     activeSessions: s.activeCount ?? null };
 }
 
