@@ -76,7 +76,7 @@ module.exports = {
     }
     catch (err) { if (err.code === 'ROUTER_UNREACHABLE') throw err; return { temperature: null, voltage: null, unsupported: true }; }
   },
-  async interfaces(router) { return isLegacy(router) ? list(await schedule(router.id,()=>legacy.interfaces(router))) : list(await call(router, 'GET', '/interface?.proplist=name,type,comment,running,disabled')); },
+  async interfaces(router) { return isLegacy(router) ? list(await schedule(router.id,()=>legacy.interfaces(router))) : list(await call(router, 'GET', '/interface?.proplist=name,type,comment,running,disabled,rx-byte,tx-byte,rx-packet,tx-packet,rx-drop,tx-drop,rx-error,tx-error,mtu,actual-mtu,mac-address,last-link-up-time,last-link-down-time,link-downs')); },
   async interfaceCounters(router, name) {
     const rows = isLegacy(router) ? list(await schedule(router.id,()=>legacy.interfaceCounters(router,name))) : list(await call(router, 'GET', `/interface?name=${enc(name)}&.proplist=name,rx-byte,tx-byte,running`));
     return rows[0] || null;
