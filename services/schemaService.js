@@ -1394,6 +1394,9 @@ async function ensureV65Schema() {
 async function ensureV66Schema() {
   // Null installment_number preserves historical unnumbered payments.
   await db.query(`ALTER TABLE finance_debt_payments ADD COLUMN IF NOT EXISTS installment_number SMALLINT UNSIGNED NULL AFTER debt_id`);
+  await db.query(`ALTER TABLE finance_debt_payments ADD COLUMN IF NOT EXISTS voided_at DATETIME NULL AFTER installment_number`);
+  await db.query(`ALTER TABLE finance_debt_payments ADD COLUMN IF NOT EXISTS voided_by BIGINT UNSIGNED NULL AFTER voided_at`);
+  await db.query(`ALTER TABLE finance_debt_payments ADD COLUMN IF NOT EXISTS void_reason VARCHAR(500) NULL AFTER voided_by`);
   await db.query(`ALTER TABLE finance_debt_payments ADD INDEX IF NOT EXISTS idx_debt_installment (debt_id,installment_number)`);
   // Non-operating cash movements are optional MANUAL entries; these categories
   // must be excluded from operational surplus and Closing profit shares.
