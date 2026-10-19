@@ -180,7 +180,6 @@
         <% } %>
 
         <% if(can('network')){ %>
-        <% const networkArea = currentPath.startsWith('/network') || currentPath.startsWith('/nms') || currentPath.startsWith('/acs') || currentPath.startsWith('/monitoring') || currentPath.startsWith('/routers') || currentPath.startsWith('/olt') || currentPath.startsWith('/sites') || currentPath.startsWith('/clusters'); %>
         <% const networkConfigOpen = currentPath.startsWith('/routers') || currentPath.startsWith('/sites') || currentPath.startsWith('/clusters') || currentPath.startsWith('/network/tools'); %>
         <div class="sidebar-section-label">NETWORK</div>
         <nav class="sidebar-nav">
@@ -250,7 +249,7 @@
 
       <main class="content-wrap">
         <% if(flash){ %><div class="alert alert-<%= flash.type %> alert-modern alert-dismissible fade show" role="alert"><i class="bi bi-info-circle-fill me-2"></i><%= flash.message %><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><% } %>
-        <% const networkContextActive = can('network') && (currentPath.startsWith('/network') || currentPath.startsWith('/nms') || currentPath.startsWith('/acs') || currentPath.startsWith('/monitoring') || currentPath.startsWith('/routers') || currentPath.startsWith('/olt') || currentPath.startsWith('/sites') || currentPath.startsWith('/clusters')); %>
+        <% const networkContextActive = can('network') && currentPath!=='/network/infrastructure/wall' && (currentPath.startsWith('/network') || currentPath.startsWith('/nms') || currentPath.startsWith('/acs') || currentPath.startsWith('/monitoring') || currentPath.startsWith('/routers') || currentPath.startsWith('/olt') || currentPath.startsWith('/sites') || currentPath.startsWith('/clusters')); %>
         <% if(networkContextActive){ %>
         <nav class="network-context-nav" aria-label="Network Operations">
           <a class="<%= currentPath==='/network'?'active':'' %>" href="/network"><i class="bi bi-speedometer2"></i><span>Overview</span></a>
