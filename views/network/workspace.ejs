@@ -18,6 +18,15 @@
     </div>
   </header>
 
+  <nav class="netws-tabs" aria-label="Network Operations sections">
+    <a class="<%= section==='overview'?'active':'' %>" href="/network"><i class="bi bi-speedometer2"></i><span>Overview</span></a>
+    <a class="<%= section==='subscribers'?'active':'' %>" href="/network/subscribers"><i class="bi bi-people-fill"></i><span>Subscribers</span></a>
+    <a class="<%= section==='access'?'active':'' %>" href="/network/access"><i class="bi bi-hdd-network-fill"></i><span>Access / OLT</span></a>
+    <a href="/network/infrastructure"><i class="bi bi-diagram-3-fill"></i><span>Infrastructure</span></a>
+    <a class="<%= section==='devices'?'active':'' %>" href="/network/devices"><i class="bi bi-router-fill"></i><span>Devices</span></a>
+    <a class="<%= section==='incidents'?'active':'' %>" href="/network/incidents"><i class="bi bi-exclamation-triangle-fill"></i><span>Incidents</span><% if(data.incidents?.total){ %><em><%= data.incidents.total %></em><% } %></a>
+  </nav>
+
   <% if(section==='overview'){ %>
   <div class="netws-health">
     <div class="netws-health-score"><small>NETWORK HEALTH</small><strong><%= data.health %>%</strong><span><%= data.incidents.critical ? data.incidents.critical+' critical incident' : 'No critical incident' %></span></div>
@@ -28,7 +37,7 @@
     <div class="netws-kpi"><small>OLT</small><strong><%= (data.olts||[]).filter(o=>o.last_status==='online').length %>/<%= (data.olts||[]).filter(o=>o.is_registered).length %></strong><span>reachable</span></div>
   </div>
 
-  <div class="netws-section-title"><div><small>WORKSPACES</small><h2>Pilih area kerja</h2></div><span>6 area utama</span></div>
+  <div class="netws-section-title"><div><small>WORKSPACES</small><h2>Pilih area kerja</h2></div><span>5 area utama</span></div>
   <div class="netws-workspaces">
     <a href="/network/subscribers" class="netws-workspace-card">
       <span class="netws-icon"><i class="bi bi-people-fill"></i></span><div><small>SUBSCRIBERS</small><h3>Subscriber Network</h3><p>PPPoE, secret, isolir, Smart Sync, ONT dan TR-069.</p></div><em><%= data.ppp.online %> PPPoE · <%= data.ont.online %> ONT</em>
@@ -45,9 +54,7 @@
     <a href="/network/incidents" class="netws-workspace-card <%= data.incidents.critical?'attention':'' %>">
       <span class="netws-icon"><i class="bi bi-exclamation-triangle-fill"></i></span><div><small>INCIDENTS</small><h3>Alerts & Incidents</h3><p>Root cause, alert aktif, recovery dan event history.</p></div><em><%= data.incidents.total %> active</em>
     </a>
-    <a href="/nms" class="netws-workspace-card">
-      <span class="netws-icon"><i class="bi bi-activity"></i></span><div><small>DEEP DIVE</small><h3>NMS Advanced</h3><p>Telemetry dan investigasi teknis mendalam saat dibutuhkan.</p></div><em>Advanced</em>
-    </a>
+
   </div>
 
   <div class="netws-overview-grid">
