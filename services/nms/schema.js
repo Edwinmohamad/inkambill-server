@@ -253,6 +253,37 @@ async function ensureNmsV2Schema() {
     INDEX idx_network_infra_events_time(created_at),
     INDEX idx_network_infra_events_site(site_id,created_at)
   )`);
+  await db.query(`CREATE TABLE IF NOT EXISTS network_maintenance_windows (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    title VARCHAR(160) NOT NULL,
+    site_id BIGINT UNSIGNED NULL,
+    router_id BIGINT UNSIGNED NULL,
+    starts_at DATETIME NOT NULL,
+    ends_at DATETIME NOT NULL,
+    notes VARCHAR(500) NULL,
+    created_by BIGINT UNSIGNED NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    cancelled_at DATETIME NULL,
+    INDEX idx_network_maintenance_time(starts_at,ends_at),
+    INDEX idx_network_maintenance_site(site_id,starts_at),
+    INDEX idx_network_maintenance_router(router_id,starts_at)
+  )`);
+  await db.query(`CREATE TABLE IF NOT EXISTS network_config_observations (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    object_type ENUM('router','olt','server') NOT NULL,
+    object_key VARCHAR(191) NOT NULL,
+    site_id BIGINT UNSIGNED NULL,
+    observed_hash VARCHAR(64) NULL,
+    desired_hash VARCHAR(64) NULL,
+    observed_json LONGTEXT NULL,
+    desired_json LONGTEXT NULL,
+    drift_status ENUM('unknown','in_sync','drifted') NOT NULL DEFAULT 'unknown',
+    checked_at DATETIME NULL,
+    updated_by BIGINT UNSIGNED NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_network_config_object(object_type,object_key),
+    INDEX idx_network_config_drift(drift_status,site_id)
+  )`);
   await db.query(`INSERT IGNORE INTO network_probe_targets(name,category,probe_type,target,port,warning_ms,critical_ms,sort_order) VALUES
     ('Cloudflare DNS','dns','tcp','1.1.1.1',53,40,100,10),
     ('Google DNS','dns','tcp','8.8.8.8',53,40,100,20),
