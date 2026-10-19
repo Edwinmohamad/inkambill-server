@@ -109,7 +109,7 @@ async function loadClosing(start, end, queryDb = db) {
     if (!snapshot?.blocks || !snapshot?.closing) throw new Error('Snapshot Closing terkunci tidak valid.');
     return { ...snapshot, closing: { ...snapshot.closing, status: 'LOCKED' }, period, frozenSnapshot: true };
   }
-  const closing = period || { status: 'DRAFT', mode: 'MANUAL', manual_revenue: 0, manual_expense: 0, manual_carry: 0, manual_salary_agung: 500000, manual_salary_padilah: 1000000, notes: '' };
+  const closing = period || { status: 'DRAFT', mode: 'MANUAL', manual_revenue: 0, manual_expense: 0, manual_carry: 0, manual_carry_kbg: 0, manual_salary_agung: 500000, manual_salary_padilah: 1000000, notes: '' };
   const selectedMode = String(closing.mode || 'MANUAL').toUpperCase() === 'AUTO' ? 'auto' : 'manual';
 
   // v1.29 — Closing is fully flexible now: every period always recalculates from
@@ -401,7 +401,7 @@ router.post('/save', async (req, res, next) => {
     const { start, end } = selectedPeriod(req);
     if (start > end) return res.status(400).send('Periode tidak valid.');
     const n = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
-    const [[old]] = await db.execute('SELECT id,status,manual_revenue,manual_expense,manual_salary_agung,manual_salary_padilah FROM closing_periods WHERE period_start=? AND period_end=? LIMIT 1', [start, end]);
+    const [[old]] = await db.execute('SELECT id,status,manual_revenue,manual_expense,manual_carry,manual_carry_kbg,manual_salary_agung,manual_salary_padilah FROM closing_periods WHERE period_start=? AND period_end=? LIMIT 1', [start, end]);
     if(old?.status==='LOCKED') throw new Error('Periode Closing sudah dikunci.');
     // v1.29 — Closing is always editable now; the previous LOCKED 409 guard here
     // (and on every entries/adjustments route below) has been removed on purpose.
@@ -413,9 +413,9 @@ router.post('/save', async (req, res, next) => {
     const hasLegacyExpense = Object.prototype.hasOwnProperty.call(req.body || {}, 'manual_expense');
     const legacyRevenue = hasLegacyRevenue ? Math.max(0, n(req.body.manual_revenue)) : Math.max(0, n(old?.manual_revenue));
     const legacyExpense = hasLegacyExpense ? Math.max(0, n(req.body.manual_expense)) : Math.max(0, n(old?.manual_expense));
-    const values = [legacyRevenue, legacyExpense, n(req.body.manual_carry), Math.max(0, n(req.body.manual_salary_agung, old?.manual_salary_agung ?? 500000)), Math.max(0, n(req.body.manual_salary_padilah, old?.manual_salary_padilah ?? 1000000)), String(req.body.notes || '').slice(0, 2000)];
-    if (old) await db.execute('UPDATE closing_periods SET manual_revenue=?,manual_expense=?,manual_carry=?,manual_salary_agung=?,manual_salary_padilah=?,notes=? WHERE id=?', [...values, old.id]);
-    else await db.execute('INSERT INTO closing_periods(period_start,period_end,closing_date,manual_revenue,manual_expense,manual_carry,manual_salary_agung,manual_salary_padilah,notes,created_by) VALUES(?,?,CURDATE(),?,?,?,?,?,?,?)', [start, end, ...values, req.session.user.id]);
+    const values = [legacyRevenue, legacyExpense, n(req.body.manual_carry, old?.manual_carry ?? 0), n(req.body.manual_carry_kbg, old?.manual_carry_kbg ?? 0), Math.max(0, n(req.body.manual_salary_agung, old?.manual_salary_agung ?? 500000)), Math.max(0, n(req.body.manual_salary_padilah, old?.manual_salary_padilah ?? 1000000)), String(req.body.notes || '').slice(0, 2000)];
+    if (old) await db.execute('UPDATE closing_periods SET manual_revenue=?,manual_expense=?,manual_carry=?,manual_carry_kbg=?,manual_salary_agung=?,manual_salary_padilah=?,notes=? WHERE id=?', [...values, old.id]);
+    else await db.execute('INSERT INTO closing_periods(period_start,period_end,closing_date,manual_revenue,manual_expense,manual_carry,manual_carry_kbg,manual_salary_agung,manual_salary_padilah,notes,created_by) VALUES(?,?,CURDATE(),?,?,?,?,?,?,?,?)', [start, end, ...values, req.session.user.id]);
     req.session.flash = { type: 'success', message: 'Pengaturan Closing tersimpan.' };
     res.redirect(`/closing?from=${start}&to=${end}`);
   } catch (err) { next(err); }
