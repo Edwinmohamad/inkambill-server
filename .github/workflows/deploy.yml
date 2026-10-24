@@ -69,6 +69,14 @@ jobs:
           docker compose logs app --tail=120
           exit 1
 
+      - name: Reconcile orphaned draft Closing rows
+        # Keep deleted cash journals from remaining in an active draft Closing calculation.
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /opt/inkambilling
+          docker compose exec -T app node scripts/repair-orphaned-closing-entries.js
+
       - name: Report finance integrity and historical discrepancies
         # Visible warnings for legacy anomalies; SQL/query failures still fail this step.
         # Never alter historical money automatically or declare anomalies resolved.
