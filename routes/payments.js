@@ -353,6 +353,49 @@ router.post('/:id/reject',requireMasterAdmin,async(req,res)=>{
   res.redirect(returnTo);
 });
 
+// Batalkan pengesahan pembayaran yang telanjur disetujui. Ini membalik pencatatan internal,
+// bukan refund uang. Bukti dan baris jurnal tetap ada untuk audit; jurnal ditandai REJECTED.
+router.post('/:id/cancel-approval',requireMasterAdmin,async(req,res)=>{
+  const paymentId=Number(req.params.id);
+  const reason=String(req.body.reason||'').trim().replace(/\\s+/g,' ').slice(0,450);
+  const returnTo=localReturn(req.body.return_to,'/payments');
+  if(!Number.isInteger(paymentId)||paymentId<1){req.session.flash={type:'danger',message:'Pembayaran tidak valid.'};return res.redirect(returnTo);}
+  if(reason.length<5){req.session.flash={type:'danger',message:'Alasan pembatalan wajib diisi minimal 5 karakter.'};return res.redirect(returnTo);}
+  const conn=await db.getConnection();let payment=null;
+  try{
+    await conn.beginTransaction();
+    const [rows]=await conn.execute(`SELECT p.*,i.invoice_number FROM payments p JOIN invoices i ON i.id=p.invoice_id WHERE p.id=? FOR UPDATE`,[paymentId]);
+    payment=rows[0];if(!payment)throw new Error('Pembayaran tidak ditemukan.');
+    if(payment.status!=='confirmed')throw new Error('Hanya pembayaran yang sudah disetujui yang dapat dibatalkan.');
+    if(payment.method==='cash'&&(payment.settlement_status==='settled'||Number(payment.settlement_id)>0)){
+      throw new Error('Cash sudah disetor. Batalkan setoran terlebih dahulu dari Rekonsiliasi Cash, lalu batalkan approval pembayaran.');
+    }
+    const [invoiceRows]=await conn.execute(`SELECT id FROM invoices WHERE id=? FOR UPDATE`,[payment.invoice_id]);
+    if(!invoiceRows.length)throw new Error('Tagihan terkait tidak ditemukan.');
+    await assertDateOpen(conn,payment.booked_at||payment.paid_at);
+    const [journals]=await conn.execute(`SELECT id,transaction_date FROM cash_transactions WHERE source_id=? AND source_type IN ('payment','install_income') FOR UPDATE`,[payment.id]);
+    for(const journal of journals){
+      const [[frozen]]=await conn.execute(`SELECT COUNT(*) n FROM closing_entries ce JOIN closing_periods cp ON cp.id=ce.closing_id WHERE ce.cash_transaction_id=? AND cp.status='LOCKED'`,[journal.id]);
+      if(Number(frozen.n)>0)throw new Error('Jurnal terkait Closing LOCKED. Buka dan rekonsiliasi Closing terlebih dahulu.');
+      await assertDateOpen(conn,journal.transaction_date);
+      await conn.execute(`DELETE ce FROM closing_entries ce JOIN closing_periods cp ON cp.id=ce.closing_id WHERE ce.cash_transaction_id=? AND cp.status='DRAFT' AND ce.source_type='cash_sync'`,[journal.id]);
+      await conn.execute(`UPDATE cash_transactions SET approval_status='REJECTED',approval_reason=?,reviewed_by=?,reviewed_at=NOW() WHERE id=?`,[`Approval pembayaran dibatalkan: ${reason}`,req.session.user.id,journal.id]);
+    }
+    await conn.execute(`UPDATE payments SET status='failed',settlement_status='not_applicable',rejection_reason=?,rejected_by=?,rejected_at=NOW(),notes=CONCAT_WS('\\n',NULLIF(notes,''),?) WHERE id=?`,[
+      `APPROVAL DIBATALKAN: ${reason}`,req.session.user.id,`APPROVAL DIBATALKAN MASTER ADMIN: ${reason}`,payment.id
+    ]);
+    await refreshInvoiceStatus(conn,payment.invoice_id);
+    await financialAudit({conn,userId:req.session.user.id,action:'cancel_payment_approval',entityType:'payment',entityId:payment.id,
+      before:{status:payment.status,amount:Number(payment.amount),invoice_id:payment.invoice_id,settlement_status:payment.settlement_status},
+      after:{status:'failed',amount:Number(payment.amount),invoice_id:payment.invoice_id,journals_rejected:journals.length},
+      reason,ip:req.ip});
+    await conn.commit();
+  }catch(e){await conn.rollback();req.session.flash={type:'danger',message:`Pembatalan approval gagal: ${e.message}`};return res.redirect(returnTo);}finally{conn.release();}
+  await audit({userId:req.session.user.id,action:'cancel_approval',entityType:'payment',entityId:payment.id,description:`Approval pembayaran ${payment.reference||payment.id} untuk faktur ${payment.invoice_number} dibatalkan · Rp${Number(payment.amount).toLocaleString('id-ID')} · alasan: ${reason}`,ip:req.ip});
+  req.session.flash={type:'warning',message:`Approval pembayaran dibatalkan. Faktur ${payment.invoice_number} kembali memiliki sisa tagihan. Histori dan jurnal tetap tersimpan untuk audit; aksi ini bukan refund.`};
+  res.redirect(returnTo);
+});
+
 // v1.26 — factored out of the GET /reconciliation handler so the Excel/PDF export routes below
 // can reuse the exact same filtered dataset (same q/site/cluster semantics) instead of duplicating
 // the SQL. Only `withLookups` (sites/clusters for the filter dropdowns) is skipped by the exporters,
