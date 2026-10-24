@@ -58,14 +58,14 @@ async function billingReport(f){
 
 async function cashReport(f){
   const where=["ct.transaction_date BETWEEN ? AND ?","COALESCE(ct.approval_status,'APPROVED')='APPROVED'"],p=[f.from,f.to];
-  where.push("(COALESCE(ct.source_type,'manual')<>'payment' OR (p.status='confirmed' AND (p.method<>'cash' OR p.settlement_status='settled')))");
+  where.push("(COALESCE(ct.source_type,'manual') NOT IN ('payment','install_income') OR (p.status='confirmed' AND (p.method<>'cash' OR p.settlement_status='settled')))");
   if(f.site){where.push('s.code=?');p.push(f.site);}
   where.push('ct.internal_transfer_key IS NULL');
   where.push("cc.code NOT IN ('FINPRIN','FINPROUT')");
   if(f.category){where.push('cc.id=?');p.push(f.category);}
   if(f.flow_type){where.push('cc.type=?');p.push(f.flow_type);}
   if(f.method){where.push('p.method=?');p.push(f.method);}
-  const [rows]=await db.execute(`SELECT ct.transaction_date,ct.name,cc.name category,cc.type,s.code site_code,ct.amount,ct.notes,ct.source_type,p.method FROM cash_transactions ct JOIN cash_categories cc ON cc.id=ct.category_id LEFT JOIN sites s ON s.id=ct.site_id LEFT JOIN payments p ON ct.source_type='payment' AND p.id=ct.source_id WHERE ${where.join(' AND ')} ORDER BY ct.transaction_date DESC,ct.id DESC`,p);
+  const [rows]=await db.execute(`SELECT ct.transaction_date,ct.name,cc.name category,cc.type,s.code site_code,ct.amount,ct.notes,ct.source_type,p.method FROM cash_transactions ct JOIN cash_categories cc ON cc.id=ct.category_id LEFT JOIN sites s ON s.id=ct.site_id LEFT JOIN payments p ON ct.source_type IN ('payment','install_income') AND p.id=ct.source_id WHERE ${where.join(' AND ')} ORDER BY ct.transaction_date DESC,ct.id DESC`,p);
   return rows;
 }
 

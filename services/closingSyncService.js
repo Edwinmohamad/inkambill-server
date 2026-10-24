@@ -45,12 +45,12 @@ async function selectUnsyncedCashRows({ db, closingId, start, end }) {
      FROM cash_transactions ct
      JOIN cash_categories cc ON cc.id = ct.category_id
      LEFT JOIN sites s ON s.id = ct.site_id
-     LEFT JOIN payments source_payment ON ct.source_type='payment' AND source_payment.id=ct.source_id
+     LEFT JOIN payments source_payment ON ct.source_type IN ('payment','install_income') AND source_payment.id=ct.source_id
      WHERE ct.transaction_date BETWEEN ? AND ?
        AND ct.internal_transfer_key IS NULL
        AND cc.code NOT IN ('FINPRIN','FINPROUT')
        AND COALESCE(ct.approval_status,'APPROVED') = 'APPROVED'
-       AND (COALESCE(ct.source_type,'manual')<>'payment' OR (source_payment.status='confirmed' AND (source_payment.method<>'cash' OR source_payment.settlement_status='settled')))${excludeSql}
+       AND (COALESCE(ct.source_type,'manual') NOT IN ('payment','install_income') OR (source_payment.status='confirmed' AND (source_payment.method<>'cash' OR source_payment.settlement_status='settled')))${excludeSql}
      ORDER BY ct.transaction_date, ct.id`,
     params
   );
@@ -188,13 +188,13 @@ async function syncCashTransactionsIntoDraftAutoClosing({ conn, cashTransactionI
      FROM cash_transactions ct
      JOIN cash_categories cc ON cc.id=ct.category_id
      LEFT JOIN sites s ON s.id=ct.site_id
-     LEFT JOIN payments source_payment ON ct.source_type='payment' AND source_payment.id=ct.source_id
+     LEFT JOIN payments source_payment ON ct.source_type IN ('payment','install_income') AND source_payment.id=ct.source_id
      JOIN closing_periods cp ON ct.transaction_date BETWEEN cp.period_start AND cp.period_end
      WHERE ct.id IN (${marks})
        AND ct.internal_transfer_key IS NULL
        AND cc.code NOT IN ('FINPRIN','FINPROUT')
        AND COALESCE(ct.approval_status,'APPROVED')='APPROVED'
-       AND (COALESCE(ct.source_type,'manual')<>'payment' OR (source_payment.status='confirmed' AND (source_payment.method<>'cash' OR source_payment.settlement_status='settled')))
+       AND (COALESCE(ct.source_type,'manual') NOT IN ('payment','install_income') OR (source_payment.status='confirmed' AND (source_payment.method<>'cash' OR source_payment.settlement_status='settled')))
        AND cp.status='DRAFT' AND UPPER(COALESCE(cp.mode,'MANUAL'))='AUTO'
        AND NOT EXISTS (SELECT 1 FROM closing_entries ce WHERE ce.closing_id=cp.id AND ce.cash_transaction_id=ct.id)
      ORDER BY cp.id,ct.id`,ids);

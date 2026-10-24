@@ -128,7 +128,7 @@ async function reconcileMissingPaymentCashTransactions(){
     // Pertahanan untuk data dari versi lama: jurnal cash yang dibuat sebelum uang
     // diterima perusahaan harus dinonaktifkan agar tidak pernah menambah saldo.
     const [premature]=await conn.execute(`SELECT ct.id FROM cash_transactions ct
-      JOIN payments p ON ct.source_type='payment' AND p.id=ct.source_id
+      JOIN payments p ON ct.source_type IN ('payment','install_income') AND p.id=ct.source_id
       WHERE COALESCE(ct.approval_status,'APPROVED')='APPROVED'
         AND (p.status<>'confirmed' OR (p.method='cash' AND p.settlement_status<>'settled')) FOR UPDATE`);
     for(const row of premature){
