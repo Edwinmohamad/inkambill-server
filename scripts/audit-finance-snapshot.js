@@ -12,11 +12,11 @@ const db=require('../config/db');
     FROM cash_transactions ct
     JOIN cash_categories cc ON cc.id=ct.category_id
     LEFT JOIN sites s ON s.id=ct.site_id
-    LEFT JOIN payments p ON ct.source_type='payment' AND p.id=ct.source_id
+    LEFT JOIN payments p ON ct.source_type IN ('payment','install_income') AND p.id=ct.source_id
     WHERE COALESCE(ct.approval_status,'APPROVED')='APPROVED'
       AND ct.internal_transfer_key IS NULL
       AND cc.code NOT IN ('FINPRIN','FINPROUT')
-      AND (COALESCE(ct.source_type,'manual')<>'payment'
+      AND (COALESCE(ct.source_type,'manual') NOT IN ('payment','install_income')
         OR (p.status='confirmed' AND (p.method<>'cash' OR p.settlement_status='settled')))
     GROUP BY COALESCE(s.code,'UNASSIGNED') ORDER BY site`);
   const [heldRows]=await db.query(`
