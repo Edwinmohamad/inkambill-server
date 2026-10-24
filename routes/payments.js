@@ -357,7 +357,7 @@ router.post('/:id/reject',requireMasterAdmin,async(req,res)=>{
 // bukan refund uang. Bukti dan baris jurnal tetap ada untuk audit; jurnal ditandai REJECTED.
 router.post('/:id/cancel-approval',requireMasterAdmin,async(req,res)=>{
   const paymentId=Number(req.params.id);
-  const reason=String(req.body.reason||'').trim().replace(/\\s+/g,' ').slice(0,450);
+  const reason=String(req.body.reason||'').trim().replace(/\s+/g,' ').slice(0,450);
   const returnTo=localReturn(req.body.return_to,'/payments');
   if(!Number.isInteger(paymentId)||paymentId<1){req.session.flash={type:'danger',message:'Pembayaran tidak valid.'};return res.redirect(returnTo);}
   if(reason.length<5){req.session.flash={type:'danger',message:'Alasan pembatalan wajib diisi minimal 5 karakter.'};return res.redirect(returnTo);}
