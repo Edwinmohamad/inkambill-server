@@ -1,3 +1,4 @@
+const {requireProofReview}=require('../services/paymentProofReview');
 const express=require('express');
 const fs=require('fs');
 const path=require('path');
@@ -83,7 +84,7 @@ router.get('/',async(req,res)=>{
   const cashRecipient=cashRecipientId&&staff.some(member=>Number(member.id)===cashRecipientId)?cashRecipientId:0;
   const transferBank=transferRecipientId?banks.find(bank=>Number(bank.id)===transferRecipientId):null;
   const activeRecipient=cashRecipient?`cash:${cashRecipient}`:transferBank?`transfer:${transferBank.id}`:'';
-  let sql=`SELECT p.*,i.invoice_number,i.due_date,i.period_month,i.period_year,c.customer_code,c.name customer_name,(c.is_new_install=1 AND COALESCE(c.activation_date,c.created_at)>=DATE_SUB(CURDATE(),INTERVAL 30 DAY)) is_new_customer,s.code site_code,cl.name cluster_name,u.name collector_name,v.name verifier_name,pu.name proof_uploader_name
+  let sql=`SELECT p.*,i.outstanding invoice_outstanding,i.invoice_number,i.due_date,i.period_month,i.period_year,c.customer_code,c.name customer_name,(c.is_new_install=1 AND COALESCE(c.activation_date,c.created_at)>=DATE_SUB(CURDATE(),INTERVAL 30 DAY)) is_new_customer,s.code site_code,cl.name cluster_name,u.name collector_name,v.name verifier_name,pu.name proof_uploader_name
     FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id
     LEFT JOIN users u ON u.id=COALESCE(p.collector_user_id,p.received_by) LEFT JOIN users v ON v.id=p.verified_by LEFT JOIN users pu ON pu.id=p.proof_uploaded_by
     WHERE 1=1`;
@@ -272,7 +273,7 @@ router.post('/:id/proof',async(req,res)=>{
 
 router.post('/:id/verify',requireMasterAdmin,async(req,res)=>{
   try{
-    const {payment:p}=await verifyPendingPayment(req.params.id,{userId:req.session.user.id,ip:req.ip,bookDateMode:req.body.book_date_mode,manualBookDate:req.body.manual_book_date});
+    const {payment:p}=await verifyPendingPayment(req.params.id,{userId:req.session.user.id,ip:req.ip,bookDateMode:req.body.book_date_mode,manualBookDate:req.body.manual_book_date,reviewReason:req.body.review_reason});
     await audit({userId:req.session.user.id,action:'approve',entityType:'payment',entityId:p.id,description:`Approval Master Admin ${p.proof_path?'dengan bukti':'tanpa bukti'} untuk pembayaran ${p.reference||p.id}`,ip:req.ip});
     req.session.flash={type:'success',message:`Pembayaran disetujui Master Admin ${p.proof_path?'berdasarkan bukti':'tanpa bukti lampiran'}. Tagihan dan jurnal terkait sudah diperbarui.`};
   }catch(e){req.session.flash={type:'danger',message:`Verifikasi gagal: ${e.message}`};}
@@ -299,6 +300,7 @@ router.post('/bulk-verify',requireMasterAdmin,async(req,res)=>{
       const p=rows[0];
       if(!p||p.status!=='pending'){await conn.rollback();continue;}
       if(['transfer','qris'].includes(p.method)&&!p.proof_path){await conn.rollback();skipped.push(p);continue;}
+      const proofReview=await requireProofReview(conn,p,req.body.review_reason);
       const booking=await resolveBookDate(conn,{mode:req.body.book_date_mode,paidAt:p.paid_at,manualDate:req.body.manual_book_date});
       const [invoiceRows]=await conn.execute(`SELECT i.outstanding,i.status
         FROM invoices i JOIN customers c ON c.id=i.customer_id
@@ -307,7 +309,7 @@ router.post('/bulk-verify',requireMasterAdmin,async(req,res)=>{
       await conn.execute(`UPDATE payments SET status='confirmed',settlement_status=?,booked_at=?,booked_date_mode=?,verified_by=?,verified_at=NOW() WHERE id=?`,[p.method==='cash'?'held_by_staff':'not_applicable',booking.date,booking.mode,req.session.user.id,p.id]);
       await refreshInvoiceStatus(conn,p.invoice_id);
       if(p.method!=='cash')await postCashTransaction(conn,{paymentId:p.id,invoiceId:p.invoice_id,amount:p.amount,reference:p.reference,bookDate:booking.date,actorUserId:req.session.user.id});
-      await financialAudit({conn,userId:req.session.user.id,action:'bulk_approve',entityType:'payment',entityId:p.id,before:p,after:{status:'confirmed',booked_at:booking.date,booked_date_mode:booking.mode},reason:'Approval pembayaran massal',ip:req.ip});
+      await financialAudit({conn,userId:req.session.user.id,action:'bulk_approve',entityType:'payment',entityId:p.id,before:p,after:{status:'confirmed',booked_at:booking.date,booked_date_mode:booking.mode},reason:'Approval pembayaran massal. '+proofReview,ip:req.ip});
       await conn.commit();
       done.push(p);
     }catch(e){await conn.rollback();skipped.push({id});}finally{conn.release();}
@@ -317,7 +319,7 @@ router.post('/bulk-verify',requireMasterAdmin,async(req,res)=>{
     await queuePaymentReceipts(done.map(p=>p.id),req.session.user.id);
     await audit({userId:req.session.user.id,action:'bulk_approve',entityType:'payment',entityId:null,description:`Approval massal ${done.length} pembayaran: ${done.map(p=>p.reference||`#${p.id}`).slice(0,20).join(', ')}${done.length>20?', ...':''}${skipped.length?` (${skipped.length} dilewati karena sudah tidak menunggu / nominal melebihi sisa tagihan terkini)`:''}`,ip:req.ip});
   }
-  if(!done.length){req.session.flash={type:'danger',message:`Tidak ada pembayaran yang disetujui. Pembayaran terpilih sudah tidak menunggu, nominalnya melebihi sisa tagihan saat ini.`};return res.redirect(returnTo);}
+  if(!done.length){req.session.flash={type:'danger',message:`Tidak ada pembayaran yang disetujui. Pembayaran terpilih sudah tidak menunggu, nominalnya melebihi sisa tagihan saat ini, atau alasan pemeriksaan bukti belum diisi.`};return res.redirect(returnTo);}
   req.session.flash={type:'success',message:`${done.length} pembayaran disetujui. Tagihan dan jurnal kas terkait sudah diperbarui.${skipped.length?` ${skipped.length} pembayaran dilewati (sudah tidak menunggu approval, nominal melebihi sisa tagihan, atau tanpa bukti).`:''}`};
   res.redirect(returnTo);
 });

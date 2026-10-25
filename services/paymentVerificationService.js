@@ -1,3 +1,4 @@
+const {requireProofReview}=require('./paymentProofReview');
 // Logika inti pembayaran yang dipakai bersama oleh routes/payments.js DAN Web Inbox WhatsApp
 // (tombol "Verifikasi Pembayaran & Buka Isolir"). Dipindahkan apa adanya dari routes/payments.js
 // (v1.30) agar kedua jalur memakai guard keuangan yang identik: kunci baris FOR UPDATE, cek sisa
@@ -177,7 +178,7 @@ async function maybeAutoUnisolate(invoiceId){
 // Approval Master Admin untuk satu pembayaran 'pending' (sama persis dengan POST /payments/:id/verify).
 // Mengembalikan { payment }. Efek setelah commit (auto-buka isolir billing, antre tanda terima)
 // dijalankan di sini juga kecuali skipReceipt=true.
-async function verifyPendingPayment(paymentId,{userId,ip=null,bookDateMode,manualBookDate,skipReceipt=false}={}){
+async function verifyPendingPayment(paymentId,{userId,ip=null,bookDateMode,manualBookDate,reviewReason,skipReceipt=false}={}){
   const conn=await db.getConnection();let p=null;
   try{
     await conn.beginTransaction();
@@ -185,6 +186,7 @@ async function verifyPendingPayment(paymentId,{userId,ip=null,bookDateMode,manua
     p=rows[0];if(!p)throw new Error('Pembayaran tidak ditemukan');
     if(p.status!=='pending')throw new Error('Hanya pembayaran berstatus menunggu yang dapat disetujui.');
     if(['transfer','qris'].includes(p.method)&&!p.proof_path)throw new Error('Bukti transfer/QRIS wajib dilampirkan sebelum approval.');
+    const proofReview=await requireProofReview(conn,p,reviewReason);
     const booking=await resolveBookDate(conn,{mode:bookDateMode,paidAt:p.paid_at,manualDate:manualBookDate});
     const [invoiceRows]=await conn.execute(`SELECT i.outstanding,i.status
       FROM invoices i JOIN customers c ON c.id=i.customer_id
@@ -194,7 +196,7 @@ async function verifyPendingPayment(paymentId,{userId,ip=null,bookDateMode,manua
     await conn.execute(`UPDATE payments SET status='confirmed',settlement_status=?,booked_at=?,booked_date_mode=?,verified_by=?,verified_at=NOW() WHERE id=?`,[p.method==='cash'?'held_by_staff':'not_applicable',booking.date,booking.mode,userId,p.id]);
     await refreshInvoiceStatus(conn,p.invoice_id);
     if(p.method!=='cash')await postCashTransaction(conn,{paymentId:p.id,invoiceId:p.invoice_id,amount:p.amount,reference:p.reference,bookDate:booking.date,actorUserId:userId});
-    await financialAudit({conn,userId,action:'approve',entityType:'payment',entityId:p.id,before:p,after:{status:'confirmed',booked_at:booking.date,booked_date_mode:booking.mode},reason:`Approval pembayaran (${booking.mode})`,ip});
+    await financialAudit({conn,userId,action:'approve',entityType:'payment',entityId:p.id,before:p,after:{status:'confirmed',booked_at:booking.date,booked_date_mode:booking.mode},reason:`Approval pembayaran (${booking.mode}). ${proofReview}`,ip});
     await conn.commit();
   }catch(e){await conn.rollback();throw e;}finally{conn.release();}
   await maybeAutoUnisolate(p.invoice_id);

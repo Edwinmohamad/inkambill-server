@@ -298,19 +298,21 @@ function evaluateLocalProof({ payment, parsed, banks = [], duplicates = [], conf
   if (parsed.transactionStatus === 'failed') add('status', 'warn', 'Status transaksi bermasalah', 'Teks bukti terindikasi menunjukkan transaksi gagal/ditolak. Verifikasi manual.');
   else if (parsed.transactionStatus === 'pending') add('status', 'warn', 'Transaksi masih diproses', 'Teks bukti terindikasi pending/diproses. Verifikasi manual.');
 
-  if (parsed.amount == null) add('amount', 'info', 'Nominal belum terbaca', `Tagihan ${rupiah(expected)}. Verifikasi nominal dari gambar.`);
-  else if (Number(parsed.amount) === expected) add('amount', 'ok', 'Nominal sesuai', `${rupiah(parsed.amount)} sesuai tagihan.`);
-  else add('amount', 'warn', 'Nominal berbeda', `OCR membaca ${rupiah(parsed.amount)}, sedangkan tagihan ${rupiah(expected)}.`);
+  if (parsed.amount == null) add('amount', 'info', 'Nominal belum terbaca', `Pembayaran input ${rupiah(expected)}. Verifikasi nominal dari gambar.`);
+  else if (Number(parsed.amount) === expected) add('amount', 'ok', 'Nominal sesuai', `${rupiah(parsed.amount)} sesuai pembayaran input.`);
+  else add('amount', 'warn', 'Nominal berbeda', `OCR membaca ${rupiah(parsed.amount)}, sedangkan pembayaran input ${rupiah(expected)}. Selisih ${rupiah(Math.abs(Number(parsed.amount)-expected))}.`);
 
-  if (parsed.transferAt) add('date', 'ok', 'Tanggal terbaca', parsed.transferAt.replace(' ', ' · '));
+  if (parsed.transferAt) { const expectedDate = payment.paid_at ? new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jakarta'}).format(new Date(payment.paid_at)) : null; const actualDate=parsed.transferAt.slice(0,10); add('date', expectedDate ? (actualDate===expectedDate?'ok':'warn') : 'info', expectedDate ? (actualDate===expectedDate?'Tanggal cocok':'Tanggal berbeda') : 'Tanggal perlu diperiksa', `Bukti ${actualDate}; pembayaran ${expectedDate||'belum tersedia'}.`); }
   else add('date', 'info', 'Tanggal belum terbaca', 'Tanggal transaksi tidak terbaca jelas oleh OCR.');
 
-  const accResults = parsed.recipientAccount ? banks.map(bank => ({ bank, match: accountMatches(parsed.recipientAccount, bank.account_number) })) : [];
+  const selectedBanks = banks.filter(bank=>bank.account_number&&String(payment.bank_name||'').includes(String(bank.account_number)));
+  const comparisonBanks=selectedBanks.length?selectedBanks:banks;
+  const accResults = parsed.recipientAccount ? comparisonBanks.map(bank => ({ bank, match: accountMatches(parsed.recipientAccount, bank.account_number) })) : [];
   const accHit = accResults.find(x => x.match === true);
   if (parsed.recipientAccount && accHit) {
     const masked = /[*xX\u2022]/.test(String(parsed.recipientAccount));
     add('account', masked ? 'ok' : 'ok', masked ? 'Rekening cocok (tersamar)' : 'Rekening resmi', `${parsed.recipientAccount} cocok dengan rekening ${accHit.bank.bank_name} yang terdaftar di Billing.`);
-  } else if (parsed.recipientAccount) {
+  } else if (parsed.recipientAccount && banks.length) {
     add('account', 'warn', 'Rekening tujuan tidak terdaftar', `${parsed.recipientAccount} tidak cocok dengan rekening aktif di Pengaturan → Bank. Ini hanya peringatan; Master Admin tetap dapat approve.`);
   } else {
     add('account', 'info', 'Rekening belum terbaca', 'Nomor rekening tujuan tidak terbaca jelas oleh OCR.');
@@ -330,7 +332,7 @@ function evaluateLocalProof({ payment, parsed, banks = [], duplicates = [], conf
   else add('reference', 'info', 'Reference belum terbaca', 'Nomor referensi/transaksi tidak terbaca jelas.');
 
   const hasWarn = checks.some(c => c.level === 'warn');
-  const hasOk = checks.some(c => c.level === 'ok');
+  const hasOk = engineState === 'done' && ['amount','date','account'].every(key=>checks.some(c=>c.key===key&&c.level==='ok'));
   const overall = hasWarn ? 'warning' : hasOk ? 'ok' : 'unreadable';
   return {
     overall,
@@ -377,6 +379,7 @@ function spawnWithTimeout(command, args, { input = null, timeoutMs = OCR_TIMEOUT
     child.stdout.on('data', chunk => out.push(chunk));
     child.stderr.on('data', chunk => err.push(chunk));
     child.once('error', error => finish(error));
+    child.stdin.on('error', error => finish(error));
     child.once('close', code => {
       const stdout = Buffer.concat(out).toString('utf8');
       const stderr = Buffer.concat(err).toString('utf8');
@@ -432,7 +435,7 @@ function batchPrefix(idempotencyKey) {
 }
 
 async function loadContext(conn, paymentId) {
-  const [rows] = await conn.execute(`SELECT p.id,p.amount,p.method,p.reference,p.bank_name,p.proof_path,p.proof_mime,p.idempotency_key,p.status,p.invoice_id,c.id customer_id,c.name customer_name
+  const [rows] = await conn.execute(`SELECT p.id,p.amount,p.paid_at,p.method,p.reference,p.bank_name,p.proof_path,p.proof_mime,p.idempotency_key,p.status,p.invoice_id,c.id customer_id,c.name customer_name
     FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id WHERE p.id=? LIMIT 1`, [paymentId]);
   if (!rows.length) return null;
   const [banks] = await conn.query(`SELECT id,bank_name,account_name,account_number FROM banks WHERE is_active=1 AND type IN ('bank_transfer','virtual_account','other') ORDER BY id`);
@@ -570,7 +573,7 @@ function rowToUi(row) {
   try { checks = row.checks_json ? JSON.parse(row.checks_json) : []; } catch (_) {}
   return {
     state: row.status,
-    overall: row.overall_status || (row.status === 'done' ? 'unreadable' : 'processing'),
+    overall: (row.overall_status==='ok'&&!checks.some(c=>c.key==='date'&&c.label==='Tanggal cocok')?'unreadable':row.overall_status) || (row.status === 'done' ? 'unreadable' : 'processing'),
     canApprove: true,
     engine: row.engine || 'tesseract',
     confidence: row.ocr_confidence == null ? null : Math.round(Number(row.ocr_confidence)),
@@ -586,7 +589,7 @@ function rowToUi(row) {
     channel: row.channel,
     transactionStatus: row.transaction_status,
     checks,
-    summary: row.summary || '',
+    summary: row.overall_status==='ok'&&!checks.some(c=>c.key==='date'&&c.label==='Tanggal cocok') ? 'Hasil OCR lama belum membandingkan tanggal pembayaran. Periksa bukti secara manual.' : row.summary || '',
     error: row.error_message || null
   };
 }
@@ -643,6 +646,7 @@ module.exports = {
   recoverProofOcrOnBoot,
   processPaymentOcr,
   getTesseractInfo,
+  runLocalOcr,
   parseReceipt,
   parseDateTime,
   parseRupiahNumber,

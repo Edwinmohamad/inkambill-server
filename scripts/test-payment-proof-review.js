@@ -1,0 +1,24 @@
+const assert=require('node:assert/strict');
+const {evaluateLocalProof}=require('../payload/services/proofOcrService');
+const {requireProofReview}=require('../services/paymentProofReview');
+const {paginate}=require('../utils/pagination');
+(async()=>{
+ const payment={id:1,method:'transfer',amount:150000,paid_at:'2026-10-24T05:00:00Z'};
+ const banks=[{bank_name:'BCA',account_number:'1234567890',account_name:'INKAMNET'}];
+ const parsed={amount:150000,transferAt:'2026-10-24 12:00:00',recipientAccount:'1234567890',recipientName:'INKAMNET',referenceNumber:'ABC123'};
+ const evaluate=p=>evaluateLocalProof({payment,banks,parsed:p,engineState:'done'});
+ assert.equal(evaluate(parsed).overall,'ok');
+ assert.equal(evaluate({...parsed,amount:140000}).overall,'warning');
+ assert.match(evaluate({...parsed,amount:140000}).summary,/Selisih/);
+ assert.equal(evaluate({...parsed,transferAt:null}).overall,'unreadable');
+ assert.equal(evaluate({...parsed,transferAt:'2026-10-23 12:00:00'}).overall,'warning');
+ const conn={execute:async()=>[[{status:'done',overall_status:'warning',summary:'Nominal berbeda'}]]};
+ await assert.rejects(requireProofReview(conn,payment,''),/alasan/);
+ assert.match(await requireProofReview(conn,payment,'Sudah diperiksa pada mutasi bank'),/mutasi bank/);
+ assert.equal(await requireProofReview(conn,{method:'cash'},''),'');
+ let calls=0;const db={execute:async(sql,params)=>++calls===1?[[{total:120}]]:[[{id:51}]]};
+ const result=await paginate(db,'SELECT id FROM payments',[],{query:{page:'2',per_page:'50'}});
+ assert.equal(result.pagination.from,51);
+ assert.equal(result.pagination.to,100);
+ console.log('Payment proof review: matching, mismatches, unreadable, approval reason and pagination passed.');
+})().catch(e=>{console.error(e);process.exitCode=1;});
