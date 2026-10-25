@@ -15,10 +15,8 @@ storage/server-duty-proofs/*
 # Historical snapshots, generated previews, and alternate source copies are not
 # needed by the production image and can make remote Docker builds time out.
 _to_delete/
-payload/
 files/
 Claude outputs/
 output/
-android/
 *.pdf
 *.tgz
