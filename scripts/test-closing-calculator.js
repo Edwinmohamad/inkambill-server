@@ -101,8 +101,8 @@ const loadSource = closingRoute.slice(loadStart, loadEnd);
 assert(!/FROM\s+payments\b/i.test(loadSource), 'loadClosing tidak boleh membaca payments langsung');
 assert(!/FROM\s+cash_transactions\b/i.test(loadSource), 'loadClosing tidak boleh membaca cash_transactions langsung');
 assert(!/settlement_status/i.test(loadSource), 'Closing tidak boleh memakai status settlement billing');
-assert(loadSource.includes('FROM closing_entries'), 'Closing harus memakai closing_entries sebagai sumber angka, baik manual maupun hasil sync');
-assert(loadSource.includes('closing.mode'), 'Mode closing harus dibaca dari data periode (closing_periods.mode), bukan konstanta tetap');
+assert(loadSource.includes('loadActualClosing'), 'Draft harus membaca Data Kas aktual melalui service');
+assert(loadSource.includes('snapshot_json'), 'Closing terkunci harus memakai snapshot');
 
 // Sinkronisasi Data Kas: harus lewat service terpisah, hanya menarik transaksi
 // APPROVED, dan menandai baris hasil sync supaya tidak tertarik dobel.
@@ -117,24 +117,10 @@ assert(pdfSource.includes("drawSectionLabel(doc,'Pendapatan per Kategori'"), 'Ha
 assert(pdfSource.includes('block.incomeByCategory'), 'Kartu lokasi PDF wajib memakai breakdown pendapatan per kategori');
 assert(closingRoute.includes("status='confirmed' AND DATE(COALESCE(booked_at,paid_at))<=?"), 'Daftar belum bayar Closing wajib dihitung dari pembayaran confirmed sampai akhir periode');
 
-// Endpoint /mode dan /sync wajib ada dan dijaga: sync hanya boleh jalan kalau
-// periode masih DRAFT dan mode-nya AUTO.
-assert(closingRoute.includes("router.post('/mode'"), 'Route ganti mode closing wajib tersedia');
-assert(closingRoute.includes("router.post('/sync'"), 'Route sinkronisasi Data Kas wajib tersedia');
-const syncStart = closingRoute.indexOf("router.post('/sync'");
-const syncEnd = closingRoute.indexOf("router.post('/period-lock'");
-const syncRouteSource = closingRoute.slice(syncStart, syncEnd);
-assert(/status\s*===\s*['"]LOCKED['"]/.test(syncRouteSource), 'Route /sync wajib menolak periode yang sudah LOCKED');
-assert(/mode[^\n]*!==\s*['"]AUTO['"]/.test(syncRouteSource), 'Route /sync wajib menolak kalau mode periode bukan AUTO');
-
-// Financial control: kalkulasi tetap independen, periode bisa dikunci/dibuka
-// kembali oleh Master Admin, dan setiap ganti mode/sync harus tercatat di audit log.
-assert(closingRoute.includes("router.post('/period-lock'"), 'Route kunci periode wajib tersedia');
-assert(closingRoute.includes("router.post('/period-reopen'"), 'Route buka kembali periode wajib tersedia');
-assert(!/router\.(get|post)\(['"]\/router-assets/.test(closingRoute), 'Route /router-assets harus sudah dihapus');
-assert(/status\s*===\s*['"]LOCKED['"]/.test(closingRoute), 'Guard status LOCKED wajib tersedia');
-assert(closingRoute.includes("router.post('/entries/:id/update'"), 'Route edit entry (closing_entries) harus tersedia');
-assert(closingRoute.includes("router.post('/adjustments/:id/update'"), 'Route edit penyesuaian (closing_adjustments) harus tersedia');
-assert(closingRoute.includes("action:'set_closing_mode'") || closingRoute.includes("action: 'set_closing_mode'"), 'Ganti mode wajib tercatat di financialAudit');
-assert(closingRoute.includes("action:'sync_closing_cash'") || closingRoute.includes("action: 'sync_closing_cash'"), 'Sinkronisasi Data Kas wajib tercatat di financialAudit');
-console.log('Closing calculator validation OK: entries-based source (manual & sinkron Data Kas), cluster revenue, combined expenses, salary, cash, and per-location adjustments reconcile without double counting; router ownership no longer auto-rewards; mode switch & sync are DRAFT/AUTO-gated and audited.');
+// Manual income/expense overrides are now rejected; adjustments remain editable.
+assert(closingRoute.includes("['/mode','/entries','/entries/:id/update','/entries/:id/delete','/entries/:id/restore']"));
+assert(closingRoute.includes("router.post('/period-lock'"));
+assert(closingRoute.includes("router.post('/period-reopen'"));
+assert(closingRoute.includes("router.post('/adjustments/:id/update'"));
+assert(closingRoute.includes('ledgerSummary?.invalid'));
+console.log('Closing calculator validation OK: shares and rounding; draft uses actual ledger; locked snapshot and manual-override guards retained.');

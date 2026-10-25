@@ -13,7 +13,7 @@ function toDateKey(value) {
 // baik saat INSERT baris baru maupun saat rekonsiliasi baris yang sudah pernah
 // disinkron, supaya kedua jalur tidak mungkin menghasilkan angka berbeda.
 function mapCashRowToEntry(row) {
-  const site = normalizeSiteCluster(row.site_code, null);
+  const site = row.site_code ? normalizeSiteCluster(row.site_code, null) : null;
   if (!site) return { skip: 'unmapped' };
   const amount = money(row.amount);
   if (amount <= 0) return { skip: 'zero' };
@@ -77,9 +77,11 @@ async function planSyncedReconciliation({ db, closingId, start, end }) {
     `SELECT ce.id entry_id, ce.cash_transaction_id, ce.entry_type, ce.site_code entry_site, ce.cluster_name entry_cluster,
             ce.category entry_category, ce.amount entry_amount, ce.entry_date, ce.description entry_description, ce.excluded_at,
             ct.id src_id, ct.transaction_date, ct.name, ct.amount, ct.notes, ct.internal_transfer_key, COALESCE(ct.approval_status,'APPROVED') src_status,
-            cc.type category_type, cc.name category_name, cc.code category_code, s.code site_code
+            cc.type category_type, cc.name category_name, cc.code category_code, s.code site_code,
+            ct.source_type src_source_type, source_payment.status payment_status, source_payment.method payment_method, source_payment.settlement_status payment_settlement_status
      FROM closing_entries ce
      LEFT JOIN cash_transactions ct ON ct.id = ce.cash_transaction_id
+     LEFT JOIN payments source_payment ON ct.source_type IN ('payment','install_income') AND source_payment.id=ct.source_id
      LEFT JOIN cash_categories cc ON cc.id = ct.category_id
      LEFT JOIN sites s ON s.id = ct.site_id
      WHERE ce.closing_id = ? AND ce.source_type = 'cash_sync' AND ce.cash_transaction_id IS NOT NULL`,
@@ -95,6 +97,7 @@ async function planSyncedReconciliation({ db, closingId, start, end }) {
       plan.push({ ...base, action: base.excluded ? 'keep' : 'delete', reason: 'not_approved' });
       continue;
     }
+    if (['payment','install_income'].includes(row.src_source_type) && (row.payment_status!=='confirmed' || (row.payment_method==='cash' && row.payment_settlement_status!=='settled'))) { plan.push({...base,action:'delete',reason:'invalid_source_payment'}); continue; }
     const srcDate = toDateKey(row.transaction_date);
     if (!srcDate || srcDate < start || srcDate > end) { plan.push({ ...base, action: 'delete', reason: 'out_of_period' }); continue; }
     const mapped = mapCashRowToEntry(row);

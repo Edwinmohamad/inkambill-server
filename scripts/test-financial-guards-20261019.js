@@ -11,7 +11,7 @@ const payments=read('routes/payments.js');
 assert.match(finance,/approveCashTransaction\(conn,req\.params\.id,req\.session\.user\.id\);await syncCashTransactionsIntoDraftAutoClosing/);
 assert.match(finance,/action:'approve_cash'/);
 const lock=closing.slice(closing.indexOf("router.post('/period-lock'"), closing.indexOf("router.post('/period-reopen'"));
-assert.match(lock,/pending\.pendingApproval > 0 \|\| pending\.needsSync > 0/);
+assert.match(lock,/data\.ledgerSummary\?\.invalid \|\| Number\(pendingCash\.n\)>0/);
 assert.doesNotMatch(lock,/force_lock/);
 const correction=payments.slice(payments.indexOf("router.post('/:id/method-to-cash'"),payments.indexOf("router.post('/:id/proof'"));
 assert.match(correction,/await assertDateOpen\(conn,journal.transaction_date\)/);

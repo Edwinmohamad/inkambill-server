@@ -1,10 +1,10 @@
+const {loadActualClosing}=require('../services/closingLedgerService');
 const express = require('express');
 const crypto = require('crypto');
 const ExcelJS = require('exceljs');
 const db = require('../config/db');
 const { createClosingReportPdf, rupiah, date } = require('../services/reportPdf');
-const { money, personKey, siteBlock, locationText, normalizeSiteCluster, isPsbRevenue, buildClosingCalculation } = require('../services/closingCalculator');
-const { syncCashDataIntoClosing, countPendingCashData, selectUnsyncedCashRows, planSyncedReconciliation } = require('../services/closingSyncService');
+const { money, personKey, siteBlock, locationText, normalizeSiteCluster, isPsbRevenue } = require('../services/closingCalculator');
 const { requireMasterAdmin } = require('../middleware/auth');
 const { financialAudit } = require('../services/financialControlService');
 const { loadInternalDebtSummary, buildInternalDebtPdfRows } = require('../services/internalDebtService');
@@ -61,78 +61,24 @@ function selectedPeriod(req) {
   const previousStart = localDateKey(new Date(now.getFullYear(), now.getMonth() - 1, 1));
   const previousEnd = localDateKey(new Date(now.getFullYear(), now.getMonth(), 0));
   return {
-    start: dateOr(req.query.from || req.body?.from, previousStart),
-    end: dateOr(req.query.to || req.body?.to, previousEnd),
+    ...monthRange(dateOr(req.query.from || req.body?.from, previousStart),0),
     hideEdwin: String(req.query.hide_edwin || req.body?.hide_edwin || '') === '1'
-  };
-}
-
-function manualIncomeRow(row) {
-  return {
-    paid_date: row.entry_date,
-    customer_name: row.description || row.category,
-    customer_code: 'MANUAL',
-    site_code: row.site_code,
-    site_name: row.site_code,
-    cluster_name: row.cluster_name,
-    amount: row.amount,
-    method: 'manual',
-    category: row.category,
-    notes: row.description,
-    source_type: 'closing_manual',
-    entry_source: row.source_type === 'cash_sync' ? 'cash_sync' : 'manual',
-    entry_id: row.id
-  };
-}
-
-function manualExpenseRow(row) {
-  return {
-    transaction_date: row.entry_date,
-    name: row.category,
-    category: row.category,
-    site_code: row.site_code,
-    site_name: row.site_code,
-    cluster_name: row.cluster_name,
-    amount: row.amount,
-    notes: row.description,
-    source_type: 'closing_manual',
-    entry_source: row.source_type === 'cash_sync' ? 'cash_sync' : 'manual',
-    entry_id: row.id
   };
 }
 
 async function loadClosing(start, end, queryDb = db) {
   const [[period]] = await queryDb.execute('SELECT * FROM closing_periods WHERE period_start=? AND period_end=? LIMIT 1', [start, end]);
-  if (period?.status === 'LOCKED' && period.snapshot_json) {
+  if (period?.status === 'LOCKED') {
+    if(!period.snapshot_json)throw new Error('Snapshot Closing terkunci tidak tersedia. Periksa riwayat sebelum membuka kembali periode.');
     // Historical payouts must not silently change after the period is locked.
     const snapshot = JSON.parse(period.snapshot_json);
     if (!snapshot?.blocks || !snapshot?.closing) throw new Error('Snapshot Closing terkunci tidak valid.');
-    return { ...snapshot, closing: { ...snapshot.closing, status: 'LOCKED' }, period, frozenSnapshot: true };
+    return { ...snapshot, closing: { ...snapshot.closing, status: 'LOCKED' }, period, frozenSnapshot: true, ledgerActual:false };
   }
   const closing = period || { status: 'DRAFT', mode: 'MANUAL', manual_revenue: 0, manual_expense: 0, manual_carry: 0, manual_carry_kbg: 0, manual_salary_agung: 500000, manual_salary_padilah: 1000000, notes: '' };
-  const selectedMode = String(closing.mode || 'MANUAL').toUpperCase() === 'AUTO' ? 'auto' : 'manual';
 
-  // v1.29 — Closing is fully flexible now: every period always recalculates from
-  // the live rows below (no more frozen snapshot_json / LOCKED short-circuit), so
-  // edits made after a period was previously marked LOCKED show up immediately.
-  // v2 — Mode Manual: semua angka diketik lewat form di bawah. Mode Otomatis:
-  // /closing/sync menarik transaksi Data Kas APPROVED ke closing_entries (masih
-  // bisa diedit/ditambah manual di atasnya). Baik manual maupun sync selalu
-  // masuk lewat closing_entries, jadi kalkulasi di bawah ini sama untuk keduanya.
   const [adjustments] = period ? await queryDb.execute('SELECT * FROM closing_adjustments WHERE closing_id=? ORDER BY id', [period.id]) : [[]];
-  const [allEntries] = period ? await queryDb.execute('SELECT * FROM closing_entries WHERE closing_id=? ORDER BY entry_date DESC,id DESC', [period.id]) : [[]];
-  // Baris cash_sync yang "dihapus" dari Closing ditandai excluded_at (soft-exclude,
-  // lihat /entries/:id/delete) bukan benar-benar DELETE, supaya cash_transaction_id-nya
-  // tetap dianggap "sudah pernah ditarik" dan tidak tertarik ulang membingungkan pada
-  // sync berikutnya. Baris yang dikecualikan tidak ikut dihitung dan tidak tampil di
-  // tabel utama — hanya di seksi terpisah dengan tombol pulihkan.
-  const lineItems = allEntries.filter((row) => !row.excluded_at);
-  const excludedItems = allEntries.filter((row) => row.excluded_at);
-  const manualPayments = lineItems.filter((row) => row.entry_type === 'INCOME').map(manualIncomeRow);
-  const manualExpenses = lineItems.filter((row) => row.entry_type === 'EXPENSE').map(manualExpenseRow);
-  const calculated = buildClosingCalculation({ payments: manualPayments, expenses: manualExpenses, heldCash: [], adjustments, closing, mode: selectedMode, lineItems });
-  const lastSyncedText = closing.last_synced_at ? localDateKey(closing.last_synced_at) + ' ' + new Date(closing.last_synced_at).toTimeString().slice(0, 5) : null;
-  return { ...calculated, closing, period, payments: manualPayments, expenses: manualExpenses, heldCash: [], lastSyncedText, excludedItems };
+  return {...await loadActualClosing({db:queryDb,start,end,closing,adjustments}),period};
 }
 
 async function ensureDraftPeriod(conn, start, end, userId) {
@@ -312,63 +258,11 @@ router.get('/', async (req, res, next) => {
     const customerActivity = await loadCustomerActivitySummary(start, end);
     // v1.30 -- hutang internal teknisi: informasi saja, tidak ikut perhitungan bagi hasil.
     const internalDebt = await loadInternalDebtSummary({ start, end });
-    // v2.1 — mode Otomatis + masih DRAFT: hitung berapa transaksi Data Kas yang
-    // masih menunggu approval, dan berapa yang sudah APPROVED tapi belum ditarik,
-    // supaya kelihatan di banner sebelum Master Admin sempat lupa sync.
-    let pending = null;
-    // v2.4 — estimasi pendapatan per orang di mode Otomatis, dihitung dari data
-    // yang sudah tersimpan di closing_entries DITAMBAH transaksi Data Kas APPROVED
-    // yang belum ditarik (persis apa yang akan masuk kalau tombol Sync ditekan
-    // sekarang) — tanpa perlu klik Sync dulu buat lihat kira-kira siapa dapat
-    // berapa. Estimasi murni buat pratinjau; tidak menulis apa pun ke database.
-    let estimate = null;
-    if (data.closing.mode === 'AUTO' && data.closing.status !== 'LOCKED') {
-      pending = await countPendingCashData({ db, closingId: data.period ? data.period.id : null, start, end });
-      const unsyncedRows = await selectUnsyncedCashRows({ db, closingId: data.period ? data.period.id : null, start, end });
-      const extraPayments = [];
-      const extraExpenses = [];
-      unsyncedRows.forEach((row) => {
-        const site = normalizeSiteCluster(row.site_code, null);
-        const amount = money(row.amount);
-        if (!site || amount <= 0) return;
-        const entry = { site_code: site.site, cluster_name: site.cluster, amount, category: row.category_name || 'Lain-lain', description: [row.name, row.notes].filter(Boolean).join(' · ') || null };
-        if (row.category_type === 'income') extraPayments.push(entry); else extraExpenses.push(entry);
-      });
-      // v3.2 — estimasi juga menerapkan koreksi Data Kas pada baris yang sudah
-      // pernah ditarik (update/hapus), bukan cuma menambah baris baru, supaya
-      // angka pratinjau sama dengan hasil setelah tombol Sync ditekan.
-      const reconPlan = await planSyncedReconciliation({ db, closingId: data.period ? data.period.id : null, start, end });
-      const planById = new Map(reconPlan.map((item) => [item.entryId, item]));
-      const projectedItems = [];
-      data.lineItems.forEach((row) => {
-        const item = planById.get(row.id);
-        if (item && item.action === 'delete') return;
-        if (item && item.action === 'update') {
-          const a = item.after;
-          projectedItems.push({ ...row, entry_type: a.entryType, site_code: a.site, cluster_name: a.cluster, category: a.category, amount: a.amount, entry_date: a.entryDate, description: a.description });
-          return;
-        }
-        projectedItems.push(row);
-      });
-      const projectedPayments = projectedItems.filter((row) => row.entry_type === 'INCOME').map(manualIncomeRow);
-      const projectedExpenses = projectedItems.filter((row) => row.entry_type === 'EXPENSE').map(manualExpenseRow);
-      const estimateCalc = buildClosingCalculation({
-        payments: [...projectedPayments, ...extraPayments],
-        expenses: [...projectedExpenses, ...extraExpenses],
-        heldCash: [],
-        adjustments: data.adjustments,
-        closing: data.closing,
-        mode: 'auto',
-        lineItems: [...projectedItems, ...extraPayments, ...extraExpenses]
-      });
-      const perPerson = new Map();
-      [estimateCalc.blocks.krwclm, estimateCalc.blocks.kbg].forEach((block) => {
-        (block.shares || []).forEach((share) => { perPerson.set(share.name, (perPerson.get(share.name) || 0) + money(share.amount)); });
-      });
-      estimate = {
-        people: ['Edwin', 'Jon', 'Bopung', 'Mang Ali'].map((name) => ({ name, amount: perPerson.get(name) || 0 })),
-        pendingCount: unsyncedRows.length + reconPlan.filter((item) => item.action !== 'keep').length
-      };
+    let pending=null;
+    const estimate=null;
+    if(data.ledgerActual){
+      const [[row]]=await db.execute("SELECT COUNT(*) n FROM cash_transactions WHERE transaction_date BETWEEN ? AND ? AND approval_status='PENDING_APPROVAL'",[start,end]);
+      pending={pendingApproval:Number(row.n),unsyncedApproved:0,staleSynced:0,invalidApproved:data.ledgerSummary.invalid,needsSync:data.ledgerSummary.invalid};
     }
     // v2.2 — navigasi cepat bulan sebelumnya/berikutnya selalu tersedia (tidak
     // cuma waktu periode terkunci) supaya Master Admin tidak perlu ketik tanggal
@@ -423,55 +317,12 @@ router.post('/save', async (req, res, next) => {
 
 // v2 — Mode per periode. Hanya boleh diganti selama periode masih DRAFT; begitu
 // dikunci, mode ikut membeku bersama snapshot periode itu.
-router.post('/mode', async (req, res, next) => {
-  const { start, end } = selectedPeriod(req);
-  const requested = String(req.body.mode || '').trim().toUpperCase();
-  let conn;
-  try {
-    if (start > end) return res.status(400).send('Periode tidak valid.');
-    if (!['MANUAL', 'AUTO'].includes(requested)) return res.status(400).send('Mode tidak valid.');
-    conn = await db.getConnection();
-    await conn.beginTransaction();
-    const period = await ensureDraftPeriod(conn, start, end, req.session.user.id);
-    const before = { mode: period.mode || 'MANUAL' };
-    await conn.execute('UPDATE closing_periods SET mode=? WHERE id=?', [requested, period.id]);
-    await financialAudit({ conn, userId: req.session.user.id, action: 'set_closing_mode', entityType: 'closing_period', entityId: period.id, before, after: { mode: requested }, reason: `Ganti mode closing periode ${start} s/d ${end}`, ip: req.ip });
-    await conn.commit();
-    req.session.flash = { type: 'success', message: `Mode closing diganti ke ${requested === 'AUTO' ? 'Otomatis (sinkron Data Kas)' : 'Manual'}.` };
-    res.redirect(`/closing?from=${start}&to=${end}`);
-  } catch (err) { if (conn) await conn.rollback(); next(err); } finally { if (conn) conn.release(); }
+router.post(['/mode','/entries','/entries/:id/update','/entries/:id/delete','/entries/:id/restore'], (req,res)=>{
+  req.session.flash={type:'warning',message:'Closing mengikuti Data Kas bulan terpilih. Koreksi pemasukan/pengeluaran melalui menu Data Kas.'};
+  const {start,end}=selectedPeriod(req);res.redirect(`/closing?from=${start}&to=${end}`);
 });
 
-// v2 — Mode Otomatis: tarik transaksi Data Kas (cash_transactions) yang sudah
-// APPROVED Master Admin ke closing_entries periode ini. Idempoten lewat
-// cash_transaction_id (lihat services/closingSyncService.js) sehingga tombol ini
-// aman ditekan berkali-kali — hanya transaksi baru yang belum pernah ditarik
-// yang ditambahkan.
-router.post('/sync', async (req, res, next) => {
-  const { start, end } = selectedPeriod(req);
-  let conn;
-  try {
-    if (start > end) return res.status(400).send('Periode tidak valid.');
-    conn = await db.getConnection();
-    await conn.beginTransaction();
-    const [[existing]] = await conn.execute('SELECT * FROM closing_periods WHERE period_start=? AND period_end=? FOR UPDATE', [start, end]);
-    if (!existing) throw new Error('Aktifkan mode otomatis untuk periode ini terlebih dahulu sebelum sinkronisasi.');
-    if (existing.status === 'LOCKED') throw new Error('Periode Closing sudah dikunci.');
-    if (String(existing.mode || 'MANUAL').toUpperCase() !== 'AUTO') throw new Error('Aktifkan mode otomatis untuk periode ini terlebih dahulu sebelum sinkronisasi.');
-    const result = await syncCashDataIntoClosing({ conn, closingId: existing.id, start, end, userId: req.session.user.id });
-    await conn.execute('UPDATE closing_periods SET last_synced_at=NOW() WHERE id=?', [existing.id]);
-    await financialAudit({ conn, userId: req.session.user.id, action: 'sync_closing_cash', entityType: 'closing_period', entityId: existing.id, before: {}, after: result, reason: `Sinkron Data Kas periode ${start} s/d ${end}`, ip: req.ip });
-    await conn.commit();
-    const parts = [];
-    if (result.inserted) parts.push(`${result.inserted} transaksi baru ditarik dari Data Kas`);
-    if (result.updated) parts.push(`${result.updated} baris diperbarui mengikuti koreksi di Data Kas`);
-    if (result.removed) parts.push(`${result.removed} baris dikeluarkan (dihapus / belum APPROVED / pindah periode di Data Kas)`);
-    if (result.skippedUnmapped) parts.push(`${result.skippedUnmapped} dilewati (lokasi bukan CDS/KBG)`);
-    const changedAny = result.inserted || result.updated || result.removed;
-    req.session.flash = { type: changedAny ? 'success' : 'info', message: parts.length ? `${parts.join(', ')}.` : 'Closing sudah sama dengan Data Kas — tidak ada perubahan.' };
-    res.redirect(`/closing?from=${start}&to=${end}`);
-  } catch (err) { if (conn) await conn.rollback(); next(err); } finally { if (conn) conn.release(); }
-});
+router.post('/sync',(req,res)=>{const {start,end}=selectedPeriod(req);res.redirect(`/closing?from=${start}&to=${end}`);});
 
 router.post('/period-lock', async (req, res, next) => {
   const { start, end } = selectedPeriod(req); let conn;
@@ -481,15 +332,9 @@ router.post('/period-lock', async (req, res, next) => {
     await autoSyncBeforeReport({ start, end, userId: req.session.user.id, ip: req.ip });
     conn=await db.getConnection();await conn.beginTransaction();
     const period=await ensureDraftPeriod(conn,start,end,req.session.user.id);
-    // Financial integrity: an incomplete AUTO reconciliation must never be frozen.
-    // Do not allow bypassing the financial reconciliation guard when freezing a period.
-    if (String(period.mode||'MANUAL').toUpperCase()==='AUTO') {
-      const pending = await countPendingCashData({ db: conn, closingId: period.id, start, end });
-      if (pending.pendingApproval > 0 || pending.needsSync > 0) {
-        throw new Error(`Closing belum dapat dikunci: ${pending.pendingApproval} kas menunggu approval, ${pending.unsyncedApproved} kas belum sinkron, ${pending.staleSynced} kas berubah. Selesaikan approval dan sinkronisasi terlebih dahulu.`);
-      }
-    }
     const data=await loadClosing(start,end,conn);
+    const [[pendingCash]]=await conn.execute("SELECT COUNT(*) n FROM cash_transactions WHERE transaction_date BETWEEN ? AND ? AND approval_status='PENDING_APPROVAL'",[start,end]);
+    if(data.ledgerSummary?.invalid || Number(pendingCash.n)>0) throw new Error('Closing belum dapat dikunci: perbaiki lokasi/nominal Data Kas dan selesaikan approval pada bulan ini.');
     // Guard audit: when detailed rows exist, summary must reconcile exactly to
     // the rows that will be frozen in the Closing snapshot.
     if (data.lineItems.length) {
@@ -523,99 +368,6 @@ router.post('/period-reopen', async (req, res, next) => {
     await conn.commit();req.session.flash={type:'warning',message:`Periode ${start} s/d ${end} dibuka kembali.`};
     res.redirect(`/closing?from=${start}&to=${end}`);
   } catch(err){if(conn)await conn.rollback();next(err);} finally{if(conn)conn.release();}
-});
-
-router.post('/entries', async (req, res, next) => {
-  const { start, end } = selectedPeriod(req);
-  let conn;
-  try {
-    if (start > end) return res.status(400).send('Periode tidak valid.');
-    const entryType = String(req.body.entry_type || '').trim().toUpperCase();
-    if (!['INCOME', 'EXPENSE'].includes(entryType)) return res.status(400).send('Jenis transaksi tidak valid.');
-    const site = normalizeSiteCluster(req.body.site_code, req.body.cluster_name);
-    if (!site) return res.status(400).send('Lokasi hanya boleh CDS atau KBG.');
-    const entryDate = validDate(req.body.entry_date) ? req.body.entry_date : '';
-    if (!entryDate || entryDate < start || entryDate > end) return res.status(400).send('Tanggal transaksi harus berada di dalam periode closing.');
-    const amount = money(req.body.amount);
-    if (amount <= 0) return res.status(400).send('Nominal harus lebih besar dari nol.');
-    const category = String(req.body.category || (entryType === 'INCOME' ? 'Pendapatan pelanggan' : '')).trim().slice(0, 120);
-    if (!category) return res.status(400).send('Kategori wajib diisi.');
-    const description = String(req.body.description || '').trim().slice(0, 255) || null;
-    conn = await db.getConnection();
-    await conn.beginTransaction();
-    const period = await ensureDraftPeriod(conn, start, end, req.session.user.id);
-    await conn.execute('INSERT INTO closing_entries(closing_id,entry_type,site_code,cluster_name,category,amount,entry_date,description,created_by) VALUES(?,?,?,?,?,?,?,?,?)', [period.id, entryType, site.site, site.cluster, category, amount, entryDate, description, req.session.user.id]);
-    await conn.commit();
-    req.session.flash = { type: 'success', message: `${entryType === 'INCOME' ? 'Pendapatan' : 'Pengeluaran'} ditambahkan ke kalkulator.` };
-    res.redirect(`/closing?from=${start}&to=${end}`);
-  } catch (err) { if (conn) await conn.rollback(); next(err); } finally { if (conn) conn.release(); }
-});
-
-router.post('/entries/:id/update', async (req, res, next) => {
-  try {
-    const id = Number(req.params.id);
-    const { start, end } = selectedPeriod(req);
-    if (!Number.isInteger(id) || id < 1) return res.status(400).send('Transaksi tidak valid.');
-    await assertClosingChildDraft('closing_entries',id);
-    const [[entry]] = await db.execute('SELECT ce.id,ce.entry_type,ce.source_type,cp.period_start,cp.period_end FROM closing_entries ce JOIN closing_periods cp ON cp.id=ce.closing_id WHERE ce.id=? LIMIT 1', [id]);
-    if (!entry) return res.status(404).send('Transaksi tidak ditemukan.');
-    const site = normalizeSiteCluster(req.body.site_code, req.body.cluster_name);
-    if (!site) return res.status(400).send('Lokasi hanya boleh CDS atau KBG.');
-    const entryDate = validDate(req.body.entry_date) ? req.body.entry_date : '';
-    if (!entryDate) return res.status(400).send('Tanggal tidak valid.');
-    // v3.2 — dulu tanggal boleh diubah ke luar periode (tambah baris sudah dicek,
-    // edit belum), sehingga baris bertanggal bulan lain tetap dihitung di periode ini.
-    if (entryDate < localDateKey(entry.period_start) || entryDate > localDateKey(entry.period_end)) return res.status(400).send('Tanggal transaksi harus berada di dalam periode closing.');
-    const amount = money(req.body.amount);
-    if (amount <= 0) return res.status(400).send('Nominal harus lebih besar dari nol.');
-    const category = String(req.body.category || (entry.entry_type === 'INCOME' ? 'Pendapatan pelanggan' : '')).trim().slice(0, 120);
-    if (!category) return res.status(400).send('Kategori wajib diisi.');
-    const description = String(req.body.description || '').trim().slice(0, 255) || null;
-    await db.execute('UPDATE closing_entries SET site_code=?,cluster_name=?,category=?,amount=?,entry_date=?,description=? WHERE id=?', [site.site, site.cluster, category, amount, entryDate, description, id]);
-    req.session.flash = entry.source_type === 'cash_sync'
-      ? { type: 'warning', message: 'Baris diperbarui. Catatan: baris ini berasal dari Data Kas — saat Sync berikutnya akan dikembalikan sesuai Data Kas. Untuk koreksi permanen, ubah transaksinya di Data Kas lalu Sync.' }
-      : { type: 'success', message: 'Baris kalkulator diperbarui.' };
-    res.redirect(`/closing?from=${start}&to=${end}`);
-  } catch (err) { next(err); }
-});
-
-// Baris hasil sinkron Data Kas (source_type='cash_sync') tidak boleh benar-benar
-// DELETE: cash_transaction_id-nya harus tetap "terpakai" supaya Sync berikutnya
-// tidak menariknya lagi (lihat services/closingSyncService.js). Jadi baris itu
-// cuma ditandai excluded_at (soft-exclude) — hilang dari tabel utama & kalkulasi,
-// tapi masih ada di DB dan bisa dipulihkan lewat /entries/:id/restore. Baris
-// manual (diketik sendiri) tidak punya isu ini, jadi tetap DELETE biasa.
-router.post('/entries/:id/delete', async (req, res, next) => {
-  try {
-    const id = Number(req.params.id);
-    const { start, end } = selectedPeriod(req);
-    if (!Number.isInteger(id) || id < 1) return res.status(400).send('Transaksi tidak valid.');
-    await assertClosingChildDraft('closing_entries',id);
-    const [[entry]] = await db.execute('SELECT id,source_type FROM closing_entries WHERE id=? LIMIT 1', [id]);
-    if (!entry) return res.status(404).send('Transaksi tidak ditemukan.');
-    if (entry.source_type === 'cash_sync') {
-      await db.execute('UPDATE closing_entries SET excluded_at=NOW(),excluded_by=? WHERE id=?', [req.session.user.id, id]);
-      req.session.flash = { type: 'success', message: 'Baris hasil sinkron dikecualikan dari perhitungan. Bisa dipulihkan kapan saja di bagian "Baris dikecualikan" kalau berubah pikiran.' };
-    } else {
-      await db.execute('DELETE FROM closing_entries WHERE id=?', [id]);
-      req.session.flash = { type: 'success', message: 'Baris kalkulator dihapus.' };
-    }
-    res.redirect(`/closing?from=${start}&to=${end}`);
-  } catch (err) { next(err); }
-});
-
-router.post('/entries/:id/restore', async (req, res, next) => {
-  try {
-    const id = Number(req.params.id);
-    const { start, end } = selectedPeriod(req);
-    if (!Number.isInteger(id) || id < 1) return res.status(400).send('Transaksi tidak valid.');
-    await assertClosingChildDraft('closing_entries',id);
-    const [[entry]] = await db.execute("SELECT id FROM closing_entries WHERE id=? AND source_type='cash_sync' AND excluded_at IS NOT NULL LIMIT 1", [id]);
-    if (!entry) return res.status(404).send('Baris dikecualikan tidak ditemukan.');
-    await db.execute('UPDATE closing_entries SET excluded_at=NULL,excluded_by=NULL WHERE id=?', [id]);
-    req.session.flash = { type: 'success', message: 'Baris dipulihkan dan ikut dihitung lagi.' };
-    res.redirect(`/closing?from=${start}&to=${end}`);
-  } catch (err) { next(err); }
 });
 
 router.post('/adjustments', async (req, res, next) => {
@@ -882,30 +634,9 @@ function buildTransactionRows(data, allowedBlocks) {
 //                    menarik transaksi baru.
 // Idempoten dan hanya menulis kalau memang ada perbedaan; setiap perubahan dicatat
 // di audit keuangan.
-async function autoSyncBeforeReport({ start, end, userId, ip }) {
-  const [[period]] = await db.execute('SELECT id,status,mode FROM closing_periods WHERE period_start=? AND period_end=? LIMIT 1', [start, end]);
-  if (!period || period.status === 'LOCKED') return null;
-  const isAuto = String(period.mode || 'MANUAL').toUpperCase() === 'AUTO';
-  if (isAuto) {
-    const pending = await countPendingCashData({ db, closingId: period.id, start, end });
-    if (!pending.needsSync) return null;
-  } else {
-    const plan = await planSyncedReconciliation({ db, closingId: period.id, start, end });
-    if (!plan.some((item) => item.action !== 'keep')) return null;
-  }
-  let conn;
-  try {
-    conn = await db.getConnection();
-    await conn.beginTransaction();
-    const [[locked]] = await conn.execute('SELECT id,status,mode FROM closing_periods WHERE id=? FOR UPDATE', [period.id]);
-    if (!locked || locked.status === 'LOCKED') { await conn.rollback(); return null; }
-    const lockedAuto = String(locked.mode || 'MANUAL').toUpperCase() === 'AUTO';
-    const result = await syncCashDataIntoClosing({ conn, closingId: period.id, start, end, userId, insertNew: lockedAuto });
-    if (lockedAuto) await conn.execute('UPDATE closing_periods SET last_synced_at=NOW() WHERE id=?', [period.id]);
-    await financialAudit({ conn, userId, action: 'sync_closing_cash', entityType: 'closing_period', entityId: period.id, before: {}, after: result, reason: `Sinkron otomatis Data Kas periode ${start} s/d ${end}`, ip });
-    await conn.commit();
-    return result;
-  } catch (err) { if (conn) await conn.rollback(); throw err; } finally { if (conn) conn.release(); }
+async function autoSyncBeforeReport() {
+  // Draft reports now read current Data Kas directly; no cache refresh is needed.
+  return null;
 }
 
 function autoSyncMessage(result) {
@@ -1003,7 +734,7 @@ router.get('/pdf', async (req, res, next) => {
     const hiddenNote = hideEdwin && recipient.key !== 'edwin' ? ' · bagian Edwin disembunyikan sesuai opsi' : '';
     createClosingReportPdf(res, {
       title: `Closing ${recipient.name}`,
-      subtitle: `Periode transaksi ${start} s/d ${end} · ${effectiveMode === 'auto' ? 'mode otomatis · sumber Data Kas & rekonsiliasi Closing' : 'input manual'} · rincian penerima${hiddenNote}`,
+      subtitle: `Periode transaksi ${start} s/d ${end} · ${effectiveMode === 'auto' ? 'Data Kas bulanan; dasar pembagian termasuk saldo bawaan' : 'input manual'} · rincian penerima${hiddenNote}`,
       filename: `closing-${recipient.reportKey}-${start}-${end}-${effectiveMode}.pdf`,
       watermark: recipient.watermark,
       recipientName: recipient.name,
@@ -1043,9 +774,9 @@ router.get('/history', async (req, res, next) => {
       const end = localDateKey(p.period_end);
       await autoSyncBeforeReport({ start, end, userId: req.session.user.id, ip: req.ip });
       const data = await loadClosing(start, end);
-      const totalRevenue = money(data.blocks.krwclm.revenue) + money(data.blocks.kbg.revenue);
-      const totalExpense = money(data.blocks.krwclm.expense) + money(data.blocks.kbg.expense);
-      const totalProfit = money(data.blocks.krwclm.profit) + money(data.blocks.kbg.profit);
+      const totalRevenue = money(data.blocks.krwclm.revenue) + money(data.blocks.kbg.revenue) + money(data.blocks.other?.revenue);
+      const totalExpense = money(data.blocks.krwclm.expense) + money(data.blocks.kbg.expense) + money(data.blocks.other?.expense);
+      const totalProfit = totalRevenue - totalExpense;
       rows.push({ start, end, totalRevenue, totalExpense, totalProfit, entryCount: data.lineItems.length, mode: data.closing.mode === 'AUTO' ? 'AUTO' : 'MANUAL', status: data.closing.status === 'LOCKED' ? 'LOCKED' : 'DRAFT' });
     }
     res.render('closing/history', { title: 'Rekap Closing', pageTitle: 'Rekap Bulanan Closing', money, year, month, rows });
@@ -1071,16 +802,8 @@ router.get('/export.xlsx', async (req, res, next) => {
     const type = String(req.query.type || '').trim().toUpperCase();
     // v3.2 — Excel harus sama dengan PDF: sinkron dulu bila mode Otomatis & DRAFT.
     await autoSyncBeforeReport({ start, end, userId: req.session.user.id, ip: req.ip });
-    const [[period]] = await db.execute('SELECT id FROM closing_periods WHERE period_start=? AND period_end=? LIMIT 1', [start, end]);
-    let rows = [];
-    if (period) {
-      let sql = 'SELECT entry_type,site_code,cluster_name,category,amount,entry_date,description FROM closing_entries WHERE closing_id=? AND excluded_at IS NULL';
-      const params = [period.id];
-      if (['INCOME', 'EXPENSE'].includes(type)) { sql += ' AND entry_type=?'; params.push(type); }
-      if (category) { sql += ' AND category=?'; params.push(category); }
-      sql += ' ORDER BY entry_date DESC,id DESC';
-      [rows] = await db.execute(sql, params);
-    }
+    const data=await loadClosing(start,end);
+    const rows=data.lineItems.filter(row=>(!['INCOME','EXPENSE'].includes(type)||row.entry_type===type)&&(!category||row.category===category));
     const wb = new ExcelJS.Workbook();
     const columns = [
       { header: 'Tanggal', key: 'entry_date', width: 14 }, { header: 'Jenis', key: 'entry_type', width: 14 },
@@ -1097,7 +820,7 @@ router.get('/export.xlsx', async (req, res, next) => {
     const reconciliation = await db.execute(`SELECT p.paid_at entry_date,u.name holder_name,c.name customer_name,s.code site_code,cl.name cluster_name,p.amount FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id LEFT JOIN users u ON u.id=p.received_by LEFT JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id WHERE p.method='cash' AND p.status='confirmed' AND p.settlement_status='held_by_staff' AND DATE(p.paid_at) BETWEEN ? AND ? ORDER BY p.paid_at`, [start,end]);
     const cashRows = reconciliation[0].map(r => ({ entry_date: r.entry_date, entry_type: 'REKONSILIASI', site_code: r.site_code, cluster_name: r.cluster_name, category: 'Cash masih di tim', description: `${r.customer_name || 'Pelanggan'} · pemegang ${r.holder_name || '-'}`, amount: r.amount }));
     addSheet('Rekonsiliasi cash tim', cashRows);
-    const excluded = period ? (await db.execute(`SELECT entry_date,entry_type,site_code,cluster_name,category,description,amount FROM closing_entries WHERE closing_id=? AND excluded_at IS NOT NULL ORDER BY entry_date,id`, [period.id]))[0] : [];
+    const excluded=data.excludedItems||[];
     addSheet('Data dikecualikan', excluded);
 /*
     const ws = wb.addWorksheet('Closing');
