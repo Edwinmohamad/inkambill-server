@@ -211,7 +211,10 @@ function parseAmount(lines, expectedAmount = null) {
   const candidates = [];
   const labeledRx = /(nominal|jumlah|amount|total\s*transfer|nilai\s*transfer|transfer\s*sebesar|uang\s*yang\s*dikirim)/i;
   const rejectRx = /(biaya|admin|fee|saldo|balance|cashback|diskon)/i;
-  for (const line of lines) {
+  for (let index=0;index<lines.length;index++) {
+    const sourceLine=lines[index];
+    // Receipts may place the transfer amount on the line below its label.
+    const line=labeledRx.test(sourceLine)&&!/[0-9]/.test(sourceLine)&&/^\s*(?:rp\.?\s*)?[0-9][0-9., ]*\s*$/i.test(lines[index+1]||'') ? sourceLine+' '+lines[index+1] : sourceLine;
     const values = line.match(/(?:rp\.?\s*)?\d{1,3}(?:[.,\s]\d{3})+(?:[.,]\d{1,2})?|(?:rp\.?\s*)\d{4,12}/ig) || [];
     for (const token of values) {
       const n = parseRupiahNumber(token);

@@ -10,3 +10,10 @@ const result = evaluateLocalProof({ payment: { amount: 1000000 }, parsed, banks,
 assert(result.checks.some(check => check.key === 'amount' && check.level === 'ok'), 'nominal sesuai harus valid');
 assert(result.checks.some(check => check.key === 'account' && check.level === 'ok'), 'rekening sesuai harus valid');
 console.log('Proof OCR validation passed: amount, date, recipient, account, reference.');
+
+for(const label of ['JUMLAH PENGIRIMAN Rp165.000','JUMLAH PENGIRIMAN\nRp165.000']){
+ const receipt=parseReceipt(`${label}\nBIAYA LAYANAN Rp2.000\nTOTAL Rp167.000`,{expectedAmount:167000,banks});
+ assert.equal(receipt.amount,165000,'transfer principal must exclude service fees even if invoice equals total');
+ const review=evaluateLocalProof({payment:{amount:167000},parsed:receipt,banks,engineState:'done'});
+ assert(review.checks.some(check=>check.key==='amount'&&check.level==='warn'));
+}

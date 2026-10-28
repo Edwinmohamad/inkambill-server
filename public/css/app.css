@@ -2604,3 +2604,16 @@ html[data-theme="light"] .bm-revenue-card{background:linear-gradient(150deg,rgba
 .local-ocr-head>span{font-size:var(--fs-10);color:var(--muted)}
 .local-ocr-head>strong{font-size:var(--fs-12)}
 .local-ocr-card>small{display:block;margin-top:10px;color:var(--muted)}
+
+/* Payment approval: readable evidence summaries and consistent action targets. */
+.payment-ocr-cell{min-width:190px;max-width:260px;white-space:normal}
+.payment-ocr-cell details{margin-top:6px;font-size:12px;color:var(--muted)}
+.payment-ocr-cell summary,.ocr-refresh{cursor:pointer;color:var(--accent-text)}
+.ocr-refresh{margin-top:6px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);font-size:12px}
+.payment-history-table .payment-actions{gap:8px}
+.payment-history-table .payment-actions .action-pill{width:36px;height:36px;min-width:36px;border-radius:10px;background:var(--panel-2);color:var(--text);font-size:18px}
+.payment-history-table .payment-actions .proof-upload-btn{color:var(--accent-text)!important}
+.payment-history-table .payment-actions .payment-cancel-approval-btn{color:var(--danger)}
+.payment-history-table .action-pill:focus-visible,.ocr-refresh:focus-visible{outline:2px solid var(--accent-text);outline-offset:2px}
+.payment-history-table .approval-button{min-height:36px;gap:6px}
+.payment-history-table .approval-button i{font-size:18px}
