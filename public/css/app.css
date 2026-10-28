@@ -1828,7 +1828,12 @@ body .ink-kpi strong{font-weight:600!important}
 @media(max-width:767.98px){.bulk-payment-approve-head{display:none}.bulk-payment-approve-row{grid-template-columns:minmax(0,1fr) auto;gap:8px 12px;padding:13px 4px}.bulk-payment-customer{grid-column:1/-1}.bulk-payment-method{align-self:center}.bulk-payment-amount{text-align:right}.bulk-proof-cell{grid-column:1/-1;justify-content:flex-start}.bulk-payment-review-summary{margin-bottom:10px}}
 
 /* v1.25.7 — Data Kas post-save visibility / pending clarity */
-.cash-summary-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+.cash-summary-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
+.cash-summary-card.held{border-color:rgba(245,158,11,.3)}
+.cash-summary-card.held strong,.cash-summary-card.held>i{color:#f59e0b}
+.cash-summary-card.held small{display:block;margin-top:4px;color:var(--muted);font-size:var(--fs-10)}
+.cash-summary-card.held a{display:inline-block;margin-top:8px;font-size:var(--fs-10)}
+.cash-summary-card.held strong{overflow-wrap:anywhere}
 .cash-summary-card.pending{border-color:rgba(245,158,11,.22);background:linear-gradient(145deg,rgba(245,158,11,.075),rgba(15,23,42,.015))}
 .cash-summary-card.pending>i{color:#f59e0b}.cash-summary-card.pending small{display:block;margin-top:4px;color:var(--ink-muted,#8b9ab5);font-size:var(--fs-15);font-weight:650}
 .cash-created-note{display:flex;align-items:center;gap:12px;padding:12px 14px;margin:0 0 12px;border:1px solid rgba(16,185,129,.28);border-radius:16px;background:rgba(16,185,129,.08);box-shadow:inset 3px 0 0 rgba(16,185,129,.75)}
