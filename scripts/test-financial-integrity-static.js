@@ -1,4 +1,5 @@
 const fs=require('fs');const assert=require('assert');
+const operationalCashFlow=fs.readFileSync('services/operationalCashFlowService.js','utf8');
 const invoice=fs.readFileSync('services/invoiceService.js','utf8');const pay=fs.readFileSync('services/paymentVerificationService.js','utf8');const fin=fs.readFileSync('routes/finance.js','utf8');const cash=fs.readFileSync('services/cashService.js','utf8');const closingSync=fs.readFileSync('services/closingSyncService.js','utf8');const reports=fs.readFileSync('routes/reports.js','utf8');const analytics=fs.readFileSync('services/analyticsService.js','utf8');
 assert(!/INSERT INTO payments[\s\S]{0,500}Pemasangan Baru/.test(invoice),'PSB invoice generation must not create payment');
 assert(pay.includes("source_type IN ('payment','install_income')"),'cross-source dedupe missing');
@@ -9,7 +10,10 @@ assert(fin.includes('await assertDateOpen(conn,rows[0].transaction_date)'),'old-
 assert(cash.includes('if(tx.transaction_date)await assertCashDateOpen(conn,tx.transaction_date)'),'approval/reject locked-period guard missing');
 assert(pay.includes("sourcePayment.method==='cash'&&sourcePayment.settlement_status!=='settled'"),'cash held must be rejected before journal creation');
 assert(pay.includes("p.method='cash' AND p.settlement_status='settled'"),'historical repair must only create settled cash journals');
-for(const [source,label] of [[fin,'Data Kas balance'],[closingSync,'Closing sync'],[reports,'cash report'],[analytics,'cash analytics']]){
+for(const [source,label] of [[fin,'Data Kas balance'],[closingSync,'Closing sync'],[reports,'cash report'],[operationalCashFlow,'cash analytics']]){
   assert(source.includes("source_payment.settlement_status='settled'")||source.includes("p.settlement_status='settled'"),`${label} must exclude cash held by collector`);
 }
 console.log('financial-integrity-static: PASS');
+
+assert(analytics.includes('await loadMonthlyCashFlow('),'dashboard must use operational cash flow service');
+for(const source of [fin,closingSync,reports,operationalCashFlow]){assert(source.includes('ct.internal_transfer_key IS NULL'));assert(source.includes("cc.code NOT IN ('FINPRIN','FINPROUT')"));}
