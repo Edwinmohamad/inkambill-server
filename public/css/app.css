@@ -2598,3 +2598,9 @@ html[data-theme="light"] .bm-revenue-card{background:linear-gradient(150deg,rgba
 #proofViewerModal .proof-meta-panel{overflow-wrap:anywhere}
 #proofViewerModal .modal-content{max-height:92vh;overflow-y:auto}
 .approval-ocr-summary p,#proofOcrFields p{margin:.5rem 0;font-size:.9rem}
+
+.local-ocr-card{margin-top:16px;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--panel-2)}
+.local-ocr-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+.local-ocr-head>span{font-size:var(--fs-10);color:var(--muted)}
+.local-ocr-head>strong{font-size:var(--fs-12)}
+.local-ocr-card>small{display:block;margin-top:10px;color:var(--muted)}

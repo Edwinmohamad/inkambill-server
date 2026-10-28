@@ -46,7 +46,7 @@ const { ensureV56Schema: ensureWaCrmSchema } = require('./services/waCrmSchema')
 const { requireWahaWebhookToken } = require('./middleware/waha');
 
 const app = express();
-const assetVersion = ['public/css/app.css','public/css/debts.css','public/css/nms-wall.css','public/js/nms-wall.js','public/css/mobile-app.css','public/css/monitoring.css','public/js/app.js','public/js/mobile-app.js','public/js/nms.js','public/js/performance.js','public/js/monitoring.js']
+const assetVersion = ['public/css/app.css','public/css/debts.css','public/css/nms-wall.css','public/js/nms-wall.js','public/css/mobile-app.css','public/css/monitoring.css','public/js/app.js','public/js/payment-proof-review.js','public/js/mobile-app.js','public/js/nms.js','public/js/performance.js','public/js/monitoring.js']
   .map(file => Math.floor(fs.statSync(path.join(__dirname,file)).mtimeMs).toString(36))
   .join('-');
 app.set('view engine', 'ejs');
