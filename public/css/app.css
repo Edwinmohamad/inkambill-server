@@ -1772,30 +1772,16 @@ body .ink-kpi strong{font-weight:600!important}
 .payment-history-head{padding:13px 15px;gap:12px}
 .payment-history-head h3{margin:0;font-size:var(--fs-19);letter-spacing:-.01em}
 .payment-history-head small{display:block;margin-top:3px;font-size:var(--fs-9);line-height:1.45;color:var(--muted)}
-.payment-history-table{width:100%;min-width:1240px;table-layout:fixed}
-.payment-history-table.has-bulk-select th:nth-child(1),.payment-history-table.has-bulk-select td:nth-child(1){width:34px}
-.payment-history-table.has-bulk-select th:nth-child(2),.payment-history-table.has-bulk-select td:nth-child(2){width:42px}
-.payment-history-table.has-bulk-select th:nth-child(3),.payment-history-table.has-bulk-select td:nth-child(3){width:132px}
-.payment-history-table.has-bulk-select th:nth-child(4),.payment-history-table.has-bulk-select td:nth-child(4){width:118px}
-.payment-history-table.has-bulk-select th:nth-child(5),.payment-history-table.has-bulk-select td:nth-child(5){width:160px}
-.payment-history-table.has-bulk-select th:nth-child(6),.payment-history-table.has-bulk-select td:nth-child(6){width:98px}
-.payment-history-table.has-bulk-select th:nth-child(7),.payment-history-table.has-bulk-select td:nth-child(7){width:132px}
-.payment-history-table.has-bulk-select th:nth-child(8),.payment-history-table.has-bulk-select td:nth-child(8){width:114px}
-.payment-history-table.has-bulk-select th:nth-child(9),.payment-history-table.has-bulk-select td:nth-child(9){width:118px}
-.payment-history-table.has-bulk-select th:nth-child(10),.payment-history-table.has-bulk-select td:nth-child(10){width:118px}
-.payment-history-table.has-bulk-select th:nth-child(11),.payment-history-table.has-bulk-select td:nth-child(11){width:220px}
-.payment-history-table.has-bulk-select th:nth-child(12),.payment-history-table.has-bulk-select td:nth-child(12){width:58px}
-.payment-history-table:not(.has-bulk-select) th:nth-child(1),.payment-history-table:not(.has-bulk-select) td:nth-child(1){width:42px}
-.payment-history-table:not(.has-bulk-select) th:nth-child(2),.payment-history-table:not(.has-bulk-select) td:nth-child(2){width:132px}
-.payment-history-table:not(.has-bulk-select) th:nth-child(3),.payment-history-table:not(.has-bulk-select) td:nth-child(3){width:118px}
-.payment-history-table:not(.has-bulk-select) th:nth-child(4),.payment-history-table:not(.has-bulk-select) td:nth-child(4){width:160px}
-.payment-history-table:not(.has-bulk-select) th:nth-child(5),.payment-history-table:not(.has-bulk-select) td:nth-child(5){width:98px}
-.payment-history-table:not(.has-bulk-select) th:nth-child(6),.payment-history-table:not(.has-bulk-select) td:nth-child(6){width:132px}
-.payment-history-table:not(.has-bulk-select) th:nth-child(7),.payment-history-table:not(.has-bulk-select) td:nth-child(7){width:114px}
-.payment-history-table:not(.has-bulk-select) th:nth-child(8),.payment-history-table:not(.has-bulk-select) td:nth-child(8){width:118px}
-.payment-history-table:not(.has-bulk-select) th:nth-child(9),.payment-history-table:not(.has-bulk-select) td:nth-child(9){width:118px}
-.payment-history-table:not(.has-bulk-select) th:nth-child(10),.payment-history-table:not(.has-bulk-select) td:nth-child(10){width:220px}
-.payment-history-table:not(.has-bulk-select) th:nth-child(11),.payment-history-table:not(.has-bulk-select) td:nth-child(11){width:58px}
+.payment-history-table{width:100%;min-width:1090px;table-layout:fixed}
+.payment-history-table .app-check-col{width:32px}
+.payment-history-table .payment-col-number{width:36px}
+.payment-history-table .payment-col-customer{width:16%}
+.payment-history-table .payment-col-period{width:15%}
+.payment-history-table .payment-col-amount{width:125px}
+.payment-history-table .payment-col-ocr{width:180px}
+.payment-history-table .payment-col-proof{width:120px}
+.payment-history-table .payment-col-approval{width:180px}
+.payment-history-table .payment-col-actions{width:136px}
 .payment-history-table th{padding:9px 10px;font-size:var(--fs-9);letter-spacing:.055em}
 .payment-history-table td{padding:10px;font-size:var(--fs-13);line-height:1.25}
 .payment-history-table tbody tr{height:auto}
@@ -2617,3 +2603,33 @@ html[data-theme="light"] .bm-revenue-card{background:linear-gradient(150deg,rgba
 .payment-history-table .action-pill:focus-visible,.ocr-refresh:focus-visible{outline:2px solid var(--accent-text);outline-offset:2px}
 .payment-history-table .approval-button{min-height:36px;gap:6px}
 .payment-history-table .approval-button i{font-size:18px}
+
+/* Group related approval metadata instead of squeezing independent columns. */
+.payment-history-card{min-width:0}
+.payment-history-card>.table-responsive{overflow-x:auto;max-width:100%;overscroll-behavior-x:contain}
+.payment-history-head{flex-wrap:wrap;gap:12px}
+.payment-history-head>div:first-child{min-width:0;flex:1 1 420px}
+.payment-history-head .invoice-registry-tools{flex-wrap:wrap;gap:10px}
+.payment-history-table{min-width:1090px}
+.payment-history-table th,.payment-history-table td{vertical-align:top;white-space:normal;overflow-wrap:anywhere}
+.payment-history-table th{font-size:11px;line-height:1.4}
+.payment-history-table td{padding:14px 10px;font-size:13px;line-height:1.45}
+.payment-history-table .cell-main{font-size:13px}
+.payment-history-table .cell-sub{font-size:11px;line-height:1.45}
+.payment-history-table .money{white-space:normal;text-align:left}
+.payment-history-table .money>.cell-sub{font-size:10px}
+.payment-history-table .payment-method{font-size:10px;margin-bottom:8px;padding:4px 6px}
+.payment-history-table .proof-chip{min-width:0;max-width:100%;width:100%;gap:6px;padding:7px}
+.payment-history-table .proof-chip>span:last-child{min-width:0}
+.payment-history-table .proof-chip strong{font-size:11px;white-space:nowrap}
+.payment-history-table .status-badge{max-width:100%;white-space:normal;line-height:1.4;overflow:visible;text-overflow:clip}
+.payment-history-table .payment-received-by{margin:0 0 6px}
+.payment-history-table .payment-approval-compact{min-width:0;align-items:flex-start;flex-direction:column;gap:6px}
+.payment-history-table .payment-approval-buttons{flex-wrap:wrap;gap:6px}
+.payment-history-table .payment-approval-buttons .approval-button{font-size:11px;padding:0 8px}
+.payment-history-table .payment-ocr-cell{min-width:0;max-width:none}
+.payment-ocr-cell details>div{padding-top:6px}
+.payment-ocr-cell details p{font-size:11px;line-height:1.5;margin:6px 0}
+.payment-ocr-cell summary{font-size:11px;margin-top:6px}
+.payment-history-table .payment-actions{flex-wrap:wrap;gap:6px}
+@media(max-width:767.98px){.payment-history-table{min-width:1090px}.payment-history-head>div:first-child{flex-basis:100%}}

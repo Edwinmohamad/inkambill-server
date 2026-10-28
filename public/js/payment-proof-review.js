@@ -22,6 +22,7 @@
     const attempts=Number(cell.dataset.attempts||0)+1;cell.dataset.attempts=String(attempts);
     if(processing&&attempts<12){setTimeout(()=>schedule(cell),2500);return;}
     if(processing){const note=document.createElement('small');note.className='cell-sub';note.textContent='Pembacaan belum selesai. Coba lagi atau periksa bukti secara manual.';cell.append(note);}
+    if(!processing&&cell.children[0]?.textContent==='Sesuai')return;
     const retry=document.createElement('button');retry.type='button';retry.className='ocr-refresh';retry.textContent='Coba Lagi';retry.addEventListener('click',()=>{cell.dataset.attempts='0';schedule(cell);});cell.append(retry);
   }
   drain();

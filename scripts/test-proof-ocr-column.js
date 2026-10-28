@@ -12,6 +12,6 @@ async function run(overall,fail=false){
  if(fail){assert.match(cell.textContent,/gagal/);assert(cell.children.some(c=>c.textContent==='Coba Lagi'));return;}
  assert.equal(cell.children[0].textContent,{ok:'Sesuai',warning:'Tidak sesuai',processing:'Memproses',unreadable:'Perlu diperiksa'}[overall]);
  if(overall==='processing'){assert.equal(timers.length,1);assert(!cell.children.some(c=>c.textContent==='Coba Lagi'));}
- else {assert(cell.children.some(c=>c.children.some(n=>n.textContent==='Detail pemeriksaan')));assert(cell.children.some(c=>c.textContent==='Coba Lagi'));}
+ else {assert(cell.children.some(c=>c.children.some(n=>n.textContent==='Detail pemeriksaan')));assert.equal(cell.children.some(c=>c.textContent==='Coba Lagi'),overall!=='ok');}
 }
 (async()=>{for(const state of ['ok','warning','unreadable','processing'])await run(state);await run('ok',true);console.log('PASS OCR column: matching, mismatch, unreadable, polling and retry after request failure.');})().catch(error=>{console.error(error);process.exitCode=1;});

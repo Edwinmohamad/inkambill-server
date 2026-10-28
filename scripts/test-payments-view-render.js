@@ -16,6 +16,14 @@ function render(role,over){
     for(const status of ['pending','confirmed','failed'])for(const method of ['cash','transfer','qris'])
       assert.ok((await render(role,{payments:[{...pay,status,method}],cashApprovals:[cash]})).length>1000,`${role}/${status}/${method}`);
   }
+  for(const [role,count] of [['master_admin',9],['admin',7]]){
+    const html=await render(role,{payments:[pay]});
+    const table=html.match(/<table class="app-table payment-history-table[\s\S]*?<\/table>/)[0];
+    assert.equal((table.match(/<th[ >]/g)||[]).length,count,'compact headers must match role');
+    const row=table.match(/<tbody>[\s\S]*?<tr>([\s\S]*?)<\/tr>/)[1];
+    assert.equal((row.match(/<td[ >]/g)||[]).length,count,'every data cell must align with its header');
+    assert(table.includes('Jatuh tempo'));assert(table.includes('Diterima:'));
+  }
   const masterHtml=await render('master_admin',{payments:[
     {...pay,id:1,customer_name:'Budi Transfer',method:'transfer',proof_path:null},
     {...pay,id:2,customer_name:'Siti Cash',method:'cash',proof_path:null},
