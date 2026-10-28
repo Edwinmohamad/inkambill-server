@@ -8,7 +8,7 @@ const cash={id:7,transaction_code:'K1',transaction_date:new Date(),name:'n',amou
 function render(role,over){
   const res={locals:{}};
   common({session:{user:{id:1,role,name:'T'}},query:{},originalUrl:'/payments',path:'/payments',get:()=>''},res,()=>{});
-  const data={title:'t',payments:[],openInvoices:[],staff:[],banks:[],sites:[],clusters:[],cashApprovals:[],cashApprovalUnavailable:false,summary:{},missingProof:{total:0,amount:0},paymentPageWarnings:[],preselectedInvoiceId:null,filters:{q:'',site:'',cluster:'',month:'',year:'',approval:'',method:'',recipient:''},methodCounts:{cash:{total:0,pending:0},transfer:{total:0,pending:0},qris:{total:0,pending:0}},summaryMonth:1,summaryYear:2026,pagination:null,csrfToken:'x',flash:null,...res.locals,...over};
+  const data={title:'t',payments:[],openInvoices:[],staff:[],banks:[],sites:[],clusters:[],cashApprovals:[],cashApprovalUnavailable:false,summary:{},missingProof:{total:0,amount:0},paymentPageWarnings:[],preselectedInvoiceId:null,filters:{q:'',site:'',cluster:'',month:'',year:'',approval:'',method:'',recipient:''},methodCounts:{cash:{total:0,pending:0},transfer:{total:0,pending:0},qris:{total:0,pending:0}},summaryMonth:1,summaryYear:2026,pagination:null,assetVersion:'test',csrfToken:'x',flash:null,...res.locals,...over};
   return ejs.renderFile(path.join(root,'views/payments/index.ejs'),data,{views:[path.join(root,'views')]});
 }
 (async()=>{

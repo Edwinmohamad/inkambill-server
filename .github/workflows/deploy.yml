@@ -38,7 +38,8 @@ jobs:
           cd /opt/inkambilling
           CANDIDATE_IMAGE="inkambilling-validation:${{ github.sha }}"
           trap 'docker image rm "$CANDIDATE_IMAGE" >/dev/null 2>&1 || true' EXIT
-          docker build -t "$CANDIDATE_IMAGE" .
+          # Only committed source enters Docker; server uploads and backups stay outside.
+          git archive HEAD | docker build -t "$CANDIDATE_IMAGE" -
           docker run --rm --network none "$CANDIDATE_IMAGE" npm run test:audit
 
       - name: Backup production database
@@ -53,7 +54,11 @@ jobs:
         run: |
           set -euo pipefail
           cd /opt/inkambilling
-          docker compose up -d --build
+          BUILD_CONTEXT="$(mktemp -d)"
+          trap 'rm -rf "$BUILD_CONTEXT"' EXIT
+          git archive HEAD | tar -x -C "$BUILD_CONTEXT"
+          du -sh "$BUILD_CONTEXT"
+          INKAMBILL_BUILD_CONTEXT="$BUILD_CONTEXT" docker compose up -d --build
           docker compose ps
 
       - name: Verify application health

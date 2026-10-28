@@ -12,7 +12,7 @@ assert.match(sync,/if \(row\.internal_transfer_key \|\| \['FINPRIN','FINPROUT'\]
 assert.match(finance,/WHERE p\.method='cash' AND p\.status='confirmed' AND p\.settlement_status='held_by_staff'/,'collector-held cash must include all months');
 assert.doesNotMatch(finance.slice(finance.indexOf('const [[collection]]'),finance.indexOf('const [categoryChartRows]')), /MONTH\(p\.paid_at\)/,'held cash is stock, not current month flow');
 assert.match(view,/Bukan saldo rekening\/bank aktual/);
-assert.match(view,/Cash masih di staff \(semua periode\)/);
+assert.match(view,/Cash Diterima · Belum Disetor/);
 const {planSyncedReconciliation}=require('../services/closingSyncService');
 (async()=>{
  const conn={execute:async sql=>{

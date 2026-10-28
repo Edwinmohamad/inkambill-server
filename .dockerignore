@@ -15,10 +15,18 @@ storage/server-duty-proofs/*
 # Historical snapshots, generated previews, and alternate source copies are not
 # needed by the production image and can make remote Docker builds time out.
 _to_delete/
-payload/
 files/
 Claude outputs/
 output/
-android/
 *.pdf
 *.tgz
+
+# Runtime data is mounted by Compose and must never enter image layers.
+storage/
+logs/
+tmp/
+temp/
+docker-data/
+**/node_modules/
+**/.gradle/
+**/build/
