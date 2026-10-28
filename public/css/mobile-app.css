@@ -152,7 +152,7 @@ body.inkamnet-go-app .invoice-registry-head>div:first-child h3{font-size:.95rem!
 body.inkamnet-go-app .invoice-registry-tools{gap:7px!important}
 body.inkamnet-go-app .invoice-registry-tools .legend-inline{display:none!important}
 body.inkamnet-go-app .invoice-selection-state{background:#fff!important;border-color:var(--go-line)!important}
-body.inkamnet-go-app .invoice-registry-card .action-safe-table{overflow:visible!important;border-radius:0!important}
+body.inkamnet-go-app .invoice-registry-card .action-safe-table{overflow-x:auto!important;overflow-y:auto!important;border-radius:0!important}
 body.inkamnet-go-app .invoice-table{display:block!important;width:100%!important;min-width:0!important;border:0!important;background:transparent!important}
 body.inkamnet-go-app .invoice-table thead{display:none!important}
 body.inkamnet-go-app .invoice-table tbody{display:grid!important;gap:10px!important;width:100%!important}

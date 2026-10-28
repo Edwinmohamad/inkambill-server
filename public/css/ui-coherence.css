@@ -114,6 +114,8 @@ button,input,select,textarea{font:inherit;letter-spacing:inherit}
 .btn-tech.primary:hover{background:#7154df;color:#fff}
 .btn-tech:disabled,.approval-button:disabled{opacity:.42;cursor:not-allowed}
 .icon-button{width:36px;height:36px;border-radius:10px}
+.action-pill{width:36px;min-width:36px;height:36px;flex-shrink:0}
+.action-pill>i{font-size:18px;line-height:1}
 .filter-card{padding:14px 16px;margin-bottom:16px}
 .filter-grid{gap:12px}
 .filter-group{min-width:0}

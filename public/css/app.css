@@ -612,7 +612,8 @@ html[data-theme="light"] input[type="date"],html[data-theme="light"] input[type=
 .row-action-menu>.action-menu{width:36px;height:36px;margin:0 auto;border-radius:12px;background:var(--panel-3);border:1px solid var(--line-2);box-shadow:none}
 .row-action-menu>.action-menu:hover,.row-action-menu>.action-menu[aria-expanded="true"]{color:var(--accent-text);border-color:rgba(var(--brand-rgb),.38);box-shadow:none}
 .action-safe-card{overflow:visible!important}.action-safe-table{overflow-x:auto;overflow-y:visible}
-@media(min-width:1200px){.action-safe-table{overflow:visible!important}}
+/* Action menus are portaled to body; keep tables scrollable on desktop too. */
+.action-safe-table{overflow-x:auto!important;overflow-y:auto!important}
 
 .payment-auto-reference{min-height:40px;padding:8px 11px;border:1px dashed rgba(var(--brand-rgb),.26);border-radius:12px;background:rgba(var(--brand-rgb),.06);display:flex;align-items:center;gap:9px}
 .payment-auto-reference>i{width:28px;height:28px;border-radius:12px;display:grid;place-items:center;background:rgba(var(--brand-rgb),.12);color:var(--accent-text)}
@@ -2633,3 +2634,11 @@ html[data-theme="light"] .bm-revenue-card{background:linear-gradient(150deg,rgba
 .payment-ocr-cell summary{font-size:11px;margin-top:6px}
 .payment-history-table .payment-actions{flex-wrap:wrap;gap:6px}
 @media(max-width:767.98px){.payment-history-table{min-width:1090px}.payment-history-head>div:first-child{flex-basis:100%}}
+
+.closing-cluster-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:14px}
+@media(max-width:767.98px){.closing-cluster-grid{grid-template-columns:1fr}}
+@media(max-width:991.98px){
+  .cash-action-bar{flex-wrap:wrap}
+  .cash-action-bar>.btn-tech{flex-shrink:0}
+  .cash-action-right{min-width:0}
+}

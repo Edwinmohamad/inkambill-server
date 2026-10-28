@@ -137,7 +137,7 @@
     <% }) %>
   </section>
 
-  <section class="closing-cluster-grid" aria-label="Ringkasan pendapatan per cluster" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:14px">
+  <section class="closing-cluster-grid" aria-label="Ringkasan pendapatan per cluster">
     <article class="metric-card"><div class="metric-top"><span class="metric-label">Pendapatan KRW</span><span class="metric-icon"><i class="bi bi-signpost-split-fill"></i></span></div><strong>Rp <%= money(blocks.krwclm.clusterRevenue?.KRW || 0).toLocaleString('id-ID') %></strong><small>Cluster CDS</small></article>
     <article class="metric-card"><div class="metric-top"><span class="metric-label">Pendapatan CLM</span><span class="metric-icon"><i class="bi bi-signpost-split-fill"></i></span></div><strong>Rp <%= money(blocks.krwclm.clusterRevenue?.CLM || 0).toLocaleString('id-ID') %></strong><small>Cluster CDS</small></article>
     <article class="metric-card"><div class="metric-top"><span class="metric-label">Pendapatan KBG</span><span class="metric-icon"><i class="bi bi-hdd-rack-fill"></i></span></div><strong>Rp <%= money(blocks.kbg.revenue).toLocaleString('id-ID') %></strong><small>Site Kubang</small></article>

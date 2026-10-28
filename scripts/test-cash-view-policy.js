@@ -10,3 +10,11 @@ for(const [extra,editable] of [[{},true],[{source_type:'payment',source_invoice_
  assert.equal(html.includes('data-row-check value="1"'),editable);
 }
 console.log('Cash view: manual/payment/warehouse/paired-transfer action policy PASS');
+
+for(const isAdmin of [true,false]){
+ const html=template({...base,isAdmin,transactions:[]});
+ const table=html.match(/<table class="app-table cash-ledger-table[\s\S]*?<\/table>/)[0];
+ const headers=(table.match(/<th[ >]/g)||[]).length;
+ const emptySpan=Number(table.match(/colspan="(\d+)"/)[1]);
+ assert.equal(emptySpan,headers,'empty state must span every Data Kas column for each role');
+}
