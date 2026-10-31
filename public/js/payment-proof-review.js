@@ -31,6 +31,23 @@
   const form=document.getElementById('paymentApproveForm');let approvalRequest=0;
   document.querySelectorAll('.payment-approve-btn').forEach(btn=>btn.addEventListener('click',async()=>{if(!form)return;const request=++approvalRequest;const target=form.querySelector('.approval-ocr-summary'),reason=form.elements.review_reason;reason.value='';reason.required=true;target.textContent='Memeriksa hasil OCR…';try{let item=await read(btn.dataset.paymentId);for(let attempt=0;item.overall==='processing'&&attempt<10&&request===approvalRequest;attempt++){await new Promise(resolve=>setTimeout(resolve,1500));item=await read(btn.dataset.paymentId);}if(request!==approvalRequest)return;paint(target,item);reason.required=item.overall!=='ok';reason.minLength=5;}catch(e){if(request===approvalRequest)target.textContent=e.message;}}));
   document.getElementById('paymentApproveModal')?.addEventListener('hidden.bs.modal',()=>{approvalRequest++;});
-  const bulk=document.getElementById('bulkPaymentApproveForm');if(bulk){bulk.querySelector('.approval-ocr-summary').textContent='Periksa bukti masing-masing pembayaran sebelum approval massal. Alasan wajib untuk hasil berbeda atau belum jelas.';}
+  const bulk=document.getElementById('bulkPaymentApproveForm');
+  const bulkModal=document.getElementById('bulkPaymentApproveModal');
+  let bulkRequest=0;
+  bulkModal?.addEventListener('show.bs.modal',async()=>{
+    const request=++bulkRequest, target=bulk.querySelector('.approval-ocr-summary'), reason=bulk.elements.review_reason;
+    const rows=[...bulk.querySelectorAll('[data-bulk-approval-row]')].filter(row=>!row.hidden&&row.dataset.proofRequired==='1'&&row.dataset.proofReady==='1');
+    reason.required=false;
+    if(!rows.length){target.textContent='Periksa bukti sebelum menyetujui pembayaran.';return;}
+    reason.required=true;
+    target.textContent='Memeriksa hasil validasi bukti terpilih… Jika ingin melanjutkan sebelum selesai, isi alasan pemeriksaan manual.';
+    const results=[];let next=0;
+    await Promise.all(Array.from({length:Math.min(4,rows.length)},async()=>{while(next<rows.length){const row=rows[next++];try{results.push(await read(row.dataset.paymentId));}catch(_){results.push(null);}}}));
+    if(request!==bulkRequest)return;
+    const needsReview=results.filter(item=>!item||item.state!=='done'||item.overall!=='ok'||!['amount','date','account'].every(key=>(item.checks||[]).some(check=>check.key===key&&check.level==='ok'))||!(item.checks||[]).some(check=>check.key==='date'&&check.label==='Tanggal cocok')).length;
+    reason.required=needsReview>0;
+    target.textContent=needsReview?`${needsReview} bukti berbeda, belum selesai, atau belum jelas. Periksa bukti dan isi alasan pemeriksaan manual minimal 5 karakter sebelum approval.`:'Hasil validasi bukti terpilih sesuai. Periksa kembali sebelum approval.';
+  });
+  bulkModal?.addEventListener('hidden.bs.modal',()=>{bulkRequest++;});
   const img=document.getElementById('proofViewerImage');if(img){img.style.cursor='zoom-in';img.addEventListener('click',()=>{const zoom=img.style.maxWidth==='none';img.style.maxWidth=zoom?'':'none';img.style.maxHeight=zoom?'':'none';img.style.cursor=zoom?'zoom-in':'zoom-out';});document.getElementById('proofViewerModal')?.addEventListener('hidden.bs.modal',()=>{proofRequest++;img.style.maxWidth='';img.style.maxHeight='';});}
 })();
