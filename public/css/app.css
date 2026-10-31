@@ -2642,3 +2642,14 @@ html[data-theme="light"] .bm-revenue-card{background:linear-gradient(150deg,rgba
   .cash-action-bar>.btn-tech{flex-shrink:0}
   .cash-action-right{min-width:0}
 }
+
+/* Keep selection state and wide content contained at narrow effective viewports. */
+.customer-bulk-bar[hidden],.bulk-payment-approve-row[hidden]{display:none!important}
+.payment-ocr-cell [data-payment-ocr]{display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-width:0}
+.payment-ocr-cell .cell-sub{margin:0;overflow-wrap:anywhere}
+.payment-ocr-cell details{width:100%;margin:0;padding:7px 9px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2)}
+.payment-ocr-cell details>div{overflow-wrap:anywhere}
+.payment-ocr-cell .ocr-refresh{border:0;background:transparent;padding:2px 0;font-size:11px}
+.table-responsive{max-width:100%;overscroll-behavior-x:contain}
+.modal-dialog{max-width:calc(100% - 1rem)}
+@media(max-width:767.98px){.customer-bulk-bar{max-height:calc(100dvh - 24px);overflow:auto}.customer-bulk-buttons{flex-wrap:wrap}.modal-dialog{margin:.5rem}}

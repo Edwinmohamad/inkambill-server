@@ -142,7 +142,7 @@
         </div>
         <div class="bulk-payment-approve-status" id="bulkPaymentApproveStatus" aria-live="polite"></div>
       </div>
-      <div class="px-3 pb-3"><div class="approval-ocr-summary" aria-live="polite"></div><label class="form-label">Alasan persetujuan jika hasil berbeda / perlu diperiksa</label><textarea class="form-control" name="review_reason" maxlength="500" rows="2" placeholder="Jelaskan hasil pemeriksaan manual"></textarea></div><div class="modal-footer"><div class="bulk-payment-approve-total"><small>SIAP DIAPPROVE</small><strong id="bulkPaymentApproveReady">0 dari 0</strong></div><button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button><button type="submit" class="btn-tech success" id="submitBulkPaymentApprove"><i class="bi bi-shield-check"></i>Approve Semua</button></div>
+      <div class="px-3 pb-3"><div class="approval-ocr-summary" aria-live="polite"></div><label class="form-label">Alasan persetujuan jika hasil berbeda / perlu diperiksa</label><textarea class="form-control" name="review_reason" maxlength="500" minlength="5" rows="2" placeholder="Jelaskan hasil pemeriksaan manual jika diperlukan"></textarea></div><div class="modal-footer"><div class="bulk-payment-approve-total"><small>SIAP DIAPPROVE</small><strong id="bulkPaymentApproveReady">0 dari 0</strong></div><button type="button" class="btn-tech" data-bs-dismiss="modal">Batal</button><button type="submit" class="btn-tech success" id="submitBulkPaymentApprove"><i class="bi bi-shield-check"></i>Approve Semua</button></div>
     </form>
   </div>
 </div>
@@ -217,7 +217,7 @@
     row.dataset.uploading='1';input.disabled=true;setProofState('uploading','Mengupload...','bi-arrow-repeat');syncBulkApproval();
     try{
       const data=new FormData();data.append('_csrf',document.querySelector('meta[name="csrf-token"]')?.content||'');data.append('proof_file',file);
-      const response=await fetch(`/payments/${row.dataset.paymentId}/proof`,{method:'POST',headers:{Accept:'application/json'},body:data});
+      const response=await fetch(`/payments/${row.dataset.paymentId}/proof`,{method:'POST',headers:{Accept:'application/json','X-CSRF-Token':document.querySelector('meta[name="csrf-token"]')?.content||''},body:data});
       const payload=await response.json().catch(()=>({}));if(!response.ok||!payload.ok)throw new Error(payload.message||'Upload bukti gagal.');
       row.dataset.proofReady='1';setProofState('ready','Ganti bukti','bi-check2-circle');
     }catch(error){row.dataset.proofReady=previousReady;setProofState(previousReady==='1'?'ready':'missing',previousReady==='1'?'Ganti bukti':'Coba lagi',previousReady==='1'?'bi-check2-circle':'bi-arrow-repeat');alert(error.message||'Upload bukti gagal.');}

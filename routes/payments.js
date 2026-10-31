@@ -298,29 +298,30 @@ router.post('/bulk-verify',requireMasterAdmin,async(req,res)=>{
       await conn.beginTransaction();
       const [rows]=await conn.execute(`SELECT * FROM payments WHERE id=? FOR UPDATE`,[id]);
       const p=rows[0];
-      if(!p||p.status!=='pending'){await conn.rollback();continue;}
-      if(['transfer','qris'].includes(p.method)&&!p.proof_path){await conn.rollback();skipped.push(p);continue;}
+      if(!p||p.status!=='pending'){await conn.rollback();skipped.push({id,reason:'sudah tidak menunggu approval'});continue;}
+      if(['transfer','qris'].includes(p.method)&&!p.proof_path){await conn.rollback();skipped.push({id,reason:'bukti belum tersedia'});continue;}
       const proofReview=await requireProofReview(conn,p,req.body.review_reason);
       const booking=await resolveBookDate(conn,{mode:req.body.book_date_mode,paidAt:p.paid_at,manualDate:req.body.manual_book_date});
       const [invoiceRows]=await conn.execute(`SELECT i.outstanding,i.status
         FROM invoices i JOIN customers c ON c.id=i.customer_id
         WHERE i.id=? AND c.customer_status='active' AND c.archived_at IS NULL FOR UPDATE`,[p.invoice_id]);
-      if(!invoiceRows.length||Number(p.amount)>Number(invoiceRows[0].outstanding)){await conn.rollback();skipped.push(p);continue;}
+      if(!invoiceRows.length||Number(p.amount)>Number(invoiceRows[0].outstanding)){await conn.rollback();skipped.push({id,reason:'tagihan tidak aktif atau nominal melebihi sisa tagihan'});continue;}
       await conn.execute(`UPDATE payments SET status='confirmed',settlement_status=?,booked_at=?,booked_date_mode=?,verified_by=?,verified_at=NOW() WHERE id=?`,[p.method==='cash'?'held_by_staff':'not_applicable',booking.date,booking.mode,req.session.user.id,p.id]);
       await refreshInvoiceStatus(conn,p.invoice_id);
       if(p.method!=='cash')await postCashTransaction(conn,{paymentId:p.id,invoiceId:p.invoice_id,amount:p.amount,reference:p.reference,bookDate:booking.date,actorUserId:req.session.user.id});
       await financialAudit({conn,userId:req.session.user.id,action:'bulk_approve',entityType:'payment',entityId:p.id,before:p,after:{status:'confirmed',booked_at:booking.date,booked_date_mode:booking.mode},reason:'Approval pembayaran massal. '+proofReview,ip:req.ip});
       await conn.commit();
       done.push(p);
-    }catch(e){await conn.rollback();skipped.push({id});}finally{conn.release();}
+    }catch(e){await conn.rollback();console.error('Bulk payment approval failed for',id,e);skipped.push({id,reason:e.message?.includes('alasan pemeriksaan')?'alasan pemeriksaan bukti minimal 5 karakter diperlukan':'gagal diproses; periksa log server'});}finally{conn.release();}
   }
   if(done.length){
     for(const p of done){await maybeAutoUnisolate(p.invoice_id);}
     await queuePaymentReceipts(done.map(p=>p.id),req.session.user.id);
     await audit({userId:req.session.user.id,action:'bulk_approve',entityType:'payment',entityId:null,description:`Approval massal ${done.length} pembayaran: ${done.map(p=>p.reference||`#${p.id}`).slice(0,20).join(', ')}${done.length>20?', ...':''}${skipped.length?` (${skipped.length} dilewati karena sudah tidak menunggu / nominal melebihi sisa tagihan terkini)`:''}`,ip:req.ip});
   }
-  if(!done.length){req.session.flash={type:'danger',message:`Tidak ada pembayaran yang disetujui. Pembayaran terpilih sudah tidak menunggu, nominalnya melebihi sisa tagihan saat ini, atau alasan pemeriksaan bukti belum diisi.`};return res.redirect(returnTo);}
-  req.session.flash={type:'success',message:`${done.length} pembayaran disetujui. Tagihan dan jurnal kas terkait sudah diperbarui.${skipped.length?` ${skipped.length} pembayaran dilewati (sudah tidak menunggu approval, nominal melebihi sisa tagihan, atau tanpa bukti).`:''}`};
+  const skippedMessage=skipped.length?` ${skipped.length} dilewati: ${skipped.slice(0,5).map(p=>`#${p.id} (${p.reason})`).join(', ')}${skipped.length>5?' dan lainnya':''}.`:'';
+  if(!done.length){req.session.flash={type:'danger',message:`Tidak ada pembayaran yang disetujui.${skippedMessage}`};return res.redirect(returnTo);}
+  req.session.flash={type:skipped.length?'warning':'success',message:`${done.length} pembayaran disetujui. Tagihan dan jurnal kas terkait sudah diperbarui.${skippedMessage}`};
   res.redirect(returnTo);
 });
 
