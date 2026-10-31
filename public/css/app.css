@@ -2653,3 +2653,8 @@ html[data-theme="light"] .bm-revenue-card{background:linear-gradient(150deg,rgba
 .table-responsive{max-width:100%;overscroll-behavior-x:contain}
 .modal-dialog{max-width:calc(100% - 1rem)}
 @media(max-width:767.98px){.customer-bulk-bar{max-height:calc(100dvh - 24px);overflow:auto}.customer-bulk-buttons{flex-wrap:wrap}.modal-dialog{margin:.5rem}}
+
+/* Approval actions must remain legible when the table is narrow or zoomed. */
+.payment-history-table .payment-col-approval{width:200px}
+.payment-history-table .payment-approval-buttons{max-width:100%;flex-wrap:wrap}
+.payment-history-table .payment-approval-buttons .approval-button{flex:0 0 auto;white-space:nowrap;overflow-wrap:normal;word-break:normal}
