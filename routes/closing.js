@@ -68,13 +68,9 @@ function selectedPeriod(req) {
 
 async function loadClosing(start, end, queryDb = db) {
   const [[period]] = await queryDb.execute('SELECT * FROM closing_periods WHERE period_start=? AND period_end=? LIMIT 1', [start, end]);
-  if (period?.status === 'LOCKED') {
-    if(!period.snapshot_json)throw new Error('Snapshot Closing terkunci tidak tersedia. Periksa riwayat sebelum membuka kembali periode.');
-    // Historical payouts must not silently change after the period is locked.
-    const snapshot = JSON.parse(period.snapshot_json);
-    if (!snapshot?.blocks || !snapshot?.closing) throw new Error('Snapshot Closing terkunci tidak valid.');
-    return { ...snapshot, closing: { ...snapshot.closing, status: 'LOCKED' }, period, frozenSnapshot: true, ledgerActual:false };
-  }
+  // Locking protects manual edits; it does not freeze billing-period receipts.
+  // Late approved/settled payments update their invoice month's calculation.
+  // Keep snapshot_json untouched as the historical record of the lock event.
   const closing = period || { status: 'DRAFT', mode: 'MANUAL', manual_revenue: 0, manual_expense: 0, manual_carry: 0, manual_carry_kbg: 0, manual_salary_agung: 500000, manual_salary_padilah: 1000000, notes: '' };
 
   const [adjustments] = period ? await queryDb.execute('SELECT * FROM closing_adjustments WHERE closing_id=? ORDER BY id', [period.id]) : [[]];
@@ -836,3 +832,4 @@ router.get('/export.xlsx', async (req, res, next) => {
 });
 
 module.exports = router;
+
