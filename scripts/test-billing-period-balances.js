@@ -6,6 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { DatabaseSync } = require('node:sqlite');
 const { loadActualClosing } = require('../services/closingLedgerService');
+const { resolveAccountingPeriod } = require('../services/financialControlService');
 const sql = new DatabaseSync(':memory:');
 for (const [name, offset, length] of [['YEAR', 0, 4], ['MONTH', 5, 2], ['DAY', 8, 2]]) {
   sql.function(name, value => value == null ? null : Number(String(value).slice(offset, offset + length)));
@@ -18,8 +19,8 @@ sql.exec(`
   CREATE TABLE cash_categories(id INTEGER PRIMARY KEY,name TEXT,type TEXT,code TEXT);
   CREATE TABLE cash_transactions(id INTEGER PRIMARY KEY,transaction_date TEXT,name TEXT,amount REAL,notes TEXT,
     category_id INTEGER,site_id INTEGER,source_type TEXT,source_id INTEGER,approval_status TEXT,internal_transfer_key TEXT);
-  CREATE TABLE closing_periods(id INTEGER PRIMARY KEY,period_start TEXT,period_end TEXT,status TEXT,snapshot_json TEXT,
-    manual_carry REAL,manual_carry_kbg REAL,manual_salary_agung REAL,manual_salary_padilah REAL);
+  CREATE TABLE closing_periods(id INTEGER PRIMARY KEY,period_start TEXT,period_end TEXT,status TEXT DEFAULT 'DRAFT',snapshot_json TEXT,
+    manual_carry REAL,manual_carry_kbg REAL,manual_salary_agung REAL,manual_salary_padilah REAL,closing_date TEXT,created_by INTEGER,UNIQUE(period_start,period_end));
   CREATE TABLE closing_adjustments(id INTEGER PRIMARY KEY,closing_id INTEGER);
   INSERT INTO sites VALUES (1,'KBG'),(2,'CDS');
   INSERT INTO customers VALUES (1,1),(2,2);
@@ -44,7 +45,10 @@ sql.exec(`
     (9,'2026-10-14','Internal: excluded',500,NULL,1,1,'manual',NULL,'APPROVED','PAIR'),
     (10,'2026-10-14','Principal: excluded',600,NULL,3,1,'manual',NULL,'APPROVED',NULL),
     (11,'2026-10-14','Other site',300,NULL,1,2,'payment',5,'APPROVED',NULL);
-  INSERT INTO closing_periods VALUES (1,'2026-10-01','2026-10-31','LOCKED','{"historical":123}',0,0,0,0);
+  INSERT INTO closing_periods(id,period_start,period_end,status,snapshot_json,manual_carry,manual_carry_kbg,manual_salary_agung,manual_salary_padilah) VALUES (1,'2026-10-01','2026-10-31','DRAFT',NULL,0,0,0,0);
+  ALTER TABLE cash_transactions ADD COLUMN accounting_period TEXT;
+  UPDATE cash_transactions SET accounting_period='2026-10-01' WHERE id=1;
+  UPDATE cash_transactions SET accounting_period='2026-11-01' WHERE id=2;
 `);
 const db = { async execute(query, params = []) {
   assert.match(query.trim(), /^SELECT\b/i, 'reading balances must not write to the database');
@@ -93,23 +97,51 @@ const closingFor = vm.runInNewContext(`${loadSource}\nloadClosing`, { db, loadAc
     assert.equal((await financeFor(10, 2027)).summary.customer_income, 0);
     assert.equal((await financeFor(10, 2027)).summary.other_income, 0);
 
-    const locked = await closingFor('2026-10-01', '2026-10-31');
-    assert.equal(locked.closing.status, 'LOCKED');
-    assert.equal(locked.ledgerSummary.income, october.summary.income);
-    assert.equal(locked.ledgerSummary.net, october.summary.balance);
-    assert.equal((await closingFor('2026-11-01', '2026-11-30')).ledgerSummary.net, november.summary.balance);
-    // A later receipt updates the locked invoice month, without changing the
-    // historical lock snapshot or any journal dates/statuses.
+    const draft = await closingFor('2026-10-01', '2026-10-31');
+    assert.equal(draft.closing.status, 'DRAFT');
+    assert.equal(draft.ledgerSummary.income, october.summary.income);
+    assert.equal(draft.ledgerSummary.net, october.summary.balance);
+    const allocationDb = { async execute(query, params = []) {
+      const portable = query.replace(/INSERT IGNORE/g, 'INSERT OR IGNORE').replace(/CURDATE\(\)/g, "date('now')").replace(/ FOR UPDATE/g, '');
+      const statement = sql.prepare(portable);
+      if (/^SELECT/i.test(portable.trim())) return [statement.all(...params)];
+      return [statement.run(...params)];
+    } };
+    const allocate = (periodYear, periodMonth, bookDate) => resolveAccountingPeriod(allocationDb, { periodYear, periodMonth, bookDate });
+    await assert.rejects(() => allocate(2026,10,'2026-02-30'), /Tanggal pembayaran tidak valid/);
+    assert.equal(await allocate(2026,10,'2026-11-05'),'2026-10-01', 'late payment stays in an open invoice month');
+    assert.equal(await allocate(2026,11,'2026-10-20'),'2026-11-01', 'advance payment stays in its future invoice month');
+    const snapshot = JSON.stringify(draft);
+    sql.prepare("UPDATE closing_periods SET status='LOCKED',snapshot_json=? WHERE id=1").run(snapshot);
+    assert.equal(await allocate(2026,10,'2026-11-07'),'2026-11-01', 'payment after October closes moves to November');
+    assert.equal(await allocate(2026,11,'2026-10-20'),'2026-11-01', 'closed receipt month does not displace an open future invoice month');
+    sql.exec("UPDATE closing_periods SET status='LOCKED' WHERE period_start='2026-11-01'");
+    assert.equal(await allocate(2026,10,'2026-11-07'),'2026-12-01', 'skip a following month that is also closed');
+    sql.exec("UPDATE closing_periods SET status='DRAFT' WHERE period_start='2026-11-01'");
+    await allocate(2026,12,'2027-01-03');
+    sql.exec("UPDATE closing_periods SET status='LOCKED' WHERE period_start='2026-12-01'");
+    assert.equal(await allocate(2026,12,'2027-01-03'),'2027-01-01', 'closed December rolls over to January');
     sql.exec(`INSERT INTO payments VALUES (7,1,'transfer','confirmed','not_applicable',25);
-      INSERT INTO cash_transactions VALUES (12,'2026-12-05','Later October',25,NULL,1,1,'payment',7,'APPROVED',NULL);`);
-    assert.equal((await closingFor('2026-10-01', '2026-10-31')).ledgerSummary.income, 505);
-    assert.equal((await closingFor('2026-11-01', '2026-11-30')).ledgerSummary.income, 200);
-    assert.equal((await closingFor('2026-12-01', '2026-12-31')).ledgerSummary.income, 0);
-    assert.equal((await financeFor(10, 2026)).summary.income, 505);
-    assert.equal((await financeFor(10, 2026)).summary.customer_income, 475);
-    assert.equal((await financeFor(10, 2026)).summary.other_income, 30);
-    assert.equal(sql.prepare('SELECT snapshot_json FROM closing_periods').get().snapshot_json, '{"historical":123}');
+      INSERT INTO cash_transactions VALUES (12,'2026-11-07','After October closed',25,NULL,1,1,'payment',7,'APPROVED',NULL,'2026-11-01');`);
+    const closed = await closingFor('2026-10-01', '2026-10-31');
+    assert.equal(closed.closing.status, 'LOCKED');
+    assert.equal(closed.frozenSnapshot, true);
+    assert.equal(closed.ledgerSummary.income, 480);
+    assert.equal((await closingFor('2026-11-01', '2026-11-30')).ledgerSummary.income, 225);
+    assert.equal((await financeFor(10, 2026)).summary.income, 480);
+    assert.equal((await financeFor(11, 2026)).summary.income, 225);
+    assert.equal((await financeFor(11, 2026)).summary.customer_income, 225);
+    const reportsSource = read('routes/reports.js');
+    const cashReportSource = reportsSource.slice(reportsSource.indexOf('async function cashReport('), reportsSource.indexOf("router.get('/',"));
+    const cashReport = vm.runInNewContext(cashReportSource + '\ncashReport', {db});
+    const filters = (from,to) => ({from,to,site:'',category:'',flow_type:'',method:''});
+    const reportOct = await cashReport(filters('2026-10-01','2026-10-31'));
+    const reportNov = await cashReport(filters('2026-11-01','2026-11-30'));
+    assert.equal(reportOct.filter(r=>r.type==='income').reduce((n,r)=>n+r.amount,0),480);
+    assert.equal(reportNov.filter(r=>r.type==='income').reduce((n,r)=>n+r.amount,0),225);
+    assert.equal((await financeFor(11,2026)).summary.balance,165);
+    assert.equal(sql.prepare('SELECT snapshot_json FROM closing_periods WHERE id=1').get().snapshot_json, snapshot);
     assert.equal(sql.prepare('SELECT transaction_date FROM cash_transactions WHERE id=2').get().transaction_date, '2026-10-20');
-    console.log('PASS real SQL fixtures: early/late payments, isolated monthly net, expenses, charts, site/year filters, approval/settlement exclusions and live locked Closing.');
+    console.log('PASS real SQL fixtures: early/late payments, isolated monthly net, expenses, charts, site/year filters, approval/settlement exclusions frozen closed Closing, open-month cutoff, skipped closed months and year rollover.');
   } finally { sql.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
