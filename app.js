@@ -10,6 +10,7 @@ const expressLayouts = require('express-ejs-layouts');
 const bcrypt = require('bcryptjs');
 const cron = require('node-cron');
 const db = require('./config/db');
+const { ensureAccountingPeriodSchema } = require('./services/accountingPeriodSchema');
 const csrf = require('./middleware/csrf');
 const commonLocals = require('./middleware/common');
 const paymentProofUpload = require('./middleware/paymentProofUpload');
@@ -355,6 +356,7 @@ async function bootstrap() {
   await ensureV61Schema();
   await ensureV62Schema();
   await ensureV63Schema();
+  await ensureAccountingPeriodSchema();
   await ensureV64Schema();
   await ensureV65Schema();
   await ensureV66Schema();
