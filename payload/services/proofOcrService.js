@@ -624,7 +624,7 @@ async function runProofOcrSweep() {
   await db.query(`UPDATE payment_proof_ocr SET status='queued',overall_status='processing',can_approve=1 WHERE status='processing' AND (started_at IS NULL OR started_at<DATE_SUB(NOW(),INTERVAL 10 MINUTE))`);
   const [rows] = await db.query(`SELECT p.id FROM payments p LEFT JOIN payment_proof_ocr o ON o.payment_id=p.id
     WHERE p.status='pending' AND p.method IN ('transfer','qris') AND p.proof_path IS NOT NULL AND p.proof_path<>''
-      AND (o.id IS NULL OR o.status='queued') ORDER BY p.id LIMIT 20`);
+      AND (o.payment_id IS NULL OR o.status='queued') ORDER BY p.id LIMIT 20`);
   for (const row of rows) await queueProofOcr(row.id);
   return { queued: rows.length };
 }
