@@ -1,4 +1,4 @@
-const {loadActualClosing}=require('../services/closingLedgerService');
+const {loadActualClosing,countPendingClosingCash}=require('../services/closingLedgerService');
 const express = require('express');
 const crypto = require('crypto');
 const ExcelJS = require('exceljs');
@@ -133,31 +133,26 @@ router.use((req, res, next) => {
 
 // v1.29 — informational only: never joined into buildClosingCalculation, so it
 // can never change Pendapatan/Bersih. Purely a reminder of who still owes money
-// as of the end of this closing period, scoped to the same CDS/KBG sites.
-async function loadUnpaidCustomers(end) {
+// for invoices in the selected billing month, scoped to the same CDS/KBG sites.
+async function loadUnpaidCustomers(start, end) {
   try {
     const [rows] = await db.execute(`SELECT c.id,c.customer_code,c.name,s.code site_code,cl.name cluster_name,
-        SUM(CASE WHEN GREATEST(i.total-COALESCE(p.confirmed_paid,0),0)>0 THEN 1 ELSE 0 END) invoice_count,
-        COALESCE(SUM(GREATEST(i.total-COALESCE(p.confirmed_paid,0),0)),0) outstanding
+        SUM(CASE WHEN GREATEST(COALESCE(i.outstanding,0),0)>0 THEN 1 ELSE 0 END) invoice_count,
+        COALESCE(SUM(GREATEST(COALESCE(i.outstanding,0),0)),0) outstanding
       FROM invoices i
       JOIN customers c ON c.id=i.customer_id
+      JOIN packages pkg ON pkg.id=c.package_id
       JOIN sites s ON s.id=c.site_id
       LEFT JOIN clusters cl ON cl.id=c.cluster_id
-      LEFT JOIN (
-        SELECT invoice_id,SUM(amount) confirmed_paid
-        FROM payments
-        WHERE status='confirmed' AND DATE(COALESCE(booked_at,paid_at))<=?
-        GROUP BY invoice_id
-      ) p ON p.invoice_id=i.id
-      WHERE i.status NOT IN ('cancelled','refunded') AND i.due_date<=? AND s.code IN ('CDS','KRW','CLM','KBG','KUBANG')
+      WHERE i.period_year=? AND i.period_month=? AND s.code IN ('CDS','KRW','CLM','KBG','KUBANG')
       GROUP BY c.id,c.customer_code,c.name,s.code,cl.name
       HAVING outstanding>0
-      ORDER BY outstanding DESC,c.name`, [end,end]);
+      ORDER BY outstanding DESC,c.name`, [Number(start.slice(0,4)),Number(start.slice(5,7))]);
     const outstanding = rows.reduce((a, r) => a + Number(r.outstanding || 0), 0);
     return { unpaidCustomers: rows, unpaidSummary: { count: rows.length, outstanding } };
   } catch (err) {
     console.error('Gagal memuat pelanggan belum lunas untuk Closing:', err.message);
-    return { unpaidCustomers: [], unpaidSummary: { count: 0, outstanding: 0 } };
+    throw err;
   }
 }
 
@@ -217,13 +212,10 @@ async function loadCustomerActivitySummary(start, end) {
           COALESCE(SUM(x.total_amt),0) total_amt,COALESCE(SUM(x.paid_amt),0) paid_amt,COALESCE(SUM(x.outstanding_amt),0) outstanding_amt
         FROM (
           SELECT i.id,s.code site_code,cl.name cluster_name,i.total total_amt,
-            LEAST(i.total,COALESCE(SUM(CASE WHEN p.status='confirmed' AND DATE(COALESCE(p.booked_at,p.paid_at))<=? THEN p.amount ELSE 0 END),0)) paid_amt,
-            GREATEST(i.total-COALESCE(SUM(CASE WHEN p.status='confirmed' AND DATE(COALESCE(p.booked_at,p.paid_at))<=? THEN p.amount ELSE 0 END),0),0) outstanding_amt
-          FROM invoices i JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id
-          LEFT JOIN payments p ON p.invoice_id=i.id
-          WHERE i.status NOT IN ('cancelled','refunded') AND (${monthCond})
-          GROUP BY i.id,s.code,cl.name,i.total
-        ) x GROUP BY x.site_code,x.cluster_name`, [end,end,...monthParams]) : [[]];
+            COALESCE(i.paid_amount,0) paid_amt, COALESCE(i.outstanding,0) outstanding_amt
+          FROM invoices i JOIN customers c ON c.id=i.customer_id JOIN packages pkg ON pkg.id=c.package_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id
+          WHERE (${monthCond})
+        ) x GROUP BY x.site_code,x.cluster_name`, [...monthParams]) : [[]];
     const billing = { total: 0, paid: 0, unpaid: 0, krwclm: { paid: 0, unpaid: 0 }, kbg: { paid: 0, unpaid: 0 }, other: { paid: 0, unpaid: 0 }, billedTotal: 0, collectedTotal: 0, outstandingTotal: 0 };
     billingRows.forEach((row) => {
       const blockKey = siteBlock(row.site_code, row.cluster_name);
@@ -254,15 +246,15 @@ router.get('/', async (req, res, next) => {
     const autoSyncResult = await autoSyncBeforeReport({ start, end, userId: req.session.user.id, ip: req.ip });
     const autoSyncInfo = autoSyncMessage(autoSyncResult);
     const data = await loadClosing(start, end);
-    const unpaid = await loadUnpaidCustomers(end);
+    const unpaid = await loadUnpaidCustomers(start, end);
     const customerActivity = await loadCustomerActivitySummary(start, end);
     // v1.30 -- hutang internal teknisi: informasi saja, tidak ikut perhitungan bagi hasil.
     const internalDebt = await loadInternalDebtSummary({ start, end });
     let pending=null;
     const estimate=null;
     if(data.ledgerActual){
-      const [[row]]=await db.execute("SELECT COUNT(*) n FROM cash_transactions WHERE transaction_date BETWEEN ? AND ? AND approval_status='PENDING_APPROVAL'",[start,end]);
-      pending={pendingApproval:Number(row.n),unsyncedApproved:0,staleSynced:0,invalidApproved:data.ledgerSummary.invalid,needsSync:data.ledgerSummary.invalid};
+      const pendingCount=await countPendingClosingCash({db,start,end});
+      pending={pendingApproval:pendingCount,unsyncedApproved:0,staleSynced:0,invalidApproved:data.ledgerSummary.invalid,needsSync:data.ledgerSummary.invalid};
     }
     // v2.2 — navigasi cepat bulan sebelumnya/berikutnya selalu tersedia (tidak
     // cuma waktu periode terkunci) supaya Master Admin tidak perlu ketik tanggal
@@ -333,8 +325,8 @@ router.post('/period-lock', async (req, res, next) => {
     conn=await db.getConnection();await conn.beginTransaction();
     const period=await ensureDraftPeriod(conn,start,end,req.session.user.id);
     const data=await loadClosing(start,end,conn);
-    const [[pendingCash]]=await conn.execute("SELECT COUNT(*) n FROM cash_transactions WHERE transaction_date BETWEEN ? AND ? AND approval_status='PENDING_APPROVAL'",[start,end]);
-    if(data.ledgerSummary?.invalid || Number(pendingCash.n)>0) throw new Error('Closing belum dapat dikunci: perbaiki lokasi/nominal Data Kas dan selesaikan approval pada bulan ini.');
+    const pendingCash=await countPendingClosingCash({db:conn,start,end});
+    if(data.ledgerSummary?.invalid || pendingCash>0) throw new Error('Closing belum dapat dikunci: perbaiki lokasi/nominal Data Kas dan selesaikan approval pada bulan ini.');
     // Guard audit: when detailed rows exist, summary must reconcile exactly to
     // the rows that will be frozen in the Closing snapshot.
     if (data.lineItems.length) {
@@ -661,7 +653,7 @@ router.get('/pdf', async (req, res, next) => {
     // lokasi/kategori/nominal lama.
     await autoSyncBeforeReport({ start, end, userId: req.session.user.id, ip: req.ip });
     const data = await loadClosing(start, end);
-    const unpaid = await loadUnpaidCustomers(end);
+    const unpaid = await loadUnpaidCustomers(start, end);
     const customerActivity = await loadCustomerActivitySummary(start, end);
     const effectiveMode = data.mode || 'manual';
     let grossTotal = 0;
@@ -734,7 +726,7 @@ router.get('/pdf', async (req, res, next) => {
     const hiddenNote = hideEdwin && recipient.key !== 'edwin' ? ' · bagian Edwin disembunyikan sesuai opsi' : '';
     createClosingReportPdf(res, {
       title: `Closing ${recipient.name}`,
-      subtitle: `Periode transaksi ${start} s/d ${end} · ${effectiveMode === 'auto' ? 'Data Kas bulanan; dasar pembagian termasuk saldo bawaan' : 'input manual'} · rincian penerima${hiddenNote}`,
+      subtitle: `Periode ${start} s/d ${end} · ${data.frozenSnapshot ? 'snapshot terkunci' : 'kas sesuai periode tagihan'} · dasar pembagian termasuk saldo bawaan${hiddenNote}`,
       filename: `closing-${recipient.reportKey}-${start}-${end}-${effectiveMode}.pdf`,
       watermark: recipient.watermark,
       recipientName: recipient.name,
