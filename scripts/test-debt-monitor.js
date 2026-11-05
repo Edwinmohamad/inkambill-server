@@ -34,7 +34,7 @@ const checks = [
   [route.includes('SELECT id,name,user_id FROM employees') && route.includes('employee_id,user_id'), 'hutang internal tertaut ke teknisi & user'],
   [view.includes('name="scope" value="INTERNAL"') && view.includes('name="employee_id"') && view.includes('hp-segmented'), 'UI internal/eksternal'],
   [internal.includes("d.scope='INTERNAL'") && closingRoute.includes('loadInternalDebtSummary') && closingView.includes('Hutang internal teknisi'), 'rincian hutang teknisi di Closing'],
-  [pdf.includes('function drawInternalDebtSection') && closingRoute.includes('internalDebtRows'), 'rincian hutang teknisi di PDF Closing']
+  [!pdf.slice(pdf.indexOf('function createClosingReportPdf('),pdf.indexOf('// v1.28 — kotak tanda tangan')).includes('drawInternalDebtSection(') && !closingRoute.includes('internalDebtRows'), 'tabel hutang tidak ditampilkan di PDF Closing']
 ];
 
 for (const [valid, label] of checks) if (!valid) throw new Error(`Validasi Hutang gagal: ${label}`);
