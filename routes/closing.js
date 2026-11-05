@@ -1,4 +1,5 @@
 const {loadActualClosing,countPendingClosingCash}=require('../services/closingLedgerService');
+const {cleanClosingDescription}=require('../services/closingPdfText');
 const express = require('express');
 const crypto = require('crypto');
 const ExcelJS = require('exceljs');
@@ -7,7 +8,7 @@ const { createClosingReportPdf, rupiah, date } = require('../services/reportPdf'
 const { money, personKey, siteBlock, locationText, normalizeSiteCluster, isPsbRevenue } = require('../services/closingCalculator');
 const { requireMasterAdmin } = require('../middleware/auth');
 const { financialAudit } = require('../services/financialControlService');
-const { loadInternalDebtSummary, buildInternalDebtPdfRows } = require('../services/internalDebtService');
+const { loadInternalDebtSummary } = require('../services/internalDebtService');
 
 const router = express.Router();
 router.use(requireMasterAdmin);
@@ -529,17 +530,15 @@ function buildTransactionRows(data, allowedBlocks) {
   // Detail is never merged: the PDF may group a category, but every source row
   // remains visible so totals can be audited against Data Kas / input manual.
   const groups = new Map();
-  const add = (row, type, fallbackSource) => {
+  const add = (row, type) => {
     if (!allowedBlocks.has(siteBlock(row.site_code, row.cluster_name, row.site_name))) return;
     const category = String(row.category || 'Lain-lain').trim() || 'Lain-lain';
-    const source = row.source_type === 'cash_sync' || row.entry_source === 'cash_sync'
-      ? 'Data Kas (sinkron otomatis)' : fallbackSource;
     const key = `${type}\u0001${category}`;
     if (!groups.has(key)) groups.set(key, { type, category, rows: [] });
     groups.get(key).rows.push({
       tanggal: date(row.entry_date || row.paid_date || row.transaction_date), lokasi: locationText(row),
       jenis: type === 'INCOME' ? 'Pendapatan' : 'Pengeluaran',
-      keterangan: [row.customer_name || row.name || row.description || category, row.notes, source].filter(Boolean).join(' · '),
+      keterangan: cleanClosingDescription([row.customer_name || row.name || row.description || category, row.notes].filter(Boolean).join(' · ')),
       nominal: money(row.amount)
     });
   };
@@ -547,7 +546,7 @@ function buildTransactionRows(data, allowedBlocks) {
     ...(data.payments || []).map(row => ({ ...row, entry_type: 'INCOME' })),
     ...(data.expenses || []).map(row => ({ ...row, entry_type: 'EXPENSE' }))
   ];
-  detailed.forEach(row => add(row, String(row.entry_type || '').toUpperCase() === 'INCOME' ? 'INCOME' : 'EXPENSE', data.mode === 'auto' ? 'Data Closing' : 'Input manual'));
+  detailed.forEach(row => add(row, String(row.entry_type || '').toUpperCase() === 'INCOME' ? 'INCOME' : 'EXPENSE'));
   const output = [];
   [...groups.values()].sort((a,b) => a.type === b.type ? a.category.localeCompare(b.category, 'id') : a.type === 'INCOME' ? -1 : 1).forEach(group => {
     output.push({ kind: 'group', jenis: group.type === 'INCOME' ? 'Pendapatan' : 'Pengeluaran', category: group.category, count: group.rows.length });
@@ -719,16 +718,12 @@ router.get('/pdf', async (req, res, next) => {
     const customerActivityRows = buildCustomerActivityRows(customerActivity, allowedBlocks);
     const unpaidCustomerPdf = buildUnpaidCustomerPdfData(unpaid.unpaidCustomers, allowedBlocks);
     const newCustomerRows = buildNewCustomerPdfRows(customerActivity, allowedBlocks);
-    // v1.30 -- rincian hutang internal teknisi. PDF Mang Ali (KBG saja) hanya melihat catatan KBG.
-    const internalDebt = await loadInternalDebtSummary({ start, end, sites: recipient.key === 'mang ali' ? ['KBG'] : null });
-    const internalDebtRows = buildInternalDebtPdfRows(internalDebt);
     const adjustmentTotal = netTotal - grossTotal;
-    const hiddenNote = hideEdwin && recipient.key !== 'edwin' ? ' · bagian Edwin disembunyikan sesuai opsi' : '';
     createClosingReportPdf(res, {
       title: `Closing ${recipient.name}`,
-      subtitle: `Periode ${start} s/d ${end} · ${data.frozenSnapshot ? 'snapshot terkunci' : 'kas sesuai periode tagihan'} · dasar pembagian termasuk saldo bawaan${hiddenNote}`,
+      subtitle: `Periode ${date(start)} s/d ${date(end)}`,
       filename: `closing-${recipient.reportKey}-${start}-${end}-${effectiveMode}.pdf`,
-      watermark: recipient.watermark,
+      watermark: '',
       recipientName: recipient.name,
       summaryItems: [{ label: 'Total Bruto', value: rupiah(grossTotal), color: '#3478F6' }, { label: 'Penyesuaian Bersih', value: `${adjustmentTotal < 0 ? '- ' : '+ '}${rupiah(Math.abs(adjustmentTotal))}`, color: adjustmentTotal < 0 ? '#FF433E' : '#18A979' }, { label: 'TOTAL DITERIMA', value: rupiah(netTotal), color: netTotal >= 0 ? '#18A979' : '#FF433E' }],
       incomeCategoryRows,
@@ -738,9 +733,7 @@ router.get('/pdf', async (req, res, next) => {
       customerActivityRows,
       unpaidCustomerRows: unpaidCustomerPdf.rows,
       unpaidCustomerSummary: unpaidCustomerPdf.summary,
-      newCustomerRows,
-      internalDebtRows,
-      internalDebtSummary: internalDebt.summary
+      newCustomerRows
     });
   } catch (err) { next(err); }
 });
