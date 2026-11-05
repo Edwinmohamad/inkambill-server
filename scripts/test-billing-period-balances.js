@@ -34,8 +34,8 @@ sql.exec(`
   INSERT INTO cash_categories VALUES (1,'Billing','income','BILL'),(2,'Biaya','expense','EXP'),(3,'Pokok','income','FINPRIN');
   INSERT INTO cash_transactions VALUES
     (1,'2026-11-05','Late October',150,NULL,1,1,'payment',1,'APPROVED',NULL),
-    (2,'2026-10-20','Early November',200,NULL,1,1,'payment',2,'APPROVED',NULL),
-    (3,'2026-10-12','Manual income',30,NULL,1,1,'manual',NULL,'APPROVED',NULL),
+    (2,'2026-10-20','Early November',200,NULL,1,1,'install_income',2,'APPROVED',NULL),
+    (3,'2026-10-12','Manual income',30,NULL,1,1,NULL,NULL,'APPROVED',NULL),
     (4,'2026-10-14','October expense',40,NULL,2,1,'manual',NULL,'APPROVED',NULL),
     (5,'2026-11-14','November expense',60,NULL,2,1,'manual',NULL,'APPROVED',NULL),
     (6,'2026-10-14','Held cash: excluded',70,NULL,1,1,'payment',3,'APPROVED',NULL),
@@ -65,9 +65,14 @@ const closingFor = vm.runInNewContext(`${loadSource}\nloadClosing`, { db, loadAc
     const october = await financeFor(10, 2026);
     const november = await financeFor(11, 2026);
     assert.equal(october.summary.income, 480);
+    assert.equal(october.summary.customer_income, 450);
+    assert.equal(october.summary.other_income, 30);
+    assert.equal(october.summary.customer_income + october.summary.other_income, october.summary.income);
     assert.equal(october.summary.expense, 40);
     assert.equal(october.summary.balance, 440);
     assert.equal(november.summary.income, 200);
+    assert.equal(november.summary.customer_income, 200);
+    assert.equal(november.summary.other_income, 0);
     assert.equal(november.summary.expense, 60);
     assert.equal(november.summary.balance, 140);
     assert.equal(october.collection.cash_held, 70);
@@ -79,9 +84,14 @@ const closingFor = vm.runInNewContext(`${loadSource}\nloadClosing`, { db, loadAc
     assert.equal(october.cashCharts.daily.income[10], 200);
     assert.equal(october.cashCharts.categories[0].amount, 40);
     assert.equal(november.cashCharts.categories[0].amount, 60);
-    assert.equal((await financeFor(10, 2026, 'KBG')).summary.balance, 140);
+    const kbg = await financeFor(10, 2026, 'KBG');
+    assert.equal(kbg.summary.balance, 140);
+    assert.equal(kbg.summary.customer_income, 150);
+    assert.equal(kbg.summary.other_income, 30);
     assert.equal((await financeFor(10, 2026, 'CDS')).summary.balance, 300);
     assert.equal((await financeFor(10, 2027)).summary.balance, 0);
+    assert.equal((await financeFor(10, 2027)).summary.customer_income, 0);
+    assert.equal((await financeFor(10, 2027)).summary.other_income, 0);
 
     const locked = await closingFor('2026-10-01', '2026-10-31');
     assert.equal(locked.closing.status, 'LOCKED');
@@ -96,6 +106,8 @@ const closingFor = vm.runInNewContext(`${loadSource}\nloadClosing`, { db, loadAc
     assert.equal((await closingFor('2026-11-01', '2026-11-30')).ledgerSummary.income, 200);
     assert.equal((await closingFor('2026-12-01', '2026-12-31')).ledgerSummary.income, 0);
     assert.equal((await financeFor(10, 2026)).summary.income, 505);
+    assert.equal((await financeFor(10, 2026)).summary.customer_income, 475);
+    assert.equal((await financeFor(10, 2026)).summary.other_income, 30);
     assert.equal(sql.prepare('SELECT snapshot_json FROM closing_periods').get().snapshot_json, '{"historical":123}');
     assert.equal(sql.prepare('SELECT transaction_date FROM cash_transactions WHERE id=2').get().transaction_date, '2026-10-20');
     console.log('PASS real SQL fixtures: early/late payments, isolated monthly net, expenses, charts, site/year filters, approval/settlement exclusions and live locked Closing.');
