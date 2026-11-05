@@ -23,9 +23,13 @@
   </form>
 
   <div class="cash-summary-grid">
-    <article class="cash-summary-card income"><div><span>Pendapatan</span><strong><%= formatRupiah(summary.income) %></strong></div><i class="bi bi-graph-up-arrow"></i></article>
-    <article class="cash-summary-card balance"><div><span>Saldo Kas Periode</span><strong><%= formatRupiah(summary.balance) %></strong><small>Pendapatan − pengeluaran periode ini; bukan saldo rekening/bank aktual</small></div><i class="bi bi-wallet2"></i></article>
-    <article class="cash-summary-card expense"><div><span>Pengeluaran</span><strong><%= formatRupiah(summary.expense) %></strong></div><i class="bi bi-graph-down-arrow"></i></article>
+    <article class="cash-summary-card income"><div><span>Pendapatan Pembayaran Pelanggan</span><strong><%= formatRupiah(summary.customer_income||0) %></strong><small>Pembayaran tagihan sesuai periode faktur</small></div><i class="bi bi-people"></i></article>
+    <article class="cash-summary-card income"><div><span>Pendapatan Lain-lain</span><strong><%= formatRupiah(summary.other_income||0) %></strong><small>Pendapatan selain pembayaran tagihan</small></div><i class="bi bi-plus-circle"></i></article>
+    <article class="cash-summary-card income"><div><span>Total Pendapatan</span><strong><%= formatRupiah(summary.income) %></strong><small>Pembayaran pelanggan + pendapatan lain-lain</small></div><i class="bi bi-graph-up-arrow"></i></article>
+    <article class="cash-summary-card expense"><div><span>Total Pengeluaran</span><strong><%= formatRupiah(summary.expense) %></strong><small>Pengeluaran periode terpilih yang disetujui</small></div><i class="bi bi-graph-down-arrow"></i></article>
+    <article class="cash-summary-card balance"><div><span>Saldo Kas Periode</span><strong><%= formatRupiah(summary.balance) %></strong><small>Total pendapatan − total pengeluaran; bukan saldo rekening/bank aktual</small></div><i class="bi bi-wallet2"></i></article>
+  </div>
+  <div class="cash-chart-grid">
     <article class="cash-summary-card pending"><div><span>Menunggu Approval</span><strong><%= Number(approvalSummary.pending_count||0) %></strong><small><%= formatRupiah(approvalSummary.pending_total||0) %></small></div><i class="bi bi-hourglass-split"></i></article>
     <article class="cash-summary-card held"><div><span>Cash Diterima · Belum Disetor</span><strong><%= formatRupiah(collection.cash_held||0) %></strong><small><%= Number(collection.held_count||0) %> pembayaran · periode terpilih<%= filters.site?' · Site '+filters.site:'' %></small><small>Masih di collector · belum masuk kas perusahaan</small><a href="/payments/reconciliation<%= filters.site?'?site='+encodeURIComponent(filters.site):'' %>">Buka Rekonsiliasi <i class="bi bi-arrow-right"></i></a></div><i class="bi bi-person-vcard" aria-hidden="true"></i></article>
   </div>
@@ -283,4 +287,3 @@
   if(daily)new Chart(daily,{type:'line',data:{labels:charts.daily.labels,datasets:[{label:'Pemasukan',data:charts.daily.income,borderColor:'#2ed6a1',backgroundColor:'rgba(46,214,161,.12)',fill:true,tension:.38,pointRadius:1.5},{label:'Pengeluaran',data:charts.daily.expense,borderColor:'#ff6969',backgroundColor:'rgba(255,105,105,.10)',fill:true,tension:.38,pointRadius:1.5}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{labels:{color:tick,usePointStyle:true,boxWidth:8,font:{size:10}}},tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${money(c.raw)}`}}},scales:{x:{grid:{display:false},ticks:{color:tick,maxTicksLimit:16}},y:{beginAtZero:true,grid:{color:grid},ticks:{color:tick,callback:v=>money(v)}}}}});
 })();
 </script>
-
