@@ -58,7 +58,7 @@ async function billingReport(f){
 
 async function cashReport(f){
   const monthKey = value => Number(value.slice(0,4))*100 + Number(value.slice(5,7));
-  const where=["((source_invoice.id IS NOT NULL AND (source_invoice.period_year*100+source_invoice.period_month) BETWEEN ? AND ?) OR (source_invoice.id IS NULL AND ct.transaction_date BETWEEN ? AND ?))","COALESCE(ct.approval_status,'APPROVED')='APPROVED'"],p=[monthKey(f.from),monthKey(f.to),f.from,f.to];
+  const where=["((ct.accounting_period IS NOT NULL AND (YEAR(ct.accounting_period)*100+MONTH(ct.accounting_period)) BETWEEN ? AND ?) OR (ct.accounting_period IS NULL AND ((source_invoice.id IS NOT NULL AND (source_invoice.period_year*100+source_invoice.period_month) BETWEEN ? AND ?) OR (source_invoice.id IS NULL AND ct.transaction_date BETWEEN ? AND ?))))","COALESCE(ct.approval_status,'APPROVED')='APPROVED'"],p=[monthKey(f.from),monthKey(f.to),monthKey(f.from),monthKey(f.to),f.from,f.to];
   where.push("(COALESCE(ct.source_type,'manual') NOT IN ('payment','install_income') OR (p.status='confirmed' AND (p.method<>'cash' OR p.settlement_status='settled')))");
   if(f.site){where.push('s.code=?');p.push(f.site);}
   where.push('ct.internal_transfer_key IS NULL');
@@ -121,7 +121,7 @@ async function buildReportPayload(req){
     const income=rows.filter(x=>x.type==='income').reduce((a,x)=>a+Number(x.amount||0),0);
     const expense=rows.filter(x=>x.type==='expense').reduce((a,x)=>a+Number(x.amount||0),0);
     title='LAPORAN ARUS KAS';
-    subtitle=`Periode ${date(f.from)} s/d ${date(f.to)} | Pembayaran: bulan faktur; transaksi lain: tanggal kas | ${f.site||'Semua Site'}`;
+    subtitle=`Periode ${date(f.from)} s/d ${date(f.to)} | Pembayaran: periode pembukuan; transaksi lain: tanggal kas | ${f.site||'Semua Site'}`;
     baseFilename=`laporan-arus-kas-INKAMNET-${f.from}-sd-${f.to}`;
     summaryItems=[
       {label:'PENDAPATAN',value:rupiah(income),color:COLORS.green},
