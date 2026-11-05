@@ -311,7 +311,7 @@
       <small class="text-muted">Mang Ali tidak dibebani gaji Agung/Padilah.</small>
     </div></section>
 
-    <section class="card closing-card"><div class="card-body"><div class="closing-section-head"><div><span class="closing-card-kicker">INFORMASI · TIDAK MEMENGARUHI PERHITUNGAN</span><h2>Pelanggan belum lunas</h2><small class="text-muted">Hanya tagihan pelanggan aktif yang tidak diarsipkan pada bulan yang dipilih, dengan status pembayaran terkonfirmasi terkini. Tidak dihitung ke Pendapatan/Bersih di atas.</small></div><% if (typeof unpaidSummary !== 'undefined' && unpaidSummary) { %><span class="closing-count"><%= unpaidSummary.count %> pelanggan</span><% } %></div>
+    <section class="card closing-card"><div class="card-body"><div class="closing-section-head"><div><span class="closing-card-kicker">INFORMASI · TIDAK MEMENGARUHI PERHITUNGAN</span><h2>Pelanggan belum lunas</h2><small class="text-muted">Sisa tagihan mengikuti menu Laporan untuk bulan yang dipilih. Tidak dihitung ke Pendapatan/Bersih di atas.</small></div><% if (typeof unpaidSummary !== 'undefined' && unpaidSummary) { %><span class="closing-count"><%= unpaidSummary.count %> pelanggan</span><% } %></div>
       <% if (typeof unpaidCustomers === 'undefined' || !unpaidCustomers.length) { %>
         <div class="closing-locked-note"><i class="bi bi-check-circle"></i>Tidak ada pelanggan belum lunas untuk periode ini (atau data tagihan belum tersedia).</div>
       <% } else { %>
