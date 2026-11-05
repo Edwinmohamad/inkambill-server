@@ -137,20 +137,14 @@ router.use((req, res, next) => {
 async function loadUnpaidCustomers(start, end) {
   try {
     const [rows] = await db.execute(`SELECT c.id,c.customer_code,c.name,s.code site_code,cl.name cluster_name,
-        SUM(CASE WHEN GREATEST(i.total-COALESCE(p.confirmed_paid,0),0)>0 THEN 1 ELSE 0 END) invoice_count,
-        COALESCE(SUM(GREATEST(i.total-COALESCE(p.confirmed_paid,0),0)),0) outstanding
+        SUM(CASE WHEN GREATEST(COALESCE(i.outstanding,0),0)>0 THEN 1 ELSE 0 END) invoice_count,
+        COALESCE(SUM(GREATEST(COALESCE(i.outstanding,0),0)),0) outstanding
       FROM invoices i
       JOIN customers c ON c.id=i.customer_id
       JOIN packages pkg ON pkg.id=c.package_id
       JOIN sites s ON s.id=c.site_id
       LEFT JOIN clusters cl ON cl.id=c.cluster_id
-      LEFT JOIN (
-        SELECT invoice_id,SUM(amount) confirmed_paid
-        FROM payments
-        WHERE status='confirmed'
-        GROUP BY invoice_id
-      ) p ON p.invoice_id=i.id
-      WHERE c.customer_status='active' AND c.archived_at IS NULL AND i.status NOT IN ('cancelled','refunded') AND i.period_year=? AND i.period_month=? AND s.code IN ('CDS','KRW','CLM','KBG','KUBANG')
+      WHERE i.period_year=? AND i.period_month=? AND s.code IN ('CDS','KRW','CLM','KBG','KUBANG')
       GROUP BY c.id,c.customer_code,c.name,s.code,cl.name
       HAVING outstanding>0
       ORDER BY outstanding DESC,c.name`, [Number(start.slice(0,4)),Number(start.slice(5,7))]);
@@ -218,12 +212,9 @@ async function loadCustomerActivitySummary(start, end) {
           COALESCE(SUM(x.total_amt),0) total_amt,COALESCE(SUM(x.paid_amt),0) paid_amt,COALESCE(SUM(x.outstanding_amt),0) outstanding_amt
         FROM (
           SELECT i.id,s.code site_code,cl.name cluster_name,i.total total_amt,
-            LEAST(i.total,COALESCE(SUM(CASE WHEN p.status='confirmed' THEN p.amount ELSE 0 END),0)) paid_amt,
-            GREATEST(i.total-COALESCE(SUM(CASE WHEN p.status='confirmed' THEN p.amount ELSE 0 END),0),0) outstanding_amt
+            COALESCE(i.paid_amount,0) paid_amt, COALESCE(i.outstanding,0) outstanding_amt
           FROM invoices i JOIN customers c ON c.id=i.customer_id JOIN packages pkg ON pkg.id=c.package_id JOIN sites s ON s.id=c.site_id LEFT JOIN clusters cl ON cl.id=c.cluster_id
-          LEFT JOIN payments p ON p.invoice_id=i.id
-          WHERE c.customer_status='active' AND c.archived_at IS NULL AND i.status NOT IN ('cancelled','refunded') AND (${monthCond})
-          GROUP BY i.id,s.code,cl.name,i.total
+          WHERE (${monthCond})
         ) x GROUP BY x.site_code,x.cluster_name`, [...monthParams]) : [[]];
     const billing = { total: 0, paid: 0, unpaid: 0, krwclm: { paid: 0, unpaid: 0 }, kbg: { paid: 0, unpaid: 0 }, other: { paid: 0, unpaid: 0 }, billedTotal: 0, collectedTotal: 0, outstandingTotal: 0 };
     billingRows.forEach((row) => {
