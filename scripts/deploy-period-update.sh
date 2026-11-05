@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply only the four billing-period application files. No npm install or DB repair.
+# Apply only the changed accounting-period source files. No npm install or financial backfill.
 set -Eeuo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
@@ -26,7 +26,7 @@ if ! "${COMPOSE[@]}" config --images | grep -Fxq "$APP_IMAGE"; then
   exit 1
 fi
 
-FILES=(routes/finance.js routes/closing.js views/finance/cash.ejs views/closing/index.ejs)
+FILES=(routes/finance.js routes/closing.js routes/reports.js routes/payments.js routes/invoices.js views/finance/cash.ejs views/closing/index.ejs views/reports/index.ejs services/financialControlService.js services/paymentVerificationService.js app.js services/accountingPeriodSchema.js services/closingLedgerService.js services/closingSyncService.js services/financialIntegrityService.js)
 mkdir -p work
 # Repeated deployments use the last applied revision as merge base, so adding
 # widgets after the period fix does not conflict with that earlier revision.
@@ -37,10 +37,13 @@ if [[ -f work/period-update.applied ]]; then
   fi
 else
   # Older copies of this installer did not record their revision. Recognize
-  # their exact four-file source tree without guessing about manual edits.
+  # their exact changed-file source tree without guessing about manual edits.
   while IFS= read -r PREVIOUS; do
     MATCH=1
     for path in "${FILES[@]}"; do
+      if ! git cat-file -e "$PREVIOUS:$path" 2>/dev/null; then
+        if [[ -e "$path" ]]; then MATCH=0; break; else continue; fi
+      fi
       if ! git show "$PREVIOUS:$path" | cmp -s - "$path"; then MATCH=0; break; fi
     done
     if (( MATCH )); then BASE=$PREVIOUS; break; fi
@@ -56,7 +59,10 @@ rollback() {
   trap - ERR
   if (( MUTATED )); then
     echo "Deploy gagal. Memulihkan kode dan image sebelumnya dari $BACKUP" >&2
-    for path in "${FILES[@]}"; do cp -p "$BACKUP/original/$path" "$path" || true; done
+    for path in "${FILES[@]}"; do
+      if [[ -f "$BACKUP/original-missing/$path" ]]; then rm -f -- "$path" || true;
+      else cp -p "$BACKUP/original/$path" "$path" || true; fi
+    done
     docker tag "$OLD_IMAGE" "$APP_IMAGE" || true
     "${COMPOSE[@]}" up -d --no-deps --no-build --pull never --force-recreate app || true
   else
@@ -67,13 +73,32 @@ rollback() {
 trap rollback ERR
 
 for path in "${FILES[@]}"; do
-  [[ -f "$path" && ! -L "$path" ]]
+  [[ ! -L "$path" ]]
   mkdir -p "$BACKUP/current/$(dirname "$path")" "$BACKUP/base/$(dirname "$path")" "$BACKUP/candidate/$(dirname "$path")" \
     "$BACKUP/merged/$(dirname "$path")" "$BACKUP/original/$(dirname "$path")"
-  git show "$BASE:$path" > "$BACKUP/base/$path"
+  if git cat-file -e "$BASE:$path" 2>/dev/null; then
+    git show "$BASE:$path" > "$BACKUP/base/$path"
+    [[ -f "$path" ]]
+  else
+    : > "$BACKUP/base/$path"
+  fi
   git show "$REVISION:$path" > "$BACKUP/candidate/$path"
-  cp -p "$path" "$BACKUP/original/$path"
-  cp -p "$path" "$BACKUP/current/$path"
+  if [[ -f "$path" ]]; then
+    cp -p "$path" "$BACKUP/original/$path"
+    cp -p "$path" "$BACKUP/current/$path"
+  else
+    mkdir -p "$BACKUP/original-missing/$(dirname "$path")"
+    : > "$BACKUP/original-missing/$path"
+    : > "$BACKUP/current/$path"
+  fi
+  if [[ "$path" == routes/finance.js && "$BASE" == b8e14d3fbc99799b0a9327ce0d36dcd18284d205 ]]; then
+    # Recognize the exact summary-only patch supplied before this PR. Its SQL
+    # occupies one line, so normalize that known edit before merging new fields.
+    BASE_SUMMARY=$(sed -n '/const summarySql=/p' "$BACKUP/base/$path")
+    docker exec -i "$CONTAINER" node -e \
+      'const base=process.argv[1];const known=base.replace("WHERE ct.internal_transfer_key IS NULL","LEFT JOIN invoices summary_invoice ON summary_invoice.id=source_payment.invoice_id WHERE ct.internal_transfer_key IS NULL").replace("AND MONTH(ct.transaction_date)=? AND YEAR(ct.transaction_date)=?","AND COALESCE(summary_invoice.period_month,MONTH(ct.transaction_date))=? AND COALESCE(summary_invoice.period_year,YEAR(ct.transaction_date))=?");let s="";process.stdin.setEncoding("utf8");process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(s.split("\n").map(line=>line===known?base:line).join("\n")));' \
+      "$BASE_SUMMARY" < "$path" > "$BACKUP/current/$path"
+  fi
   if [[ "$path" == views/finance/cash.ejs ]]; then
     # Recognize the exact wording installed by the earlier summary-only script.
     # Normalize only that known edit before the three-way merge.
@@ -98,8 +123,8 @@ docker tag "$OLD_IMAGE" "$BASE_IMAGE"
   printf 'FROM %s\n' "$BASE_IMAGE"
   for path in "${FILES[@]}"; do printf 'COPY %s /app/%s\n' "$path" "$path"; done
 } > "$BACKUP/merged/Dockerfile"
-# The build context contains four merged source files plus this tiny Dockerfile.
-# The base image is already local; dependencies and all other layers are reused.
+# The build context contains only the merged source files plus this tiny Dockerfile.
+# The base image is already local; dependencies and all other layers are reused. Startup adds a nullable accounting_period column; existing dates/amounts are untouched.
 docker build --network=none --pull=false -t "$NEW_IMAGE" "$BACKUP/merged"
 
 MUTATED=1
@@ -120,7 +145,7 @@ done
 [[ "$HEALTHY" == 1 ]]
 printf '%s\n' "$REVISION" > work/period-update.applied
 trap - ERR
-echo "Selesai: empat file diterapkan; aplikasi sehat. Backup: $BACKUP"
+echo "Selesai: file revisi periode diterapkan; aplikasi sehat. Backup: $BACKUP"
 echo "Image sebelumnya tetap tersedia: $BASE_IMAGE"
 echo 'Kode host diperbarui; gabungkan PR ke main agar deploy berikutnya mempertahankan revisi ini.'
 git status --short -- "${FILES[@]}"
