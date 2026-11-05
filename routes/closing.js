@@ -133,8 +133,8 @@ router.use((req, res, next) => {
 
 // v1.29 — informational only: never joined into buildClosingCalculation, so it
 // can never change Pendapatan/Bersih. Purely a reminder of who still owes money
-// as of the end of this closing period, scoped to the same CDS/KBG sites.
-async function loadUnpaidCustomers(end) {
+// for invoices in the selected billing month, scoped to the same CDS/KBG sites.
+async function loadUnpaidCustomers(start, end) {
   try {
     const [rows] = await db.execute(`SELECT c.id,c.customer_code,c.name,s.code site_code,cl.name cluster_name,
         SUM(CASE WHEN GREATEST(i.total-COALESCE(p.confirmed_paid,0),0)>0 THEN 1 ELSE 0 END) invoice_count,
@@ -149,10 +149,10 @@ async function loadUnpaidCustomers(end) {
         WHERE status='confirmed' AND DATE(COALESCE(booked_at,paid_at))<=?
         GROUP BY invoice_id
       ) p ON p.invoice_id=i.id
-      WHERE i.status NOT IN ('cancelled','refunded') AND i.due_date<=? AND s.code IN ('CDS','KRW','CLM','KBG','KUBANG')
+      WHERE i.status NOT IN ('cancelled','refunded') AND i.period_year=? AND i.period_month=? AND s.code IN ('CDS','KRW','CLM','KBG','KUBANG')
       GROUP BY c.id,c.customer_code,c.name,s.code,cl.name
       HAVING outstanding>0
-      ORDER BY outstanding DESC,c.name`, [end,end]);
+      ORDER BY outstanding DESC,c.name`, [end,Number(start.slice(0,4)),Number(start.slice(5,7))]);
     const outstanding = rows.reduce((a, r) => a + Number(r.outstanding || 0), 0);
     return { unpaidCustomers: rows, unpaidSummary: { count: rows.length, outstanding } };
   } catch (err) {
@@ -254,7 +254,7 @@ router.get('/', async (req, res, next) => {
     const autoSyncResult = await autoSyncBeforeReport({ start, end, userId: req.session.user.id, ip: req.ip });
     const autoSyncInfo = autoSyncMessage(autoSyncResult);
     const data = await loadClosing(start, end);
-    const unpaid = await loadUnpaidCustomers(end);
+    const unpaid = await loadUnpaidCustomers(start, end);
     const customerActivity = await loadCustomerActivitySummary(start, end);
     // v1.30 -- hutang internal teknisi: informasi saja, tidak ikut perhitungan bagi hasil.
     const internalDebt = await loadInternalDebtSummary({ start, end });
@@ -661,7 +661,7 @@ router.get('/pdf', async (req, res, next) => {
     // lokasi/kategori/nominal lama.
     await autoSyncBeforeReport({ start, end, userId: req.session.user.id, ip: req.ip });
     const data = await loadClosing(start, end);
-    const unpaid = await loadUnpaidCustomers(end);
+    const unpaid = await loadUnpaidCustomers(start, end);
     const customerActivity = await loadCustomerActivitySummary(start, end);
     const effectiveMode = data.mode || 'manual';
     let grossTotal = 0;
