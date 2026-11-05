@@ -26,7 +26,7 @@ if ! "${COMPOSE[@]}" config --images | grep -Fxq "$APP_IMAGE"; then
   exit 1
 fi
 
-FILES=(routes/finance.js routes/closing.js routes/reports.js routes/payments.js routes/invoices.js views/finance/cash.ejs views/closing/index.ejs views/reports/index.ejs services/financialControlService.js services/paymentVerificationService.js app.js services/accountingPeriodSchema.js services/closingLedgerService.js services/closingSyncService.js services/financialIntegrityService.js)
+FILES=(routes/finance.js routes/closing.js routes/reports.js routes/payments.js routes/invoices.js views/finance/cash.ejs views/closing/index.ejs views/reports/index.ejs services/financialControlService.js services/paymentVerificationService.js app.js services/accountingPeriodSchema.js services/closingLedgerService.js services/closingSyncService.js services/financialIntegrityService.js services/reportPdf.js services/closingPdfText.js)
 mkdir -p work
 # Repeated deployments use the last applied revision as merge base, so adding
 # widgets after the period fix does not conflict with that earlier revision.
