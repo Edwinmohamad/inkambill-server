@@ -6,7 +6,7 @@
   </div>
 
   <form class="cash-period-panel" method="get" action="/cash" data-auto-filter>
-    <div class="cash-period-copy"><strong>Periode Kas</strong><small>Filter transaksi berdasarkan bulan, tahun, site, kategori, tipe, dan metode pembayaran.</small></div>
+    <div class="cash-period-copy"><strong>Periode Kas</strong><small>Daftar pembayaran mengikuti periode tagihan; transaksi tanpa tagihan mengikuti tanggal transaksi. Ringkasan dan grafik mengikuti tanggal kas.</small></div>
     <div class="cash-period-controls">
       <select class="form-select" name="month"><% monthNames.forEach((m,i)=>{ %><option value="<%= i+1 %>" <%= filters.month===i+1?'selected':'' %>><%= m %></option><% }) %></select>
       <input class="form-control" type="number" name="year" min="2020" max="2100" value="<%= filters.year %>">
