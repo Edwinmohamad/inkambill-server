@@ -102,7 +102,7 @@ assert(!/FROM\s+payments\b/i.test(loadSource), 'loadClosing tidak boleh membaca 
 assert(!/FROM\s+cash_transactions\b/i.test(loadSource), 'loadClosing tidak boleh membaca cash_transactions langsung');
 assert(!/settlement_status/i.test(loadSource), 'Closing tidak boleh memakai status settlement billing');
 assert(loadSource.includes('loadActualClosing'), 'Draft harus membaca Data Kas aktual melalui service');
-assert(loadSource.includes('snapshot_json'), 'Closing terkunci harus memakai snapshot');
+assert(!loadSource.includes('JSON.parse(period.snapshot_json)'), 'Closing terkunci tetap harus menghitung jurnal aktual menurut periode faktur');
 
 // Sinkronisasi Data Kas: harus lewat service terpisah, hanya menarik transaksi
 // APPROVED, dan menandai baris hasil sync supaya tidak tertarik dobel.
@@ -123,4 +123,5 @@ assert(closingRoute.includes("router.post('/period-lock'"));
 assert(closingRoute.includes("router.post('/period-reopen'"));
 assert(closingRoute.includes("router.post('/adjustments/:id/update'"));
 assert(closingRoute.includes('ledgerSummary?.invalid'));
-console.log('Closing calculator validation OK: shares and rounding; draft uses actual ledger; locked snapshot and manual-override guards retained.');
+console.log('Closing calculator validation OK: shares and rounding; live billing-period ledger for draft/locked periods; manual-override guards retained.');
+
