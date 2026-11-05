@@ -14,7 +14,9 @@ const db = {async execute(sql, params) {
  assert.match(sql,/source_invoice\.period_year\*100\+source_invoice\.period_month/);
  assert.match(sql,/source_invoice\.id IS NULL AND ct\.transaction_date BETWEEN/);
  assert.match(sql,/p\.settlement_status='settled'/);
- const [first,last,from,to] = params;
+ const [first,last,legacyFirst,legacyLast,from,to] = params;
+ assert.equal(first,legacyFirst); assert.equal(last,legacyLast);
+ assert.match(sql,/ct\.accounting_period IS NOT NULL/);
  return [rows.filter(r => r.approved && (!r.year || r.confirmed && r.settled) &&
    (r.year ? r.year*100+r.month >= first && r.year*100+r.month <= last : r.date >= from && r.date <= to))];
 }};
