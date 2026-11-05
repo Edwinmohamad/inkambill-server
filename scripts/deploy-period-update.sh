@@ -28,6 +28,24 @@ fi
 
 FILES=(routes/finance.js routes/closing.js views/finance/cash.ejs views/closing/index.ejs)
 mkdir -p work
+# Repeated deployments use the last applied revision as merge base, so adding
+# widgets after the period fix does not conflict with that earlier revision.
+if [[ -f work/period-update.applied ]]; then
+  APPLIED=$(cat work/period-update.applied)
+  if [[ "$APPLIED" =~ ^[0-9a-f]{40}$ ]] && git merge-base --is-ancestor "$BASE" "$APPLIED" && git merge-base --is-ancestor "$APPLIED" "$REVISION"; then
+    BASE=$APPLIED
+  fi
+else
+  # Older copies of this installer did not record their revision. Recognize
+  # their exact four-file source tree without guessing about manual edits.
+  while IFS= read -r PREVIOUS; do
+    MATCH=1
+    for path in "${FILES[@]}"; do
+      if ! git show "$PREVIOUS:$path" | cmp -s - "$path"; then MATCH=0; break; fi
+    done
+    if (( MATCH )); then BASE=$PREVIOUS; break; fi
+  done < <(git rev-list "$BASE..$REVISION")
+fi
 BACKUP=$(mktemp -d "$PWD/work/period-update.XXXXXX")
 STAMP="$(date +%Y%m%d%H%M%S)-$$"
 BASE_IMAGE="inkambilling-period-base:$STAMP"
@@ -100,6 +118,7 @@ for (( attempt=1; attempt<=60; attempt++ )); do
   sleep 3
 done
 [[ "$HEALTHY" == 1 ]]
+printf '%s\n' "$REVISION" > work/period-update.applied
 trap - ERR
 echo "Selesai: empat file diterapkan; aplikasi sehat. Backup: $BACKUP"
 echo "Image sebelumnya tetap tersedia: $BASE_IMAGE"
