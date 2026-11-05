@@ -1,5 +1,5 @@
 // NMS shared client (Apple-style UI): API, HUD toast + undo, sheet, menu, palette (Ctrl/Cmd+K),
-// drawer detail pelanggan, aksi pelanggan bersama, grafik SVG, SSE live. Tanpa dependency.
+// customer mapping, billing controls and audit history. Router inventory is refreshed on request.
 (() => {
   const root = document.querySelector('.nx');
   if (!root) return;
@@ -185,7 +185,7 @@
   tick(); setInterval(tick, 1000);
   let lastUpdated = null;
   const updatedEl = document.getElementById('nmsUpdated');
-  const renderUpdated = () => { if (updatedEl) updatedEl.textContent = lastUpdated ? `Diperbarui ${ago(lastUpdated)}` : 'Memuat…'; };
+  const renderUpdated = () => { if (updatedEl) updatedEl.textContent = lastUpdated ? `Snapshot ditampilkan ${ago(lastUpdated)}` : 'Tarik Data PPPoE untuk memperbarui snapshot'; };
   function markUpdated(iso) { lastUpdated = iso || new Date().toISOString(); renderUpdated(); }
   setInterval(renderUpdated, 5000);
   function setOffline(show) { document.getElementById('nmsOfflineBadge')?.classList.toggle('show', !!show); }
@@ -195,22 +195,7 @@
     el.className = `nx-live ${state}`; el.querySelector('span').textContent = label;
   }
 
-  function stream(handlers, { fallback, fallbackMs = 20000 } = {}) {
-    let es = null, pollTimer = null, retries = 0;
-    const startPolling = () => { if (pollTimer || !fallback) return; setLive('polling'); pollTimer = setInterval(() => fallback().catch(() => setLive('down')), fallbackMs); };
-    const all = { ...handlers, approval: a => { handlers.approval?.(a); loadBadges(); } };
-    const connect = () => {
-      if (!window.EventSource) return startPolling();
-      es = new EventSource(`/nms/api/stream${currentSite ? `?site=${encodeURIComponent(currentSite)}` : ''}`);
-      es.onopen = () => { retries = 0; setLive('live'); if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } };
-      es.onerror = () => { setLive('connecting'); if (++retries >= 3) { es.close(); startPolling(); setTimeout(() => { retries = 0; connect(); }, 60000); } };
-      Object.entries(all).forEach(([evt, fn]) => es.addEventListener(evt, e => { try { fn(JSON.parse(e.data)); } catch (err) { console.warn('NMS SSE', evt, err); } }));
-    };
-    connect();
-    document.addEventListener('visibilitychange', () => { if (!document.hidden && fallback) fallback().catch(() => {}); });
-  }
-
-  // Badge navigasi: jumlah temuan rekonsiliasi + persetujuan menunggu.
+  function stream(handlers={}){const onChange=()=>handlers.sync?.({});document.addEventListener('nx:changed',onChange);return ()=>document.removeEventListener('nx:changed',onChange);}
   async function loadBadges() {
     try {
       const [{ groups }, { rows }] = await Promise.all([api(`/nms/api/reconcile${withSite()}`), api('/nms/api/approvals')]);
@@ -222,7 +207,6 @@
     } catch (_) {}
   }
   setTimeout(loadBadges, 400);
-  setInterval(() => { if (!document.hidden) loadBadges(); }, 120000);
 
   const changed = () => { document.dispatchEvent(new CustomEvent('nx:changed')); setTimeout(loadBadges, 800); };
 
@@ -232,23 +216,18 @@
   async function act(r, action) {
     if (!r) return;
     const id = r.id;
-    if (action === 'ping') return ping(r);
     if (action === 'detail') return drawer(id);
-    if (action === 'diagnose') return drawer(id, 'diag');
-    if (action === 'traffic') return drawer(id, 'traffic');
     if (action === 'timeline') return drawer(id, 'history');
     if (!canControl) return toast('Aksi ini butuh role Admin atau izin Kontrol Jaringan.', 'err');
     if (action === 'map') return openMap(r);
     if (action === 'create-customer') return openCreateCustomer(r);
     if (action === 'hold') return openHold(r);
-    if (action === 'schedule') return openSchedule([r.id], who(r));
     if (action === 'package') return openPackage(r);
     if (action === 'fasum') return openFasum([r]);
     if (action === 'unfasum') {
       try { await api(`/nms/api/secrets/${id}/exempt`, { method: 'POST', body: { type: null } }); toast(`${r.username} tidak lagi dikecualikan, ikut Smart Sync lagi.`, 'ok'); changed(); } catch (err) { toast(err.message, 'err'); }
       return;
     }
-    if (action === 'ticket') { try { const { ticket } = await api(`/nms/api/secrets/${id}/ticket`, { method: 'POST', body: {} }); toast(ticket.existing ? `Tiket ${ticket.code} sudah ada.` : `Tiket ${ticket.code} dibuat.`, 'ok', { action: 'Buka', onAction: () => location.assign('/tickets') }); } catch (err) { toast(err.message, 'err'); } return; }
     if (!ACT_LABEL[action]) return;
     if (action === 'unmap' && !(await confirmBox({ title: 'Lepas link pelanggan?', danger: true, okText: 'Lepas', message: `Secret <b>${esc(r.username)}</b> tidak lagi terikat ke <b>${esc(r.customer_name || '')}</b> dan kembali ke daftar belum ter-link.` }))) return;
     if (action === 'lock-mac' && !(await confirmBox({ title: 'Kunci MAC address?', okText: 'Kunci', message: `Caller-ID dari sesi aktif <b>${esc(r.username)}</b> akan dikunci. Perangkat lain tidak bisa login dengan akun ini.` }))) return;
@@ -265,37 +244,18 @@
     changed();
     return out;
   }
-  const pingCache = new Map();
-  async function ping(r) {
-    pingCache.set(r.id, { busy: true }); document.dispatchEvent(new CustomEvent('nx:ping', { detail: r.id }));
-    try { const { result } = await api(`/nms/api/secrets/${r.id}/ping`, { method: 'POST', body: {} }); pingCache.set(r.id, result); toast(`Ping ${who(r)}: ${result.avgMs ?? '—'} ms · loss ${result.lossPct}%`, result.lossPct >= 50 ? 'err' : 'ok'); }
-    catch (err) { pingCache.set(r.id, { error: err.message }); toast(err.message, 'err'); }
-    document.dispatchEvent(new CustomEvent('nx:ping', { detail: r.id }));
-  }
-  const pingBadge = id => {
-    const p = pingCache.get(id);
-    if (!p) return '<span class="nx-ping">—</span>';
-    if (p.busy) return '<span class="nx-ping">ping…</span>';
-    if (p.error) return `<span class="nx-ping red" title="${esc(p.error)}">gagal</span>`;
-    const cls = p.lossPct >= 50 ? 'red' : (p.lossPct > 0 || (p.avgMs || 0) > 80) ? 'orange' : 'green';
-    return `<span class="nx-ping ${cls}" title="${p.received}/${p.sent} reply">${p.avgMs == null ? '—' : p.avgMs + ' ms'} · ${p.lossPct}%</span>`;
-  };
-
   /** Item menu "…" standar untuk 1 secret. */
   function actionItems(r, { skipView = false } = {}) {
-    const items = skipView ? [] : [{ label: 'Detail pelanggan', icon: 'bi-person-vcard', run: () => act(r, 'detail') }, { label: 'Kenapa offline? (diagnosa)', icon: 'bi-heart-pulse', run: () => act(r, 'diagnose') }];
-    if (!skipView && (r.state === 'online' || (r.is_online && !r.is_isolated))) items.push({ label: 'Traffic live', icon: 'bi-graph-up', run: () => act(r, 'traffic') });
+    const items = skipView ? [] : [{ label: 'Detail pelanggan', icon: 'bi-person-vcard', run: () => act(r, 'detail') }];
     if (!skipView) items.push({ label: 'Riwayat & kembalikan', icon: 'bi-clock-history', run: () => act(r, 'timeline') });
     if (!canControl) return items;
     if (items.length) items.push('-');
     items.push(r.is_isolated ? { label: 'Buka isolir', icon: 'bi-check2-circle', run: () => act(r, 'unisolate') } : { label: 'Isolir', icon: 'bi-slash-circle', danger: true, run: () => act(r, 'isolate') });
     items.push({ label: 'Kick sesi', icon: 'bi-plug', run: () => act(r, 'kick') });
     items.push(r.caller_id ? { label: 'Lepas MAC lock', icon: 'bi-unlock', run: () => act(r, 'unlock-mac') } : { label: 'Kunci MAC dari sesi aktif', icon: 'bi-lock', run: () => act(r, 'lock-mac') });
-    items.push({ label: 'Jadwalkan aksi…', icon: 'bi-calendar-event', run: () => act(r, 'schedule') });
     if (r.customer_id) {
       items.push({ label: 'Tunda isolir (janji bayar)…', icon: 'bi-hourglass-split', run: () => act(r, 'hold') });
       items.push({ label: 'Ganti paket…', icon: 'bi-speedometer', run: () => act(r, 'package') });
-      items.push({ label: 'Buat tiket gangguan', icon: 'bi-ticket-perforated', run: () => act(r, 'ticket') });
       items.push('-',
         { label: 'Ganti / timpa pelanggan…', icon: 'bi-arrow-left-right', run: () => act(r, 'map') },
         { label: 'Lepas link pelanggan', icon: 'bi-x-circle', danger: true, run: () => act(r, 'unmap') });
@@ -406,7 +366,7 @@
       subtitle: one ? `<span class="mono">${esc(one.username)}</span> · ${esc(one.site_code || '')}` : 'Fasilitas umum: masjid, pos ronda, balai desa, sekolah, dan sejenisnya.',
       body: `<div class="nx-field"><label>Lokasi / catatan <span class="dim" style="font-weight:500">(opsional)</span></label><input type="text" data-note maxlength="255" value="${esc(one?.exempt_note || '')}" placeholder="Contoh: Masjid Al-Ikhlas RT 03" autofocus></div>
         <ul class="nx-list" style="margin:4px 0 0;font-size:12.5px">
-          <li><span class="li-icon green"><i class="bi bi-eye"></i></span><div class="li-main"><b>Tetap dipantau</b><small>Online/offline, ping, dan alert bila mati.</small></div></li>
+          <li><span class="li-icon green"><i class="bi bi-eye"></i></span><div class="li-main"><b>Tetap tersimpan</b><small>Akun dikecualikan dari pencocokan pelanggan.</small></div></li>
           <li><span class="li-icon blue"><i class="bi bi-magic"></i></span><div class="li-main"><b>Keluar dari Smart Sync</b><small>Tidak dihitung "belum ter-link" dan tidak disarankan ke pelanggan.</small></div></li>
           <li><span class="li-icon orange"><i class="bi bi-shield-check"></i></span><div class="li-main"><b>Tidak pernah diisolir</b><small>Termasuk isolir masal dan jadwal.</small></div></li>
         </ul>
@@ -473,59 +433,20 @@
     s.$('[data-clear]').addEventListener('click', () => save(null));
   }
 
-  async function openPackage(r) {
-    let pk = []; try { pk = await packages(r.site_id); } catch (_) {}
-    const s = sheet({ title: 'Ganti paket', subtitle: `${esc(who(r))} · paket sekarang ${esc(r.package_name || '—')}`, size: 'sm',
-      body: `<div class="nx-field"><label>Paket baru</label><select data-pkg>${pk.map(p => `<option value="${p.id}">${esc(p.name)} · ${rupiah(p.price)}${p.mikrotik_profile ? ` · ${esc(p.mikrotik_profile)}` : ' · tanpa profile'}</option>`).join('')}</select></div>
-        <div class="nx-field"><label>Berlaku</label><div class="nx-seg sm" data-when><button type="button" class="active" data-v="now">Sekarang</button><button type="button" data-v="later">Tanggal tertentu</button></div></div>
-        <div class="nx-field" data-at-wrap hidden><label>Tanggal & jam (WIB)</label><input type="datetime-local" data-at></div>
-        <div class="nx-note">Paket di billing ikut berubah, jadi tagihan berikutnya memakai harga paket baru. Profile di router diganti ke profile paket, lalu sesi di-reset agar limit baru langsung berlaku.</div>`,
-      foot: `<button type="button" class="nx-btn" data-close>Batal</button><button type="button" class="nx-btn primary" data-save>Simpan</button>` });
-    let when = 'now';
-    s.$('[data-when]').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; when = b.dataset.v; s.$$('[data-when] button').forEach(x => x.classList.toggle('active', x === b)); s.$('[data-at-wrap]').hidden = when !== 'later'; });
-    s.$('[data-save]').addEventListener('click', async e => {
-      const btn = e.currentTarget; btn.classList.add('busy');
-      try {
-        if (when === 'later') { const at = s.$('[data-at]').value; if (!at) throw new Error('Pilih tanggal.'); await api('/nms/api/schedules', { method: 'POST', body: { action: 'package', packageId: s.$('[data-pkg]').value, secretIds: [r.id], runAt: new Date(at).toISOString(), note: `Ganti paket ${who(r)}` } }); toast(`Ganti paket dijadwalkan ${dateTime(new Date(at).toISOString())}.`, 'ok'); }
-        else { const { result } = await api(`/nms/api/secrets/${r.id}/package`, { method: 'POST', body: { packageId: s.$('[data-pkg]').value } }); toast(`Paket ${who(r)} → ${result.packageName}.`, 'ok'); }
-        s.close(); changed();
-      } catch (err) { toast(err.message, 'err'); btn.classList.remove('busy'); }
-    });
-  }
-
-  async function openSchedule(ids, label) {
-    let pk = []; try { pk = await packages(currentSite || null); } catch (_) {}
-    const def = new Date(Date.now() + 86400000); def.setHours(10, 0, 0, 0);
-    const local = new Date(def.getTime() - def.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-    const s = sheet({ title: 'Jadwalkan aksi', subtitle: ids.length > 1 ? `${ids.length} secret dipilih` : esc(label || ''), size: 'sm',
-      body: `<div class="nx-field"><label>Aksi</label><select data-act><option value="isolate">Isolir</option><option value="unisolate">Buka isolir</option><option value="kick">Kick sesi</option><option value="profile">Ganti profile</option><option value="package">Ganti paket</option></select></div>
-        <div class="nx-field" data-prof-wrap hidden><label>Profile tujuan</label><input type="text" data-prof list="nxProfiles" placeholder="Nama profile di router"><datalist id="nxProfiles"></datalist></div>
-        <div class="nx-field" data-pkg-wrap hidden><label>Paket tujuan</label><select data-pkg>${pk.map(p => `<option value="${p.id}">${esc(p.name)}${p.site_code ? ` · ${esc(p.site_code)}` : ''}</option>`).join('')}</select></div>
-        <div class="nx-field"><label>Waktu</label><input type="datetime-local" data-at value="${local}"></div>
-        <div class="nx-field"><label>Catatan</label><input type="text" data-note placeholder="Opsional"></div>`,
-      foot: `<button type="button" class="nx-btn" data-close>Batal</button><button type="button" class="nx-btn primary" data-save>Jadwalkan</button>` });
-    s.$('[data-act]').addEventListener('change', async () => {
-      const a = s.$('[data-act]').value; s.$('[data-prof-wrap]').hidden = a !== 'profile'; s.$('[data-pkg-wrap]').hidden = a !== 'package';
-      if (a === 'profile' && !s.$('#nxProfiles').childElementCount) { try { const { profiles } = await api(`/nms/api/profiles${withSite()}`); s.$('#nxProfiles').innerHTML = profiles.map(p => `<option value="${esc(p)}">`).join(''); } catch (_) {} }
-    });
-    s.$('[data-save]').addEventListener('click', async e => {
-      const btn = e.currentTarget; btn.classList.add('busy');
-      try {
-        const at = s.$('[data-at]').value; if (!at) throw new Error('Pilih waktu.');
-        const out = await api(`/nms/api/schedules${withSite()}`, { method: 'POST', body: { action: s.$('[data-act]').value, profile: s.$('[data-prof]').value, packageId: s.$('[data-pkg]').value, secretIds: ids, runAt: new Date(at).toISOString(), note: s.$('[data-note]').value } });
-        toast(`${out.schedule.count} secret dijadwalkan ${dateTime(out.schedule.runAt)}.`, 'ok', { action: 'Lihat', onAction: () => location.assign(`/nms/automation${withSite()}`) }); s.close(); changed();
-      } catch (err) { toast(err.message, 'err'); btn.classList.remove('busy'); }
-    });
+  async function openPackage(r){
+    const pk=await packages(r.site_id);
+    const dialog=sheet({title:'Ganti paket',subtitle:esc(who(r)),size:'sm',body:`<div class="nx-field"><label>Paket</label><select data-pkg>${pk.map(p=>`<option value="${Number(p.id)}">${esc(p.name)} · ${rupiah(p.price)}</option>`).join('')}</select></div><p>Paket pelanggan dan profile PPPoE diperbarui setelah dikonfirmasi.</p>`,foot:'<button class="nx-btn" type="button" data-close>Batal</button><button class="nx-btn primary" type="button" data-save>Simpan</button>'});
+    dialog.$('[data-save]').addEventListener('click',async event=>{const button=event.currentTarget;button.disabled=true;try{await api(`/nms/api/secrets/${r.id}/package`,{method:'POST',body:{packageId:Number(dialog.$('[data-pkg]').value)}});dialog.close();changed();toast('Paket diperbarui.','ok');}catch(error){toast(error.message,'err');}finally{button.disabled=false;}});
   }
 
   // ------------------------------------------------------------ Drawer detail pelanggan
   const drawerEl = document.createElement('div');
   drawerEl.className = 'nx-drawer';
   drawerEl.innerHTML = `<div class="scrim" data-dclose></div><aside class="panel" role="dialog" aria-modal="true" aria-label="Detail pelanggan"><div class="nx-drawer-head"><div class="nx-avatar" data-av>?</div><div class="grow" style="min-width:0"><h4 data-dn>—</h4><div class="meta" data-dm></div></div><button type="button" class="nx-x" data-dclose aria-label="Tutup"><i class="bi bi-x-lg"></i></button></div>
-    <div class="nx-drawer-tabs"><div class="nx-seg sm" data-dtabs><button type="button" data-t="info" class="active">Ringkasan</button><button type="button" data-t="diag">Diagnosa</button><button type="button" data-t="traffic">Traffic</button><button type="button" data-t="history">Riwayat</button></div></div>
+    <div class="nx-drawer-tabs"><div class="nx-seg sm" data-dtabs><button type="button" data-t="info" class="active">Ringkasan</button><button type="button" data-t="history">Riwayat</button></div></div>
     <div class="nx-drawer-body" data-db></div><div class="nx-drawer-foot" data-df></div></aside>`;
   root.appendChild(drawerEl);
-  const D = { id: null, data: null, tab: 'info', trafficTimer: null, samples: [] };
+  const D = { id: null, data: null, tab: 'info' };
   const $d = sel => drawerEl.querySelector(sel);
   drawerEl.addEventListener('click', e => { if (e.target.closest('[data-dclose]')) closeDrawer(); });
   $d('[data-dtabs]').addEventListener('click', e => { const b = e.target.closest('[data-t]'); if (b && D.data) showTab(b.dataset.t); });
@@ -562,22 +483,16 @@
     act(r, btn.dataset.da);
   });
   const rowFromDetail = () => ({ ...D.data.secret });
-  document.addEventListener('nx:changed', () => { if (D.id && drawerEl.classList.contains('show')) { const id = D.id, tab = D.tab === 'traffic' ? 'info' : D.tab; setTimeout(() => { if (D.id === id) drawer(id, tab); }, 1200); } });
+  document.addEventListener('nx:changed', () => { if (D.id && drawerEl.classList.contains('show')) { const id = D.id, tab = D.tab; setTimeout(() => { if (D.id === id) drawer(id, tab); }, 1200); } });
 
   function showTab(t) {
     D.tab = t; stopTraffic();
     drawerEl.querySelectorAll('[data-dtabs] [data-t]').forEach(x => x.classList.toggle('active', x.dataset.t === t));
-    ({ info: tabInfo, diag: tabDiag, traffic: tabTraffic, history: tabHistory }[t] || tabInfo)();
+    ({ info: tabInfo, history: tabHistory }[t] || tabInfo)();
   }
   function tabInfo() {
-    const { secret: s, invoices, history7d, scheduled } = D.data;
+    const { secret: s, invoices } = D.data;
     const hold = s.isolate_hold_until && String(s.isolate_hold_until).slice(0, 10) >= todayIso();
-    const fmtDay = d => new Intl.DateTimeFormat('en-CA', TZ).format(d);
-    const byDay = new Map(history7d.map(h => [fmtDay(new Date(h.d)), Number(h.logins) || 0]));
-    const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(Date.now() - (6 - i) * 86400000); return { d, n: byDay.get(fmtDay(d)) || 0 }; });
-    const max = Math.max(1, ...days.map(x => x.n));
-    const dayName = d => d.toLocaleDateString('id-ID', { ...TZ, weekday: 'short' });
-    const bars = `<div style="display:flex;gap:8px;align-items:flex-end;height:64px;margin:4px 0 4px">${days.map(x => `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px" title="${esc(dateOnly(x.d))}: ${x.n} login"><div style="width:100%;max-width:26px;border-radius:6px;background:${x.n > 5 ? 'var(--x-orange)' : x.n ? 'var(--x-accent)' : 'var(--x-card3)'};height:${x.n ? Math.max(6, x.n / max * 46) : 4}px"></div><small class="dim" style="font-size:10.5px">${esc(dayName(x.d))}</small></div>`).join('')}</div><small class="dim">Jumlah login per hari. Oranye = lebih dari 5 kali (putus-sambung).</small>`;
     const statusLabel = { paid: 'Lunas', unpaid: 'Belum bayar', partial: 'Sebagian', overdue: 'Terlambat' };
     $d('[data-db]').innerHTML = `
       ${hold ? `<div class="nx-verdict warn"><i class="bi bi-hourglass-split"></i> Isolir ditunda s.d. ${esc(dateOnly(s.isolate_hold_until))}${s.isolate_hold_note ? ` · ${esc(s.isolate_hold_note)}` : ''}</div>` : ''}
@@ -594,55 +509,11 @@
         ${s.cluster_name ? `<dt>ODP / Cluster</dt><dd>${esc(s.cluster_name)}</dd>` : ''}
         ${s.phone ? `<dt>WhatsApp</dt><dd><a href="https://wa.me/${esc(String(s.phone).replace(/\D/g, '').replace(/^0/, '62'))}" target="_blank" rel="noopener" style="color:var(--x-accent)">${esc(s.phone)}</a></dd>` : ''}
       </dl></div>
-      <div class="nx-group-title">Stabilitas</div><div class="nx-group" style="padding:12px 14px">${bars}</div>
       ${invoices.length ? `<div class="nx-group-title">Tagihan</div><ul class="nx-list nx-group">${invoices.map(i => `<li><div class="li-main"><b>${esc(i.invoice_number || `#${i.id}`)}</b><small>Jatuh tempo ${esc(dateOnly(i.due_date))}</small></div><div style="text-align:right"><b style="font-variant-numeric:tabular-nums">${rupiah(i.total)}</b><br><span class="nx-pill ${i.status === 'paid' ? 'green' : i.status === 'overdue' ? 'red' : 'orange'}">${esc(statusLabel[i.status] || i.status)}</span></div></li>`).join('')}</ul>` : ''}
-      ${scheduled.length ? `<div class="nx-group-title">Terjadwal</div><ul class="nx-list nx-group">${scheduled.map(x => `<li><span class="li-icon blue"><i class="bi bi-calendar-event"></i></span><div class="li-main"><b>${esc({ isolate: 'Isolir', unisolate: 'Buka isolir', kick: 'Kick sesi', profile: 'Ganti profile', package: 'Ganti paket' }[x.action] || x.action)}${x.profile ? ` → ${esc(x.profile)}` : ''}</b><small>${esc(dateTime(x.run_at))}${x.note ? ` · ${esc(x.note)}` : ''}</small></div></li>`).join('')}</ul>` : ''}`;
+      `;
     $d('[data-db]').querySelectorAll('[data-q]').forEach(b => b.addEventListener('click', () => act(rowFromDetail(), b.dataset.q)));
   }
-  async function tabDiag() {
-    const body = $d('[data-db]');
-    body.innerHTML = '<div class="nx-empty"><i class="bi bi-heart-pulse"></i>Memeriksa router, secret, sesi, ping, log, dan tagihan…</div>';
-    const id = D.id;
-    try {
-      const { result } = await api(`/nms/api/secrets/${id}/diagnose`, { method: 'POST', body: {} });
-      if (D.id !== id || D.tab !== 'diag') return;
-      const bad = result.checks.some(c => c.status === 'fail'), warn = result.checks.some(c => c.status === 'warn');
-      const icon = { ok: 'bi-check-lg', fail: 'bi-x-lg', warn: 'bi-exclamation-lg', info: 'bi-info-lg' };
-      const fixLabel = { unisolate: 'Buka isolir', 'unlock-mac': 'Lepas MAC', ticket: 'Buat tiket' };
-      body.innerHTML = `<div class="nx-verdict ${bad ? 'bad' : warn ? 'warn' : 'good'}">${esc(result.verdict)}</div>
-        <ul class="nx-checks nx-group">${result.checks.map(c => `<li class="${c.status}"><span class="ic"><i class="bi ${icon[c.status]}"></i></span><div class="grow"><b>${esc(c.label)}</b><small>${esc(c.detail)}</small></div>${c.fix && canControl && fixLabel[c.fix] ? `<button type="button" class="nx-btn sm tint" data-fix="${c.fix}">${fixLabel[c.fix]}</button>` : ''}</li>`).join('')}</ul>
-        <div style="display:flex;justify-content:space-between;align-items:center"><small class="dim">Dicek ${esc(hhmmss(result.testedAt))}</small><button type="button" class="nx-btn sm" data-rerun><i class="bi bi-arrow-clockwise"></i>Cek ulang</button></div>`;
-      body.querySelector('[data-rerun]').addEventListener('click', tabDiag);
-      body.querySelectorAll('[data-fix]').forEach(b => b.addEventListener('click', () => act(rowFromDetail(), b.dataset.fix)));
-    } catch (err) { if (D.id === id) body.innerHTML = `<div class="nx-empty">${esc(err.message)}</div>`; }
-  }
-  function stopTraffic() { clearInterval(D.trafficTimer); D.trafficTimer = null; }
-  function tabTraffic() {
-    const s = D.data.secret, body = $d('[data-db]'), c = COLORS();
-    if (s.state !== 'online') { body.innerHTML = '<div class="nx-empty"><i class="bi bi-wifi-off"></i>Pelanggan sedang offline. Traffic live hanya bisa diukur saat ada sesi aktif.</div>'; return; }
-    body.innerHTML = `<div class="nx-traffic-read"><div><small><i style="background:${c.blue}"></i>Download</small><strong data-dl>—</strong></div><div><small><i style="background:${c.green}"></i>Upload</small><strong data-ul>—</strong></div><div class="peak"><small>Puncak download</small><strong data-pk>—</strong></div></div>
-      <div class="nx-chart" data-chart style="height:170px"></div><div class="nx-traffic-foot"><span data-st>Mengukur 30 detik…</span><span class="grow"></span><button type="button" class="nx-btn sm" data-again hidden><i class="bi bi-play-fill"></i>Ukur lagi</button></div>`;
-    const start = () => {
-      D.samples = []; body.querySelector('[data-again]').hidden = true; body.querySelector('[data-st]').textContent = 'Mengukur 30 detik…';
-      const t0 = Date.now(), id = D.id;
-      const once = async () => {
-        if (D.id !== id || D.tab !== 'traffic') return stopTraffic();
-        if (Date.now() - t0 > 30000) { stopTraffic(); body.querySelector('[data-st]').textContent = `Selesai · ${D.samples.length} sampel`; body.querySelector('[data-again]').hidden = false; return; }
-        try {
-          const { sample } = await api(`/nms/api/secrets/${id}/traffic`);
-          if (D.id !== id || D.tab !== 'traffic') return;
-          D.samples.push(sample);
-          const [dv, du] = splitBps(sample.downloadBps), [uv, uu] = splitBps(sample.uploadBps);
-          body.querySelector('[data-dl]').innerHTML = `${dv}<span>${du}</span>`; body.querySelector('[data-ul]').innerHTML = `${uv}<span>${uu}</span>`;
-          body.querySelector('[data-pk]').textContent = fmtBps(Math.max(...D.samples.map(x => x.downloadBps)));
-          areaChart(body.querySelector('[data-chart]'), { times: D.samples.map(x => x.at), series: [{ name: 'Download', color: c.blue, values: D.samples.map(x => x.downloadBps) }, { name: 'Upload', color: c.green, values: D.samples.map(x => x.uploadBps) }] });
-        } catch (err) { if (err.status !== 429) { stopTraffic(); body.querySelector('[data-st]').textContent = err.message; body.querySelector('[data-again]').hidden = false; } }
-      };
-      once(); D.trafficTimer = setInterval(once, 1500);
-    };
-    body.querySelector('[data-again]').addEventListener('click', start);
-    start();
-  }
+  function stopTraffic(){}
   async function tabHistory() {
     const body = $d('[data-db]'), id = D.id;
     body.innerHTML = '<div class="nx-empty">Memuat riwayat…</div>';
@@ -669,8 +540,7 @@
   const COMMANDS = [
     { label: 'Smart Sync', hint: 'Cocokkan secret dengan data pelanggan', icon: 'bi-magic', run: () => location.assign(`/nms/secrets${qs({ site: currentSite || undefined, tab: 'unsynced', sync: 1 })}`) },
     { label: 'Rekonsiliasi billing ↔ router', hint: 'Kebocoran pendapatan & salah isolir', icon: 'bi-arrow-left-right', run: () => location.assign(`/nms/insights${withSite()}`) },
-    { label: 'Otomasi & jadwal', hint: 'Persetujuan, jadwal, pengaturan', icon: 'bi-clock-history', run: () => location.assign(`/nms/automation${withSite()}`) },
-    { label: 'Ringkasan jaringan', hint: 'Traffic, router, live log', icon: 'bi-speedometer2', run: () => location.assign(`/nms${withSite()}`) },
+    { label: 'Riwayat sinkronisasi', hint: 'Audit mapping dan persetujuan', icon: 'bi-clock-history', run: () => location.assign(`/nms/sync-history${withSite()}`) },
     { label: 'Ekspor secret ter-link (CSV)', hint: 'Unduh untuk laporan', icon: 'bi-download', run: () => location.assign(`/nms/api/export${qs({ site: currentSite || undefined, kind: 'synced' })}`) }
   ];
   let palRows = [], palIdx = 0, palTimer = null, palMode = 'cmd';
@@ -694,7 +564,7 @@
     if (palMode === 'cmd') { if (e.key === 'Enter') { e.preventDefault(); closePalette(); COMMANDS[palIdx]?.run(); } return; }
     const r = palRows[palIdx]; if (!r) return;
     const key = (e.code || '').startsWith('Key') ? e.code.slice(3).toLowerCase() : e.key.toLowerCase();
-    const a = e.key === 'Enter' ? 'detail' : e.altKey ? { i: 'isolate', u: 'unisolate', k: 'kick', p: 'ping', d: 'diagnose' }[key] : null;
+    const a = e.key === 'Enter' ? 'detail' : e.altKey ? { i: 'isolate', u: 'unisolate', k: 'kick' }[key] : null;
     if (!a) return;
     e.preventDefault(); closePalette();
     act({ ...r, is_isolated: r.state === 'isolated' }, a);
@@ -707,7 +577,7 @@
     const k = isMac ? '⌘' : 'Ctrl';
     sheet({ title: 'Pintasan keyboard', size: 'sm', body: `<div class="nx-shortcuts">
       <kbd>${k} K</kbd><span>Cari pelanggan & perintah</span><kbd>/</kbd><span>Fokus ke kolom cari tabel</span><kbd>↑ ↓</kbd><span>Pindah baris di tabel</span><kbd>Spasi / X</kbd><span>Pilih baris</span><kbd>Shift + klik</kbd><span>Pilih rentang baris</span>
-      <kbd>Enter</kbd><span>Buka detail</span><kbd>P</kbd><span>Ping</span><kbd>D</kbd><span>Diagnosa</span>${canControl ? '<kbd>I</kbd><span>Isolir</span><kbd>U</kbd><span>Buka isolir</span><kbd>K</kbd><span>Kick sesi</span><kbd>S</kbd><span>Smart Sync</span>' : ''}<kbd>Esc</kbd><span>Tutup / batal pilih</span><kbd>?</kbd><span>Bantuan ini</span></div>` });
+      <kbd>Enter</kbd><span>Buka detail</span>${canControl ? '<kbd>I</kbd><span>Isolir</span><kbd>U</kbd><span>Buka isolir</span><kbd>K</kbd><span>Kick sesi</span><kbd>S</kbd><span>Smart Sync</span>' : ''}<kbd>Esc</kbd><span>Tutup / batal pilih</span><kbd>?</kbd><span>Bantuan ini</span></div>` });
   }
   document.getElementById('nxShortcuts')?.addEventListener('click', showShortcuts);
   // Capture phase: menimpa palette global aplikasi selama berada di halaman NMS.
@@ -721,6 +591,6 @@
   const drawerOpen = () => drawerEl.classList.contains('show') || pal.classList.contains('show') || !!document.querySelector('.nx-sheet.show');
 
   window.NX = { root, csrf, canControl, isAdmin, site: currentSite, esc, fmtBps, splitBps, fmtBytes, fmtUptime, rupiah, ago, hhmm, hhmmss, dateTime, dateOnly, todayIso, tone, COLORS, initials, qs, withSite,
-    api, toast, deferred, sheet, confirmBox, menu, ring, areaChart, markUpdated, setOffline, setLive, stream, changed, act, actionItems, pingBadge, drawer, drawerOpen, openMap, openFasum, openCreateCustomer, openCreateSecret, openSchedule, openHold, openPalette, loadBadges };
+    api, toast, deferred, sheet, confirmBox, menu, ring, areaChart, markUpdated, setOffline, setLive, stream, changed, act, actionItems, drawer, drawerOpen, openMap, openFasum, openCreateCustomer, openCreateSecret, openHold, openPalette, loadBadges };
   window.NMS = window.NX; // kompatibilitas modul lama
 })();

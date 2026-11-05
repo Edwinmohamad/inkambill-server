@@ -212,11 +212,11 @@ router.post('/:id/method-to-cash',requireMasterAdmin,async(req,res)=>{
     const [staffRows]=await conn.execute('SELECT id,name FROM users WHERE id=? AND is_active=1 LIMIT 1',[collectorId]);
     if(!staffRows.length)throw new Error('Admin/collector tidak ditemukan atau sudah tidak aktif.');
     if(payment.status==='confirmed'){
-      const [linked]=await conn.execute("SELECT id,transaction_date FROM cash_transactions WHERE source_type IN ('payment','install_income') AND source_id=? FOR UPDATE",[payment.id]);
+      const [linked]=await conn.execute("SELECT id,transaction_date,accounting_period FROM cash_transactions WHERE source_type IN ('payment','install_income') AND source_id=? FOR UPDATE",[payment.id]);
       for(const journal of linked){
         const [[frozen]]=await conn.execute(`SELECT COUNT(*) n FROM closing_entries ce JOIN closing_periods cp ON cp.id=ce.closing_id WHERE ce.cash_transaction_id=? AND cp.status='LOCKED'`,[journal.id]);
         if(Number(frozen.n)>0)throw new Error('Jurnal terkait Closing yang sudah dikunci. Buka dan rekonsiliasi Closing terlebih dahulu.');
-        await assertDateOpen(conn,journal.transaction_date);
+        await assertDateOpen(conn,journal.accounting_period||journal.transaction_date);
         // Drop draft-derived closing rows before deleting the underlying payment journal.
         await conn.execute(`DELETE ce FROM closing_entries ce JOIN closing_periods cp ON cp.id=ce.closing_id WHERE ce.cash_transaction_id=? AND cp.status='DRAFT' AND ce.source_type='cash_sync'`,[journal.id]);
       }
@@ -301,7 +301,7 @@ router.post('/bulk-verify',requireMasterAdmin,async(req,res)=>{
       if(!p||p.status!=='pending'){await conn.rollback();skipped.push({id,reason:'sudah tidak menunggu approval'});continue;}
       if(['transfer','qris'].includes(p.method)&&!p.proof_path){await conn.rollback();skipped.push({id,reason:'bukti belum tersedia'});continue;}
       const proofReview=await requireProofReview(conn,p,req.body.review_reason);
-      const booking=await resolveBookDate(conn,{mode:req.body.book_date_mode,paidAt:p.paid_at,manualDate:req.body.manual_book_date});
+      const booking=await resolveBookDate(conn,{mode:req.body.book_date_mode,paidAt:p.paid_at,manualDate:req.body.manual_book_date,allowClosedReceipt:true});
       const [invoiceRows]=await conn.execute(`SELECT i.outstanding,i.status
         FROM invoices i JOIN customers c ON c.id=i.customer_id
         WHERE i.id=? AND c.customer_status='active' AND c.archived_at IS NULL FOR UPDATE`,[p.invoice_id]);
@@ -376,11 +376,11 @@ router.post('/:id/cancel-approval',requireMasterAdmin,async(req,res)=>{
     const [invoiceRows]=await conn.execute(`SELECT id FROM invoices WHERE id=? FOR UPDATE`,[payment.invoice_id]);
     if(!invoiceRows.length)throw new Error('Tagihan terkait tidak ditemukan.');
     await assertDateOpen(conn,payment.booked_at||payment.paid_at);
-    const [journals]=await conn.execute(`SELECT id,transaction_date FROM cash_transactions WHERE source_id=? AND source_type IN ('payment','install_income') FOR UPDATE`,[payment.id]);
+    const [journals]=await conn.execute(`SELECT id,transaction_date,accounting_period FROM cash_transactions WHERE source_id=? AND source_type IN ('payment','install_income') FOR UPDATE`,[payment.id]);
     for(const journal of journals){
       const [[frozen]]=await conn.execute(`SELECT COUNT(*) n FROM closing_entries ce JOIN closing_periods cp ON cp.id=ce.closing_id WHERE ce.cash_transaction_id=? AND cp.status='LOCKED'`,[journal.id]);
       if(Number(frozen.n)>0)throw new Error('Jurnal terkait Closing LOCKED. Buka dan rekonsiliasi Closing terlebih dahulu.');
-      await assertDateOpen(conn,journal.transaction_date);
+      await assertDateOpen(conn,journal.accounting_period||journal.transaction_date);
       await conn.execute(`DELETE ce FROM closing_entries ce JOIN closing_periods cp ON cp.id=ce.closing_id WHERE ce.cash_transaction_id=? AND cp.status='DRAFT' AND ce.source_type='cash_sync'`,[journal.id]);
       await conn.execute(`UPDATE cash_transactions SET approval_status='REJECTED',approval_reason=?,reviewed_by=?,reviewed_at=NOW() WHERE id=?`,[`Approval pembayaran dibatalkan: ${reason}`,req.session.user.id,journal.id]);
     }
@@ -721,7 +721,7 @@ router.post('/:id/settle',requireAdmin,async(req,res)=>{
   const conn=await db.getConnection();let result;
   try{
     await conn.beginTransaction();
-    const settlementDate=await assertDateOpen(conn,req.body.settlement_date||new Date());
+    const settlementDate=isoDate(req.body.settlement_date||new Date());if(!settlementDate)throw new Error('Tanggal setoran tidak valid.');
     result=await settleCashPayments(conn,{paymentIds:[Number(req.params.id)],settlementDate,actorId:req.session.user.id,strict:true});
     await conn.commit();
   }catch(e){await conn.rollback();throw e;}finally{conn.release();}
@@ -740,7 +740,7 @@ router.post('/bulk-settle',requireAdmin,async(req,res)=>{
   const conn=await db.getConnection();let result;
   try{
     await conn.beginTransaction();
-    const settlementDate=await assertDateOpen(conn,req.body.settlement_date||new Date());
+    const settlementDate=isoDate(req.body.settlement_date||new Date());if(!settlementDate)throw new Error('Tanggal setoran tidak valid.');
     result=await settleCashPayments(conn,{paymentIds:ids,settlementDate,actorId:req.session.user.id});
     await conn.commit();
   }catch(e){await conn.rollback();req.session.flash={type:'danger',message:e.message};return res.redirect(returnTo);}finally{conn.release();}
@@ -762,7 +762,7 @@ router.post('/reconciliation/partial-settle',requireAdmin,async(req,res)=>{
   const conn=await db.getConnection();let result;let remaining=0;let remainingCount=0;
   try{
     await conn.beginTransaction();
-    const settlementDate=await assertDateOpen(conn,req.body.settlement_date||new Date());
+    const settlementDate=isoDate(req.body.settlement_date||new Date());if(!settlementDate)throw new Error('Tanggal setoran tidak valid.');
     const [candidates]=await conn.execute(`SELECT id,amount FROM payments WHERE method='cash' AND status='confirmed' AND settlement_status='held_by_staff'
       AND COALESCE(collector_user_id,received_by)=? ORDER BY paid_at,id FOR UPDATE`,[collectorId]);
     if(!candidates.length)throw new Error('Collector ini tidak sedang memegang cash yang belum disetor.');
@@ -809,11 +809,11 @@ async function cancelSettledPayment(conn,paymentId,{reason,actorId,ip}){
   const p=rows[0];
   if(!p)throw new Error('Pembayaran tidak ditemukan.');
   if(p.method!=='cash'||p.settlement_status!=='settled')throw new Error(`Pembayaran ${p.reference||`#${p.id}`} tidak berstatus sudah disetor.`);
-  const [txRows]=await conn.execute(`SELECT id,transaction_code,transaction_date FROM cash_transactions WHERE source_type IN ('payment','install_income') AND source_id=? FOR UPDATE`,[p.id]);
+  const [txRows]=await conn.execute(`SELECT id,transaction_code,transaction_date,accounting_period FROM cash_transactions WHERE source_type IN ('payment','install_income') AND source_id=? FOR UPDATE`,[p.id]);
   for(const tx of txRows){
     const [[frozen]]=await conn.execute(`SELECT COUNT(*) n FROM closing_entries ce JOIN closing_periods cp ON cp.id=ce.closing_id WHERE ce.cash_transaction_id=? AND cp.status='LOCKED'`,[tx.id]);
     if(Number(frozen.n)>0)throw new Error('Setoran tidak dapat dibatalkan karena terkait Closing LOCKED. Buka Closing terlebih dahulu.');
-    await assertDateOpen(conn,tx.transaction_date);
+    await assertDateOpen(conn,tx.accounting_period||tx.transaction_date);
   }
   if(txRows.length){
     const txIds=txRows.map(t=>t.id);const marks=txIds.map(()=>'?').join(',');

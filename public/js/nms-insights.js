@@ -1,4 +1,4 @@
-// Rekonsiliasi billing ↔ router, kesehatan site/ODP + info gangguan, akun dipakai bersama, putus-sambung.
+// Request-driven reconciliation between customer billing and the PPPoE snapshot.
 (() => {
   const N = window.NX;
   const app = document.getElementById('nmsInsights');
@@ -123,70 +123,13 @@
     N.act(row, fix);
   }
 
-  // ---------------------------------------------------------------- Kesehatan site + ODP
-  // Ring online%: makin tinggi makin baik (kebalikan ring CPU/RAM), jadi warnanya ditentukan di sini.
-  const onlineColor = s => { const c = N.COLORS(), p = Number(s.onlinePct) || 0; return !Number(s.secrets) ? c.gray : Number(s.routers_up) === 0 && Number(s.routers) > 0 ? c.red : p >= 80 ? c.green : p >= 50 ? c.orange : c.red; };
-  let clusters = [];
-  async function loadHealth() {
-    try {
-      const h = await api('/nms/api/health');
-      const scoped = N.site ? h.sites.filter(s => String(s.id) === String(N.site)) : h.sites;
-      $('nxSites').innerHTML = scoped.map(s => `<div class="nx-site">${N.ring(Number(s.secrets) ? s.onlinePct : null, { size: 58, stroke: 6, color: onlineColor(s) })}<div style="min-width:0"><b>${esc(s.code)} · ${esc(s.name)}</b><small>${Number(s.online) || 0} online · ${Number(s.offline) || 0} offline · ${Number(s.isolated) || 0} isolir</small><small>Router ${s.routers_up}/${s.routers}${Number(s.open_alerts) ? ` · <span style="color:var(--x-red)">${s.open_alerts} alert</span>` : ''}</small></div></div>`).join('') || '<div class="nx-card"><div class="nx-empty">Belum ada site aktif.</div></div>';
-      clusters = N.site ? h.clusters.filter(c => String(c.site_id) === String(N.site)) : h.clusters;
-      renderClusters();
-    } catch (err) { $('nxSites').innerHTML = `<div class="nx-card"><div class="nx-empty">${esc(err.message)}</div></div>`; }
-  }
-  function renderClusters() {
-    const only = $('nxOnlyOutage').checked;
-    const list = clusters.filter(c => !only || c.suspectOutage).sort((a, b) => (b.suspectOutage - a.suspectOutage) || (b.offlinePct - a.offlinePct));
-    $('nxClusters').innerHTML = list.length ? list.map(c => `<tr><td><b>${esc(c.name)}</b>${c.suspectOutage ? ' <span class="nx-pill red">dicurigai gangguan</span>' : ''}</td><td>${esc(c.site_code)}</td><td class="num">${c.customers}</td><td class="num">${Number(c.online) || 0}</td><td><span class="nx-score" style="--v:${c.offlinePct}%;--c:${c.offlinePct >= 60 ? 'var(--x-red)' : c.offlinePct >= 30 ? 'var(--x-orange)' : 'var(--x-green)'}"><i></i>${Number(c.offline) || 0} · ${c.offlinePct}%</span></td><td>${esc(dateTime(c.last_drop))}</td><td>${N.canControl ? `<button type="button" class="nx-btn sm ${c.suspectOutage ? 'orange' : 'ghost'}" data-notify="${c.id}"><i class="bi bi-megaphone"></i>Info gangguan</button>` : ''}</td></tr>`).join('') : `<tr><td colspan="7" class="nx-empty">${only ? 'Tidak ada ODP yang dicurigai gangguan.' : 'Belum ada pelanggan yang terhubung ke ODP / cluster.'}</td></tr>`;
-  }
-  $('nxOnlyOutage').addEventListener('change', renderClusters);
-  $('nxClusters').addEventListener('click', e => {
-    const b = e.target.closest('[data-notify]'); if (!b) return;
-    const c = clusters.find(x => String(x.id) === b.dataset.notify); if (!c) return;
-    const s = N.sheet({ title: 'Kirim info gangguan', subtitle: `${esc(c.name)} · ${c.customers} pelanggan. Pesan masuk antrean persetujuan WA Gateway dulu sebelum terkirim.`,
-      body: `<div class="nx-field"><label>Pesan</label><textarea data-msg rows="6">Halo {nama}, saat ini sedang ada gangguan jaringan di area Anda. Teknisi kami sudah menangani dan layanan akan normal kembali secepatnya. Mohon maaf atas ketidaknyamanannya.</textarea><span class="hint">{nama} diganti otomatis dengan nama pelanggan.</span></div>`,
-      foot: '<button type="button" class="nx-btn" data-close>Batal</button><button type="button" class="nx-btn primary" data-send>Antrekan pesan</button>' });
-    s.$('[data-send]').addEventListener('click', async ev => {
-      const btn = ev.currentTarget; btn.classList.add('busy');
-      try { const out = await api(`/nms/api/clusters/${c.id}/notify`, { method: 'POST', body: { message: s.$('[data-msg]').value } }); toast(`${out.queued} pesan menunggu persetujuan di WA Gateway${out.failed ? `, ${out.failed} nomor tidak valid` : ''}.`, 'ok', { action: 'Buka', onAction: () => location.assign('/wa-gateway') }); s.close(); }
-      catch (err) { toast(err.message, 'err'); btn.classList.remove('busy'); }
-    });
+  const all=()=>loadRecon().then(()=>N.markUpdated());
+  document.addEventListener('nx:changed',()=>setTimeout(all,400));
+  $('nxReconReload')?.addEventListener('click',all);
+  $('nxReconPull')?.addEventListener('click',async event=>{
+    const button=event.currentTarget;button.disabled=true;
+    try {const {results}=await api('/nms/api/secrets/refresh'+N.withSite(),{method:'POST',body:{}});const failed=results.filter(r=>!r.ok);if(results.some(r=>r.activeWarning))toast('Sesi aktif belum seluruhnya terbaca; hasil rekonsiliasi koneksi memakai snapshot sebelumnya.','err');toast(failed.length?`${failed.length} router gagal diperbarui. Data sebelumnya dipertahankan.`:'Data PPPoE diperbarui.',failed.length?'err':'ok');await all();}
+    catch(error){toast(error.message,'err');}finally{button.disabled=false;}
   });
-
-  // ---------------------------------------------------------------- Akun bersama
-  let shared = null, sharedTab = 'mac';
-  async function loadShared() {
-    try { shared = await api(`/nms/api/shared${N.withSite()}`); $('nxSharedHint').textContent = `24 jam · ambang ${shared.threshold} MAC`; renderShared(); }
-    catch (err) { $('nxShared').innerHTML = `<li><div class="li-main"><small>${esc(err.message)}</small></div></li>`; }
-  }
-  function renderShared() {
-    if (!shared) return;
-    const rows = sharedTab === 'mac' ? shared.multiMac : shared.multiUser;
-    $('nxShared').innerHTML = rows.length ? rows.map(r => sharedTab === 'mac'
-      ? `<li class="${r.secret_id ? 'clickable' : ''}" data-sid="${r.secret_id || ''}"><span class="li-icon orange"><i class="bi bi-people"></i></span><div class="li-main"><b>${esc(r.customer_name || r.username)}</b><small class="mono">${esc(r.username)} · ${esc(r.mac_list)}</small></div><b class="num">${r.macs} MAC</b></li>`
-      : `<li><span class="li-icon purple"><i class="bi bi-hdd-network"></i></span><div class="li-main"><b class="mono">${esc(r.caller_id)}</b><small>${esc(r.user_list)}</small></div><b class="num">${r.users} akun</b></li>`).join('')
-      : `<li><span class="li-icon green"><i class="bi bi-check-lg"></i></span><div class="li-main"><b>Tidak ada yang mencurigakan</b><small>${sharedTab === 'mac' ? 'Tidak ada akun yang login dari banyak perangkat.' : 'Tidak ada perangkat yang login ke banyak akun.'}</small></div></li>`;
-  }
-  $('nxSharedTabs').addEventListener('click', e => { const b = e.target.closest('[data-k]'); if (!b) return; sharedTab = b.dataset.k; document.querySelectorAll('#nxSharedTabs button').forEach(x => x.classList.toggle('active', x === b)); renderShared(); });
-  $('nxShared').addEventListener('click', e => { const li = e.target.closest('[data-sid]'); if (li?.dataset.sid) N.drawer(Number(li.dataset.sid)); });
-
-  // ---------------------------------------------------------------- Putus-sambung
-  async function loadFlap() {
-    try {
-      const { rows } = await api(`/nms/api/flapping${N.withSite()}`);
-      $('nxFlap').innerHTML = rows.length ? rows.map(f => `<li class="${f.secret_id ? 'clickable' : ''}" data-sid="${f.secret_id || ''}"><span class="li-icon ${f.reconnects > 10 ? 'red' : 'orange'}"><i class="bi bi-arrow-repeat"></i></span><div class="li-main"><b>${esc(f.customer_name || f.username)}</b><small class="mono">${esc(f.username)} · ${esc(f.site_code)}</small></div><b class="num">${f.reconnects}×</b>${N.canControl && f.secret_id ? `<button type="button" class="nx-btn sm tint" data-ticket="${f.secret_id}">Tiket</button>` : ''}</li>`).join('') : '<li><span class="li-icon green"><i class="bi bi-check-lg"></i></span><div class="li-main"><b>Semua stabil</b><small>Tidak ada pelanggan putus-sambung dalam 1 jam.</small></div></li>';
-    } catch (err) { $('nxFlap').innerHTML = `<li><div class="li-main"><small>${esc(err.message)}</small></div></li>`; }
-  }
-  $('nxFlap').addEventListener('click', async e => {
-    const t = e.target.closest('[data-ticket]');
-    if (t) { t.classList.add('busy'); try { const { ticket } = await api(`/nms/api/secrets/${t.dataset.ticket}/ticket`, { method: 'POST', body: {} }); toast(ticket.existing ? `Tiket ${ticket.code} sudah ada.` : `Tiket ${ticket.code} dibuat.`, 'ok'); } catch (err) { toast(err.message, 'err'); } t.classList.remove('busy'); return; }
-    const li = e.target.closest('[data-sid]'); if (li?.dataset.sid) N.drawer(Number(li.dataset.sid));
-  });
-
-  const all = () => Promise.all([loadRecon(), loadHealth(), loadShared(), loadFlap()]).then(() => N.markUpdated());
-  document.addEventListener('nx:changed', () => setTimeout(all, 600));
-  N.stream({ sync: () => loadRecon() }, { fallback: all, fallbackMs: 60000 });
-  all().then(() => { const k = new URL(location.href).searchParams.get('kind'); if (k && groups[k]) openRecon(k); });
+  all().then(()=>{const kind=new URL(location.href).searchParams.get('kind');if(kind&&groups[kind])openRecon(kind);});
 })();

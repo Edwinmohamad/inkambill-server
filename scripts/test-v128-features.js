@@ -18,8 +18,7 @@ const inventory = read('routes/inventory.js');
 for (const marker of ["/:id/delete", "'/:id/qr", 'inventory_categories', 'syncStockAlert']) assert(inventory.includes(marker), `Fitur inventory ${marker} belum ada.`);
 const analytics = read('routes/analytics.js');
 assert(analytics.includes("/export.pdf") && analytics.includes("/export.xlsx") && analytics.includes('createReportPdf'), 'Export analytics PDF/Excel belum lengkap.');
-const telemetry = read('services/nmsTelemetryService.js');
-assert(telemetry.includes('captureInterfaceTraffic') && telemetry.includes('capturePppoeSessions') && telemetry.includes('runRouterBackup'), 'Telemetry NMS belum lengkap.');
+assert(!fs.existsSync(path.join(root,'services/nmsTelemetryService.js')), 'Telemetry billing yang tidak dipakai harus dihapus.');
 const dashboard = read('views/dashboard/index.ejs');
 assert(!dashboard.includes('class="command-telemetry-rail"'), 'Rail telemetry teknis masih tampil di dashboard utama.');
 const css = read('public/css/app.css');
@@ -27,4 +26,4 @@ assert(css.includes('html[data-theme="light"]') && css.includes('--bg:#f5f5f7'),
 const workflowFiles = fs.readdirSync(path.join(root, 'n8n')).filter(file => file.endsWith('.json'));
 assert(workflowFiles.length >= 5, 'Lima workflow n8n belum tersedia.');
 for (const file of workflowFiles) JSON.parse(read(`n8n/${file}`));
-console.log(`v1.28 feature validation OK: ${workflowFiles.length} workflow n8n, schema V38, NMS telemetry, inventory controls, exports, and soft light theme.`);
+console.log(`v1.28 feature validation OK: ${workflowFiles.length} workflow n8n, schema V38, PPPoE-only network, inventory controls, exports, and soft light theme.`);

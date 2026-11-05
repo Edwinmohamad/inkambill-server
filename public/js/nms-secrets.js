@@ -46,8 +46,8 @@
 
   // ---------------------------------------------------------------- Tabel
   const COLS = {
-    synced: ['', 'Pelanggan', 'Site', 'Username', 'Profile', 'IP', 'Status', 'Ping', ''],
-    unsynced: ['', 'Username', 'Site / Router', 'Profile', 'IP', 'Caller-ID', 'Status', 'Ping', '']
+    synced: ['', 'Pelanggan', 'Site', 'Username', 'Profile', 'IP', 'Status', ''],
+    unsynced: ['', 'Username', 'Site / Router', 'Profile', 'IP', 'Caller-ID', 'Status', '']
   };
   const STATE = { online: 'Online', offline: 'Offline', isolated: 'Diisolir' };
   const METHOD = { customer_code: 'Customer ID', customer_name: 'Nama', pppoe_username: 'Data billing', manual: 'Manual', phone: 'No. HP', comment: 'Comment', fuzzy: 'Mirip', created: 'Dibuat di NMS', cid_tag: 'Tag CID', alias: 'Alias', moved: 'Pindah router', mac: 'MAC', ip: 'IP' };
@@ -61,7 +61,7 @@
   const state = r => `<span class="nx-state ${r.state}">${STATE[r.state]}</span>${r.active_uptime && r.state === 'online' ? `<span class="sub mono">${esc(r.active_uptime)}</span>` : ''}`;
   function actions(r) {
     const b = (a, icon, title, cls = '') => `<button type="button" class="nx-btn sm icon ${cls}" data-act="${a}" data-id="${r.id}" title="${title}" aria-label="${title}"><i class="bi ${icon}"></i></button>`;
-    let html = b('ping', 'bi-activity', 'Ping 5x (P)', 'ghost');
+    let html = '';
     if (N.canControl) {
       if (st.tab === 'unsynced') html += `<button type="button" class="nx-btn sm tint" data-act="map" data-id="${r.id}"><i class="bi bi-link-45deg"></i>Hubungkan</button>`;
       else html += r.is_isolated ? b('unisolate', 'bi-check2-circle', 'Buka isolir (U)', 'green') : b('isolate', 'bi-slash-circle', 'Isolir (I)', 'ghost');
@@ -76,13 +76,13 @@
       <td data-label="Site">${esc(r.site_code)}</td>
       <td data-label="Username"><span class="mono">${esc(r.username)}</span>${r.caller_id ? ' <i class="bi bi-lock-fill dim" title="MAC terkunci"></i>' : ''}<span class="sub">${esc(METHOD[r.match_method] || r.match_method || '')} · 🔒 Bound</span></td>
       <td data-label="Profile">${esc(r.profile || '—')}${r.is_isolated && r.original_profile ? `<span class="sub">asal ${esc(r.original_profile)}</span>` : ''}${r.profile_mismatch ? `<span class="sub" style="color:var(--x-orange)"><i class="bi bi-exclamation-triangle"></i> paket: ${esc(r.package_profile || '—')}</span>` : ''}</td>
-      <td data-label="IP">${ip(r)}</td><td data-label="Status">${state(r)}</td><td data-label="Ping" data-ping="${r.id}">${N.pingBadge(r.id)}</td><td class="acts">${actions(r)}</td></tr>`;
+      <td data-label="IP">${ip(r)}</td><td data-label="Status">${state(r)}</td><td class="acts">${actions(r)}</td></tr>`;
     return `<tr data-row="${r.id}" data-i="${i}" class="${cls}"><td class="check">${chk(r)}</td>
       <td class="first cust" data-open="${r.id}"><span class="name mono">${esc(r.username)}</span>${r.comment ? `<span class="sub">${esc(r.comment)}</span>` : ''}${r.is_exempt ? (r.exempt_type === 'fasum' ? `<span class="sub"><span class="nx-pill purple" style="font-size:10.5px;padding:1px 6px"><i class="bi bi-building"></i> Fasum</span>${r.exempt_note ? ' ' + esc(r.exempt_note) : ''}${r.exempt_source === 'manual' ? '' : ' <span class="dim">· otomatis</span>'}</span>` : `<span class="sub" style="color:var(--x-orange)">exempt: ${esc(r.exempt_type)}</span>`) : ''}</td>
       <td data-label="Site">${esc(r.site_code)}<span class="sub">${esc(r.router_name)}</span></td>
       <td data-label="Profile">${esc(r.profile || '—')}</td><td data-label="IP">${ip(r)}</td>
       <td data-label="Caller-ID" class="mono">${esc(r.caller_id || r.active_caller_id || '—')}</td>
-      <td data-label="Status">${state(r)}</td><td data-label="Ping" data-ping="${r.id}">${N.pingBadge(r.id)}</td><td class="acts">${actions(r)}</td></tr>`;
+      <td data-label="Status">${state(r)}</td><td class="acts">${actions(r)}</td></tr>`;
   }
   function render() {
     head();
@@ -158,7 +158,6 @@
   $('tHead').addEventListener('change', e => { if (e.target.id !== 'chkAll') return; st.rows.forEach(r => toggle(r.id, e.target.checked)); syncBulkBar(); });
   $('bulkClear')?.addEventListener('click', () => { selected.clear(); render(); });
   document.addEventListener('nx:changed', () => { reload(); });
-  document.addEventListener('nx:ping', e => { const cell = app.querySelector(`[data-ping="${e.detail}"]`); if (cell) cell.innerHTML = N.pingBadge(e.detail); });
   document.addEventListener('nx:pending', e => { const { id, on } = e.detail; if (on) pending.add(id); else pending.delete(id); $('tBody').querySelector(`[data-row="${id}"]`)?.classList.toggle('pending', on); });
 
   // ---------------------------------------------------------------- Aksi masal: simulasi → undo/persetujuan
@@ -210,7 +209,6 @@
   $('bulkBar')?.addEventListener('click', e => {
     const action = e.target.closest('[data-bulk]')?.dataset.bulk; if (!action) return;
     const ids = [...selected];
-    if (action === 'schedule') return N.openSchedule(ids);
     if (action === 'fasum') return N.openFasum(st.rows.filter(r => selected.has(r.id)).concat(ids.filter(id => !st.rows.some(r => r.id === id)).map(id => ({ id, username: '#' + id }))), { onDone: () => { selected.clear(); render(); } });
     bulkSheet(action, { ids });
   });
@@ -320,7 +318,6 @@
   $('btnMore').addEventListener('click', e => N.menu(e.currentTarget, [
     ...(N.canControl ? [{ label: 'Aksi masal per site…', icon: 'bi-collection', run: siteBulk }, '-'] : []),
     { label: 'Ekspor tab ini (CSV legacy)', icon: 'bi-filetype-csv', run: () => location.assign(`/nms/api/export${qs({ site: N.site || undefined, kind: st.tab })}`) },
-    { label: 'Laporan Fasum…', icon: 'bi-building', run: fasumReport },
     ...(N.canControl ? [{ label: 'Tulis tag CID ke MikroTik…', icon: 'bi-tag', run: writeCidTags }] : []),
     { label: 'Riwayat Smart Sync & undo', icon: 'bi-clock-history', run: () => location.assign(`/nms/automation${N.withSite()}#sync`) },
     { label: 'Pintasan keyboard', icon: 'bi-keyboard', run: () => document.getElementById('nxShortcuts')?.click() }
@@ -330,7 +327,9 @@
     try {
       const { results } = await api(`/nms/api/secrets/refresh${N.withSite()}`, { method: 'POST', body: {} });
       const bad = results.filter(r => !r.ok);
-      N.setOffline(bad.length > 0);
+      const incomplete=results.filter(r=>r.activeWarning);
+      N.setOffline(bad.length > 0 || incomplete.length > 0);
+      if(incomplete.length)toast('Mapping diperbarui, tetapi sesi aktif sebagian router belum terbaca. Status sesi sebelumnya dipertahankan.','err');
       toast(`${results.length - bad.length}/${results.length} router tersinkron${bad.length ? '. Sebagian offline, menampilkan cache.' : '.'}`, bad.length ? 'err' : 'ok');
       const sumOf = k => results.reduce((a, r) => a + (Number(r[k]) || 0), 0);
       const extra = [sumOf('renamed') && `${sumOf('renamed')} rename terdeteksi`, sumOf('relinkedByTag') && `${sumOf('relinkedByTag')} link pulih dari tag CID`, sumOf('moved') && `${sumOf('moved')} pindah router`].filter(Boolean);
@@ -489,36 +488,6 @@
     } catch (err) { toast(err.message, 'err'); }
   }
 
-  // ---------------------------------------------------------------- Laporan Fasum bulanan
-  async function fasumReport() {
-    const now = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit' }).format(new Date());
-    const s = N.sheet({ title: 'Laporan Fasum', subtitle: 'Fasilitas umum yang tidak ditagih: jumlah per site, status, dan ketersediaan layanan.', size: 'lg',
-      body: `<div class="nx-row" style="align-items:flex-end;margin-bottom:10px"><div class="nx-field" style="margin:0"><label>Bulan</label><input type="month" data-m value="${now}" max="${now}"></div><span class="grow"></span></div><div data-r><div class="nx-empty">Memuat…</div></div>`,
-      foot: '<span class="left dim" data-foot style="font-size:12px"></span><button type="button" class="nx-btn" data-close>Tutup</button><button type="button" class="nx-btn tint" data-csv><i class="bi bi-download"></i>Ekspor CSV</button>' });
-    const STATE_L = { online: 'Online', offline: 'Offline', disabled: 'Nonaktif' };
-    const h = v => `${Number(v || 0).toLocaleString('id-ID')} j`;
-    const load = async () => {
-      s.$('[data-r]').innerHTML = '<div class="nx-empty">Memuat…</div>';
-      try {
-        const { report: r } = await api(`/nms/api/fasum/report${qs({ site: N.site || undefined, month: s.$('[data-m]').value })}`);
-        s.$('[data-foot]').textContent = r.note;
-        s.$('[data-r]').innerHTML = !r.items.length ? '<div class="nx-empty"><i class="bi bi-building"></i>Belum ada secret yang ditandai Fasum. Tandai dari menu ··· atau Smart Sync → Belum cocok.</div>' : `
-          <div class="nx-mini-stats"><div><small>Total Fasum</small><b>${r.totals.count}</b></div><div><small>Online sekarang</small><b style="color:var(--x-green)">${r.totals.online}</b></div><div><small>Offline</small><b style="color:${r.totals.offline ? 'var(--x-orange)' : 'inherit'}">${r.totals.offline}</b></div><div><small>Periode</small><b>${h(r.periodHours)}</b></div></div>
-          <div class="nx-group-title" style="margin:6px 0">Per site</div>
-          <div class="nx-table-wrap" style="border:1px solid var(--x-line);border-radius:12px;margin-bottom:12px"><table class="nx-table"><thead><tr><th>Site</th><th>Jumlah</th><th>Online</th><th>Offline</th><th>Total jam online</th><th>Rata-rata ketersediaan</th></tr></thead><tbody>
-            ${r.bySite.map(x => `<tr><td><b>${esc(x.siteCode)}</b><span class="sub">${esc(x.siteName || '')}</span></td><td>${x.count}</td><td>${x.online}</td><td>${x.offline}</td><td>${h(x.onlineHours)}</td><td>${x.availabilityPct}%</td></tr>`).join('')}
-          </tbody></table></div>
-          <div class="nx-group-title" style="margin:6px 0">Detail</div>
-          <div class="nx-table-wrap" style="max-height:320px;border:1px solid var(--x-line);border-radius:12px"><table class="nx-table"><thead><tr><th>Secret</th><th>Site</th><th>Status</th><th>Jam online</th><th>Ketersediaan</th><th>Putus</th></tr></thead><tbody>
-            ${r.items.map(i => `<tr><td><b class="mono">${esc(i.username)}</b><span class="sub">${esc(i.note || '—')}${i.source === 'manual' ? '' : ' · otomatis'}</span></td><td>${esc(i.siteCode)}<span class="sub">${esc(i.routerName)}</span></td><td><span class="nx-state ${i.state === 'online' ? 'online' : 'offline'}">${STATE_L[i.state]}</span></td><td>${h(i.onlineHours)}</td><td>${i.availabilityPct}%</td><td>${i.disconnects}×</td></tr>`).join('')}
-          </tbody></table></div>`;
-      } catch (err) { s.$('[data-r]').innerHTML = `<div class="nx-empty">Gagal memuat: ${esc(err.message)}</div>`; }
-    };
-    s.$('[data-m]').addEventListener('change', load);
-    s.$('[data-csv]').addEventListener('click', () => location.assign(`/nms/api/fasum/report.csv${qs({ site: N.site || undefined, month: s.$('[data-m]').value })}`));
-    load();
-  }
-
   // ---------------------------------------------------------------- Keyboard
   function setFocus(i) {
     focusIdx = Math.max(0, Math.min(st.rows.length - 1, i));
@@ -537,8 +506,6 @@
       case 'ArrowUp': e.preventDefault(); setFocus(focusIdx - 1); break;
       case ' ': case 'x': if (r && N.canControl) { e.preventDefault(); toggle(r.id, !selected.has(r.id)); syncBulkBar(); } break;
       case 'Enter': if (r) { e.preventDefault(); N.drawer(r.id); } break;
-      case 'p': case 'P': if (r) N.act(r, 'ping'); break;
-      case 'd': case 'D': if (r) N.act(r, 'diagnose'); break;
       case 'i': case 'I': if (r && N.canControl && !r.is_isolated) N.act(r, 'isolate'); break;
       case 'u': case 'U': if (r && N.canControl && r.is_isolated) N.act(r, 'unisolate'); break;
       case 'k': case 'K': if (r && N.canControl) N.act(r, 'kick'); break;
@@ -548,14 +515,7 @@
     }
   });
 
-  // ---------------------------------------------------------------- Real-time
-  let rt = null;
-  const soon = () => { clearTimeout(rt); rt = setTimeout(reload, 1500); };
-  N.stream({
-    ppp: e => { if (st.rows.some(r => String(r.username).toLowerCase() === String(e.username || '').toLowerCase())) soon(); },
-    router_state: s => { if (s.status === 'offline') { N.setOffline(true); toast('Router tidak terjangkau. Tabel memakai data cache.', 'err'); } },
-    sync: soon
-  }, { fallback: reload, fallbackMs: 30000 });
+  document.addEventListener('nx:changed',()=>{reload().then(()=>N.markUpdated());});
 
   renderViews(); syncTabs(); head(); load();
   if (url.searchParams.get('sync') === '1') setTimeout(smartSync, 300);

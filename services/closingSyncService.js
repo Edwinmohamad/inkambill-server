@@ -1,4 +1,5 @@
 const { money, normalizeSiteCluster } = require('./closingCalculator');
+const effectivePeriodSql = `COALESCE(ct.accounting_period,STR_TO_DATE(CONCAT(source_invoice.period_year,'-',LPAD(source_invoice.period_month,2,'0'),'-01'),'%Y-%m-%d'),ct.transaction_date)`;
 
 function toDateKey(value) {
   if (value === null || value === undefined || value === '') return '';
@@ -46,7 +47,8 @@ async function selectUnsyncedCashRows({ db, closingId, start, end }) {
      JOIN cash_categories cc ON cc.id = ct.category_id
      LEFT JOIN sites s ON s.id = ct.site_id
      LEFT JOIN payments source_payment ON ct.source_type IN ('payment','install_income') AND source_payment.id=ct.source_id
-     WHERE ct.transaction_date BETWEEN ? AND ?
+     LEFT JOIN invoices source_invoice ON source_invoice.id=source_payment.invoice_id
+     WHERE ${effectivePeriodSql} BETWEEN ? AND ?
        AND ct.internal_transfer_key IS NULL
        AND cc.code NOT IN ('FINPRIN','FINPROUT')
        AND COALESCE(ct.approval_status,'APPROVED') = 'APPROVED'
@@ -76,12 +78,13 @@ async function planSyncedReconciliation({ db, closingId, start, end }) {
   const [rows] = await db.execute(
     `SELECT ce.id entry_id, ce.cash_transaction_id, ce.entry_type, ce.site_code entry_site, ce.cluster_name entry_cluster,
             ce.category entry_category, ce.amount entry_amount, ce.entry_date, ce.description entry_description, ce.excluded_at,
-            ct.id src_id, ct.transaction_date, ct.name, ct.amount, ct.notes, ct.internal_transfer_key, COALESCE(ct.approval_status,'APPROVED') src_status,
+            ct.id src_id, ct.transaction_date, ${effectivePeriodSql} accounting_period, ct.name, ct.amount, ct.notes, ct.internal_transfer_key, COALESCE(ct.approval_status,'APPROVED') src_status,
             cc.type category_type, cc.name category_name, cc.code category_code, s.code site_code,
             ct.source_type src_source_type, source_payment.status payment_status, source_payment.method payment_method, source_payment.settlement_status payment_settlement_status
      FROM closing_entries ce
      LEFT JOIN cash_transactions ct ON ct.id = ce.cash_transaction_id
      LEFT JOIN payments source_payment ON ct.source_type IN ('payment','install_income') AND source_payment.id=ct.source_id
+     LEFT JOIN invoices source_invoice ON source_invoice.id=source_payment.invoice_id
      LEFT JOIN cash_categories cc ON cc.id = ct.category_id
      LEFT JOIN sites s ON s.id = ct.site_id
      WHERE ce.closing_id = ? AND ce.source_type = 'cash_sync' AND ce.cash_transaction_id IS NOT NULL`,
@@ -98,7 +101,7 @@ async function planSyncedReconciliation({ db, closingId, start, end }) {
       continue;
     }
     if (['payment','install_income'].includes(row.src_source_type) && (row.payment_status!=='confirmed' || (row.payment_method==='cash' && row.payment_settlement_status!=='settled'))) { plan.push({...base,action:'delete',reason:'invalid_source_payment'}); continue; }
-    const srcDate = toDateKey(row.transaction_date);
+    const srcDate = toDateKey(row.accounting_period || row.transaction_date);
     if (!srcDate || srcDate < start || srcDate > end) { plan.push({ ...base, action: 'delete', reason: 'out_of_period' }); continue; }
     const mapped = mapCashRowToEntry(row);
     if (mapped.skip) { plan.push({ ...base, action: 'delete', reason: mapped.skip }); continue; }
@@ -192,7 +195,8 @@ async function syncCashTransactionsIntoDraftAutoClosing({ conn, cashTransactionI
      JOIN cash_categories cc ON cc.id=ct.category_id
      LEFT JOIN sites s ON s.id=ct.site_id
      LEFT JOIN payments source_payment ON ct.source_type IN ('payment','install_income') AND source_payment.id=ct.source_id
-     JOIN closing_periods cp ON ct.transaction_date BETWEEN cp.period_start AND cp.period_end
+     LEFT JOIN invoices source_invoice ON source_invoice.id=source_payment.invoice_id
+     JOIN closing_periods cp ON ${effectivePeriodSql} BETWEEN cp.period_start AND cp.period_end
      WHERE ct.id IN (${marks})
        AND ct.internal_transfer_key IS NULL
        AND cc.code NOT IN ('FINPRIN','FINPROUT')
@@ -228,7 +232,7 @@ async function syncCashTransactionsIntoDraftAutoClosing({ conn, cashTransactionI
 //   sama dengan Data Kas.
 async function countPendingCashData({ db, closingId, start, end }) {
   const [[pendingRow]] = await db.execute(
-    `SELECT COUNT(*) n FROM cash_transactions ct WHERE ct.transaction_date BETWEEN ? AND ? AND ct.approval_status = 'PENDING_APPROVAL'`,
+    `SELECT COUNT(*) n FROM cash_transactions ct WHERE ${effectivePeriodSql} BETWEEN ? AND ? AND ct.approval_status = 'PENDING_APPROVAL'`,
     [start, end]
   );
   const unsyncedRows = await selectUnsyncedCashRows({ db, closingId, start, end });

@@ -10,6 +10,7 @@ const expressLayouts = require('express-ejs-layouts');
 const bcrypt = require('bcryptjs');
 const cron = require('node-cron');
 const db = require('./config/db');
+const { ensureAccountingPeriodSchema } = require('./services/accountingPeriodSchema');
 const csrf = require('./middleware/csrf');
 const commonLocals = require('./middleware/common');
 const paymentProofUpload = require('./middleware/paymentProofUpload');
@@ -26,14 +27,7 @@ const invoiceLogoUpload = require('./middleware/invoiceLogoUpload');
 const { requireAuth, loadPermissions, requirePermission, requireAnyPermission, requireMasterAdmin } = require('./middleware/auth');
 const { generateMonthlyInvoices } = require('./services/invoiceService');
 const { runAutoIsolation } = require('./services/networkService');
-const { captureAllNmsTelemetry, backupAllRouters } = require('./services/nmsTelemetryService');
-const { runExperienceProbes } = require('./services/networkInfrastructureService');
-const { ensureNmsV2Schema, purgeNmsHistory } = require('./services/nms/schema');
-const nmsPoller = require('./services/nms/poller');
-const nmsAutomation = require('./services/nms/automation');
-const { evaluateNetworkIncidents } = require('./services/networkAlertService');
-const { pingAllOlts } = require('./services/oltService');
-const { syncDevices: syncAcsDevices } = require('./services/acsService');
+const { ensureNmsV2Schema } = require('./services/nms/schema');
 const { scanLowStock } = require('./services/inventoryService');
 const { deliverMobilePushes } = require('./services/mobilePushService');
 const { runCashAgingAlert } = require('./services/cashSettlementService');
@@ -46,7 +40,7 @@ const { ensureV56Schema: ensureWaCrmSchema } = require('./services/waCrmSchema')
 const { requireWahaWebhookToken } = require('./middleware/waha');
 
 const app = express();
-const assetVersion = ['public/css/app.css','public/css/debts.css','public/css/nms-wall.css','public/js/nms-wall.js','public/css/mobile-app.css','public/css/monitoring.css','public/js/app.js','public/js/payment-proof-review.js','public/js/mobile-app.js','public/js/nms.js','public/js/performance.js','public/js/monitoring.js']
+const assetVersion = ['public/css/app.css','public/css/debts.css','public/css/mobile-app.css','public/js/app.js','public/js/payment-proof-review.js','public/js/mobile-app.js','public/js/performance.js','public/css/nms-noc.css','public/js/nms-common.js','public/js/nms-secrets.js','public/js/nms-insights.js','public/js/pppoe-history.js',]
   .map(file => Math.floor(fs.statSync(path.join(__dirname,file)).mtimeMs).toString(36))
   .join('-');
 app.set('view engine', 'ejs');
@@ -263,13 +257,11 @@ app.use('/debts', requireAuth, requirePermission('finance'), require('./routes/d
 app.use('/closing', requireAuth, requireMasterAdmin, require('./routes/closing'));
 app.use('/routers', requireAuth, requirePermission('network'), require('./routes/routers'));
 app.use('/network', requireAuth, requirePermission('network'), require('./routes/network'));
-// NMS v2 owns the persisted PPP-secret mirror and Smart Sync workflow.  Keep it
-// mounted separately from the older Network utilities so the UI, API, schema and
-// poller always use the same source of truth.
+// PPPoE inventory and reconciliation share persisted customer mappings.
 app.use('/nms', requireAuth, requirePermission('network'), require('./routes/nms'));
 app.use('/acs', requireAuth, requirePermission('network'), require('./routes/acs'));
 app.use('/olt', requireAuth, requirePermission('network'), require('./routes/olt'));
-app.use('/monitoring', requireAuth, requirePermission('network'), require('./routes/monitoring'));
+app.use('/monitoring', requireAuth, requirePermission('network'), (req,res)=>{ if(req.method==='GET'&&!req.path.startsWith('/api/'))return res.redirect('/nms/secrets');res.status(410).json({ok:false,error:'Monitoring billing sudah dihentikan. Gunakan dashboard NMS terpisah.'}); });
 app.use('/settings', requireAuth, requirePermission('settings'), require('./routes/settings'));
 app.use('/profile', requireAuth, require('./routes/profile'));
 app.use('/communication', requireAuth, require('./routes/communication'));
@@ -355,13 +347,13 @@ async function bootstrap() {
   await ensureV61Schema();
   await ensureV62Schema();
   await ensureV63Schema();
+  await ensureAccountingPeriodSchema();
   await ensureV64Schema();
   await ensureV65Schema();
   await ensureV66Schema();
   await ensureWaCrmSchema();
   await recoverProofOcrOnBoot();
   await ensureNmsV2Schema();
-  nmsPoller.start();
   const [rows] = await db.query('SELECT COUNT(*) total FROM users');
   if (Number(rows[0].total) === 0) {
     const username = process.env.DEFAULT_ADMIN_USERNAME || 'admin';
@@ -384,26 +376,8 @@ async function bootstrap() {
   }, { timezone: 'Asia/Jakarta' });
 
   cron.schedule('30 2 * * 0', async () => {
-    try { console.log('Cron retensi log:',await purgeOldLogs(7)); await purgeNmsHistory(); }
+    try { console.log('Cron retensi log:',await purgeOldLogs(7)); }
     catch (err) { console.error('Cron retensi log gagal:',err.message); }
-  }, { timezone: 'Asia/Jakarta' });
-
-  // NMS operational jobs are deliberately conservative: automatic Smart Sync
-  // remains disabled until enabled in NMS settings, while scheduled actions and
-  // configuration snapshots are durable and independently auditable.
-  cron.schedule('* * * * *', async () => {
-    try { await nmsAutomation.runDue(); }
-    catch (err) { console.error('NMS scheduled action gagal:', err.message); }
-  }, { timezone: 'Asia/Jakarta' });
-  cron.schedule('*/5 * * * *', async () => {
-    try { await nmsAutomation.maybeAutoSync(); }
-    catch (err) { console.error('NMS auto sync gagal:', err.message); }
-    try { await require('./services/nms/fasum').checkOffline(); }
-    catch (err) { console.error('NMS cek Fasum offline gagal:', err.message); }
-  }, { timezone: 'Asia/Jakarta' });
-  cron.schedule('10 3 * * *', async () => {
-    try { console.log('NMS snapshot PPP:', await nmsAutomation.takeSnapshots()); }
-    catch (err) { console.error('NMS snapshot PPP gagal:', err.message); }
   }, { timezone: 'Asia/Jakarta' });
 
   // WA Gateway watchdog — every 5 minutes: (1) resume the send queue in case it stalled while the
@@ -421,11 +395,6 @@ async function bootstrap() {
     } catch (err) { console.error('WA Gateway auto-reminder sweep gagal:', err.message); }
   }, { timezone: 'Asia/Jakarta' });
 
-  cron.schedule('*/5 * * * *', async () => {
-    if (!process.env.GENIEACS_NBI_URL) return;
-    try { const result=await syncAcsDevices();if(result.status==='success')console.log('ACS sync:',result.devices,'ONT,',result.linked,'mapping baru'); }
-    catch (err) { console.error('ACS sync gagal:',err.message); }
-  }, { timezone: 'Asia/Jakarta' });
 
   // v1.28 — pengingat umur cash di tim: dicek tiap 30 menit, dikirim maksimal sekali per hari (>= 08:00 WIB).
   cron.schedule('*/30 * * * *', async () => {
@@ -440,43 +409,13 @@ async function bootstrap() {
     } catch (err) { console.error('INKAMNET GO push gagal:', err.message); }
   }, { timezone: 'Asia/Jakarta' });
 
-  cron.schedule('30 3 * * 0', async () => {
-    try { const result = await backupAllRouters(['rsc', 'backup']); console.log('NMS backup mingguan:', result.filter(row => row.status === 'success').length, 'berhasil'); }
-    catch (err) { console.error('NMS backup gagal:', err.message); }
-  }, { timezone: 'Asia/Jakarta' });
 
-  // NMS telemetry and stock alerts are deliberately low-frequency. The public
-  // monitor page remains responsive because it reads the persisted samples,
-  // while router polling happens in one bounded Promise.all batch.
-  cron.schedule('*/2 * * * *', async () => {
-    try { const result=await runExperienceProbes(); if(result.saved) console.log('Experience probe:',result.saved,'sample(s)'); }
-    catch (err) { console.error('Experience probe gagal:',err.message); }
-  }, { timezone: 'Asia/Jakarta' });
 
   cron.schedule('*/5 * * * *', async () => {
-    try { const result = await captureAllNmsTelemetry(); console.log('NMS telemetry:', result.routers, 'router(s)'); }
-    catch (err) { console.error('NMS telemetry gagal:', err.message); }
     try { await scanLowStock(); } catch (err) { console.error('Stock alert gagal:', err.message); }
   }, { timezone: 'Asia/Jakarta' });
 
-  // OLT reachability — pings management_ip of every registered OLT (reuses the same ICMP
-  // mechanism as ONT ping in acsService.js). Status feeds the OLT KPI card on /noc and the
-  // registry page at /olt. Runs alongside the telemetry cron above so both are fresh together.
-  cron.schedule('*/5 * * * *', async () => {
-    try { const result = await pingAllOlts(); if (result.checked) console.log('OLT ping:', result.online, 'online,', result.offline, 'offline dari', result.checked); }
-    catch (err) { console.error('OLT ping gagal:', err.message); }
-  }, { timezone: 'Asia/Jakarta' });
 
-  // Network Incident & Alert Engine — dijalankan setelah telemetry di atas supaya status
-  // router/ONT/OLT yang dievaluasi sudah yang paling baru. Aman berjalan tiap 5 menit karena
-  // evaluateNetworkIncidents() sendiri idempotent (dedup via tabel network_incidents) dan
-  // tidak melakukan apa pun jika toggle WA/tiket di Settings > Tampilan & Aplikasi dimatikan.
-  cron.schedule('*/5 * * * *', async () => {
-    try {
-      const result = await evaluateNetworkIncidents();
-      if (result.opened || result.resolved || result.ticketsCreated) console.log('Network Alert Engine:', result);
-    } catch (err) { console.error('Network Alert Engine gagal:', err.message); }
-  }, { timezone: 'Asia/Jakarta' });
 
   // WAHA (the WhatsApp HTTP API service) keeps the actual WhatsApp session alive in its own
   // process independent of this app, so on boot we just sync our in-memory status mirror with

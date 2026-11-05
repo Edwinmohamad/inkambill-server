@@ -2,10 +2,10 @@ const {toDateKey}=require('./closingSyncService');
 const {normalizeSiteCluster,buildClosingCalculation,money}=require('./closingCalculator');
 
 
-// Invoice-linked payments belong to their billing month; other journals use
-// the actual transaction date. Keep this predicate shared with lock checks.
-const periodPredicate = `((source_invoice.id IS NOT NULL AND source_invoice.period_year=? AND source_invoice.period_month=?) OR (source_invoice.id IS NULL AND ct.transaction_date BETWEEN ? AND ?))`;
-const periodParams = (start,end) => [Number(start.slice(0,4)),Number(start.slice(5,7)),start,end];
+// Stored accounting period is authoritative. Legacy journals keep their previous
+// invoice-period fallback; manual transactions use their selected posting date.
+const periodPredicate = `COALESCE(YEAR(ct.accounting_period),source_invoice.period_year,YEAR(ct.transaction_date))=? AND COALESCE(MONTH(ct.accounting_period),source_invoice.period_month,MONTH(ct.transaction_date))=?`;
+const periodParams = (start,end) => [Number(start.slice(0,4)),Number(start.slice(5,7))];
 const sourceJoins = `LEFT JOIN payments source_payment ON ct.source_type IN ('payment','install_income') AND source_payment.id=ct.source_id
      LEFT JOIN invoices source_invoice ON source_invoice.id=source_payment.invoice_id`;
 

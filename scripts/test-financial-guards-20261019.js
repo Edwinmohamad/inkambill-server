@@ -15,6 +15,6 @@ assert.match(lock,/data\.ledgerSummary\?\.invalid \|\| pendingCash>0/);
 assert.match(lock,/countPendingClosingCash\(\{db:conn,start,end\}\)/);
 assert.doesNotMatch(lock,/force_lock/);
 const correction=payments.slice(payments.indexOf("router.post('/:id/method-to-cash'"),payments.indexOf("router.post('/:id/proof'"));
-assert.match(correction,/await assertDateOpen\(conn,journal.transaction_date\)/);
+assert.match(correction,/await assertDateOpen\(conn,journal.accounting_period\|\|journal.transaction_date\)/);
 assert.match(correction,/DELETE ce FROM closing_entries/);
 console.log('PASS financial guard contracts (static). Integration tests and production reconciliation still required.');

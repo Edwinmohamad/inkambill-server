@@ -1,4 +1,5 @@
 const PDFDocument=require('pdfkit');
+const {cleanClosingDescription}=require('./closingPdfText');
 const path=require('path');
 const fs=require('fs');
 
@@ -33,7 +34,7 @@ function drawLogo(doc,x,y,w=145,h=42){const logo=logoPath();if(fs.existsSync(log
 // gradient navy-ungu dengan lingkaran glow). Meniru bahasa visual yang sudah
 // dipakai di views/invoices/print.ejs supaya semua dokumen INKAMNET terasu
 // satu keluarga.
-function drawBrandHeader(doc,title,subtitle,compact=false){
+function drawBrandHeader(doc,title,subtitle,compact=false,showMetadata=true){
   const width=doc.page.width,margin=doc.page.margins.left,usable=width-margin-doc.page.margins.right,h=compact?52:82;
   doc.save();
   doc.rect(0,0,width,h).fill(COLORS.white);
@@ -45,7 +46,7 @@ function drawBrandHeader(doc,title,subtitle,compact=false){
   doc.strokeColor(COLORS.line).lineWidth(1).moveTo(margin,h).lineTo(width-margin,h).stroke();
   doc.rect(margin,h-1.5,34,1.5).fill(COLORS.purple);
   doc.restore();doc.y=Math.max(h+16,doc.page.margins.top);
-  if(!compact){doc.fillColor(COLORS.muted2).font('Helvetica').fontSize(6.8).text(`DOKUMEN RESMI · INKAMNET CONTROL CENTER · Dibuat ${nowText()}`,margin,doc.y,{width:usable,characterSpacing:.2});doc.y+=18;}
+  if(!compact&&showMetadata){doc.fillColor(COLORS.muted2).font('Helvetica').fontSize(6.8).text(`DOKUMEN RESMI · INKAMNET CONTROL CENTER · Dibuat ${nowText()}`,margin,doc.y,{width:usable,characterSpacing:.2});doc.y+=18;}
 }
 // v2.6 — label section polos (huruf kecil muted, bukan lagi kotak ungu
 // bergaris tebal di kiri), dengan garis tipis penuh lebar di bawahnya. `meta`
@@ -376,83 +377,114 @@ function drawAdjustmentTable(doc,rows,title,subtitle){
 // v3.2 — tabel "Rincian Pendapatan & Pengeluaran" sekarang diberi nomor urut
 // (kolom NO, jalan terus lintas kategori & lintas halaman lewat `entryNo`,
 // tidak dihitung ulang di baris grup/subtotal). Batas tinggi baris yang dulu
-// dipatok keras 96pt (memotong Tanggal/Lokasi/Keterangan panjang di tengah
-// tanpa tanda apa pun) sekarang jadi 220pt + ellipsis sebagai jaring pengaman —
-// konsisten dengan drawAdjustmentTable() di atas.
+// Detail tables keep complete descriptions, split unusually long notes across
+// pages, and reserve enough width for row numbers and currency values.
 function drawTransactionTable(doc,rows,title,subtitle){
   const entries=rows.filter(row=>row.kind==='entry');
-  // A transaction table is easier to scan when it starts near the top of a
-  // page. Reserve enough space for a complete category instead of squeezing a
-  // heading and one orphan row below the previous section.
-  ensureClosingSectionSpace(doc,400,title,subtitle);
+  ensureClosingSectionSpace(doc,160,title,subtitle);
   drawSectionLabel(doc,'Rincian Pendapatan & Pengeluaran',`${entries.length} transaksi`);
-  const x=doc.page.margins.left,total=doc.page.width-doc.page.margins.left-doc.page.margins.right;
-  const bottomLimit=closingBottomLimit(doc);
-  const cols=[{label:'No',w:.05,align:'center'},{label:'Tanggal',w:.12},{label:'Lokasi',w:.12},{label:'Jenis',w:.14},{label:'Keterangan',w:.34},{label:'Nominal',w:.23,align:'right'}];
+  const x=doc.page.margins.left,total=doc.page.width-x-doc.page.margins.right;
+  const bottomLimit=closingBottomLimit(doc),padding=6;
+  const cols=[{label:'No',w:.065,align:'center'},{label:'Tanggal',w:.13},{label:'Lokasi',w:.13},{label:'Jenis',w:.14},{label:'Keterangan',w:.37},{label:'Nominal',w:.165,align:'right'}];
   const widths=cols.map(c=>c.w*total);
-  function drawHead(){
-    const hy=doc.y;doc.save();
-    doc.rect(x,hy,total,24).fill(COLORS.soft);doc.strokeColor(COLORS.line).lineWidth(.8).moveTo(x,hy+24).lineTo(x+total,hy+24).stroke();
-    let xx=x;cols.forEach((c,i)=>{doc.fillColor(COLORS.muted).font('Helvetica-Bold').fontSize(6.6).text(c.label.toUpperCase(),xx+10,hy+9,{width:widths[i]-16,align:c.align||'left',height:9,lineBreak:false,ellipsis:true});xx+=widths[i];});
-    doc.restore();doc.y=hy+26;
+  function head(){
+    const y=doc.y;doc.save();doc.rect(x,y,total,26).fill(COLORS.soft);
+    let xx=x;cols.forEach((c,i)=>{
+      doc.fillColor(COLORS.muted).font('Helvetica-Bold').fontSize(6.7).text(c.label.toUpperCase(),xx+padding,y+9,{width:widths[i]-padding*2,height:10,align:c.align||'left',lineBreak:false});
+      xx+=widths[i];
+    });
+    doc.strokeColor(COLORS.line).lineWidth(.7).moveTo(x,y+26).lineTo(x+total,y+26).stroke();
+    doc.restore();doc.y=y+28;
   }
-  let entriesOnPage=0;
-  function nextPage(meta='lanjutan'){
-    doc.addPage();drawBrandHeader(doc,title,subtitle,true);drawSectionLabel(doc,'Rincian Pendapatan & Pengeluaran',meta);drawHead();
-    entriesOnPage=0;
+  function nextPage(){
+    doc.addPage();drawBrandHeader(doc,title,subtitle,true);
+    drawSectionLabel(doc,'Rincian Pendapatan & Pengeluaran','lanjutan');head();
   }
-  drawHead();
+  function textHeight(text,width,bold=false){
+    return doc.font(bold?'Helvetica-Bold':'Helvetica').fontSize(7.5).heightOfString(text,{width,lineGap:1.5});
+  }
+  function fitNumber(text,xx,y,width,color=COLORS.ink){
+    doc.fillColor(color).font('Helvetica-Bold').fontSize(7.5);
+    let size=7.5;
+    while(doc.widthOfString(text)>width&&size>4.5){size-=.2;doc.fontSize(size);}
+    doc.text(text,xx,y,{width,height:12,align:'right',lineBreak:false});
+  }
+  // Split unusually long descriptions between pages rather than dropping text.
+  function takeText(text,height){
+    if(textHeight(text,widths[4]-padding*2)<=height)return [text,''];
+    let low=1,high=text.length;
+    while(low<high){
+      const middle=Math.ceil((low+high)/2);
+      if(textHeight(text.slice(0,middle),widths[4]-padding*2)<=height)low=middle;else high=middle-1;
+    }
+    let cut=low;
+    const space=Math.max(text.lastIndexOf(' ',cut),text.lastIndexOf('\n',cut));
+    if(space>cut*.6)cut=space;
+    return [text.slice(0,cut).trimEnd(),text.slice(cut).trimStart()];
+  }
+  head();
   if(!entries.length){
-    doc.save();doc.roundedRect(x,doc.y,total,36,7).fillAndStroke(COLORS.soft,COLORS.line);
-    doc.fillColor(COLORS.muted).font('Helvetica').fontSize(7.6).text('Tidak ada data untuk filter yang dipilih.',x+12,doc.y+13,{width:total-24,align:'center',height:12,lineBreak:false,ellipsis:true});
-    doc.restore();doc.y+=46;return;
+    doc.fillColor(COLORS.muted).font('Helvetica').fontSize(8).text('Tidak ada transaksi pada periode ini.',x+padding,doc.y+10,{width:total-padding*2});
+    doc.y+=38;return;
   }
-  let totalIncome=0,totalExpense=0,entryNo=0;
-  rows.forEach((row,ri)=>{
+  const totalIncome=entries.filter(row=>row.jenis==='Pendapatan').reduce((sum,row)=>sum+Number(row.nominal||0),0);
+  const totalExpense=entries.filter(row=>row.jenis!=='Pendapatan').reduce((sum,row)=>sum+Number(row.nominal||0),0);
+  let entryNo=0;
+  rows.forEach((row,index)=>{
     if(row.kind==='group'){
-      if(entriesOnPage>=8||doc.y+62>bottomLimit)nextPage();
-      const y=doc.y;doc.save();doc.roundedRect(x,y,total,22,5).fill(row.jenis==='Pendapatan'?COLORS.greenSoft:COLORS.redSoft);
-      doc.fillColor(row.jenis==='Pendapatan'?COLORS.green:'#B54708').font('Helvetica-Bold').fontSize(7.3).text(`${row.jenis.toUpperCase()} · ${safe(row.category)}`,x+10,y+8,{width:total*.72,height:10,ellipsis:true,lineBreak:false});
-      doc.fillColor(COLORS.muted).font('Helvetica').fontSize(6.7).text(`${row.count} transaksi`,x+total*.74,y+8,{width:total*.24,align:'right',height:10});doc.restore();doc.y=y+28;return;
+      if(doc.y+90>bottomLimit)nextPage();
+      const y=doc.y;doc.save();doc.rect(x,y,total,23).fill(COLORS.soft);
+      doc.fillColor(COLORS.ink).font('Helvetica-Bold').fontSize(7.5).text(`${row.jenis.toUpperCase()} · ${safe(row.category)}`,x+padding,y+7,{width:total*.76,height:11,lineBreak:false,ellipsis:true});
+      doc.fillColor(COLORS.muted).font('Helvetica').fontSize(6.8).text(`${row.count} transaksi`,x+total*.78,y+7,{width:total*.22-padding,align:'right',height:11,lineBreak:false});
+      doc.restore();doc.y=y+27;return;
     }
     if(row.kind==='subtotal'){
       if(doc.y+32>bottomLimit)nextPage();
-      const y=doc.y;doc.save();doc.rect(x,y,total,26).fill(COLORS.purpleSoft);doc.fillColor(COLORS.purple).font('Helvetica-Bold').fontSize(7.1).text(`SUBTOTAL ${safe(row.category).toUpperCase()}`,x+10,y+9,{width:total*.68,height:10,ellipsis:true});doc.fillColor(row.jenis==='Pendapatan'?COLORS.green:'#B54708').font('Helvetica-Bold').fontSize(8).text(rupiah(row.nominal),x+total*.72,y+8,{width:total*.26,align:'right',height:11});doc.restore();doc.y=y+32;if(row.jenis==='Pendapatan')totalIncome+=Number(row.nominal||0);else totalExpense+=Number(row.nominal||0);return;
+      const y=doc.y;doc.save();doc.rect(x,y,total,27).fill(COLORS.soft);
+      doc.fillColor(COLORS.ink).font('Helvetica-Bold').fontSize(7.3).text(`SUBTOTAL ${safe(row.category).toUpperCase()}`,x+padding,y+8,{width:total*.72,height:11,lineBreak:false,ellipsis:true});
+      fitNumber(rupiah(row.nominal),x+total*.74,y+8,total*.26-padding);
+      doc.restore();doc.y=y+33;return;
     }
-    // Measure wrapped text only after moving away from the unsafe bottom area.
-    // heightOfString can otherwise make PDFKit advance a page before our own
-    // page-break check, leaving an unbranded page with a clipped first row.
-    if(entriesOnPage>=8||doc.y+80>bottomLimit)nextPage();
-    const tanggalText=safe(row.tanggal);
-    const lokasiText=safe(row.lokasi);
-    const keteranganText=safe(row.keterangan);
-    const tanggalH=doc.font('Helvetica').fontSize(7.3).heightOfString(tanggalText,{width:widths[1]-16,lineGap:1});
-    const lokasiH=doc.font('Helvetica-Bold').fontSize(7.3).heightOfString(lokasiText,{width:widths[2]-16,lineGap:1});
-    const keteranganH=doc.font('Helvetica').fontSize(7.3).heightOfString(keteranganText,{width:widths[4]-16,lineGap:1});
-    const rh=Math.max(24,Math.min(220,Math.max(tanggalH,lokasiH,keteranganH))+14);
-    if(doc.y+rh>bottomLimit)nextPage();
     entryNo+=1;
-    const y=doc.y;doc.save();
-    if(ri%2===1)doc.rect(x,y,total,rh).fill(COLORS.soft);
-    doc.strokeColor(COLORS.line).lineWidth(.6).moveTo(x,y+rh).lineTo(x+total,y+rh).stroke();
-    let xx=x;
-    doc.fillColor(COLORS.muted2).font('Helvetica-Bold').fontSize(7.1).text(String(entryNo),xx+10,y+7,{width:widths[0]-16,align:'center',height:rh-10,lineBreak:false,ellipsis:true});xx+=widths[0];
-    doc.fillColor(COLORS.muted).font('Helvetica').fontSize(7.3).text(tanggalText,xx+10,y+7,{width:widths[1]-16,height:rh-10,lineGap:1,ellipsis:true});xx+=widths[1];
-    doc.fillColor(COLORS.ink).font('Helvetica-Bold').fontSize(7.3).text(lokasiText,xx+10,y+7,{width:widths[2]-16,height:rh-10,lineGap:1,ellipsis:true});xx+=widths[2];
-    const income=row.jenis==='Pendapatan';
-    doc.fillColor(income?COLORS.green:'#B54708').font('Helvetica-Bold').fontSize(6.8).text(safe(row.jenis).toUpperCase(),xx+10,y+8,{width:widths[3]-16,height:rh-12,lineGap:1});xx+=widths[3];
-    doc.fillColor(COLORS.ink).font('Helvetica').fontSize(7.3).text(keteranganText,xx+10,y+7,{width:widths[4]-16,height:rh-10,lineGap:1,ellipsis:true});xx+=widths[4];
-    doc.fillColor(COLORS.ink).font('Helvetica-Bold').fontSize(7.4).text(rupiah(row.nominal),xx+10,y+7,{width:widths[5]-16,align:'right',height:rh-10,lineBreak:false,ellipsis:true});
-    doc.restore();doc.y=y+rh;entriesOnPage+=1;
+    const tanggal=safe(row.tanggal),lokasi=safe(row.lokasi);
+    let remaining=cleanClosingDescription(row.keterangan)||'-';
+    let more=true;
+    while(more){
+      if(doc.y+64>bottomLimit)nextPage();
+      const reserve=rows[index+1]?.kind==='subtotal'?33+(index+2===rows.length?82:0):0;
+      const available=bottomLimit-doc.y-reserve-16;
+      if(available<20){nextPage();continue;}
+      const [description,rest]=takeText(remaining,available);
+      const rh=Math.max(30,textHeight(tanggal,widths[1]-padding*2)+16,textHeight(lokasi,widths[2]-padding*2,true)+16,textHeight(description,widths[4]-padding*2)+16);
+      if(doc.y+rh+reserve>bottomLimit){nextPage();continue;}
+      const y=doc.y;doc.save();
+      if(entryNo%2===0)doc.rect(x,y,total,rh).fill('#FAFAFB');
+      doc.strokeColor(COLORS.line).lineWidth(.5).moveTo(x,y+rh).lineTo(x+total,y+rh).stroke();
+      let xx=x;
+      doc.fillColor(COLORS.muted).font('Helvetica').fontSize(7.1).text(String(entryNo),xx+padding,y+8,{width:widths[0]-padding*2,height:12,align:'center',lineBreak:false});xx+=widths[0];
+      doc.fillColor(COLORS.muted).font('Helvetica').fontSize(7.5).text(tanggal,xx+padding,y+8,{width:widths[1]-padding*2,height:rh-12,lineGap:1.5});xx+=widths[1];
+      doc.fillColor(COLORS.ink).font('Helvetica-Bold').fontSize(7.5).text(lokasi,xx+padding,y+8,{width:widths[2]-padding*2,height:rh-12,lineGap:1.5});xx+=widths[2];
+      const income=row.jenis==='Pendapatan';
+      doc.fillColor(income?COLORS.green:'#B54708').font('Helvetica-Bold').fontSize(6.8).text(safe(row.jenis).toUpperCase(),xx+padding,y+8,{width:widths[3]-padding*2,height:12,lineBreak:false});xx+=widths[3];
+      doc.fillColor(COLORS.ink).font('Helvetica').fontSize(7.5).text(description,xx+padding,y+8,{width:widths[4]-padding*2,height:rh-12,lineGap:1.5});xx+=widths[4];
+      fitNumber(rupiah(row.nominal),xx+padding,y+8,widths[5]-padding*2);
+      doc.restore();doc.y=y+rh;
+      remaining=rest;more=Boolean(rest);
+      if(more)nextPage();
+    }
   });
-  // v2.6 — baris total Pendapatan/Pengeluaran di bawah tabel, supaya tidak
-  // perlu jumlah manual buat cek total dari daftar per-kategori di atasnya.
-  if(doc.y+34>bottomLimit){doc.addPage();drawBrandHeader(doc,title,subtitle,true);drawSectionLabel(doc,'Rincian Pendapatan & Pengeluaran','total');}
-  const fy=doc.y;doc.save();doc.rect(x,fy,total,30).fill(COLORS.purpleSoft);doc.strokeColor(COLORS.line).lineWidth(.8).moveTo(x,fy).lineTo(x+total,fy).stroke();
-  doc.fillColor(COLORS.green).font('Helvetica-Bold').fontSize(7.4).text(`TOTAL PENDAPATAN · ${rupiah(totalIncome)}`,x+10,fy+10,{width:total*.5-10,height:11,lineBreak:false,ellipsis:true});
-  doc.fillColor(COLORS.red).font('Helvetica-Bold').fontSize(7.4).text(`TOTAL PENGELUARAN · ${rupiah(totalExpense)}`,x+total*.5,fy+10,{width:total*.5-10,align:'right',height:11,lineBreak:false,ellipsis:true});
-  doc.restore();doc.y=fy+30+10;
+  if(doc.y+82>bottomLimit)nextPage();
+  const y=doc.y;doc.save();doc.rect(x,y,total,76).fill(COLORS.soft);
+  const totals=[['TOTAL PENDAPATAN',totalIncome,COLORS.green],['TOTAL PENGELUARAN',totalExpense,'#B54708'],['SALDO BERSIH PERIODE',totalIncome-totalExpense,COLORS.ink]];
+  totals.forEach(([label,value,color],index)=>{
+    const yy=y+9+index*23;
+    if(index===2)doc.strokeColor(COLORS.line).lineWidth(.7).moveTo(x+padding,yy-5).lineTo(x+total-padding,yy-5).stroke();
+    doc.fillColor(COLORS.ink).font('Helvetica-Bold').fontSize(7.6).text(label,x+padding,yy,{width:total*.65,height:12,lineBreak:false});
+    fitNumber(rupiah(value),x+total*.67,yy,total*.33-padding,color);
+  });
+  doc.restore();doc.y=y+86;
 }
+
 function drawCustomerActivityTable(doc,rows,title,subtitle){
   if(!Array.isArray(rows)||!rows.length)return;
   ensureClosingSectionSpace(doc,82,title,subtitle);
@@ -624,7 +656,7 @@ function createClosingReportPdf(res,{title,subtitle,filename,recipientName='',su
   res.setHeader('Content-Type','application/pdf');
   res.setHeader('Content-Disposition',`${disposition==='inline'?'inline':'attachment'}; filename="${String(filename).replace(/[\r\n"]/g,'-')}"`);
   doc.pipe(res);
-  drawBrandHeader(doc,title,subtitle,false);
+  drawBrandHeader(doc,title,subtitle,false,false);
   drawSummary(doc,summaryItems);
   drawIncomeCategorySummary(doc,incomeCategoryRows,title,subtitle);
   drawLocationShareCards(doc,recipientName,blocks,title,subtitle);
@@ -633,8 +665,6 @@ function createClosingReportPdf(res,{title,subtitle,filename,recipientName='',su
   drawNewCustomerTable(doc,newCustomerRows,title,subtitle);
   drawAdjustmentTable(doc,adjustmentRows,title,subtitle);
   drawTransactionTable(doc,transactionRows,title,subtitle);
-  drawInternalDebtSection(doc,internalDebtRows,internalDebtSummary,title,subtitle);
-  drawReportSignoff(doc);
   drawClosingHeaderOnContinuationPages(doc,title);
   drawWatermarkOnAllPages(doc,watermark);
   drawFooterOnAllPages(doc);

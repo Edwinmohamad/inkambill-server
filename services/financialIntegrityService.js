@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const effectivePeriodSql = `COALESCE(ct.accounting_period,STR_TO_DATE(CONCAT(source_invoice.period_year,'-',LPAD(source_invoice.period_month,2,'0'),'-01'),'%Y-%m-%d'),ct.transaction_date)`;
 
 // Audit read-only untuk memastikan tiga sumber keuangan tetap selaras:
 // invoice <- payment confirmed <- jurnal Data Kas. Fungsi ini sengaja tidak
@@ -11,7 +12,7 @@ const CLOSING_MISMATCH_SQL = `(
       OR COALESCE(ct.approval_status,'APPROVED')<>'APPROVED'
       OR ct.internal_transfer_key IS NOT NULL
       OR cc.code IN ('FINPRIN','FINPROUT')
-      OR ct.transaction_date NOT BETWEEN cp.period_start AND cp.period_end
+      OR ${effectivePeriodSql} NOT BETWEEN cp.period_start AND cp.period_end
       OR ABS(ce.amount-ct.amount)>0.01
       OR ce.entry_type<>CASE WHEN cc.type='income' THEN 'INCOME' ELSE 'EXPENSE' END
       OR ce.entry_date<>ct.transaction_date
@@ -51,6 +52,8 @@ const CHECKS = {
   closingSyncedMismatch: `SELECT COUNT(*) total FROM closing_entries ce
     JOIN closing_periods cp ON cp.id=ce.closing_id
     LEFT JOIN cash_transactions ct ON ct.id=ce.cash_transaction_id
+    LEFT JOIN payments source_payment ON ct.source_type IN ('payment','install_income') AND source_payment.id=ct.source_id
+    LEFT JOIN invoices source_invoice ON source_invoice.id=source_payment.invoice_id
     LEFT JOIN cash_categories cc ON cc.id=ct.category_id
     LEFT JOIN sites s ON s.id=ct.site_id
     WHERE ce.source_type='cash_sync' AND ce.excluded_at IS NULL
@@ -67,11 +70,13 @@ async function diagnoseClosingMismatches(limit = 30) {
     cp.period_start,cp.period_end,ce.cash_transaction_id,ce.entry_type,
     ce.amount closing_amount,ce.entry_date,ce.site_code closing_site,ce.cluster_name closing_cluster,
     ce.category closing_category,
-    ct.id journal_id,ct.transaction_date journal_date,ct.amount journal_amount,ct.internal_transfer_key,
+    ct.id journal_id,ct.transaction_date journal_date,${effectivePeriodSql} accounting_date,ct.amount journal_amount,ct.internal_transfer_key,
     ct.approval_status journal_approval,cc.type journal_type,cc.name journal_category,s.code journal_site
     FROM closing_entries ce
     JOIN closing_periods cp ON cp.id=ce.closing_id
     LEFT JOIN cash_transactions ct ON ct.id=ce.cash_transaction_id
+    LEFT JOIN payments source_payment ON ct.source_type IN ('payment','install_income') AND source_payment.id=ct.source_id
+    LEFT JOIN invoices source_invoice ON source_invoice.id=source_payment.invoice_id
     LEFT JOIN cash_categories cc ON cc.id=ct.category_id
     LEFT JOIN sites s ON s.id=ct.site_id
     WHERE ce.source_type='cash_sync' AND ce.excluded_at IS NULL
@@ -83,7 +88,7 @@ async function diagnoseClosingMismatches(limit = 30) {
     if(!row.journal_id)reasons.push('source_journal_missing');
     else{
       if(row.journal_approval!=='APPROVED')reasons.push('not_approved');
-      if(date(row.journal_date)<date(row.period_start)||date(row.journal_date)>date(row.period_end))reasons.push('outside_closing_period');
+      if(date(row.accounting_date||row.journal_date)<date(row.period_start)||date(row.accounting_date||row.journal_date)>date(row.period_end))reasons.push('outside_closing_period');
       if(Math.abs(Number(row.closing_amount)-Number(row.journal_amount))>0.01)reasons.push('amount_mismatch');
       if(row.entry_type!==(row.journal_type==='income'?'INCOME':'EXPENSE'))reasons.push('flow_type_mismatch');
       if(row.internal_transfer_key)reasons.push('internal_transfer_not_operating');

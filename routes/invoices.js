@@ -612,8 +612,8 @@ router.post('/:id/reset-unpaid',requireAdmin,async(req,res)=>{
       const marks=ids.map(()=>'?').join(',');
       // Semua jurnal otomatis yang bersumber dari payment harus ikut dibalik. Ini termasuk
       // pendapatan billing biasa serta jurnal pemasangan baru/komisi yang memakai payment id sama.
-      const [cashRows]=await conn.execute(`SELECT id,transaction_date FROM cash_transactions WHERE source_id IN (${marks}) AND source_type IN ('payment','install_income','install_commission_technician','install_commission_sales','payment_commission_technician','payment_commission_sales') FOR UPDATE`,ids);
-      for(const row of cashRows)await assertDateOpen(conn,row.transaction_date);
+      const [cashRows]=await conn.execute(`SELECT id,transaction_date,accounting_period FROM cash_transactions WHERE source_id IN (${marks}) AND source_type IN ('payment','install_income','install_commission_technician','install_commission_sales','payment_commission_technician','payment_commission_sales') FOR UPDATE`,ids);
+      for(const row of cashRows)await assertDateOpen(conn,row.accounting_period||row.transaction_date);
       // Do not retain stale draft Closing lines pointing to deleted payment journals.
       for(const row of cashRows){
         await conn.execute(`DELETE ce FROM closing_entries ce JOIN closing_periods cp ON cp.id=ce.closing_id WHERE ce.cash_transaction_id=? AND cp.status='DRAFT' AND ce.source_type='cash_sync'`,[row.id]);

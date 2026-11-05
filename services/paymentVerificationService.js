@@ -10,7 +10,7 @@ const db=require('../config/db');
 const { refreshInvoiceStatus }=require('./invoiceService');
 const { unisolateCustomer }=require('./networkService');
 const { assignCashTransactionCode }=require('./cashService');
-const { isoDate, assertDateOpen, resolveBookDate, financialAudit }=require('./financialControlService');
+const { isoDate, assertDateOpen, resolveBookDate, financialAudit, resolveAccountingPeriod }=require('./financialControlService');
 const { syncCashTransactionsIntoDraftAutoClosing }=require('./closingSyncService');
 
 const PROOF_DIR=path.join(__dirname,'..','storage','payment-proofs');
@@ -70,11 +70,11 @@ async function billingCategory(conn,name='Pendapatan Billing'){
 async function postCashTransaction(conn,{paymentId,invoiceId,amount,reference,bookDate,categoryName='Pendapatan Billing',prefix='Pembayaran',actorUserId=null}){
   const meta=await paymentCashMeta(conn,invoiceId);
   if(!meta)throw new Error('Data faktur/pelanggan untuk jurnal kas tidak ditemukan. Transaksi dibatalkan.');
-  // Cash-basis ledger: received money belongs to its receipt/settlement booking date.
-  // The invoice's service period remains in invoice metadata; it is not the cash receipt period.
+  // Keep the receipt/settlement date unchanged. A separate stored accounting
+  // period uses the invoice month while open, or the next open month after closure.
   const ledgerDate=isoDate(bookDate);
   if(!ledgerDate)throw new Error('Tanggal penerimaan kas tidak valid.');
-  await assertDateOpen(conn,ledgerDate);
+  // Receipt date is preserved; the locked accounting period is resolved below.
   const isPsb=Number(meta.is_psb)===1;
   const incomeCategory=isPsb?'Pendapatan Pemasangan Baru':categoryName;
   const catId=await billingCategory(conn,incomeCategory);
@@ -93,10 +93,12 @@ async function postCashTransaction(conn,{paymentId,invoiceId,amount,reference,bo
     if(closing.inserted)await financialAudit({conn,userId:actorUserId,action:'sync_closing_cash',entityType:'cash_transaction',entityId:exists[0].id,before:null,after:{closing_entries_inserted:closing.inserted},reason:'Sinkron langsung jurnal pembayaran/setoran ke Closing AUTO',ip:null});
     return {id:exists[0].id,created:false,closingInserted:closing.inserted};
   }
+  const accountingPeriod=await resolveAccountingPeriod(conn,{periodYear:meta.period_year,periodMonth:meta.period_month,bookDate:ledgerDate,userId:actorUserId});
   const label=isPsb?`Pemasangan Baru ${meta.customer_name}`:`${prefix} ${meta.customer_name}`;
-  const [r]=await conn.execute(`INSERT INTO cash_transactions(transaction_date,name,category_id,site_id,amount,notes,source_type,source_id,approval_status,reviewed_by,reviewed_at,created_by) VALUES(?,?,?,?,?,?,'payment',?,'APPROVED',?,NOW(),?)`,[
-    ledgerDate,label,catId,meta.site_id,amount,`Faktur ${meta.invoice_number}${reference?` · ${reference}`:''}`,paymentId,actorUserId,actorUserId
+  const [r]=await conn.execute(`INSERT INTO cash_transactions(transaction_date,name,category_id,site_id,amount,notes,source_type,source_id,approval_status,reviewed_by,reviewed_at,created_by,accounting_period) VALUES(?,?,?,?,?,?,'payment',?,'APPROVED',?,NOW(),?,?)`,[
+    ledgerDate,label,catId,meta.site_id,amount,`Faktur ${meta.invoice_number}${reference?` · ${reference}`:''}`,paymentId,actorUserId,actorUserId,accountingPeriod
   ]);
+  await financialAudit({conn,userId:actorUserId,action:'assign_cash_period',entityType:'cash_transaction',entityId:r.insertId,before:null,after:{accounting_period:accountingPeriod,invoice_year:meta.period_year,invoice_month:meta.period_month,transaction_date:ledgerDate},reason:'Periode faktur jika Closing terbuka; periode terbuka berikutnya setelah penutupan',ip:null});
   if(!r.insertId)throw new Error('Jurnal Data Kas tidak berhasil dibuat. Transaksi dibatalkan.');
   await assignCashTransactionCode(conn,r.insertId,catId,new Date(`${ledgerDate}T12:00:00`));
   const closing=await syncCashTransactionsIntoDraftAutoClosing({conn,cashTransactionIds:[r.insertId],userId:actorUserId});
@@ -145,6 +147,12 @@ async function reconcileMissingPaymentCashTransactions(){
         AND NOT EXISTS (SELECT 1 FROM cash_transactions ct WHERE ct.source_id=p.id AND ct.source_type IN ('payment','install_income'))
       ORDER BY p.id ASC FOR UPDATE`);
     for(const payment of rows){
+      // A missing historical journal is not a newly received payment. Never
+      // guess its new month after the invoice Closing has already been closed.
+      const [closedInvoice]=await conn.execute(`SELECT cp.id FROM closing_periods cp
+        JOIN invoices i ON YEAR(cp.period_start)=i.period_year AND MONTH(cp.period_start)=i.period_month
+        WHERE i.id=? AND cp.status='LOCKED' LIMIT 1`,[payment.invoice_id]);
+      if(closedInvoice.length)continue;
       const isCash=payment.method==='cash';
       let result;
       try{
@@ -187,7 +195,7 @@ async function verifyPendingPayment(paymentId,{userId,ip=null,bookDateMode,manua
     if(p.status!=='pending')throw new Error('Hanya pembayaran berstatus menunggu yang dapat disetujui.');
     if(['transfer','qris'].includes(p.method)&&!p.proof_path)throw new Error('Bukti transfer/QRIS wajib dilampirkan sebelum approval.');
     const proofReview=await requireProofReview(conn,p,reviewReason);
-    const booking=await resolveBookDate(conn,{mode:bookDateMode,paidAt:p.paid_at,manualDate:manualBookDate});
+    const booking=await resolveBookDate(conn,{mode:bookDateMode,paidAt:p.paid_at,manualDate:manualBookDate,allowClosedReceipt:true});
     const [invoiceRows]=await conn.execute(`SELECT i.outstanding,i.status
       FROM invoices i JOIN customers c ON c.id=i.customer_id
       WHERE i.id=? AND c.customer_status='active' AND c.archived_at IS NULL FOR UPDATE`,[p.invoice_id]);
