@@ -37,10 +37,6 @@ async function setExempt(secretIds, { type = 'fasum', note = null } = {}, ctx = 
     await audit({ userId: ctx.userId || null, action: t ? `nms_exempt_${t}` : 'nms_exempt_clear', entityType: 'ppp_secret', entityId: done.length === 1 ? done[0].secretId : null, ip: ctx.ip || null, siteId: done[0].siteId || null,
       description: `${t ? `Tandai ${TYPE_LABEL[t]}` : 'Lepas tanda exempt'}: ${done.slice(0, 5).map(d => d.username).join(', ')}${done.length > 5 ? ` +${done.length - 5}` : ''}`,
       details: { type: t, note: cleanNote, secrets: done.map(d => ({ id: d.secretId, username: d.username, previous: d.previous })) } }).catch(() => {});
-    if (!t || t !== 'fasum') {
-      const poller = require('./poller');
-      for (const d of done) await poller.resolveAlert(`fasum_offline:${d.secretId}`).catch(() => {});
-    }
     cache.del('nms:dash');
   }
   return { summary: { total: ids.length, succeeded: done.length, failed: results.length - done.length }, results };
@@ -113,41 +109,4 @@ async function reportCsv(opts) {
   return { name: `laporan-fasum-${rep.month}`, csv: '﻿' + lines.map(r => r.map(esc).join(',')).join('\n') };
 }
 
-// ---------------------------------------------------------------- Alert Fasum offline
-async function checkOffline() {
-  const poller = require('./poller');
-  const enabled = await settings.flag('fasum_offline_alert');
-  const minutes = await settings.num('fasum_offline_minutes') || 30;
-  const [open] = await db.query(`SELECT dedup_key FROM nms_alerts WHERE alert_type='fasum_offline' AND resolved_at IS NULL`).catch(() => [[]]);
-  const openKeys = new Set(open.map(a => a.dedup_key));
-  let offline = [];
-  if (enabled) {
-    // Router sendiri yang down sudah punya alert router_down — jangan dobel per secret.
-    [offline] = await db.query(`SELECT p.id, p.site_id, p.router_id, s.code site_code, r.name router_name, p.username, p.exempt_note, p.comment, p.last_logout_at
-      FROM ppp_secrets p JOIN sites s ON s.id=p.site_id JOIN routers r ON r.id=p.router_id LEFT JOIN nms_router_state rs ON rs.router_id=p.router_id
-      WHERE p.removed_on_router_at IS NULL AND p.customer_id IS NULL AND p.is_exempt=1 AND p.exempt_type='fasum' AND p.is_online=0 AND p.disabled=0
-        AND COALESCE(rs.status,'online') <> 'offline'
-        AND COALESCE(p.last_logout_at, p.exempt_at, p.created_at) < DATE_SUB(NOW(), INTERVAL ? MINUTE)`, [minutes]);
-  }
-  const fresh = [];
-  const want = new Set();
-  for (const r of offline) {
-    const key = `fasum_offline:${r.id}`;
-    want.add(key);
-    const label = r.exempt_note || r.comment || '';
-    await poller.openAlert({ type: 'fasum_offline', severity: 'warning', siteId: r.site_id, routerId: r.router_id, key,
-      title: `FASUM OFFLINE: ${r.username}${label ? ` (${label})` : ''} · ${r.site_code}`, details: { username: r.username, note: label, since: r.last_logout_at } });
-    if (!openKeys.has(key)) fresh.push(r);
-  }
-  let resolved = 0;
-  for (const key of openKeys) if (!want.has(key)) { await poller.resolveAlert(key); resolved++; }
-  if (fresh.length && await settings.flag('fasum_offline_wa')) {
-    const numbers = await settings.summaryNumbers();
-    const { enqueueWaMessage } = require('../whatsappGatewayService');
-    const msg = [`*Fasum offline > ${minutes} menit*`, ...fresh.slice(0, 15).map(r => `• ${r.username}${r.exempt_note || r.comment ? ` (${r.exempt_note || r.comment})` : ''} · ${r.site_code} / ${r.router_name}`), fresh.length > 15 ? `…dan ${fresh.length - 15} lainnya` : ''].filter(Boolean).join('\n');
-    for (const phone of numbers) await enqueueWaMessage({ phone, message: msg, type: 'network_alert' }).catch(() => {});
-  }
-  return { enabled, offline: offline.length, opened: fresh.length, resolved };
-}
-
-module.exports = { setExempt, report, reportCsv, checkOffline, onlineSeconds, TYPES };
+module.exports = { setExempt, report, reportCsv, onlineSeconds, TYPES };

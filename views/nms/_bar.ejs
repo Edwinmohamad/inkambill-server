@@ -1,30 +1,17 @@
-<%
-  const q = siteId ? `?site=${siteId}` : '';
-  const titles = { dashboard: 'Ringkasan Jaringan', secrets: 'PPP Secrets', insights: 'Rekonsiliasi', automation: 'Otomasi' };
-  const siteObj = (sites || []).find(s => Number(s.id) === Number(siteId));
-%>
+<% const q=siteId?'?site='+siteId:''; const titles={secrets:'Sinkronisasi PPPoE',insights:'Rekonsiliasi Pelanggan',history:'Riwayat Sinkronisasi'}; %>
 <header class="nx-head">
-  <div class="nx-title">
-    <div class="nx-eyebrow"><span class="nx-live connecting" id="nmsLive" title="Status koneksi real-time"><i></i><span>Menghubungkan</span></span><span>·</span><span id="nmsUpdated">Memuat…</span></div>
-    <h1><%= titles[nmsPage] || 'MikroTik NMS' %><% if (siteObj) { %> <span class="nx-h1-site">· <%= siteObj.code %></span><% } %></h1>
-  </div>
+  <div class="nx-title"><div class="nx-eyebrow"><span id="nmsUpdated">Data diperbarui saat Tarik Data PPPoE</span></div><h1><%= titles[nmsPage]||'Sinkronisasi PPPoE' %></h1></div>
   <div class="nx-head-tools">
-    <button type="button" class="nx-search-btn" id="nxOpenPalette" aria-label="Cari pelanggan"><i class="bi bi-search"></i><span>Cari pelanggan, username, IP</span><kbd class="nx-kbd-mod">Ctrl K</kbd></button>
-    <select id="nmsSiteSelect" class="nx-select" aria-label="Pilih site">
-      <option value="">Semua site</option>
-      <% (sites || []).forEach(s => { %><option value="<%= s.id %>" <%= Number(siteId) === Number(s.id) ? 'selected' : '' %>><%= s.code %> · <%= s.name %></option><% }) %>
-    </select>
+    <button type="button" class="nx-search-btn" id="nxOpenPalette" aria-label="Cari pelanggan"><i class="bi bi-search"></i><span>Cari pelanggan atau username</span></button>
+    <select id="nmsSiteSelect" class="nx-select" aria-label="Pilih site"><option value="">Semua site</option><% (sites||[]).forEach(site=>{ %><option value="<%= site.id %>" <%= Number(siteId)===Number(site.id)?'selected':'' %>><%= site.code %> · <%= site.name %></option><% }) %></select>
   </div>
 </header>
-<nav class="nx-nav" aria-label="Menu NMS">
+<nav class="nx-nav" aria-label="Sinkronisasi dan rekonsiliasi">
   <div class="nx-seg">
-    <a href="/nms<%= q %>" class="<%= nmsPage === 'dashboard' ? 'active' : '' %>"><i class="bi bi-speedometer2"></i>Ringkasan</a>
-    <a href="/nms/secrets<%= q %>" class="<%= nmsPage === 'secrets' ? 'active' : '' %>"><i class="bi bi-person-lines-fill"></i>PPP Secrets</a>
-    <a href="/nms/insights<%= q %>" class="<%= nmsPage === 'insights' ? 'active' : '' %>"><i class="bi bi-arrow-left-right"></i>Rekonsiliasi<span class="count" id="nxReconCount" hidden></span></a>
-    <a href="/nms/automation<%= q %>" class="<%= nmsPage === 'automation' ? 'active' : '' %>"><i class="bi bi-clock-history"></i>Otomasi<span class="count" id="nxApprovalCount" hidden></span></a>
-  </div>
-  <span class="grow"></span>
-  <% if (nmsPage === 'dashboard') { %><button type="button" class="nx-btn ghost sm" id="nxCustomize" title="Atur tata letak: seret & ubah ukuran kartu" aria-pressed="false"><i class="bi bi-grid-1x2"></i><span class="nx-hide-sm">Atur tata letak</span></button><a class="nx-btn tint sm" href="/nms/wall<%= q %>" title="NOC Wall: semua widget padat, layar penuh"><i class="bi bi-display"></i><span class="nx-hide-sm">NOC Wall</span></a><button type="button" class="nx-btn ghost sm" id="nmsNocMode" title="Layar penuh untuk layar NOC (F)"><i class="bi bi-arrows-fullscreen"></i><span class="nx-hide-sm">Layar penuh</span></button><% } %>
-  <button type="button" class="nx-btn ghost sm icon nx-hide-sm" id="nxShortcuts" title="Pintasan keyboard" aria-label="Pintasan keyboard"><i class="bi bi-keyboard"></i></button>
+    <a href="/nms/secrets<%= q %>" class="<%= nmsPage==='secrets'||nmsPage==='history'?'active':'' %>"><i class="bi bi-arrow-repeat"></i>Sinkronisasi PPPoE</a>
+    <a href="/nms/insights<%= q %>" class="<%= nmsPage==='insights'?'active':'' %>"><i class="bi bi-arrow-left-right"></i>Rekonsiliasi<span class="count" id="nxReconCount" hidden></span></a>
+  </div><span class="grow"></span>
+  <a href="/nms/sync-history<%= q %>" class="nx-btn ghost sm">Riwayat Sinkronisasi</a>
+  <button type="button" class="nx-btn ghost sm icon nx-hide-sm" id="nxShortcuts" aria-label="Pintasan keyboard"><i class="bi bi-keyboard"></i></button>
 </nav>
-<div class="nx-banner" id="nmsOfflineBadge" role="status"><i class="bi bi-exclamation-triangle-fill"></i><span>Sebagian router tidak terjangkau. Data yang tampil berasal dari cache terakhir.</span></div>
+<div class="nx-banner" id="nmsOfflineBadge" role="status">Sebagian router gagal diperbarui. Data sebelumnya tetap ditampilkan.</div>

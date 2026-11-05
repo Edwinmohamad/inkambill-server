@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply only the changed accounting-period source files. No npm install or financial backfill.
+# Apply changed billing/PPPoE source and remove retired monitoring code. No npm install or historical data deletion.
 set -Eeuo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
@@ -26,7 +26,8 @@ if ! "${COMPOSE[@]}" config --images | grep -Fxq "$APP_IMAGE"; then
   exit 1
 fi
 
-FILES=(routes/finance.js routes/closing.js routes/reports.js routes/payments.js routes/invoices.js views/finance/cash.ejs views/closing/index.ejs views/reports/index.ejs services/financialControlService.js services/paymentVerificationService.js app.js services/accountingPeriodSchema.js services/closingLedgerService.js services/closingSyncService.js services/financialIntegrityService.js services/reportPdf.js services/closingPdfText.js)
+FILES=(routes/settings.js views/settings/index.ejs routes/finance.js routes/closing.js routes/reports.js routes/payments.js routes/invoices.js views/finance/cash.ejs views/closing/index.ejs views/reports/index.ejs services/financialControlService.js services/paymentVerificationService.js app.js services/accountingPeriodSchema.js services/closingLedgerService.js services/closingSyncService.js services/financialIntegrityService.js services/reportPdf.js services/closingPdfText.js routes/nms.js routes/network.js routes/n8n.js services/nms/inventory.js services/nms/fasum.js services/nms/insights.js public/js/nms-common.js public/js/nms-secrets.js public/js/nms-insights.js public/js/pppoe-history.js views/nms/_bar.ejs views/nms/secrets.ejs views/nms/insights.ejs views/nms/sync-history.ejs views/partials/layout.ejs views/dashboard/index.ejs)
+DELETED=(services/nms/poller.js services/nms/dashboard.js services/nms/widgets.js services/nmsTelemetryService.js services/networkInfrastructureService.js services/networkWorkspaceService.js services/networkAlertService.js routes/monitoring.js views/nms/dashboard.ejs views/nms/wall.ejs views/nms/automation.ejs views/network/workspace.ejs views/network/infrastructure.ejs views/network/tools.ejs views/monitoring/index.ejs public/js/nms.js public/js/nms-wall.js public/js/nms-noc.js public/js/nms-layout.js public/js/nms-mascot.js public/js/nms-automation.js public/js/network-control-center.js public/js/network-infrastructure.js public/js/monitoring.js public/css/nms-wall.css public/css/network-workspace.css public/css/network-infrastructure.css public/css/monitoring.css)
 mkdir -p work
 # Repeated deployments use the last applied revision as merge base, so adding
 # widgets after the period fix does not conflict with that earlier revision.
@@ -63,6 +64,7 @@ rollback() {
       if [[ -f "$BACKUP/original-missing/$path" ]]; then rm -f -- "$path" || true;
       else cp -p "$BACKUP/original/$path" "$path" || true; fi
     done
+    for path in "${DELETED[@]}"; do if [[ -f "$BACKUP/deleted-original/$path" ]]; then cp -p "$BACKUP/deleted-original/$path" "$path" || true; fi; done
     docker tag "$OLD_IMAGE" "$APP_IMAGE" || true
     "${COMPOSE[@]}" up -d --no-deps --no-build --pull never --force-recreate app || true
   else
@@ -118,10 +120,16 @@ for path in "${FILES[@]}"; do
   fi
 done
 
+for path in "${DELETED[@]}"; do
+  [[ ! -L "$path" ]]
+  if [[ -f "$path" ]]; then mkdir -p "$BACKUP/deleted-original/$(dirname "$path")"; cp -p "$path" "$BACKUP/deleted-original/$path"; fi
+done
+
 docker tag "$OLD_IMAGE" "$BASE_IMAGE"
 {
   printf 'FROM %s\n' "$BASE_IMAGE"
   for path in "${FILES[@]}"; do printf 'COPY %s /app/%s\n' "$path" "$path"; done
+  printf 'RUN rm -f'; for path in "${DELETED[@]}"; do printf ' /app/%s' "$path"; done; printf '\n'
 } > "$BACKUP/merged/Dockerfile"
 # The build context contains only the merged source files plus this tiny Dockerfile.
 # The base image is already local; dependencies and all other layers are reused. Startup adds a nullable accounting_period column; existing dates/amounts are untouched.
@@ -129,6 +137,7 @@ docker build --network=none --pull=false -t "$NEW_IMAGE" "$BACKUP/merged"
 
 MUTATED=1
 for path in "${FILES[@]}"; do cat "$BACKUP/merged/$path" > "$path"; done
+for path in "${DELETED[@]}"; do rm -f -- "$path"; done
 docker tag "$NEW_IMAGE" "$APP_IMAGE"
 "${COMPOSE[@]}" up -d --no-deps --no-build --pull never --force-recreate app
 

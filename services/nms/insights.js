@@ -218,10 +218,7 @@ async function detail(secretId) {
   delete row.password_enc;
   let invoices = [];
   if (row.customer_id) [invoices] = await db.query(`SELECT id, invoice_number, period_year, period_month, total, outstanding, status, due_date FROM invoices WHERE customer_id=? ORDER BY id DESC LIMIT 6`, [row.customer_id]).catch(async () => db.query(`SELECT id, total, outstanding, status, due_date FROM invoices WHERE customer_id=? ORDER BY id DESC LIMIT 6`, [row.customer_id]));
-  const [sessions] = await db.query(`SELECT DATE(occurred_at) d, SUM(event_type='login') logins, SUM(event_type='logout') logouts FROM nms_ppp_events
-    WHERE router_id=? AND username=? AND occurred_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) GROUP BY DATE(occurred_at) ORDER BY d`, [row.router_id, row.username]);
-  const [scheduled] = await db.query(`SELECT id, action, profile, run_at, note FROM nms_scheduled_actions WHERE status='pending' AND JSON_CONTAINS(secret_ids, ?) ORDER BY run_at LIMIT 5`, [String(row.id)]).catch(() => [[]]);
-  return { secret: { ...row, state: row.is_isolated ? 'isolated' : row.is_online ? 'online' : 'offline' }, invoices, history7d: sessions, scheduled };
+  return {secret:{...row,state:row.is_isolated?'isolated':row.is_online?'online':'offline'},invoices};
 }
 
 // ---------------------------------------------------------------- Akun dipakai bersama

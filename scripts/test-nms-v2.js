@@ -62,12 +62,12 @@ const app = read('app.js'), layout = read('views/partials/layout.ejs'), acs = re
 ok(!app.includes("require('./routes/noc')") && !fs.existsSync('routes/noc.js') && !fs.existsSync('views/noc/index.ejs') && !fs.existsSync('public/js/noc.js'), 'NOC Terpadu dihapus');
 ok(!acs.includes("router.get('/map'") && !acs.includes('/map/nodes') && !fs.existsSync('views/acs/map.ejs'), 'Network Map dihapus');
 ok(!layout.includes('NOC Terpadu') && !layout.includes('Network Map') && !layout.includes('/acs/map') && !layout.includes("href=\"/noc\""), 'menu bersih');
-ok(app.includes("app.use('/nms', requireAuth, requirePermission('network')") && app.includes('ensureNmsV2Schema') && app.includes('nmsPoller.start()'), 'mount & bootstrap');
+ok(app.includes("app.use('/nms', requireAuth, requirePermission('network')") && app.includes('ensureNmsV2Schema') && !app.includes('nmsPoller.start()'), 'mount & bootstrap');
 for (const t of ['ppp_secrets', 'nms_ppp_events', 'nms_router_state', 'nms_alerts', 'audit_logs ADD COLUMN IF NOT EXISTS details', "sync_status ENUM('synced','unsynced')"]) ok(schema.includes(t), `schema ${t}`);
-for (const r of ["'/api/sync/preview'", "'/api/sync/commit'", "'/api/secrets/:id/isolate'", "'/api/secrets/:id/unisolate'", "'/api/secrets/:id/kick'", "'/api/secrets/:id/ping'", "'/api/secrets/:id/lock-mac'", "'/api/secrets/:id/map'", "'/api/bulk'", "'/api/stream'", "'/api/dashboard'"]) ok(routes.includes(r), `route ${r}`);
+for (const r of ["'/api/sync/preview'", "'/api/sync/commit'", "'/api/secrets/:id/isolate'", "'/api/secrets/:id/unisolate'", "'/api/secrets/:id/kick'", "'/api/secrets/:id/lock-mac'", "'/api/secrets/:id/map'", "'/api/bulk'", "'/api/reconcile'", "'/api/secrets/refresh'"]) ok(routes.includes(r), `route ${r}`);
 ok(routes.includes('requireNetworkControl') && read('middleware/auth.js').includes("'network_control'"), 'RBAC kontrol jaringan');
 ok(control.includes('dropActive') && control.includes('caller-id') && control.includes('audited('), 'aksi drop sesi / lock mac / audit');
 ok(read('routes/n8n.js').includes("'/nms/ppp-event'"), 'webhook n8n PPP event');
-ok(read('views/nms/_bar.ejs').includes('id="nmsOfflineBadge"') && read('views/nms/_bar.ejs').includes('cache terakhir') && read('views/nms/_bar.ejs').includes('nmsSiteSelect'), 'offline badge + site filter');
+ok(read('views/nms/_bar.ejs').includes('id="nmsOfflineBadge"') && read('views/nms/_bar.ejs').includes('Data sebelumnya') && read('views/nms/_bar.ejs').includes('nmsSiteSelect'), 'offline badge + site filter');
 ok(read('public/css/nms-noc.css').includes('--x-bg:var(--bg') && read('public/css/nms-noc.css').includes('--x-green:'), 'NOC palette');
 console.log(`NMS v2 test OK: ${checks} checks.`);

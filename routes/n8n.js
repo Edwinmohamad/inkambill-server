@@ -174,19 +174,7 @@ router.get('/operations/supervisor-snapshot',async(_req,res)=>res.json({ok:true,
 router.post('/operations/spv-cycle',async(req,res)=>res.json({ok:true,...await buildSupervisorCycle({force:!!req.body?.force})}));
 router.post('/operations/daily-summary',async(req,res)=>res.json({ok:true,...await dailySummary(String(req.body?.period||'morning'))}));
 
-// NMS v2 — real-time PPP event dari RouterOS (PPP profile on-up/on-down → /tool fetch) atau n8n.
-// Body: { router_id | router_name, username, event: 'login'|'logout'|'auth_failed', address?, caller_id?, message?, occurred_at? }
-router.post('/nms/ppp-event', async (req, res) => {
-  try {
-    const b = req.body || {};
-    const type = ['login', 'logout', 'auth_failed'].includes(String(b.event)) ? String(b.event) : null;
-    if (!type) return res.status(400).json({ ok: false, error: 'event wajib login|logout|auth_failed' });
-    const [[routerRow]] = await db.query(`SELECT r.*, s.code site_code FROM routers r JOIN sites s ON s.id=r.site_id WHERE r.is_active=1 AND (r.id=? OR r.name=?) LIMIT 1`, [Number(b.router_id) || 0, String(b.router_name || '')]);
-    if (!routerRow) return res.status(404).json({ ok: false, error: 'Router tidak dikenal' });
-    const { ingestEvent } = require('../services/nms/poller');
-    const out = await ingestEvent({ router: routerRow, username: b.username ? String(b.username) : null, type, address: b.address || null, callerId: b.caller_id || null, message: b.message ? String(b.message).slice(0, 255) : null, source: 'webhook', occurredAt: b.occurred_at || null, dedup: b.event_key ? String(b.event_key).slice(0, 190) : null });
-    res.json({ ok: true, ...out });
-  } catch (err) { res.status(400).json({ ok: false, error: err.message }); }
-});
+// Billing no longer ingests continuous monitoring events.
+router.post('/nms/ppp-event',(_req,res)=>res.status(410).json({ok:false,error:'Monitoring PPP dipindahkan ke NMS terpisah.'}));
 
 module.exports = router;

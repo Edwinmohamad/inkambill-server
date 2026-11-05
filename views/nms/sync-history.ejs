@@ -1,0 +1,11 @@
+<link rel="stylesheet" href="/css/nms-noc.css?v=<%= assetVersion %>">
+<section class="nx" id="nmsHistory" data-site="<%= siteId||'' %>" data-csrf="<%= csrfToken %>" data-can-control="<%= canControl?'1':'0' %>" data-is-admin="<%= isAdmin?'1':'0' %>">
+  <%- include('_bar') %>
+  <div class="nx-section"><h2>Riwayat Sinkronisasi</h2><p>Perubahan mapping pelanggan dan akun PPPoE, beserta ekspor dan pembatalan yang masih diizinkan.</p></div>
+  <div class="nx-toolbar"><button class="nx-btn" type="button" id="historyReload">Muat Ulang</button></div>
+  <article class="nx-card"><div class="nx-table-wrap"><table class="nx-table"><thead><tr><th>Tanggal</th><th>Site</th><th>Admin</th><th>Sumber</th><th>Terhubung</th><th>Status</th><th>Aksi</th></tr></thead><tbody id="historyRows"></tbody></table></div></article>
+  <% if(isAdmin){ %><div class="nx-section"><h2>Persetujuan Perubahan</h2></div><article class="nx-card"><div id="approvalRows" class="nx-card-body"></div></article><% } %>
+  <div class="nx-toasts"></div>
+</section>
+<script src="/js/nms-common.js?v=<%= assetVersion %>" defer></script>
+<script src="/js/pppoe-history.js?v=<%= assetVersion %>" defer></script>

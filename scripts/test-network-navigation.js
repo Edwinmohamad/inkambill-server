@@ -1,26 +1,16 @@
-const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),ejs=require('ejs');
-const root=path.resolve(__dirname,'..');
-const read=p=>fs.readFileSync(path.join(root,p),'utf8');
-const layout=read('views/partials/layout.ejs');
-const workspace=read('views/network/workspace.ejs');
-const routes=read('routes/network.js');
-
-for(const [name,src,file] of [['layout',layout,'views/partials/layout.ejs'],['workspace',workspace,'views/network/workspace.ejs']]){
-  assert.doesNotThrow(()=>ejs.compile(src,{filename:path.join(root,file)}),name+' EJS must compile');
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),ejs=require('ejs');
+const root=path.join(__dirname,'..');
+const layout=fs.readFileSync(path.join(root,'views/partials/layout.ejs'),'utf8');
+assert.doesNotThrow(()=>ejs.compile(layout));
+for(const link of ['/nms/secrets','/nms/insights','/routers'])assert(layout.includes('href="'+link+'"'),link);
+const locals={assetVersion:'test',csrfToken:'test',siteId:1,sites:[{id:1,code:'KBG',name:'Kubang'}],canControl:true,isAdmin:true,nmsPage:'secrets',tab:'synced',counts:{synced:1,unsynced:0,total:1,online:1,offline:0,isolated:0,exempt:0,syncedPct:100,fasum:0,fasumOffline:0},packages:[],routersOffline:0,isolirProfile:'ISOLIR',isolirMode:'profile',focus:null};
+for(const [page,nmsPage] of [['secrets','secrets'],['insights','insights'],['sync-history','history']]){
+  const filename=path.join(root,'views/nms/'+page+'.ejs');
+  const html=ejs.render(fs.readFileSync(filename,'utf8'),{...locals,nmsPage},{filename});
+  assert(html.includes('/nms/secrets')&&html.includes('/nms/insights'));
+  assert(!html.includes('/nms/wall'));
+  assert(!html.includes('Traffic WAN')&&!html.includes('Kesehatan site')&&!html.includes('NOC Dashboard'));
 }
-assert(layout.includes('href="/network"'),'sidebar must expose Network Operations');
-for(const href of ['/network','/network/subscribers','/network/infrastructure','/network/incidents']){
-  assert(workspace.includes('href="'+href),'control center must expose '+href);
-}
-for(const route of ["router.get('/',","router.get('/subscribers'","router.get('/access'","router.get('/devices'","router.get('/incidents'","router.get('/infrastructure'"]){
-  assert(routes.includes(route),'network route missing: '+route);
-}
-assert(routes.includes("res.redirect(302,`/network/infrastructure"),'legacy Access/Devices routes must redirect into Infrastructure');
-assert(layout.includes('Billing Tools'),'secondary billing links should be collapsed');
-assert(layout.includes("language==='en'?'OPERATIONS':'OPERASIONAL'"),'support and warehouse must share Operations');
-assert(layout.includes('Gudang & Material'),'warehouse must be nested under Operations');
-assert(!layout.includes('<span>NOC Dashboard</span>'),'old top-level NOC Dashboard menu should not return');
-assert(!layout.includes('<span>Monitoring ONT</span>'),'old top-level ONT monitoring menu should not return');
-assert(!layout.includes('<span>Kelola Perangkat</span>'),'old top-level unified device monitor should not return');
-assert(layout.includes("currentPath!=='/network/infrastructure/wall'"),'NOC Wall must remain free of admin context navigation');
-console.log('Network Control Center navigation contract PASS');
+assert(layout.includes('Billing Tools')&&layout.includes('Gudang & Material'),'billing/warehouse navigation must remain intact');
+console.log('PASS network navigation: PPPoE, reconciliation and sync history render without monitoring links.');
