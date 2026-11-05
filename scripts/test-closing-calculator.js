@@ -115,7 +115,7 @@ assert(syncServiceSource.includes('cash_transaction_id'), 'Baris hasil sync haru
 const pdfSource = fs.readFileSync(require.resolve('../services/reportPdf'), 'utf8');
 assert(pdfSource.includes("drawSectionLabel(doc,'Pendapatan per Kategori'"), 'Halaman ringkasan PDF wajib memuat pendapatan per kategori');
 assert(pdfSource.includes('block.incomeByCategory'), 'Kartu lokasi PDF wajib memakai breakdown pendapatan per kategori');
-assert(closingRoute.includes("WHERE status='confirmed'"), 'Daftar belum bayar Closing wajib dihitung dari pembayaran confirmed terkini');
+assert(closingRoute.includes('COALESCE(i.outstanding,0)'), 'Daftar belum bayar Closing wajib memakai saldo faktur seperti Laporan');
 
 // Manual income/expense overrides are now rejected; adjustments remain editable.
 assert(closingRoute.includes("['/mode','/entries','/entries/:id/update','/entries/:id/delete','/entries/:id/restore']"));
