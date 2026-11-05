@@ -9,7 +9,9 @@ const invoices = [
   { id: 2, customer: 'A', year: 2026, month: 2, total: 200, status: 'unpaid' },
   { id: 3, customer: 'B', year: 2026, month: 2, total: 150, status: 'unpaid' },
   { id: 4, customer: 'C', year: 2025, month: 2, total: 500, status: 'unpaid' },
-  { id: 5, customer: 'D', year: 2026, month: 2, total: 300, status: 'cancelled' }
+  { id: 5, customer: 'D', year: 2026, month: 2, total: 300, status: 'cancelled' },
+  { id: 6, customer: 'Inactive', year: 2026, month: 2, total: 165, status: 'unpaid', active: false },
+  { id: 7, customer: 'Archived', year: 2026, month: 2, total: 165, status: 'unpaid', archived: true }
 ];
 const payments = [
   { invoice: 2, amount: 50, date: '2026-02-15', status: 'confirmed' },
@@ -19,11 +21,13 @@ const payments = [
 ];
 const db = { async execute(sql, params) {
   assert.match(sql, /i\.period_year=\? AND i\.period_month=\?/);
+  assert.match(sql, /c\.customer_status='active' AND c\.archived_at IS NULL/);
+  assert.match(sql, /JOIN packages pkg ON pkg\.id=c\.package_id/);
   assert.doesNotMatch(sql, /booked_at|paid_at/);
   assert.match(sql, /status='confirmed'/);
   assert.match(sql, /i\.status NOT IN \('cancelled','refunded'\)/);
   const [year, month] = params;
-  const rows = invoices.filter(i => i.year === year && i.month === month && !['cancelled', 'refunded'].includes(i.status))
+  const rows = invoices.filter(i => i.year === year && i.month === month && i.active !== false && !i.archived && !['cancelled', 'refunded'].includes(i.status))
     .map(i => ({ name: i.customer, invoice_count: 1, outstanding: Math.max(i.total - payments.filter(p => p.invoice === i.id && p.status === 'confirmed').reduce((s, p) => s + p.amount, 0), 0) }))
     .filter(i => i.outstanding > 0);
   return [rows];
