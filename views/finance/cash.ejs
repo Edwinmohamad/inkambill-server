@@ -6,7 +6,7 @@
   </div>
 
   <form class="cash-period-panel" method="get" action="/cash" data-auto-filter>
-    <div class="cash-period-copy"><strong>Periode Kas</strong><small>Daftar, ringkasan, dan grafik pembayaran mengikuti periode faktur, termasuk pembayaran terlambat. Transaksi tanpa faktur mengikuti tanggal transaksi. Grafik tahunan merangkum Januari–Desember pada tahun terpilih.</small></div>
+    <div class="cash-period-copy"><strong>Periode Kas</strong><small>Daftar, ringkasan, dan grafik mengikuti periode pembukuan. Pembayaran tetap masuk bulan faktur selama Closing-nya terbuka; setelah ditutup masuk periode terbuka berikutnya. Transaksi tanpa faktur mengikuti tanggal pembukuan. Grafik merangkum Januari–Desember.</small></div>
     <div class="cash-period-controls">
       <select class="form-select" name="month"><% monthNames.forEach((m,i)=>{ %><option value="<%= i+1 %>" <%= filters.month===i+1?'selected':'' %>><%= m %></option><% }) %></select>
       <input class="form-control" type="number" name="year" min="2020" max="2100" value="<%= filters.year %>">
@@ -23,7 +23,7 @@
   </form>
 
   <div class="cash-summary-grid">
-    <article class="cash-summary-card income"><div><span>Pendapatan Pembayaran Pelanggan</span><strong><%= formatRupiah(summary.customer_income||0) %></strong><small>Pembayaran tagihan sesuai periode faktur</small></div><i class="bi bi-people"></i></article>
+    <article class="cash-summary-card income"><div><span>Pendapatan Pembayaran Pelanggan</span><strong><%= formatRupiah(summary.customer_income||0) %></strong><small>Pembayaran tagihan sesuai periode pembukuan</small></div><i class="bi bi-people"></i></article>
     <article class="cash-summary-card income"><div><span>Pendapatan Lain-lain</span><strong><%= formatRupiah(summary.other_income||0) %></strong><small>Pendapatan selain pembayaran tagihan</small></div><i class="bi bi-plus-circle"></i></article>
     <article class="cash-summary-card income"><div><span>Total Pendapatan</span><strong><%= formatRupiah(summary.income) %></strong><small>Pembayaran pelanggan + pendapatan lain-lain</small></div><i class="bi bi-graph-up-arrow"></i></article>
     <article class="cash-summary-card expense"><div><span>Total Pengeluaran</span><strong><%= formatRupiah(summary.expense) %></strong><small>Pengeluaran periode terpilih yang disetujui</small></div><i class="bi bi-graph-down-arrow"></i></article>
@@ -31,7 +31,7 @@
   </div>
   <div class="cash-chart-grid">
     <article class="cash-summary-card pending"><div><span>Menunggu Approval</span><strong><%= Number(approvalSummary.pending_count||0) %></strong><small><%= formatRupiah(approvalSummary.pending_total||0) %></small></div><i class="bi bi-hourglass-split"></i></article>
-    <article class="cash-summary-card held"><div><span>Cash Diterima · Belum Disetor</span><strong><%= formatRupiah(collection.cash_held||0) %></strong><small><%= Number(collection.held_count||0) %> pembayaran · periode terpilih<%= filters.site?' · Site '+filters.site:'' %></small><small>Masih di collector · belum masuk kas perusahaan</small><a href="/payments/reconciliation<%= filters.site?'?site='+encodeURIComponent(filters.site):'' %>">Buka Rekonsiliasi <i class="bi bi-arrow-right"></i></a></div><i class="bi bi-person-vcard" aria-hidden="true"></i></article>
+    <article class="cash-summary-card held"><div><span>Cash Diterima · Belum Disetor</span><strong><%= formatRupiah(collection.cash_held||0) %></strong><small><%= Number(collection.held_count||0) %> pembayaran · periode tagihan terpilih<%= filters.site?' · Site '+filters.site:'' %></small><small>Masih di collector · belum masuk kas perusahaan</small><a href="/payments/reconciliation<%= filters.site?'?site='+encodeURIComponent(filters.site):'' %>">Buka Rekonsiliasi <i class="bi bi-arrow-right"></i></a></div><i class="bi bi-person-vcard" aria-hidden="true"></i></article>
   </div>
 
   <!-- v1.25.6 — fixes reported bug: transaksi kas yang baru disubmit (PENDING_APPROVAL) tidak pernah
@@ -62,7 +62,7 @@
 
   <div class="cash-chart-grid">
     <article class="data-card cash-chart-card"><div class="data-card-head"><div><h3>Komposisi Pengeluaran</h3><small>Distribusi biaya per kategori pada periode terpilih</small></div><i class="bi bi-pie-chart-fill"></i></div><div class="cash-chart-body"><canvas id="cashExpenseChart"></canvas><div class="cash-chart-empty" id="cashExpenseEmpty" hidden>Belum ada pengeluaran.</div></div></article>
-    <article class="data-card cash-chart-card"><div class="data-card-head"><div><h3>Pendapatan dan Pengeluaran per Periode</h3><small>Januari–Desember <%= filters.year %> · pembayaran berdasarkan periode faktur</small></div><i class="bi bi-graph-up-arrow"></i></div><div class="cash-chart-body"><canvas id="cashDailyChart"></canvas></div></article>
+    <article class="data-card cash-chart-card"><div class="data-card-head"><div><h3>Pendapatan dan Pengeluaran per Periode</h3><small>Januari–Desember <%= filters.year %> · pembayaran berdasarkan periode pembukuan</small></div><i class="bi bi-graph-up-arrow"></i></div><div class="cash-chart-body"><canvas id="cashDailyChart"></canvas></div></article>
   </div>
 
   <div class="cash-action-bar">
@@ -92,7 +92,7 @@
             <td><span class="cell-main" data-instant-number><%= rowNumber(index) %></span></td>
             <td><span class="cell-main"><%= t.source_customer_name||t.display_name %></span><% if(t.source_customer_name){ %><span class="cell-sub"><%= t.source_customer_code||'' %><%= t.display_name&&t.display_name!==t.source_customer_name?`${t.source_customer_code?' · ':''}${t.display_name}`:'' %></span><% } %></td>
             <td><%= formatDate(t.transaction_date) %></td>
-            <td><% if(t.source_invoice_month&&t.source_invoice_year){ %><span class="cell-main"><%= monthNames[Number(t.source_invoice_month)-1] %> <%= t.source_invoice_year %></span><span class="cell-sub"><%= t.source_invoice_number %></span><% }else{ %><span class="cell-sub">Bukan tagihan</span><% } %></td>
+            <td><% if(t.source_invoice_month&&t.source_invoice_year){ %><span class="cell-main"><%= monthNames[Number(t.source_invoice_month)-1] %> <%= t.source_invoice_year %></span><span class="cell-sub"><%= t.source_invoice_number %></span><% if(t.booking_period){ %><span class="cell-sub">Pembukuan: <%= formatDate(t.booking_period) %></span><% } %><% }else{ %><span class="cell-sub">Bukan tagihan</span><% } %></td>
             <td><span class="status-badge <%= t.category_type==='income'?'green':'red' %>"><%= t.category_name %></span></td>
             <td><span class="status-badge purple"><%= t.site_code||'GLOBAL' %></span></td>
             
