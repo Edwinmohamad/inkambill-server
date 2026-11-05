@@ -68,9 +68,12 @@ function selectedPeriod(req) {
 
 async function loadClosing(start, end, queryDb = db) {
   const [[period]] = await queryDb.execute('SELECT * FROM closing_periods WHERE period_start=? AND period_end=? LIMIT 1', [start, end]);
-  // Locking protects manual edits; it does not freeze billing-period receipts.
-  // Late approved/settled payments update their invoice month's calculation.
-  // Keep snapshot_json untouched as the historical record of the lock event.
+  if (period?.status === 'LOCKED') {
+    if (!period.snapshot_json) throw new Error('Snapshot Closing ditutup tidak tersedia. Periksa riwayat sebelum membuka kembali periode.');
+    const snapshot = JSON.parse(period.snapshot_json);
+    if (!snapshot?.blocks || !snapshot?.closing) throw new Error('Snapshot Closing ditutup tidak valid.');
+    return { ...snapshot, closing: { ...snapshot.closing, status: 'LOCKED' }, period, frozenSnapshot: true, ledgerActual: false };
+  }
   const closing = period || { status: 'DRAFT', mode: 'MANUAL', manual_revenue: 0, manual_expense: 0, manual_carry: 0, manual_carry_kbg: 0, manual_salary_agung: 500000, manual_salary_padilah: 1000000, notes: '' };
 
   const [adjustments] = period ? await queryDb.execute('SELECT * FROM closing_adjustments WHERE closing_id=? ORDER BY id', [period.id]) : [[]];
@@ -315,6 +318,7 @@ router.post('/sync',(req,res)=>{const {start,end}=selectedPeriod(req);res.redire
 router.post('/period-lock', async (req, res, next) => {
   const { start, end } = selectedPeriod(req); let conn;
   try {
+    if (String(req.body.team_transfer_completed) !== '1') throw new Error('Tutup periode hanya setelah transfer pembagian tim selesai. Muat ulang halaman dan konfirmasikan penutupan.');
     // v3.2 — selaraskan dulu dengan Data Kas supaya snapshot yang dikunci
     // tidak memakai data lama.
     await autoSyncBeforeReport({ start, end, userId: req.session.user.id, ip: req.ip });
@@ -334,7 +338,7 @@ router.post('/period-lock', async (req, res, next) => {
     }
     const before={status:period.status};
     await conn.execute(`UPDATE closing_periods SET status='LOCKED',snapshot_json=?,locked_by=?,locked_at=NOW() WHERE id=?`,[JSON.stringify(data),req.session.user.id,period.id]);
-    await financialAudit({conn,userId:req.session.user.id,action:'lock_period',entityType:'closing_period',entityId:period.id,before,after:{status:'LOCKED',period_start:start,period_end:end},reason:String(req.body.reason||'Closing periode selesai'),ip:req.ip});
+    await financialAudit({conn,userId:req.session.user.id,action:'lock_period',entityType:'closing_period',entityId:period.id,before,after:{status:'LOCKED',period_start:start,period_end:end,team_transfer_completed:true},reason:String(req.body.reason||'Closing periode selesai'),ip:req.ip});
     await conn.commit();req.session.flash={type:'success',message:`Periode ${start} s/d ${end} dikunci. Transaksi pada tanggal tersebut sekarang ditolak.`};
     // v2.2 — tombol "Kunci & Lanjut ke Bulan Berikutnya" kirim go_next=1 supaya
     // langsung diarahkan ke draft bulan berikutnya alih-alih tetap di periode yang
@@ -832,4 +836,3 @@ router.get('/export.xlsx', async (req, res, next) => {
 });
 
 module.exports = router;
-
