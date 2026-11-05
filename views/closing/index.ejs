@@ -23,12 +23,12 @@
       <div class="closing-control-row">
         <div class="closing-control-row-label"><i class="bi bi-sliders2"></i><span>Sumber perhitungan</span></div>
         <div class="closing-control-row-body">
-          <div class="closing-mode-switch"><span class="closing-mode-pill is-active">Data Kas bulanan<%= closing.status==='LOCKED'?' · snapshot terkunci':'' %></span></div>
+          <div class="closing-mode-switch"><span class="closing-mode-pill is-active">Data Kas sesuai periode faktur</span></div>
 
           <% if (typeof autoSyncInfo !== 'undefined' && autoSyncInfo) { %>
           <div class="alert alert-info alert-modern py-2 mb-2"><i class="bi bi-arrow-repeat me-2"></i><%= autoSyncInfo %></div>
           <% } %>
-          <% if(actualLedger){ %><div class="alert alert-info"><strong>Kas menurut periode closing</strong><p>Pemasukan Rp <%= money(ledgerSummary.income).toLocaleString('id-ID') %> · Pengeluaran Rp <%= money(ledgerSummary.expense).toLocaleString('id-ID') %> · Bersih operasional Rp <%= money(ledgerSummary.net).toLocaleString('id-ID') %></p><span><%= ledgerSummary.count %> jurnal sah. Pembayaran tagihan mengikuti bulan faktur; transaksi lain mengikuti tanggal kas. Saldo bawaan, gaji pembagian, dan penyesuaian penerima ditampilkan terpisah. Transfer internal dan pokok pinjaman mengikuti pengecualian ringkasan Data Kas.</span><% if(ledgerSummary.invalid){ %><p class="text-danger">Ada <%= ledgerSummary.invalid %> jurnal dengan lokasi/nominal tidak valid. Perbaiki di Data Kas sebelum mengunci periode.</p><% } %></div><% }else{ %><div class="alert alert-info">Periode terkunci menggunakan snapshot saat dikunci. Buka kembali untuk menghitung ulang dari Data Kas.</div><% } %>
+          <% if(actualLedger){ %><div class="alert alert-info"><strong>Kas menurut periode closing</strong><p>Pemasukan Rp <%= money(ledgerSummary.income).toLocaleString('id-ID') %> · Pengeluaran Rp <%= money(ledgerSummary.expense).toLocaleString('id-ID') %> · Bersih operasional Rp <%= money(ledgerSummary.net).toLocaleString('id-ID') %></p><span><%= ledgerSummary.count %> jurnal sah. Pembayaran tagihan mengikuti bulan faktur; transaksi lain mengikuti tanggal kas. Saldo bawaan, gaji pembagian, dan penyesuaian penerima ditampilkan terpisah. Transfer internal dan pokok pinjaman mengikuti pengecualian ringkasan Data Kas.</span><% if(closing.status==='LOCKED'){ %><p>Pengaturan periode terkunci. Pembayaran terlambat tetap memperbarui pendapatan dan pembagian periode faktur, termasuk laporan unduhan. Snapshot saat penguncian disimpan sebagai riwayat.</p><% } %><% if(ledgerSummary.invalid){ %><p class="text-danger">Ada <%= ledgerSummary.invalid %> jurnal dengan lokasi/nominal tidak valid. Perbaiki di Data Kas sebelum mengunci periode.</p><% } %></div><% }else{ %><div class="alert alert-info">Perhitungan mengikuti jurnal sah sesuai periode faktur.</div><% } %>
         </div>
       </div>
 
@@ -367,7 +367,7 @@
       <div class="modal-content">
         <div class="modal-header"><h5 class="modal-title"><i class="bi bi-clipboard-check me-2"></i>Konfirmasi Kunci Periode</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button></div>
         <div class="modal-body">
-          <p class="text-muted mb-3">Periode <strong><%= start %> s/d <%= end %></strong> akan dikunci. Ini ringkasan pembagian bersih yang akan tercatat sebagai snapshot final — cek dulu sebelum lanjut:</p>
+          <p class="text-muted mb-3">Periode <strong><%= start %> s/d <%= end %></strong> akan dikunci. Ini ringkasan pembagian bersih yang akan tercatat sebagai riwayat saat penguncian. Pembayaran terlambat tetap memperbarui perhitungan periode ini:</p>
           <div class="table-responsive"><table class="table table-sm align-middle closing-table">
             <thead><tr><th>Lokasi</th><th>Penerima</th><th class="text-end">Bersih</th></tr></thead>
             <tbody>
@@ -379,7 +379,7 @@
           </table></div>
           <div id="closingLockPreviewWarning" class="closing-lock-warning mt-3" style="display:none">
             <i class="bi bi-exclamation-triangle-fill"></i>
-            <span>Masih ada transaksi Data Kas APPROVED yang belum disinkron. Setelah dikunci, transaksi itu tidak akan ikut terhitung di periode ini.</span>
+            <span>Masih ada transaksi Data Kas APPROVED yang belum disinkron. Selesaikan approval agar transaksi ikut terhitung dalam periode faktur yang sesuai.</span>
           </div>
         </div>
         <div class="modal-footer">
@@ -515,3 +515,4 @@
   }
 })();
 </script>
+
