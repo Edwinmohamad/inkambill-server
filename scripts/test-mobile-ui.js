@@ -43,17 +43,17 @@ const required=[
   ,[js,"item.dataset.type===cashAction",'quick income/expense category selection']
   ,[clientJs,"delete form.dataset.filterSubmitting",'filter state recovery after Android back']
   ,[clientJs,"button.dataset.originalHtml",'submit button recovery after Android back']
-  ,[css,'--go-type-meta:.6875rem','readable mobile metadata scale']
+  ,[css,'--go-type-meta:.75rem','readable mobile metadata scale']
   ,[css,'--go-radius:12px','consistent mobile surface radius']
   ,[css,':where(a,button,input,select,textarea,[tabindex]):focus-visible','visible APK keyboard focus']
-  ,[css,'font-family:"Plus Jakarta Sans",-apple-system,BlinkMacSystemFont','INKAMBILL A+ Plus Jakarta Sans font stack']
+  ,[css,'font-family:-apple-system,BlinkMacSystemFont','native system font stack']
   ,[css,"body.inkamnet-go-app .topbar-title-wrap:before{content:'INKAMBILL'",'INKAMBILL A+ wordmark']
-  ,[css,'--go-motion-fast:120ms','consistent mobile motion timing']
+  ,[css,'--go-motion-fast:0ms','motion disabled by default']
   ,[css,'--go-ease:cubic-bezier(.22,1,.36,1)','consistent mobile motion easing']
-  ,[css,'.modal.fade .modal-dialog{transform:translateY(12px)','restrained modal entrance motion']
+  ,[css,'.modal.fade .modal-dialog{transform:none','instant modal entrance']
   ,[css,'.module-head h1{font-size:1.32rem!important;line-height:1.2;color:var(--go-ink)!important;font-weight:600!important}','stable APK heading weight']
   ,[css,'.status-badge.orange{color:#8a4b00!important}','readable warning status color']
-  ,[js,"setTimeout(()=>link.classList.remove('go-tapped'),180)",'short tap feedback']
+
 ];
 for(const [source,needle,label] of required)if(!source.includes(needle))throw new Error(`Mobile UI missing: ${label}`);
 if(!/^body\.inkamnet-go-app/m.test(css))throw new Error('Mobile CSS is not scoped to the APK body.');

@@ -55,14 +55,13 @@
   } else applyTheme(localStorage.getItem('inkamnet-theme') || html.dataset.theme || 'dark');
   document.querySelectorAll('[data-theme-toggle]').forEach(btn => btn.addEventListener('click', () => {
     const next = html.dataset.theme === 'dark' ? 'light' : 'dark';
-    const animClass = isGoApp ? 'go-theme-anim' : 'theme-anim';
-    html.classList.add(animClass); setTimeout(() => html.classList.remove(animClass), 380);
+    if (!isGoApp) { html.classList.add('theme-anim'); setTimeout(() => html.classList.remove('theme-anim'), 380); }
     applyTheme(next);
     // Beri tahu shell Android agar warna status bar & navigation bar ikut tema (APK lama mengabaikannya).
     if (isGoApp) { try { location.href = 'inkamnet-go://theme/' + next; } catch (_) {} }
   }));
 
-  document.querySelectorAll('.metric-card,.data-card,.filter-card,.ink-kpi,.ink-panel').forEach((el,index)=>{
+  if (!isGoApp) document.querySelectorAll('.metric-card,.data-card,.filter-card,.ink-kpi,.ink-panel').forEach((el,index)=>{
     el.style.setProperty('--enter-delay', `${Math.min(index*26,150)}ms`); el.classList.add('reveal-item');
   });
 
@@ -689,7 +688,7 @@
   loadHeaderCenter();setInterval(loadHeaderCenter,45000);
 
   // Progressive reveal for dense admin screens without adding a heavy animation library.
-  if ('IntersectionObserver' in window && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  if (!isGoApp && 'IntersectionObserver' in window && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     const observer=new IntersectionObserver(entries=>entries.forEach(entry=>{
       if(entry.isIntersecting){entry.target.classList.add('ink-viewport-visible');observer.unobserve(entry.target)}
     }),{threshold:.08,rootMargin:'0px 0px -24px 0px'});

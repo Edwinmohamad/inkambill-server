@@ -1,0 +1,36 @@
+const {chromium}=require('playwright');
+const fs=require('fs'),path=require('path'),http=require('http'),assert=require('assert/strict');
+const root=path.resolve(__dirname,'..');
+const ejs=require('ejs');
+let html=fs.readFileSync(path.join(root,'public/_smoketest/mobile-components.html'),'utf8');
+html=html.replace('<head>','<head><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css">');
+html=html.replace('<link rel="stylesheet" href="/css/mobile-app.css">','<link rel="stylesheet" href="/css/mobile-app.css"><link rel="stylesheet" href="/css/mobile-legibility.css">');
+html=html.replace('class="invoice-row"','class="invoice-row has-admin-actions"').replace('Budi Santoso','Budi Santoso Pelanggan dengan nama sangat panjang');
+const invoice=fs.readFileSync(path.join(root,'views/invoices/index.ejs'),'utf8');
+const form=invoice.match(/<form[^>]*class="billing-filter-panel[\s\S]*?<\/form>/)?.[0];
+assert(form,'production invoice filter found');
+html=html.replace(/<form class="filter-card[\s\S]*?<\/form>/,ejs.render(form,{scopedCustomer:null,monthNames:['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'],filters:{year:2026},sites:[{id:1,code:'SITE-PANJANG',name:'Site dengan nama panjang'}],clusters:[],years:[2025,2026],months:[],currentYear:2026}));
+html=html.replace('<button type="button"><i>▦','<button type="button" data-go-menu-open><i>▦').replace('class="go-add-button"','data-go-quick-open class="go-add-button"');
+html=html.replace('</main>',`<div class="table-responsive"><table class="app-table"><thead><tr><th>No</th><th>Pelanggan</th><th>Jumlah</th><th>Aksi</th></tr></thead><tbody><tr><td>1</td><td>Nama panjang untuk pengujian</td><td>Rp123.456.789</td><td><button class="btn-tech">Lihat Detail Pembayaran</button></td></tr><tr hidden><td>2</td><td>Hidden</td><td>0</td><td></td></tr></tbody></table></div></main>`);
+html=html.replace('</body>',`<div class="go-menu" id="goMenu" aria-hidden="true"><header><h2>Semua menu</h2><button data-go-menu-close>Tutup</button></header><div class="go-menu-scroll"><div class="go-menu-grid">${['Pelanggan','Tagihan','Persetujuan Pembayaran','Laporan Keuangan','Operasional','Pengaturan'].map(s=>'<a href="#"><i>+</i><span>'+s+'</span></a>').join('')}</div></div></div><div class="go-sheet" id="goQuickSheet" aria-hidden="true"><button class="go-sheet-backdrop" data-go-sheet-close></button><div class="go-sheet-panel"><header><h2>Tambah data</h2><button data-go-sheet-close>Tutup</button></header><div class="go-quick-grid"><a href="#"><i>+</i><span><b>Pemasukan</b><small>Catat pemasukan baru</small></span></a><a href="#"><i>+</i><span><b>Pengeluaran</b><small>Catat pengeluaran baru</small></span></a></div></div></div><div class="modal fade" id="testModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h2>Catat Pembayaran</h2><button class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button></div><div class="modal-body"><label>Jumlah pembayaran<input class="form-control" value="150000"></label><p>Rincian pembayaran</p><p>Rincian pembayaran</p><p>Rincian pembayaran</p><p>Rincian pembayaran</p><p>Rincian pembayaran</p><p>Rincian pembayaran</p><p>Rincian pembayaran</p><p>Rincian pembayaran</p><p>Rincian pembayaran</p><p>Rincian pembayaran</p><p>Rincian pembayaran</p><p>Rincian pembayaran</p><p>Rincian pembayaran</p><p>Rincian pembayaran</p><p>Rincian pembayaran</p><p>Rincian pembayaran</p><p>Rincian pembayaran</p><p>Rincian pembayaran</p><p>Rincian pembayaran</p><p>Rincian pembayaran</p><p>Rincian pembayaran</p><p>Rincian pembayaran</p><p>Rincian pembayaran</p><p>Rincian pembayaran</p><p>Rincian pembayaran</p></div><div class="modal-footer"><button class="btn-tech primary" data-bs-dismiss="modal">Simpan</button></div></div></div></div><script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script><script src="/js/mobile-app.js"></script></body>`);
+const server=http.createServer((req,res)=>{if(req.url==='/'){res.setHeader('Content-Type','text/html');res.end(html);return;}const p=path.join(root,'public',req.url.split('?')[0]);if(!p.startsWith(path.join(root,'public'))||!fs.existsSync(p)){res.statusCode=404;res.end();return;}res.setHeader('Content-Type',p.endsWith('.css')?'text/css':'application/javascript');res.end(fs.readFileSync(p));});
+(async()=>{await new Promise(r=>server.listen(0,'127.0.0.1',r));const browser=await chromium.launch({headless:true});try{
+ for(const width of [320,360,390,412,768])for(const theme of ['light','dark']){
+  const page=await browser.newPage({viewport:{width,height:844},reducedMotion:'no-preference'});const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.goto('http://127.0.0.1:'+server.address().port);await page.evaluate(t=>document.documentElement.dataset.theme=t,theme);
+  await page.waitForTimeout(100);
+  const metrics=await page.evaluate(()=>({overflow:document.documentElement.scrollWidth>innerWidth,animations:document.getAnimations().length,controls:[...document.querySelectorAll('.billing-filter-grid select,.billing-filter-grid input:not([type="hidden"]),.billing-filter-grid button')].map(e=>({w:e.getBoundingClientRect().width,h:e.getBoundingClientRect().height,font:getComputedStyle(e).fontSize})),hidden:getComputedStyle(document.querySelector('tr[hidden]')).display}));
+  assert(!metrics.overflow,`${width} ${theme} page overflow`);assert.equal(metrics.animations,0);assert.equal(metrics.hidden,'none');assert(metrics.controls.every(x=>x.h>=44&&x.w>80),JSON.stringify(metrics));assert.deepEqual(errors,[]);
+  await page.click('[data-go-menu-open]');assert.equal(await page.locator('#goMenu').getAttribute('aria-hidden'),'false');await page.click('[data-go-menu-close]');await page.waitForTimeout(50);
+  await page.click('[data-go-quick-open]');assert.equal(await page.locator('#goQuickSheet').getAttribute('aria-hidden'),'false');await page.click('.go-sheet-panel [data-go-sheet-close]');await page.waitForTimeout(50);
+  await page.evaluate(()=>{const tbody=document.querySelector('table.app-table tbody');tbody.insertAdjacentHTML('beforeend','<tr><td>3</td><td>AJAX customer</td><td>100</td><td><button>Detail</button></td></tr>');});await page.waitForTimeout(50);assert.equal(await page.locator('table.app-table tbody tr:last-child').getAttribute('data-go-card'),'1');
+  await page.evaluate(()=>bootstrap.Modal.getOrCreateInstance(document.getElementById('testModal')).show());
+  await page.waitForSelector('#testModal.show');
+  const modal=await page.locator('#testModal .modal-content').boundingBox();assert(modal.y>=0&&modal.y+modal.height<=844,'modal stays in viewport');
+  await page.click('#testModal [data-bs-dismiss]');await page.waitForTimeout(50);
+  if(width===390&&process.env.MOBILE_SCREENSHOT_DIR){await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:path.join(process.env.MOBILE_SCREENSHOT_DIR,'inkambill-'+theme+'.png'),fullPage:true});}
+  console.log('PASS',width,theme,JSON.stringify(metrics));await page.close();
+ }
+}finally{await browser.close();server.close();}})().catch(e=>{console.error(e);server.close();process.exitCode=1;});
+
+

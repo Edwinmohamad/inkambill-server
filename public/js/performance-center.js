@@ -1,3 +1,4 @@
+if(document.body.classList.contains('inkamnet-go-app')&&window.Chart)Chart.defaults.animation=false;
 (() => {
   'use strict';
   const root=document.getElementById('performanceCenter');

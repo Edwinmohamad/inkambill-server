@@ -255,6 +255,7 @@ const psbActivated = (funnel.find(f => f.key === 'active') || {}).value || 0;
 </style>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>if(document.body.classList.contains("inkamnet-go-app")&&window.Chart){Chart.defaults.animation=false;}</script>
 <script>
 (() => {
   const money = v => 'Rp ' + new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(v || 0);
