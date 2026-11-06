@@ -46,8 +46,8 @@
 
   // ---------------------------------------------------------------- Tabel
   const COLS = {
-    synced: ['', 'Pelanggan', 'Site', 'Username', 'Profile', 'IP', 'Status', 'Ping', ''],
-    unsynced: ['', 'Username', 'Site / Router', 'Profile', 'IP', 'Caller-ID', 'Status', 'Ping', '']
+    synced: ['', 'Pelanggan', 'Site', 'Username', 'Profile', 'IP', 'Status', ''],
+    unsynced: ['', 'Username', 'Site / Router', 'Profile', 'IP', 'Caller-ID', 'Status', '']
   };
   const STATE = { online: 'Online', offline: 'Offline', isolated: 'Diisolir' };
   const METHOD = { customer_code: 'Customer ID', customer_name: 'Nama', pppoe_username: 'Data billing', manual: 'Manual', phone: 'No. HP', comment: 'Comment', fuzzy: 'Mirip', created: 'Dibuat di NMS', cid_tag: 'Tag CID', alias: 'Alias', moved: 'Pindah router', mac: 'MAC', ip: 'IP' };
@@ -61,10 +61,12 @@
   const state = r => `<span class="nx-state ${r.state}">${STATE[r.state]}</span>${r.active_uptime && r.state === 'online' ? `<span class="sub mono">${esc(r.active_uptime)}</span>` : ''}`;
   function actions(r) {
     const b = (a, icon, title, cls = '') => `<button type="button" class="nx-btn sm icon ${cls}" data-act="${a}" data-id="${r.id}" title="${title}" aria-label="${title}"><i class="bi ${icon}"></i></button>`;
-    let html = b('ping', 'bi-activity', 'Ping 5x (P)', 'ghost');
+    // Fokus sinkronisasi: belum ter-link -> Hubungkan; sudah ter-link -> Ganti pelanggan atau Lepas link
+    // (bila hasil sinkron salah, admin bisa melepas lalu menghubungkan ke pelanggan yang benar).
+    let html = '';
     if (N.canControl) {
       if (st.tab === 'unsynced') html += `<button type="button" class="nx-btn sm tint" data-act="map" data-id="${r.id}"><i class="bi bi-link-45deg"></i>Hubungkan</button>`;
-      else html += r.is_isolated ? b('unisolate', 'bi-check2-circle', 'Buka isolir (U)', 'green') : b('isolate', 'bi-slash-circle', 'Isolir (I)', 'ghost');
+      else html += `<button type="button" class="nx-btn sm" data-act="map" data-id="${r.id}" title="Ganti pelanggan yang terhubung"><i class="bi bi-arrow-left-right"></i>Ganti</button><button type="button" class="nx-btn sm red" data-act="unmap" data-id="${r.id}" title="Lepas link pelanggan"><i class="bi bi-x-circle"></i>Lepas</button>`;
     }
     html += b('more', 'bi-three-dots', 'Aksi lain', 'ghost');
     return `<div class="nx-actions">${html}</div>`;
@@ -76,13 +78,13 @@
       <td data-label="Site">${esc(r.site_code)}</td>
       <td data-label="Username"><span class="mono">${esc(r.username)}</span>${r.caller_id ? ' <i class="bi bi-lock-fill dim" title="MAC terkunci"></i>' : ''}<span class="sub">${esc(METHOD[r.match_method] || r.match_method || '')} · 🔒 Bound</span></td>
       <td data-label="Profile">${esc(r.profile || '—')}${r.is_isolated && r.original_profile ? `<span class="sub">asal ${esc(r.original_profile)}</span>` : ''}${r.profile_mismatch ? `<span class="sub" style="color:var(--x-orange)"><i class="bi bi-exclamation-triangle"></i> paket: ${esc(r.package_profile || '—')}</span>` : ''}</td>
-      <td data-label="IP">${ip(r)}</td><td data-label="Status">${state(r)}</td><td data-label="Ping" data-ping="${r.id}">${N.pingBadge(r.id)}</td><td class="acts">${actions(r)}</td></tr>`;
+      <td data-label="IP">${ip(r)}</td><td data-label="Status">${state(r)}</td><td class="acts">${actions(r)}</td></tr>`;
     return `<tr data-row="${r.id}" data-i="${i}" class="${cls}"><td class="check">${chk(r)}</td>
       <td class="first cust" data-open="${r.id}"><span class="name mono">${esc(r.username)}</span>${r.comment ? `<span class="sub">${esc(r.comment)}</span>` : ''}${r.is_exempt ? (r.exempt_type === 'fasum' ? `<span class="sub"><span class="nx-pill purple" style="font-size:10.5px;padding:1px 6px"><i class="bi bi-building"></i> Fasum</span>${r.exempt_note ? ' ' + esc(r.exempt_note) : ''}${r.exempt_source === 'manual' ? '' : ' <span class="dim">· otomatis</span>'}</span>` : `<span class="sub" style="color:var(--x-orange)">exempt: ${esc(r.exempt_type)}</span>`) : ''}</td>
       <td data-label="Site">${esc(r.site_code)}<span class="sub">${esc(r.router_name)}</span></td>
       <td data-label="Profile">${esc(r.profile || '—')}</td><td data-label="IP">${ip(r)}</td>
       <td data-label="Caller-ID" class="mono">${esc(r.caller_id || r.active_caller_id || '—')}</td>
-      <td data-label="Status">${state(r)}</td><td data-label="Ping" data-ping="${r.id}">${N.pingBadge(r.id)}</td><td class="acts">${actions(r)}</td></tr>`;
+      <td data-label="Status">${state(r)}</td><td class="acts">${actions(r)}</td></tr>`;
   }
   function render() {
     head();
@@ -111,9 +113,9 @@
     try {
       const { counts: c } = await api(`/nms/api/counts${N.withSite()}`);
       if (seq !== countSeq) return;
-      $('cOnline').textContent = c.online; $('cOffline').textContent = c.offline; $('cIsolated').textContent = c.isolated;
+      if ($('cUnsynced')) $('cUnsynced').textContent = c.unsynced;
       $('cSyncPct').textContent = `${c.syncedPct}%`; $('cSynced').textContent = c.synced; $('cExempt').textContent = c.exempt - (c.fasum || 0);
-      if ($('cFasum')) { $('cFasum').textContent = c.fasum || 0; $('cFasumOff').textContent = c.fasumOffline || 0; }
+      if ($('cFasum')) $('cFasum').textContent = c.fasum || 0;
       $('tabSynced').textContent = c.synced; $('tabUnsynced').textContent = c.unsynced;
     } catch (_) {}
   }

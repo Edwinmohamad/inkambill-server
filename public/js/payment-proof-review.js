@@ -1,6 +1,6 @@
 (()=>{
   const labels={ok:'Cocok',warning:'Tidak cocok',unreadable:'Perlu diperiksa',processing:'Sedang membaca bukti'};
-  async function read(id){const r=await fetch(`/payments/${id}/proof-ocr`,{signal:AbortSignal.timeout(15000),cache:'no-store',headers:{Accept:'application/json'}});if(!r.ok)throw Error('Hasil OCR gagal dimuat; periksa bukti secara manual.');const body=await r.json();if(!body.ok||!body.item)throw Error('Hasil OCR tidak valid; periksa bukti secara manual.');return body.item;}
+  async function read(id){const r=await fetch(`/payments/${id}/proof-ocr`,{signal:AbortSignal.timeout(15000),cache:'no-store',headers:{Accept:'application/json'}});if(!r.ok)throw Error('Hasil pemeriksaan gagal dimuat. Coba buka lagi.');const body=await r.json();if(!body.ok||!body.item)throw Error('Hasil OCR tidak valid; periksa bukti secara manual.');return body.item;}
   function paint(target,item){target.replaceChildren();const title=document.createElement('strong');title.textContent=labels[item.overall]||'Perlu diperiksa';target.append(title);for(const check of item.checks||[]){const row=document.createElement('p');row.textContent=`${check.level==='ok'?'Cocok':check.level==='warn'?'Tidak cocok':'Perlu diperiksa'} — ${check.label}: ${check.detail}`;target.append(row);}const summary=document.createElement('p');summary.textContent=item.summary||'Periksa gambar secara manual.';target.append(summary);}
   // Tampilan ringkas (v1.34): pemeriksaan bukti tetap berjalan di server, tetapi yang ditampilkan
   // hanya hasil akhirnya — satu status dan satu kalimat keterangan, tanpa rincian per pemeriksaan.
@@ -20,7 +20,7 @@
       const brief=document.createElement('small');brief.className='cell-sub';
       brief.textContent=(item.checks||[]).filter(c=>['amount','date','account'].includes(c.key)).map(c=>({amount:'Nominal',date:'Tanggal',account:'Rekening'}[c.key])+' '+(c.level==='ok'?'✓':c.level==='warn'?'⚠':'?')).join(' · ')||item.summary||'Menunggu hasil OCR';cell.append(brief);
       if(!processing){const details=document.createElement('details'),summary=document.createElement('summary'),body=document.createElement('div');summary.textContent='Detail pemeriksaan';paint(body,item);details.append(summary,body);cell.append(details);}
-    }catch(error){cell.textContent='Hasil OCR gagal dimuat. Periksa koneksi atau coba lagi.';}
+    }catch(error){cell.textContent='Hasil pemeriksaan gagal dimuat. Coba buka lagi.';}
     finally{cell.dataset.loading='0';}
     const attempts=Number(cell.dataset.attempts||0)+1;cell.dataset.attempts=String(attempts);
     if(processing&&attempts<12){setTimeout(()=>schedule(cell),2500);return;}

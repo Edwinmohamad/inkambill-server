@@ -1,14 +1,14 @@
 const assert=require('assert');
 const { postCashTransaction }=require('../services/paymentVerificationService');
 
-function fakeConnection({meta=true,category=true,existing=false,settlementStatus='settled'}={}){
+function fakeConnection({meta=true,category=true,existing=false,settlementStatus='settled',lockedSeptember=false}={}){
   const calls=[];
   return {
     calls,
     async execute(sql,params){
       calls.push({sql,params});
       if(sql.includes('FROM invoices i JOIN customers c'))return [meta?[{site_id:7,customer_name:'Pelanggan Uji',invoice_number:'INV-1',period_month:9,period_year:2026,is_psb:0}]:[]];
-      if(sql.includes("FROM closing_periods")&&sql.includes("status='LOCKED'"))return [[]];
+      if(sql.includes("FROM closing_periods")&&sql.includes("status='LOCKED'"))return [lockedSeptember&&String(params[0]).startsWith('2026-09')?[{id:3,period_start:'2026-09-01',period_end:'2026-09-30'}]:[]];
       if(sql.includes('FROM cash_categories')&&sql.includes("type='income'"))return [category?[{id:11}]:[]];
       if(sql.includes('SELECT method,status,settlement_status FROM payments'))return [[{method:'cash',status:'confirmed',settlement_status:settlementStatus}]];
       if(sql.includes('WHERE source_id=?')&&sql.includes("source_type IN ('payment','install_income')"))return [existing?[{id:99,amount:150000,approval_status:'APPROVED'}]:[]];
@@ -41,7 +41,7 @@ function fakeConnection({meta=true,category=true,existing=false,settlementStatus
   assert(insert,'jurnal cash_transactions wajib dibuat');
   assert(insert.sql.includes("'APPROVED'"),'jurnal setoran wajib langsung APPROVED');
   assert(insert.sql.includes('reviewed_by')&&insert.sql.includes('reviewed_at'),'reviewer jurnal otomatis wajib tercatat');
-  assert.strictEqual(insert.params[0],'2026-10-02','jurnal penerimaan kas harus mengikuti tanggal uang diterima, bukan bulan invoice');
+  assert.strictEqual(insert.params[0],'2026-09-02','tagihan September yang disetor 2 Oktober masuk saldo September selama Closing September belum dikunci');
   assert.strictEqual(insert.params[4],150000,'nominal jurnal harus sama dengan setoran');
   const closingInsert=conn.calls.find(call=>call.sql.startsWith('INSERT INTO closing_entries'));
   assert(closingInsert,'jurnal setoran wajib langsung disinkronkan ke Closing AUTO yang masih DRAFT');
@@ -50,6 +50,11 @@ function fakeConnection({meta=true,category=true,existing=false,settlementStatus
   assert.strictEqual(closingInsert.params[3],123);
   assert.strictEqual(closingInsert.params[7],150000);
   assert(conn.calls.some(call=>call.sql.startsWith('INSERT INTO financial_audit_logs')),'sinkron Closing wajib masuk audit keuangan');
+
+  const lockedConn=fakeConnection({lockedSeptember:true});
+  await postCashTransaction(lockedConn,args);
+  const lockedInsert=lockedConn.calls.find(call=>call.sql.startsWith('INSERT INTO cash_transactions'));
+  assert.strictEqual(lockedInsert.params[0],'2026-10-02','bila Closing September sudah dikunci, setoran dicatat pada tanggal diterima');
 
   const duplicateConn=fakeConnection({existing:true});
   assert.deepStrictEqual(await postCashTransaction(duplicateConn,args),{id:99,created:false,closingInserted:1});

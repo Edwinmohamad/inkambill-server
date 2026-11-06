@@ -53,25 +53,11 @@ const api = fn => async (req, res) => {
 };
 
 // ---------- Pages ----------
-router.get('/', async (req, res, next) => {
-  try {
-    const siteId = siteParam(req);
-    const [sites, data] = await Promise.all([dashboard.sites(), dashboard.getDashboard(siteId)]);
-    res.set('Cache-Control', 'no-store');
-    res.render('nms/dashboard', { title: 'NOC Dashboard', sites, siteId, data, canControl: canControl(req), isAdmin: isAdminRole(req.session.user?.role), nmsPage: 'dashboard' });
-  } catch (err) { next(err); }
-});
-
-// NOC Wall: tampilan padat layar penuh untuk monitor NOC (tanpa sidebar/layout aplikasi).
-router.get('/wall', async (req, res, next) => {
-  try {
-    const siteId = siteParam(req);
-    const safe = p => p.catch(err => ({ error: err.message }));
-    const [sites, data, health] = await Promise.all([dashboard.sites(), dashboard.getDashboard(siteId), safe(insights.siteHealth())]);
-    res.set('Cache-Control', 'no-store');
-    res.render('nms/wall', { layout: false, title: 'NOC Wall', sites, siteId, boot: { data, health } });
-  } catch (err) { next(err); }
-});
+// Menu jaringan kini fokus pada sinkronisasi PPPoE: ringkasan traffic dan NOC Wall tidak dipakai lagi,
+// tautan lama diarahkan ke halaman sinkronisasi (filter site ikut dibawa).
+const toSecrets = (req, res) => { const site = siteParam(req); res.redirect(302, `/nms/secrets${site ? `?site=${site}` : ''}`); };
+router.get('/', toSecrets);
+router.get('/wall', toSecrets);
 
 router.get('/secrets', async (req, res, next) => {
   try {
@@ -80,7 +66,7 @@ router.get('/secrets', async (req, res, next) => {
     const [[offline]] = await db.query(`SELECT COUNT(*) n FROM routers r WHERE r.is_active=1 AND r.last_status='offline' ${siteId ? 'AND r.site_id=?' : ''}`, siteId ? [siteId] : []);
     res.set('Cache-Control', 'no-store');
     const packages = await packagesFor(siteId);
-    res.render('nms/secrets', { title: 'MikroTik NMS · PPP Secrets', sites, siteId, counts, routersOffline: Number(offline.n || 0), tab: req.query.tab === 'unsynced' ? 'unsynced' : 'synced', canControl: canControl(req), isAdmin: isAdminRole(req.session.user?.role), nmsPage: 'secrets', isolirProfile: store.ISOLIR_PROFILE, isolirMode: control.ISOLIR_MODE, packages, focus: Number(req.query.focus) || null });
+    res.render('nms/secrets', { title: 'Sinkronisasi PPPoE', sites, siteId, counts, routersOffline: Number(offline.n || 0), tab: req.query.tab === 'unsynced' ? 'unsynced' : 'synced', canControl: canControl(req), isAdmin: isAdminRole(req.session.user?.role), nmsPage: 'secrets', isolirProfile: store.ISOLIR_PROFILE, isolirMode: control.ISOLIR_MODE, packages, focus: Number(req.query.focus) || null });
   } catch (err) { next(err); }
 });
 

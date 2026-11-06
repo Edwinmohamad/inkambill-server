@@ -1,0 +1,41 @@
+<%
+  const c = customer;
+  const wa = c.whatsapp_status === 'valid' ? String(c.whatsapp_normalized || '') : '';
+  const months = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  const tone = s => s === 'paid' ? 'green' : s === 'overdue' ? 'red' : s === 'cancelled' ? 'gray' : 'orange';
+%>
+<header class="cpanel-head">
+  <div class="min-w-0">
+    <h2 id="customerPanelTitle"><%= c.name %></h2>
+    <span class="cpanel-code"><%= c.customer_code %> · <%= c.site_code %><%= c.cluster_name ? ' · ' + c.cluster_name : '' %></span>
+  </div>
+  <button type="button" class="cpanel-close" data-cpanel-close aria-label="Tutup"><i class="bi bi-x-lg"></i></button>
+</header>
+<div class="cpanel-body">
+  <div class="cpanel-badges">
+    <span class="status-badge <%= c.archived_at ? 'gray' : (c.customer_status || 'active') === 'active' ? 'green' : 'orange' %>"><%= c.archived_at ? 'Diarsipkan' : statusLabel(c.customer_status || 'active') %></span>
+    <span class="status-badge <%= c.billing_status === 'paid' ? 'green' : 'orange' %>"><%= statusLabel(c.billing_status) %></span>
+  </div>
+  <div class="cpanel-due <%= Number(open.total) > 0 ? 'has-due' : '' %>">
+    <span>Sisa tagihan</span><strong><%= formatRupiah(open.total) %></strong><small><%= Number(open.n) %> faktur belum lunas</small>
+  </div>
+  <dl class="cpanel-list">
+    <div><dt>Paket</dt><dd><%= c.package_name || '-' %><small><%= formatRupiah(c.package_price) %>/bulan</small></dd></div>
+    <div><dt>Jatuh tempo</dt><dd>Tanggal <%= c.due_day || '-' %></dd></div>
+    <div><dt>WhatsApp</dt><dd><% if (wa) { %><a href="https://wa.me/<%= wa %>" target="_blank" rel="noopener noreferrer"><%= c.phone %></a><% } else { %><%= c.phone || '-' %><% } %></dd></div>
+    <div><dt>PPPoE</dt><dd class="mono"><%= c.pppoe_username || '-' %></dd></div>
+    <div><dt>Sales</dt><dd><%= c.sales_name || 'Langsung' %></dd></div>
+    <div class="full"><dt>Alamat</dt><dd><%= c.address || '-' %></dd></div>
+  </dl>
+  <h3 class="cpanel-section">Tagihan terakhir</h3>
+  <% if (invoices.length) { %>
+  <ul class="cpanel-invoices">
+    <% invoices.forEach(i => { %><li><span><b><%= months[(Number(i.period_month) || 1) - 1] %> <%= i.period_year %></b><small><%= i.invoice_number %></small></span><span class="cpanel-inv-right"><b><%= formatRupiah(i.status === 'paid' ? i.total : i.outstanding) %></b><span class="status-badge <%= tone(i.status) %>"><%= statusLabel(i.status) %></span></span></li><% }) %>
+  </ul>
+  <% } else { %><p class="cpanel-empty">Belum ada faktur.</p><% } %>
+</div>
+<footer class="cpanel-foot">
+  <a class="btn-tech" href="/invoices?q=<%= encodeURIComponent(c.customer_code) %>"><i class="bi bi-receipt"></i>Tagihan</a>
+  <a class="btn-tech" href="/customers/<%= c.id %>/edit"><i class="bi bi-pencil-square"></i>Edit</a>
+  <a class="btn-tech primary" href="/customers/<%= c.id %>"><i class="bi bi-person-vcard"></i>Detail</a>
+</footer>

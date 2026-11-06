@@ -10,7 +10,7 @@ const db=require('../config/db');
 const { refreshInvoiceStatus }=require('./invoiceService');
 const { unisolateCustomer }=require('./networkService');
 const { assignCashTransactionCode }=require('./cashService');
-const { isoDate, assertDateOpen, resolveBookDate, financialAudit }=require('./financialControlService');
+const { isoDate, assertDateOpen, lockedPeriodForDate, resolveBookDate, financialAudit }=require('./financialControlService');
 const { syncCashTransactionsIntoDraftAutoClosing }=require('./closingSyncService');
 
 const PROOF_DIR=path.join(__dirname,'..','storage','payment-proofs');
@@ -60,6 +60,21 @@ function invoicePeriodBookDate({periodMonth,periodYear,referenceDate}){
   const lastDay=new Date(Date.UTC(year,month,0)).getUTCDate();
   return `${year}-${String(month).padStart(2,'0')}-${String(Math.min(requestedDay,lastDay)).padStart(2,'0')}`;
 }
+// Tanggal jurnal Data Kas untuk uang tagihan (aturan v1.35, sesuai cara kerja Closing bulanan):
+// - Selama Closing bulan tagihan BELUM dikunci, uang masuk ke bulan tagihan tersebut walaupun
+//   pelanggan membayar/menyetor di bulan berikutnya (tagihan Oktober dibayar 3 November -> 3 Oktober).
+//   Dengan begitu saldo Data Kas, laporan tagihan, dan Closing memakai periode yang sama.
+// - Bila bulan tagihan sudah LOCKED, angka Closing yang terkunci tidak boleh berubah: uang dicatat
+//   pada tanggal diterima (periode yang masih terbuka).
+async function resolveLedgerDate(conn,{periodMonth,periodYear,bookDate}){
+  const received=isoDate(bookDate);
+  if(!received)throw new Error('Tanggal penerimaan kas tidak valid.');
+  let periodDate=null;
+  try{periodDate=invoicePeriodBookDate({periodMonth,periodYear,referenceDate:received});}catch(_){periodDate=null;}
+  if(periodDate&&periodDate!==received&&!(await lockedPeriodForDate(conn,periodDate)))return {ledgerDate:periodDate,basis:'invoice_period'};
+  await assertDateOpen(conn,received);
+  return {ledgerDate:received,basis:periodDate&&periodDate!==received?'received_period_locked':'received'};
+}
 async function billingCategory(conn,name='Pendapatan Billing'){
   const code=name==='Setoran Cash Pelanggan'?'SETOR':'BILL';
   const [rows]=await conn.execute(`SELECT id FROM cash_categories
@@ -70,11 +85,8 @@ async function billingCategory(conn,name='Pendapatan Billing'){
 async function postCashTransaction(conn,{paymentId,invoiceId,amount,reference,bookDate,categoryName='Pendapatan Billing',prefix='Pembayaran',actorUserId=null}){
   const meta=await paymentCashMeta(conn,invoiceId);
   if(!meta)throw new Error('Data faktur/pelanggan untuk jurnal kas tidak ditemukan. Transaksi dibatalkan.');
-  // Cash-basis ledger: received money belongs to its receipt/settlement booking date.
-  // The invoice's service period remains in invoice metadata; it is not the cash receipt period.
-  const ledgerDate=isoDate(bookDate);
-  if(!ledgerDate)throw new Error('Tanggal penerimaan kas tidak valid.');
-  await assertDateOpen(conn,ledgerDate);
+  // Periode jurnal mengikuti bulan tagihan selama Closing bulan itu belum dikunci (lihat resolveLedgerDate).
+  const { ledgerDate }=await resolveLedgerDate(conn,{periodMonth:meta.period_month,periodYear:meta.period_year,bookDate});
   const isPsb=Number(meta.is_psb)===1;
   const incomeCategory=isPsb?'Pendapatan Pemasangan Baru':categoryName;
   const catId=await billingCategory(conn,incomeCategory);
@@ -241,4 +253,4 @@ async function createPendingTransferPayments({invoiceIds,bankId,file,userId,note
   return created;
 }
 
-module.exports={PROOF_DIR,proofExtension,proofSignatureMatches,saveProofFile,removeProofFile,paymentReference,paymentCashMeta,invoicePeriodBookDate,billingCategory,postCashTransaction,reconcileMissingPaymentCashTransactions,reconcilePaymentCashTransactionPeriods,maybeAutoUnisolate,verifyPendingPayment,createPendingTransferPayments};
+module.exports={PROOF_DIR,proofExtension,proofSignatureMatches,saveProofFile,removeProofFile,paymentReference,paymentCashMeta,invoicePeriodBookDate,resolveLedgerDate,billingCategory,postCashTransaction,reconcileMissingPaymentCashTransactions,reconcilePaymentCashTransactionPeriods,maybeAutoUnisolate,verifyPendingPayment,createPendingTransferPayments};

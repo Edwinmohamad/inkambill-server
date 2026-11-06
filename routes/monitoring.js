@@ -24,10 +24,8 @@ async function ontDeviceIdsForSite(code){
   return rows.map(r=>Number(r.id));
 }
 
-router.get('/',async(req,res,next)=>{try{
-  const [sites]=await db.query(`SELECT id,code,name FROM sites WHERE is_active=1 ORDER BY code`);
-  res.render('monitoring/index',{title:'Dashboard Monitoring',sites});
-}catch(err){next(err);}});
+// Dashboard monitoring traffic dihapus dari menu; halaman lama diarahkan ke Sinkronisasi PPPoE.
+router.get('/',(req,res)=>res.redirect(302,'/nms/secrets'));
 
 // ---------- Per-site combined summary (shown beneath all three boards) ----------
 router.get('/api/sites',async(req,res,next)=>{try{

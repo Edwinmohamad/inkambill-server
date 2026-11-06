@@ -124,13 +124,26 @@ router.get('/',async(req,res)=>{
     FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id WHERE ${summaryWhere.join(' AND ')}`,summaryParams);return row||{};});
   // Transactions Master Admin already approved but which never received a transfer/QRIS proof attachment.
   const missingProof=await safe('ringkasan bukti pembayaran',{total:0,amount:0},async()=>{const [[row]]=await db.execute(`SELECT COUNT(*) total,COALESCE(SUM(p.amount),0) amount FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id WHERE p.status='confirmed' AND p.method IN ('transfer','qris') AND (p.proof_path IS NULL OR p.proof_path='')${site?` AND s.code=?`:''}`,site?[site]:[]);return row||{total:0,amount:0};});
+  // Monitor uang masuk harian (v1.35): dihitung dari tanggal pelanggan membayar/transfer (paid_at)
+  // yang diinput admin, dipisah transfer/QRIS/cash dan per rekening, untuk dicocokkan ke mutasi rekening.
+  const dailyDay=/^\d{4}-\d{2}-\d{2}$/.test(String(req.query.day||''))?String(req.query.day):isoDate(new Date());
+  const dailyWhere=["DATE(p.paid_at)=?","p.status IN ('pending','confirmed')"];const dailyParams=[dailyDay];
+  if(site){dailyWhere.push('s.code=?');dailyParams.push(site);}if(cluster){dailyWhere.push('c.cluster_id=?');dailyParams.push(Number(cluster));}
+  const dailyIncome=await safe('monitor uang masuk harian',{day:dailyDay,methods:{},banks:[],total:0,count:0},async()=>{
+    const from=`FROM payments p JOIN invoices i ON i.id=p.invoice_id JOIN customers c ON c.id=i.customer_id JOIN sites s ON s.id=c.site_id WHERE ${dailyWhere.join(' AND ')}`;
+    const [rows]=await db.execute(`SELECT p.method,COUNT(*) n,COALESCE(SUM(p.amount),0) total,SUM(p.status='pending') pending_n,COALESCE(SUM(CASE WHEN p.status='pending' THEN p.amount ELSE 0 END),0) pending_total ${from} GROUP BY p.method`,dailyParams);
+    const [banks]=await db.execute(`SELECT COALESCE(NULLIF(TRIM(p.bank_name),''),'Tanpa rekening') bank,COUNT(*) n,COALESCE(SUM(p.amount),0) total ${from} AND p.method IN ('transfer','qris') GROUP BY bank ORDER BY total DESC`,dailyParams);
+    const methods={};let total=0,count=0;
+    for(const r of rows){methods[r.method]={n:Number(r.n||0),total:Number(r.total||0),pendingN:Number(r.pending_n||0),pendingTotal:Number(r.pending_total||0)};total+=Number(r.total||0);count+=Number(r.n||0);}
+    return {day:dailyDay,methods,banks:banks.map(b=>({bank:b.bank,n:Number(b.n||0),total:Number(b.total||0)})),total,count};
+  });
   const preselectedInvoiceId=Number(req.query.invoice_id||0)||null;
   // v1.25.8 — visibility and authorization are intentionally separated.
   // Every user who can open Approval & Transaksi must be able to SEE pending manual-cash requests,
   // otherwise an Admin can submit Data Kas successfully and it appears to vanish. Approve/Reject
   // remain protected by requireMasterAdmin on the mutation routes.
   const cashApprovalQueue=await safe('antrean approval kas',{rows:[],unavailable:true},()=>loadCashApprovals(db));
-  res.render('payments/index',{title:'Approval & Transaksi',payments,openInvoices,staff,banks,sites,clusters,cashApprovals:cashApprovalQueue.rows,cashApprovalUnavailable:cashApprovalQueue.unavailable,summary:summary||{},missingProof:missingProof||{total:0,amount:0},paymentPageWarnings:pageWarnings,preselectedInvoiceId,filters:{q,site,cluster,month,year,approval,method,recipient:activeRecipient},methodCounts,summaryMonth,summaryYear});
+  res.render('payments/index',{title:'Approval & Transaksi',payments,openInvoices,staff,banks,sites,clusters,cashApprovals:cashApprovalQueue.rows,cashApprovalUnavailable:cashApprovalQueue.unavailable,summary:summary||{},dailyIncome,missingProof:missingProof||{total:0,amount:0},paymentPageWarnings:pageWarnings,preselectedInvoiceId,filters:{q,site,cluster,month,year,approval,method,recipient:activeRecipient},methodCounts,summaryMonth,summaryYear});
 });
 
 router.post('/',requireAdmin,async(req,res)=>{

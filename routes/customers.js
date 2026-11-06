@@ -696,5 +696,16 @@ router.post('/:id/whatsapp-status',requireAdmin,async(req,res)=>{
   await audit({userId:req.session.user.id,action:'system_validate_whatsapp',entityType:'customer',entityId:customer.id,description:`Validasi format sistem WhatsApp ${customer.name}: ${status}`,ip:req.ip});
   req.session.flash={type:wa.valid?'success':'warning',message:`Validasi sistem WhatsApp ${customer.name}: ${wa.reason}.`};res.redirect('/customers');
 });
+// Panel ringkas pelanggan (dibuka di kanan saat nama diklik di daftar). Fragmen HTML tanpa layout.
+router.get('/:id/panel',async(req,res)=>{
+  const id=Number(req.params.id);
+  if(!Number.isInteger(id)||id<=0)return res.status(400).send('ID tidak valid');
+  const [rows]=await db.execute(`SELECT c.*,s.code site_code,s.name site_name,p.name package_name,p.price package_price,cl.name cluster_name,se.name sales_name FROM customers c JOIN sites s ON s.id=c.site_id LEFT JOIN packages p ON p.id=c.package_id LEFT JOIN clusters cl ON cl.id=c.cluster_id LEFT JOIN employees se ON se.id=c.sales_id WHERE c.id=?`,[id]);
+  if(!rows.length)return res.status(404).send('Pelanggan tidak ditemukan');
+  const [invoices]=await db.execute(`SELECT id,invoice_number,period_month,period_year,total,paid_amount,outstanding,status,due_date FROM invoices WHERE customer_id=? ORDER BY period_year DESC,period_month DESC LIMIT 6`,[id]);
+  const [[open]]=await db.execute(`SELECT COUNT(*) n,COALESCE(SUM(outstanding),0) total FROM invoices WHERE customer_id=? AND status<>'paid' AND status<>'cancelled' AND outstanding>0`,[id]);
+  res.set('Cache-Control','no-store');
+  res.render('customers/_panel',{layout:false,customer:rows[0],invoices,open});
+});
 router.get('/:id',async(req,res)=>{const [rows]=await db.execute(`SELECT c.*,s.code site_code,s.name site_name,p.name package_name,p.price package_price,r.name router_name,cl.name cluster_name,se.name sales_name FROM customers c JOIN sites s ON s.id=c.site_id LEFT JOIN packages p ON p.id=c.package_id LEFT JOIN routers r ON r.id=c.router_id LEFT JOIN clusters cl ON cl.id=c.cluster_id LEFT JOIN employees se ON se.id=c.sales_id WHERE c.id=?`,[req.params.id]);if(!rows.length)return res.status(404).send('Pelanggan tidak ditemukan');const [invoices]=await db.execute(`SELECT * FROM invoices WHERE customer_id=? ORDER BY period_year DESC,period_month DESC`,[req.params.id]);res.render('customers/detail',{title:rows[0].name,customer:rows[0],invoices});});
 module.exports=router;

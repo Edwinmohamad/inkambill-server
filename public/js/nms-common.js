@@ -284,7 +284,6 @@
   /** Item menu "…" standar untuk 1 secret. */
   function actionItems(r, { skipView = false } = {}) {
     const items = skipView ? [] : [{ label: 'Detail pelanggan', icon: 'bi-person-vcard', run: () => act(r, 'detail') }, { label: 'Kenapa offline? (diagnosa)', icon: 'bi-heart-pulse', run: () => act(r, 'diagnose') }];
-    if (!skipView && (r.state === 'online' || (r.is_online && !r.is_isolated))) items.push({ label: 'Traffic live', icon: 'bi-graph-up', run: () => act(r, 'traffic') });
     if (!skipView) items.push({ label: 'Riwayat & kembalikan', icon: 'bi-clock-history', run: () => act(r, 'timeline') });
     if (!canControl) return items;
     if (items.length) items.push('-');
@@ -522,7 +521,7 @@
   const drawerEl = document.createElement('div');
   drawerEl.className = 'nx-drawer';
   drawerEl.innerHTML = `<div class="scrim" data-dclose></div><aside class="panel" role="dialog" aria-modal="true" aria-label="Detail pelanggan"><div class="nx-drawer-head"><div class="nx-avatar" data-av>?</div><div class="grow" style="min-width:0"><h4 data-dn>—</h4><div class="meta" data-dm></div></div><button type="button" class="nx-x" data-dclose aria-label="Tutup"><i class="bi bi-x-lg"></i></button></div>
-    <div class="nx-drawer-tabs"><div class="nx-seg sm" data-dtabs><button type="button" data-t="info" class="active">Ringkasan</button><button type="button" data-t="diag">Diagnosa</button><button type="button" data-t="traffic">Traffic</button><button type="button" data-t="history">Riwayat</button></div></div>
+    <div class="nx-drawer-tabs"><div class="nx-seg sm" data-dtabs><button type="button" data-t="info" class="active">Ringkasan</button><button type="button" data-t="diag">Diagnosa</button><button type="button" data-t="history">Riwayat</button></div></div>
     <div class="nx-drawer-body" data-db></div><div class="nx-drawer-foot" data-df></div></aside>`;
   root.appendChild(drawerEl);
   const D = { id: null, data: null, tab: 'info', trafficTimer: null, samples: [] };
@@ -669,8 +668,6 @@
   const COMMANDS = [
     { label: 'Smart Sync', hint: 'Cocokkan secret dengan data pelanggan', icon: 'bi-magic', run: () => location.assign(`/nms/secrets${qs({ site: currentSite || undefined, tab: 'unsynced', sync: 1 })}`) },
     { label: 'Rekonsiliasi billing ↔ router', hint: 'Kebocoran pendapatan & salah isolir', icon: 'bi-arrow-left-right', run: () => location.assign(`/nms/insights${withSite()}`) },
-    { label: 'Otomasi & jadwal', hint: 'Persetujuan, jadwal, pengaturan', icon: 'bi-clock-history', run: () => location.assign(`/nms/automation${withSite()}`) },
-    { label: 'Ringkasan jaringan', hint: 'Traffic, router, live log', icon: 'bi-speedometer2', run: () => location.assign(`/nms${withSite()}`) },
     { label: 'Ekspor secret ter-link (CSV)', hint: 'Unduh untuk laporan', icon: 'bi-download', run: () => location.assign(`/nms/api/export${qs({ site: currentSite || undefined, kind: 'synced' })}`) }
   ];
   let palRows = [], palIdx = 0, palTimer = null, palMode = 'cmd';

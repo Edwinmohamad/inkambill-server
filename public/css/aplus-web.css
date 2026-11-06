@@ -119,6 +119,7 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--brand)}
 .status-badge.orange{color:var(--warn-text)!important}
 .status-badge.red{color:var(--neg-text)!important}
 .status-badge.purple,.status-badge.blue{color:var(--accent-text)!important}
+.customer-wa-link{color:var(--ok-text)!important}
 .proof-result-card{background:var(--panel-2)!important}
 .proof-result-line{margin:.35rem 0 0;color:var(--text)}
 
@@ -138,3 +139,24 @@ html.theme-anim body,html.theme-anim body *{transition:background-color .3s ease
   .page-enter>*{animation:none!important}
   html.theme-anim body,html.theme-anim body *{transition:none!important}
 }
+
+/* Tombol aksi tabel (web, v1.35): seragam 32px, garis tipis, tanpa isi warna; merah/hijau hanya pada ikon. */
+.app-table :is(.btn-tech.compact,.action-menu,.action-pill),.data-card :is(.btn-tech.compact,.action-menu,.action-pill){
+  height:32px;min-height:32px!important;min-width:32px;padding:0 9px!important;gap:6px;display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid var(--line)!important;border-radius:8px!important;background:transparent!important;box-shadow:none!important;
+  color:var(--text)!important;font-size:12.5px!important;font-weight:600!important;line-height:1}
+.app-table :is(.btn-tech.compact,.action-menu,.action-pill) i,.data-card :is(.btn-tech.compact,.action-menu,.action-pill) i{font-size:15px;margin:0;background:none!important;color:inherit!important}
+.app-table :is(.btn-tech.compact,.action-menu,.action-pill):hover,.data-card :is(.btn-tech.compact,.action-menu,.action-pill):hover{background:var(--panel-3)!important}
+:is(.app-table,.data-card) :is(.btn-tech.compact,.action-menu,.action-pill).danger{color:var(--neg-text)!important}
+:is(.app-table,.data-card) :is(.btn-tech.compact,.action-menu,.action-pill).success{color:var(--ok-text)!important}
+:is(.app-table,.data-card) :is(.btn-tech.compact,.action-menu,.action-pill).warning{color:var(--warn-text)!important}
+:is(.app-table,.data-card) .btn-tech.compact.primary{background:var(--brand)!important;border-color:var(--brand)!important;color:var(--on-accent)!important}
+.customer-row-buttons,.payment-actions{gap:6px!important}
+.invoice-pay-button{border:1px solid rgba(var(--brand-rgb),.35)!important;background:transparent!important;color:var(--ok-text)!important;box-shadow:none!important;border-radius:8px!important}
+.ink-action-item small,.ink-action-popover .system-validation-note{display:none!important}
+/* Baris pelanggan web: Edit, Hapus, menu ⋮. Hapus Paksa cukup dari menu ⋮. */
+.customer-row-buttons>[data-force-delete]{display:none!important}
+.app-table :is(.proof-chip,.approval-button){min-height:32px!important;border-radius:8px!important;box-shadow:none!important;background:transparent!important;border:1px solid var(--line)!important;color:var(--text)!important;font-weight:600!important}
+.app-table .approval-button.approve{border-color:rgba(var(--brand-rgb),.35)!important;color:var(--ok-text)!important}
+.app-table .approval-button.reject{color:var(--neg-text)!important}
+.app-table .proof-chip i{background:none!important}

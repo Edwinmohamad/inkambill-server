@@ -143,3 +143,42 @@
     queued=true;requestAnimationFrame(()=>{queued=false;run();});
   }).observe(document.body,{childList:true,subtree:true});
 })();
+
+// INKAMBILL APK (v1.35): filter ringkas. Yang selalu tampil hanya kolom pencarian + tombol "Filter"
+// (dengan jumlah filter aktif dari URL). Pilihan lain muncul dalam grid 2 kolom saat tombol disentuh.
+(()=>{
+  const params=typeof URLSearchParams==='function'?new URLSearchParams(location.search):{get:()=>''};
+  document.querySelectorAll('form.go-primary-filter').forEach(form=>{
+    const grid=form.querySelector('.filter-grid,.billing-filter-grid');if(!grid||form.dataset.goFilter)return;
+    form.dataset.goFilter='1';form.classList.add('go-filter','go-filter-collapsed');
+    const items=[...grid.children].filter(el=>el.nodeType===1&&el.tagName!=='INPUT');
+    let search=null;
+    for(const item of items){
+      const isSearch=item.querySelector('.search-box,input[name="q"]');
+      const isAction=!item.querySelector('select,input:not([type="hidden"]):not([type="submit"])')&&item.querySelector('button,.btn-tech');
+      if(isSearch&&!search){search=item;item.classList.add('go-f-search');}
+      else if(isAction)item.classList.add('go-f-actions');
+      else item.classList.add('go-f-field');
+    }
+    const names=new Set([...form.querySelectorAll('.go-f-field [name]')].map(el=>el.name));
+    const active=[...names].filter(n=>n&&(params.get(n)||'').trim()!=='').length;
+    const toggle=document.createElement('button');toggle.type='button';toggle.className='go-filter-toggle';toggle.setAttribute('aria-expanded','false');
+    toggle.innerHTML='<i class="bi bi-sliders" aria-hidden="true"></i><span>Filter</span>'+(active?'<b>'+active+'</b>':'');
+    toggle.addEventListener('click',()=>{const open=form.classList.toggle('go-filter-collapsed')===false;toggle.setAttribute('aria-expanded',String(open));});
+    if(search)search.appendChild(toggle);else{const row=document.createElement('div');row.className='go-f-search';row.appendChild(toggle);grid.prepend(row);}
+  });
+})();
+
+// Pencarian di lembar Menu (v1.35): saring tile berdasarkan nama, grup kosong disembunyikan.
+(()=>{
+  const input=document.querySelector('[data-go-menu-search]');if(!input)return;
+  const menu=input.closest('.go-menu');const empty=menu.querySelector('.go-menu-empty');
+  input.addEventListener('input',()=>{
+    const q=input.value.trim().toLowerCase();let shown=0;
+    menu.querySelectorAll('.go-menu-group').forEach(group=>{
+      let n=0;group.querySelectorAll('.go-menu-grid>a').forEach(a=>{const hit=!q||a.textContent.toLowerCase().includes(q);a.hidden=!hit;if(hit)n++;});
+      group.hidden=!n;shown+=n;
+    });
+    if(empty)empty.hidden=shown>0;
+  });
+})();
