@@ -28,6 +28,12 @@ async function resolveBookDate(conn, { mode, paidAt, manualDate }) {
   const today = isoDate(new Date());
   const date = normalized === 'approval_date' ? today : normalized === 'manual' ? isoDate(manualDate) : isoDate(paidAt);
   if (!date) throw new Error('Tanggal pembukuan manual wajib diisi.');
+  // Pelanggan membayar di bulan yang sudah di-Closing (dikunci), tetapi baru disetujui sesudahnya:
+  // uang tidak boleh mengubah periode terkunci, jadi dibukukan pada tanggal approval (periode terbuka).
+  if (normalized === 'payment_date' && await lockedPeriodForDate(conn, date)) {
+    await assertDateOpen(conn, today);
+    return { date: today, mode: 'approval_date', lockedPaymentDate: date };
+  }
   await assertDateOpen(conn, date);
   return { date, mode: normalized };
 }

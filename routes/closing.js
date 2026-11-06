@@ -327,6 +327,15 @@ router.post('/period-lock', async (req, res, next) => {
     const data=await loadClosing(start,end,conn);
     const pendingCash=await countPendingClosingCash({db:conn,start,end});
     if(data.ledgerSummary?.invalid || pendingCash>0) throw new Error('Closing belum dapat dikunci: perbaiki lokasi/nominal Data Kas dan selesaikan approval pada bulan ini.');
+    // Uang tagihan bulan ini yang belum masuk kas (transfer menunggu approval / cash masih dipegang tim)
+    // akan pindah ke periode berikutnya bila Closing dikunci sekarang. Selesaikan dulu agar tetap di bulan ini.
+    const [[unbooked]]=await conn.execute(`SELECT SUM(p.status='pending') pending_n,SUM(p.status='confirmed' AND p.method='cash' AND p.settlement_status='held_by_staff') held_n,
+        COALESCE(SUM(CASE WHEN p.status='pending' OR (p.status='confirmed' AND p.method='cash' AND p.settlement_status='held_by_staff') THEN p.amount ELSE 0 END),0) total
+      FROM payments p JOIN invoices i ON i.id=p.invoice_id
+      WHERE (i.period_year*100+i.period_month) BETWEEN ? AND ?
+        AND (p.status='pending' OR (p.status='confirmed' AND p.method='cash' AND p.settlement_status='held_by_staff'))`,
+      [Number(start.slice(0,4))*100+Number(start.slice(5,7)),Number(end.slice(0,4))*100+Number(end.slice(5,7))]);
+    if(Number(unbooked.pending_n||0)+Number(unbooked.held_n||0)>0) throw new Error(`Closing belum dapat dikunci: masih ada ${Number(unbooked.pending_n||0)} pembayaran menunggu approval dan ${Number(unbooked.held_n||0)} cash belum disetor (total ${rupiah(unbooked.total)}) untuk tagihan periode ini. Selesaikan di Approval agar tetap masuk periode ini.`);
     // Guard audit: when detailed rows exist, summary must reconcile exactly to
     // the rows that will be frozen in the Closing snapshot.
     if (data.lineItems.length) {
@@ -355,6 +364,10 @@ router.post('/period-reopen', async (req, res, next) => {
     conn=await db.getConnection();await conn.beginTransaction();
     const [[period]]=await conn.execute(`SELECT * FROM closing_periods WHERE period_start=? AND period_end=? FOR UPDATE`,[start,end]);
     if(!period||period.status!=='LOCKED')throw new Error('Periode ini tidak sedang dikunci.');
+    // Jurnal yang masuk setelah periode ini dikunci sudah tercatat (dan mungkin terkunci) di periode
+    // berikutnya; membuka periode lama saat periode sesudahnya terkunci bisa menghitungnya dua kali.
+    const [[later]]=await conn.execute(`SELECT COUNT(*) n FROM closing_periods WHERE status='LOCKED' AND period_start>? AND id<>?`,[end,period.id]);
+    if(Number(later.n||0)>0)throw new Error('Periode sesudahnya sudah dikunci. Buka kembali periode terbaru lebih dulu, berurutan mundur.');
     await conn.execute(`UPDATE closing_periods SET status='DRAFT',locked_by=NULL,locked_at=NULL WHERE id=?`,[period.id]);
     await financialAudit({conn,userId:req.session.user.id,action:'reopen_period',entityType:'closing_period',entityId:period.id,before:{status:'LOCKED'},after:{status:'DRAFT'},reason,ip:req.ip});
     await conn.commit();req.session.flash={type:'warning',message:`Periode ${start} s/d ${end} dibuka kembali.`};
