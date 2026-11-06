@@ -7,7 +7,7 @@
         <div class="profile-hero">
           <label class="profile-photo-picker">
             <% if(profile.profile_photo){ %><img src="/profile/photo/<%= encodeURIComponent(profile.profile_photo) %>" alt="Foto profil"><% } else { %><span><%= profile.name.charAt(0).toUpperCase() %></span><% } %>
-            <input type="file" name="profile_photo" accept="image/jpeg,image/png,image/webp">
+            <input type="file" name="profile_photo" accept="image/jpeg,image/png,image/webp" data-max-mb="4">
             <i class="bi bi-camera-fill"></i>
           </label>
           <div><div class="module-kicker"><%= profile.role.toUpperCase() %></div><h2><%= profile.name %></h2><p>@<%= profile.username %></p></div>

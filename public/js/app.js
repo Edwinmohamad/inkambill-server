@@ -38,17 +38,28 @@
   document.querySelectorAll('[data-sidebar-open]').forEach(btn => btn.addEventListener('click', () => body.classList.add('sidebar-open')));
   document.querySelectorAll('[data-sidebar-close]').forEach(btn => btn.addEventListener('click', () => body.classList.remove('sidebar-open')));
 
-  const applyTheme = theme => {
+  const isGoApp = body.classList.contains('inkamnet-go-app');
+  const applyTheme = (theme, persist = true) => {
     html.dataset.theme = theme;
-    localStorage.setItem('inkamnet-theme', theme);
+    if (persist) { try { localStorage.setItem('inkamnet-theme', theme); } catch (_) {} }
     document.querySelectorAll('[data-theme-toggle] i').forEach(i => i.className = theme === 'dark' ? 'bi bi-sun-fill' : 'bi bi-moon-stars-fill');
+    if (isGoApp) document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0F1012' : '#F7F6F2');
     window.dispatchEvent(new CustomEvent('inkamnet:theme', { detail:{ theme } }));
   };
-  // INKAMNET GO uses a light-only shell (mobile-app.css); dark variables there made page titles,
-  // buttons and inputs unreadable, so the APK always renders in light mode.
-  if (body.classList.contains('inkamnet-go-app')) applyTheme('light');
-  else applyTheme(localStorage.getItem('inkamnet-theme') || html.dataset.theme || 'dark');
-  document.querySelectorAll('[data-theme-toggle]').forEach(btn => btn.addEventListener('click', () => applyTheme(html.dataset.theme === 'dark' ? 'light' : 'dark')));
+  // INKAMBILL A+ (APK): mobile-app.css kini berbasis token terang & gelap. Tema mengikuti pilihan
+  // terakhir pengguna; bila belum pernah memilih, mengikuti pengaturan tema HP (tanpa disimpan).
+  if (isGoApp) {
+    let saved = null; try { saved = localStorage.getItem('inkamnet-theme'); } catch (_) {}
+    if (saved === 'dark' || saved === 'light') applyTheme(saved, false);
+    else applyTheme(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light', false);
+  } else applyTheme(localStorage.getItem('inkamnet-theme') || html.dataset.theme || 'dark');
+  document.querySelectorAll('[data-theme-toggle]').forEach(btn => btn.addEventListener('click', () => {
+    const next = html.dataset.theme === 'dark' ? 'light' : 'dark';
+    if (isGoApp) { html.classList.add('go-theme-anim'); setTimeout(() => html.classList.remove('go-theme-anim'), 380); }
+    applyTheme(next);
+    // Beri tahu shell Android agar warna status bar & navigation bar ikut tema (APK lama mengabaikannya).
+    if (isGoApp) { try { location.href = 'inkamnet-go://theme/' + next; } catch (_) {} }
+  }));
 
   document.querySelectorAll('.metric-card,.data-card,.filter-card,.ink-kpi,.ink-panel').forEach((el,index)=>{
     el.style.setProperty('--enter-delay', `${Math.min(index*26,150)}ms`); el.classList.add('reveal-item');

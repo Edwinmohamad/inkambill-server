@@ -23,7 +23,7 @@
             <div class="invoice-logo-editor">
               <span>LOGO INVOICE</span>
               <div class="invoice-logo-preview"><% if(settings.invoice_logo_path){ %><img src="/invoices/branding/logo/<%= encodeURIComponent(settings.invoice_logo_path) %>" alt="Logo invoice"><% }else{ %><img src="/img/inkamnet-wordmark-hq.png" alt="Logo default"><% } %></div>
-              <label class="proof-dropzone"><input type="file" name="invoice_logo" accept="image/png,image/jpeg"><span class="proof-drop-icon"><i class="bi bi-cloud-arrow-up"></i></span><span><strong>Upload Logo</strong><small>PNG/JPG · maks. 3 MB</small></span></label>
+              <label class="proof-dropzone"><input type="file" name="invoice_logo" accept="image/png,image/jpeg" data-no-compress><span class="proof-drop-icon"><i class="bi bi-cloud-arrow-up"></i></span><span><strong>Upload Logo</strong><small>PNG/JPG · maks. 3 MB</small></span></label>
               <% if(settings.invoice_logo_path){ %><label class="form-check mt-2"><input class="form-check-input" type="checkbox" name="remove_logo" value="1"><span class="form-check-label">Hapus logo khusus, gunakan logo bawaan</span></label><% } %>
             </div>
             <div class="row g-3">

@@ -13,7 +13,8 @@ const sidebarStart=layout.indexOf('<div class="sidebar-section-label">NETWORK</d
 assert(sidebarStart>=0,'NETWORK sidebar section missing');
 const sidebarEnd=layout.indexOf('<div class="sidebar-section-label">SYSTEM</div>',sidebarStart);
 const networkSidebar=layout.slice(sidebarStart,sidebarEnd);
-assert(networkSidebar.includes('Network Operations'),'single Network Operations entry missing');
+// Sejak 31 Okt 2026 (9e50ebd) satu-satunya entri NETWORK adalah Sinkronisasi PPPoE.
+assert(networkSidebar.includes('href="/nms/secrets"')&&networkSidebar.includes('Sinkronisasi PPPoE'),'single PPPoE synchronization entry missing');
 assert.equal((networkSidebar.match(/class="sidebar-link/g)||[]).length,1,'NETWORK sidebar must expose exactly one primary link');
 for(const legacy of ['Subscribers</span>','Access / OLT</span>','Infrastructure</span>','Devices</span>','Incidents</span>','Configuration</span>']){
   assert(!networkSidebar.includes(legacy),'legacy top-level network item still exposed: '+legacy);

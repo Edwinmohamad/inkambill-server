@@ -25,7 +25,7 @@ router.get('/api/mobile/version', (req, res) => {
   catch { releaseMeta = {}; }
   res.set('Cache-Control', 'no-store').json({
     ok: true,
-    app: 'INKAMNET GO',
+    app: 'INKAMBILL',
     packageName: 'id.my.edwinpxmx.inkamnetgo',
     versionCode: positiveInt(releaseMeta.versionCode, positiveInt(process.env.MOBILE_ANDROID_VERSION_CODE, 7)),
     versionName: clean(releaseMeta.versionName || process.env.MOBILE_ANDROID_VERSION_NAME || '1.3.2', 40),

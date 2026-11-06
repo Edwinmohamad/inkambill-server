@@ -8,7 +8,9 @@ const routes=read('routes/network.js');
 for(const [name,src,file] of [['layout',layout,'views/partials/layout.ejs'],['workspace',workspace,'views/network/workspace.ejs']]){
   assert.doesNotThrow(()=>ejs.compile(src,{filename:path.join(root,file)}),name+' EJS must compile');
 }
-assert(layout.includes('href="/network"'),'sidebar must expose Network Operations');
+// Sejak 31 Okt 2026 (9e50ebd) menu jaringan diarahkan ke Sinkronisasi PPPoE; /network tetap ada di workspace.
+assert(layout.includes('href="/nms/secrets"'),'sidebar must expose PPPoE synchronization');
+assert(workspace.includes('href="/network'),'network workspace must keep linking Network Operations');
 for(const href of ['/network','/network/subscribers','/network/infrastructure','/network/incidents']){
   assert(workspace.includes('href="'+href),'control center must expose '+href);
 }

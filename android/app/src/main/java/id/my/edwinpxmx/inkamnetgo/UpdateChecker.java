@@ -62,7 +62,7 @@ final class UpdateChecker {
     private static void showDialog(Activity activity, int code, String name, String url, boolean forced) {
         if (activity.isFinishing() || activity.isDestroyed()) return;
         AlertDialog.Builder builder = new AlertDialog.Builder(activity)
-                .setTitle("Update INKAMNET GO")
+                .setTitle("Update INKAMBILL")
                 .setMessage("Versi " + name + " sudah tersedia. Perbarui untuk mendapatkan perbaikan terbaru.")
                 .setPositiveButton("Update sekarang", null);
         if (!forced) builder.setNegativeButton("Nanti", (dialog, which) ->

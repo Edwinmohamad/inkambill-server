@@ -1,20 +1,34 @@
 /* =========================================================
-   INKAMNET GO — Apple-minimal mobile shell v1.5
+   INKAMBILL A+ — mobile shell v2.0 (light + dark)
    Scope is APK-only. Desktop/web remains untouched.
    ========================================================= */
 body.inkamnet-go-app{
-  --go-bg:#f5f5f7;
-  --go-card:#fff;
-  --go-card-soft:#f9f9fb;
-  --go-ink:#1d1d1f;
-  --go-muted:#6e6e73;
-  --go-muted-2:#68686d;
-  --go-line:#e5e5ea;
-  --go-line-strong:#d8d8dc;
-  --go-accent:var(--brand,#6C4FE0);
-  --go-success:#34c759;
-  --go-warning:#ff9f0a;
-  --go-danger:#ff453a;
+  --go-bg:#F7F6F2;
+  --go-card:#FFFFFF;
+  --go-card-soft:#F1EFEA;
+  --go-ink:#111214;
+  --go-muted:#555A63;
+  --go-muted-2:#5E626B;
+  --go-line:#E4E1D8;
+  --go-line-strong:#BDB9AE;
+  --go-accent:#0F6E5C;
+  --go-accent-rgb:15,110,92;
+  --go-accent-text:#0F6E5C;
+  --go-on-accent:#FFFFFF;
+  --go-press:#ECEAE3;
+  --go-line-soft:#EEECE6;
+  --go-rule:#111214;
+  --go-field-bg:#FFFFFF;
+  --go-overlay:rgba(17,18,20,.36);
+  --go-shadow:0 18px 48px rgba(17,18,20,.14);
+  --go-ok-text:#0F6E5C;
+  --go-ok-tint:rgba(15,110,92,.09);
+  --go-ok-line:rgba(15,110,92,.24);
+  --go-warn-text:#9A4D05;
+  --go-neg-text:#B42318;
+  --go-success:#0F6E5C;
+  --go-warning:#B45309;
+  --go-danger:#B42318;
   --go-radius-sm:8px;
   --go-radius:12px;
   --go-radius-lg:16px;
@@ -33,7 +47,8 @@ body.inkamnet-go-app{
   background:var(--go-bg)!important;
   color:var(--go-ink)!important;
   padding-bottom:calc(78px + env(safe-area-inset-bottom));
-  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Segoe UI",Roboto,Helvetica,Arial,sans-serif!important;
+  font-family:"Plus Jakarta Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif!important;
+  font-variant-numeric:tabular-nums;
   font-size:.875rem;
   line-height:1.45;
   font-synthesis:none;
@@ -45,7 +60,7 @@ body.inkamnet-go-app,body.inkamnet-go-app *{letter-spacing:0}
 body.inkamnet-go-app :where(h1,h2,h3,h4,h5,h6,button,input,select,textarea){font-family:inherit!important}
 body.inkamnet-go-app :where(h1,h2,h3,h4,h5,h6,strong,b){font-weight:700}
 body.inkamnet-go-app :where(a,button,input,select,textarea,[tabindex]):focus-visible{
-  outline:3px solid rgba(108,79,224,.24);
+  outline:3px solid rgba(var(--go-accent-rgb),.28);
   outline-offset:2px;
 }
 body.inkamnet-go-app .ambient-grid,
@@ -61,8 +76,8 @@ body.inkamnet-go-app .topbar{
   position:sticky;top:0;z-index:1030;
   min-height:64px!important;height:auto!important;
   padding:calc(8px + env(safe-area-inset-top)) 14px 8px!important;
-  border:0!important;border-bottom:1px solid rgba(0,0,0,.08)!important;
-  background:rgba(245,245,247,.94)!important;
+  border:0!important;border-bottom:1px solid var(--go-rule)!important;
+  background:var(--go-bg)!important;
   color:var(--go-ink)!important;
   box-shadow:none!important;
   backdrop-filter:saturate(180%) blur(20px);
@@ -71,15 +86,14 @@ body.inkamnet-go-app .topbar{
 body.inkamnet-go-app .topbar [data-sidebar-open],
 body.inkamnet-go-app .topbar-kicker,
 body.inkamnet-go-app .language-switch,
-body.inkamnet-go-app .theme-toggle,
 body.inkamnet-go-app [data-lite-toggle]{display:none!important}
 body.inkamnet-go-app .topbar-title{font-size:1.02rem!important;color:var(--go-ink)!important;font-weight:700!important}
-body.inkamnet-go-app .topbar-title-wrap:before{content:'INKAMNET GO';display:block;margin-bottom:1px;font-size:var(--go-type-meta);color:var(--go-muted-2);font-weight:700}
+body.inkamnet-go-app .topbar-title-wrap:before{content:'INKAMBILL';display:block;margin-bottom:1px;font-size:var(--go-type-meta);color:var(--go-ink);font-weight:800;letter-spacing:.08em}
 body.inkamnet-go-app .topbar-actions{gap:4px}
 body.inkamnet-go-app .topbar .icon-button,
 body.inkamnet-go-app .topbar .user-button{border:0!important;background:transparent!important;color:var(--go-muted)!important;width:44px;height:44px;min-height:44px;border-radius:var(--go-radius-sm)}
 body.inkamnet-go-app .topbar .icon-button:active,
-body.inkamnet-go-app .topbar .user-button:active{background:#e9e9ed!important;color:var(--go-ink)!important}
+body.inkamnet-go-app .topbar .user-button:active{background:var(--go-press)!important;color:var(--go-ink)!important}
 body.inkamnet-go-app .topbar .avatar{width:34px;height:34px;border:0!important;border-radius:var(--go-radius-sm)!important}
 
 body.inkamnet-go-app .content-wrap{padding:14px 12px 18px!important;max-width:100%;overflow:hidden}
@@ -91,8 +105,8 @@ body.inkamnet-go-app .module-head p{font-size:var(--go-type-body);line-height:1.
 body.inkamnet-go-app .module-actions{width:100%;display:flex;gap:var(--go-space-2);overflow-x:auto;scrollbar-width:none;padding:1px 0 2px}
 body.inkamnet-go-app .module-actions::-webkit-scrollbar{display:none}
 body.inkamnet-go-app .btn-tech{min-height:44px;white-space:nowrap;border-radius:var(--go-radius-sm)!important;box-shadow:none!important;font-weight:600!important}
-body.inkamnet-go-app .btn-tech.primary{background:var(--go-accent)!important;color:#fff!important;border-color:transparent!important}
-body.inkamnet-go-app .btn-tech.success{color:var(--go-success)!important;background:rgba(52,199,89,.08)!important;border-color:rgba(52,199,89,.18)!important}
+body.inkamnet-go-app .btn-tech.primary{background:var(--go-accent)!important;color:var(--go-on-accent)!important;border-color:transparent!important}
+body.inkamnet-go-app .btn-tech.success{color:var(--go-ok-text)!important;background:var(--go-ok-tint)!important;border-color:var(--go-ok-line)!important}
 body.inkamnet-go-app :where(.btn-tech,.icon-button,.user-button,.go-invoice-action-button,.invoice-pay-button,.ink-action-item,.go-menu-grid>a,.go-quick-grid>a,.go-bottom-nav>a,.go-bottom-nav>button){
   transition:background-color var(--go-motion-fast) var(--go-ease-standard),border-color var(--go-motion-fast) var(--go-ease-standard),color var(--go-motion-fast) var(--go-ease-standard),opacity var(--go-motion-fast) var(--go-ease-standard),transform var(--go-motion-fast) var(--go-ease);
 }
@@ -135,9 +149,9 @@ body.inkamnet-go-app .status-badge.red{color:#c9342f!important}
 body.inkamnet-go-app .status-badge.purple{color:#5f43c7!important}
 body.inkamnet-go-app .form-control,body.inkamnet-go-app .form-select{
   min-height:42px;font-size:16px!important;color:var(--go-ink)!important;
-  border-color:var(--go-line)!important;border-radius:var(--go-radius-sm)!important;background:#fff!important;box-shadow:none!important
+  border-color:var(--go-line)!important;border-radius:var(--go-radius-sm)!important;background:var(--go-field-bg)!important;box-shadow:none!important
 }
-body.inkamnet-go-app .form-control:focus,body.inkamnet-go-app .form-select:focus{border-color:rgba(108,79,224,.48)!important;box-shadow:0 0 0 3px rgba(108,79,224,.08)!important}
+body.inkamnet-go-app .form-control:focus,body.inkamnet-go-app .form-select:focus{border-color:rgba(var(--go-accent-rgb),.55)!important;box-shadow:0 0 0 3px rgba(var(--go-accent-rgb),.12)!important}
 
 /* Generic tables may scroll, but are no longer globally forced to 760px. */
 body.inkamnet-go-app .table-responsive{border-radius:var(--go-radius);overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
@@ -151,7 +165,7 @@ body.inkamnet-go-app .invoice-registry-head{margin-bottom:9px;padding:0 2px!impo
 body.inkamnet-go-app .invoice-registry-head>div:first-child h3{font-size:.95rem!important}
 body.inkamnet-go-app .invoice-registry-tools{gap:7px!important}
 body.inkamnet-go-app .invoice-registry-tools .legend-inline{display:none!important}
-body.inkamnet-go-app .invoice-selection-state{background:#fff!important;border-color:var(--go-line)!important}
+body.inkamnet-go-app .invoice-selection-state{background:var(--go-card)!important;border-color:var(--go-line)!important}
 body.inkamnet-go-app .invoice-registry-card .action-safe-table{overflow-x:auto!important;overflow-y:auto!important;border-radius:0!important}
 body.inkamnet-go-app .invoice-table{display:block!important;width:100%!important;min-width:0!important;border:0!important;background:transparent!important}
 body.inkamnet-go-app .invoice-table thead{display:none!important}
@@ -164,7 +178,7 @@ body.inkamnet-go-app .invoice-table tr.invoice-row{
   padding:13px!important;
   border:1px solid var(--go-line)!important;
   border-radius:var(--go-radius)!important;
-  background:#fff!important;
+  background:var(--go-card)!important;
   box-shadow:none!important;
 }
 body.inkamnet-go-app .invoice-table tr.invoice-row:not(.has-admin-actions){grid-template-columns:minmax(0,1fr) auto!important}
@@ -190,7 +204,7 @@ body.inkamnet-go-app .invoice-table tr.invoice-row:not(.has-admin-actions) .invo
 body.inkamnet-go-app .invoice-table .invoice-site-cell,
 body.inkamnet-go-app .invoice-table .invoice-period-cell,
 body.inkamnet-go-app .invoice-table .invoice-due-cell,
-body.inkamnet-go-app .invoice-table .invoice-total-cell{padding-top:8px!important;border-top:1px solid #f0f0f2!important}
+body.inkamnet-go-app .invoice-table .invoice-total-cell{padding-top:8px!important;border-top:1px solid var(--go-line-soft)!important}
 body.inkamnet-go-app .go-cell-label{display:block;margin-bottom:3px;color:var(--go-muted-2);font-size:var(--go-type-meta);font-weight:700;text-transform:uppercase}
 body.inkamnet-go-app .invoice-table .invoice-site-cell .cell-main,
 body.inkamnet-go-app .invoice-table .invoice-period-cell .cell-main,
@@ -199,20 +213,20 @@ body.inkamnet-go-app .invoice-table .invoice-total-cell .cell-main{display:block
 body.inkamnet-go-app .invoice-table .invoice-site-cell .cell-sub,
 body.inkamnet-go-app .invoice-table .invoice-period-cell .cell-sub,
 body.inkamnet-go-app .invoice-table .invoice-total-cell .cell-sub{display:block;margin-top:2px;font-size:var(--go-type-meta)!important;color:var(--go-muted)!important}
-body.inkamnet-go-app .invoice-table .invoice-empty-row{display:block!important;width:100%!important;padding:18px!important;border:1px solid var(--go-line)!important;border-radius:var(--go-radius)!important;background:#fff!important}
+body.inkamnet-go-app .invoice-table .invoice-empty-row{display:block!important;width:100%!important;padding:18px!important;border:1px solid var(--go-line)!important;border-radius:var(--go-radius)!important;background:var(--go-card)!important}
 body.inkamnet-go-app .invoice-table .invoice-empty-row>td{display:block!important;width:100%!important;padding:0!important;border:0!important;background:transparent!important}
-body.inkamnet-go-app .invoice-table .invoice-pay-cell{grid-column:1/3;grid-row:4;padding-top:8px!important;border-top:1px solid #f0f0f2!important}
-body.inkamnet-go-app .invoice-table .invoice-action-cell{grid-column:3;grid-row:4;padding-top:8px!important;border-top:1px solid #f0f0f2!important;align-self:stretch}
+body.inkamnet-go-app .invoice-table .invoice-pay-cell{grid-column:1/3;grid-row:4;padding-top:8px!important;border-top:1px solid var(--go-line-soft)!important}
+body.inkamnet-go-app .invoice-table .invoice-action-cell{grid-column:3;grid-row:4;padding-top:8px!important;border-top:1px solid var(--go-line-soft)!important;align-self:stretch}
 body.inkamnet-go-app .invoice-table tr.invoice-row:not(.has-admin-actions) .invoice-action-cell{grid-column:1/3;grid-row:4}
 body.inkamnet-go-app .invoice-pay-button{
   width:auto!important;min-width:112px!important;height:44px!important;padding:0 14px!important;
   justify-content:center!important;border-radius:var(--go-radius-sm)!important;
-  border:1px solid rgba(52,199,89,.20)!important;background:rgba(52,199,89,.09)!important;
-  color:#14752a!important;font-size:.75rem!important;font-weight:700!important
+  border:1px solid var(--go-ok-line)!important;background:var(--go-ok-tint)!important;
+  color:var(--go-ok-text)!important;font-size:.75rem!important;font-weight:700!important
 }
 body.inkamnet-go-app .invoice-pay-button span{display:inline!important}
 body.inkamnet-go-app .invoice-inline-actions{height:100%;justify-content:flex-end!important}
-body.inkamnet-go-app .go-invoice-action-button{width:auto!important;min-width:104px!important;height:44px!important;padding:0 12px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:6px!important;border:1px solid var(--go-line)!important;border-radius:var(--go-radius-sm)!important;background:#f7f7f9!important;color:var(--go-ink)!important}
+body.inkamnet-go-app .go-invoice-action-button{width:auto!important;min-width:104px!important;height:44px!important;padding:0 12px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:6px!important;border:1px solid var(--go-line)!important;border-radius:var(--go-radius-sm)!important;background:var(--go-card-soft)!important;color:var(--go-ink)!important}
 body.inkamnet-go-app .go-action-label{display:inline!important;font-size:.75rem;font-weight:700}
 body:not(.inkamnet-go-app) .go-invoice-ref,body:not(.inkamnet-go-app) .go-cell-label,body:not(.inkamnet-go-app) .go-action-label{display:none}
 
@@ -222,10 +236,10 @@ body.inkamnet-go-app .ink-action-popover{
   bottom:calc(78px + env(safe-area-inset-bottom))!important;
   width:auto!important;max-height:min(68dvh,560px)!important;
   border:1px solid var(--go-line)!important;border-radius:var(--go-radius-lg)!important;
-  background:rgba(255,255,255,.98)!important;box-shadow:0 18px 54px rgba(0,0,0,.16)!important;
+  background:var(--go-card)!important;box-shadow:var(--go-shadow)!important;
   backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px)
 }
-body.inkamnet-go-app .ink-action-popover-head{padding:13px 14px 11px!important;background:#f7f7f9!important;border-bottom:1px solid var(--go-line)!important}
+body.inkamnet-go-app .ink-action-popover-head{padding:13px 14px 11px!important;background:var(--go-card-soft)!important;border-bottom:1px solid var(--go-line)!important}
 body.inkamnet-go-app .ink-action-popover-body{max-height:calc(min(68dvh,560px) - 64px)!important;padding:7px!important}
 body.inkamnet-go-app .ink-action-item.compact{min-height:48px!important;border-radius:var(--go-radius-sm)!important}
 body.inkamnet-go-app .ink-action-item.compact:hover{transform:none!important}
@@ -237,35 +251,35 @@ body.inkamnet-go-app .modal-dialog{height:calc(100vh - 16px);height:calc(var(--g
 body.inkamnet-go-app .modal.fade .modal-dialog{transform:translateY(12px);transition:transform var(--go-motion-slow) var(--go-ease)}
 body.inkamnet-go-app .modal.show .modal-dialog{transform:none}
 body.inkamnet-go-app .modal-backdrop.fade{transition:opacity var(--go-motion) var(--go-ease-standard)}
-body.inkamnet-go-app .modal-content{display:flex;flex-direction:column;min-height:0;max-height:100%!important;overflow:hidden;border:1px solid var(--go-line)!important;border-radius:var(--go-radius-lg) var(--go-radius-lg) var(--go-radius) var(--go-radius)!important;background:#fff!important;box-shadow:0 24px 64px rgba(0,0,0,.18)!important}
+body.inkamnet-go-app .modal-content{display:flex;flex-direction:column;min-height:0;max-height:100%!important;overflow:hidden;border:1px solid var(--go-line)!important;border-radius:var(--go-radius-lg) var(--go-radius-lg) var(--go-radius) var(--go-radius)!important;background:var(--go-card)!important;box-shadow:var(--go-shadow)!important}
 body.inkamnet-go-app .modal-header{flex:0 0 auto;border-bottom:1px solid var(--go-line)!important}
 body.inkamnet-go-app .modal-body{min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y}
-body.inkamnet-go-app .modal-footer{position:relative;bottom:auto;flex:0 0 auto;background:#fff!important;padding-bottom:max(12px,env(safe-area-inset-bottom));z-index:2;border-top:1px solid var(--go-line)!important;box-shadow:none!important}
+body.inkamnet-go-app .modal-footer{position:relative;bottom:auto;flex:0 0 auto;background:var(--go-card)!important;padding-bottom:max(12px,env(safe-area-inset-bottom));z-index:2;border-top:1px solid var(--go-line)!important;box-shadow:none!important}
 body.inkamnet-go-app .app-footer{display:none!important}
 body.inkamnet-go-app.modal-open .go-bottom-nav{opacity:0;visibility:hidden;pointer-events:none}
 body.inkamnet-go-app .operation-loader{left:10px!important;right:10px!important;bottom:calc(82px + env(safe-area-inset-bottom))!important;min-width:0!important;border-radius:16px!important}
-body.inkamnet-go-app .customer-bulk-bar{left:10px!important;right:10px!important;bottom:calc(80px + env(safe-area-inset-bottom))!important;border-radius:16px!important;background:rgba(255,255,255,.98)!important;border-color:var(--go-line)!important;box-shadow:0 12px 34px rgba(0,0,0,.12)!important}
-body.inkamnet-go-app .closing-sticky-bar{left:10px!important;right:10px!important;bottom:calc(80px + env(safe-area-inset-bottom))!important;border:1px solid var(--go-line)!important;border-radius:16px!important;background:rgba(255,255,255,.98)!important;color:var(--go-ink)!important;box-shadow:0 12px 34px rgba(0,0,0,.12)!important}
+body.inkamnet-go-app .customer-bulk-bar{left:10px!important;right:10px!important;bottom:calc(80px + env(safe-area-inset-bottom))!important;border-radius:16px!important;background:var(--go-card)!important;border-color:var(--go-line)!important;box-shadow:var(--go-shadow)!important}
+body.inkamnet-go-app .closing-sticky-bar{left:10px!important;right:10px!important;bottom:calc(80px + env(safe-area-inset-bottom))!important;border:1px solid var(--go-line)!important;border-radius:16px!important;background:var(--go-card)!important;color:var(--go-ink)!important;box-shadow:var(--go-shadow)!important}
 body.inkamnet-go-app .payment-entry-content{height:100%;max-height:100%;overflow:hidden}
 body.inkamnet-go-app .payment-entry-body{min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;scrollbar-gutter:stable}
-body.inkamnet-go-app .payment-entry-footer{position:relative;z-index:2;flex:0 0 auto;background:#fff;padding-bottom:max(.75rem,env(safe-area-inset-bottom));box-shadow:none;border-top:1px solid var(--go-line)}
+body.inkamnet-go-app .payment-entry-footer{position:relative;z-index:2;flex:0 0 auto;background:var(--go-card);padding-bottom:max(.75rem,env(safe-area-inset-bottom));box-shadow:none;border-top:1px solid var(--go-line)}
 
 /* Dashboard: web design language, just stacked for a phone. */
 body.inkamnet-go-app .command-dashboard{padding:0!important;background:none!important;border:0!important}
 body.inkamnet-go-app .command-tech-mesh,body.inkamnet-go-app .command-orbit,body.inkamnet-go-app .dashboard-user-ticker{display:none!important}
 body.inkamnet-go-app .command-hero{display:block!important;padding:2px 0 var(--go-space-4)!important;min-height:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
-body.inkamnet-go-app .command-eyebrow{font-size:var(--go-type-meta)!important;color:var(--go-accent)!important}
+body.inkamnet-go-app .command-eyebrow{font-size:var(--go-type-meta)!important;color:var(--go-accent-text)!important}
 body.inkamnet-go-app .command-welcome-line{display:block!important}
 body.inkamnet-go-app .dashboard-user-identity{display:none!important}
 body.inkamnet-go-app .command-welcome-copy h1{font-size:1.35rem!important;color:var(--go-ink)!important;margin-top:7px}
 body.inkamnet-go-app .command-welcome-copy p{font-size:var(--go-type-body)!important;color:var(--go-muted)!important;max-width:96%;margin-bottom:12px}
 body.inkamnet-go-app .command-hero-actions{position:static!important;display:flex!important;gap:8px!important}
-body.inkamnet-go-app .command-period{display:flex!important;flex:1;overflow-x:auto;background:#f7f7f9!important;border-color:var(--go-line)!important;border-radius:var(--go-radius-sm)!important}
+body.inkamnet-go-app .command-period{display:flex!important;flex:1;overflow-x:auto;background:var(--go-card-soft)!important;border-color:var(--go-line)!important;border-radius:var(--go-radius-sm)!important}
 body.inkamnet-go-app .command-period select{min-width:88px;color:var(--go-ink)!important;background-color:transparent!important;font-size:.75rem!important}
-body.inkamnet-go-app .command-add{width:44px;height:44px;padding:0!important;font-size:0!important;border-radius:var(--go-radius-sm)!important;background:var(--go-accent)!important;color:#fff!important;box-shadow:none!important}
+body.inkamnet-go-app .command-add{width:44px;height:44px;padding:0!important;font-size:0!important;border-radius:var(--go-radius-sm)!important;background:var(--go-accent)!important;color:var(--go-on-accent)!important;box-shadow:none!important}
 body.inkamnet-go-app .command-add i{font-size:1rem}
 body.inkamnet-go-app .command-kpis{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:9px!important;margin:10px 0!important}
-body.inkamnet-go-app .command-kpi{min-height:100px!important;padding:12px!important;border:1px solid var(--go-line)!important;background:#fff!important;border-radius:var(--go-radius)!important;box-shadow:none!important}
+body.inkamnet-go-app .command-kpi{min-height:100px!important;padding:12px!important;border:1px solid var(--go-line)!important;background:var(--go-card)!important;border-radius:var(--go-radius)!important;box-shadow:none!important}
 body.inkamnet-go-app .command-kpi-icon{width:34px!important;height:34px!important;border-radius:var(--go-radius-sm)!important}
 body.inkamnet-go-app .command-kpi small{font-size:var(--go-type-meta)!important}
 body.inkamnet-go-app .command-kpi strong{font-size:1rem!important;color:var(--go-ink)!important;overflow-wrap:anywhere}
@@ -282,46 +296,46 @@ body.inkamnet-go-app .go-bottom-nav{
   position:fixed;z-index:1080;left:0;right:0;bottom:0;
   height:calc(68px + env(safe-area-inset-bottom));padding:6px 7px env(safe-area-inset-bottom);
   display:grid;grid-template-columns:repeat(5,1fr);align-items:start;
-  background:rgba(250,250,252,.96);border-top:1px solid rgba(0,0,0,.08);box-shadow:none;
+  background:var(--go-bg);border-top:1px solid var(--go-line);box-shadow:none;
   backdrop-filter:saturate(180%) blur(22px);-webkit-backdrop-filter:saturate(180%) blur(22px);
   transition:opacity var(--go-motion) var(--go-ease-standard),visibility var(--go-motion) var(--go-ease-standard)
 }
 body.inkamnet-go-app .go-bottom-nav>a,body.inkamnet-go-app .go-bottom-nav>button{height:54px;border:0;background:none;color:var(--go-muted);text-decoration:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:var(--go-type-meta);font-weight:600}
 body.inkamnet-go-app .go-bottom-nav i{font-size:1.16rem;line-height:1}
-body.inkamnet-go-app .go-bottom-nav .active{color:var(--go-accent)}
-body.inkamnet-go-app .go-bottom-nav .go-add-button{width:48px;height:48px;margin:-17px auto 0;border-radius:var(--go-radius);background:var(--go-accent);color:#fff;box-shadow:0 6px 16px rgba(108,79,224,.18)}
+body.inkamnet-go-app .go-bottom-nav .active{color:var(--go-accent-text)}
+body.inkamnet-go-app .go-bottom-nav .go-add-button{width:48px;height:48px;margin:-17px auto 0;border-radius:var(--go-radius);background:var(--go-accent);color:var(--go-on-accent);box-shadow:none}
 body.inkamnet-go-app .go-bottom-nav .go-add-button i{font-size:1.45rem}
 body.inkamnet-go-app.go-overlay-open{overflow:hidden;overscroll-behavior:none}
 
 /* Full menu + quick actions. */
 body.inkamnet-go-app .go-menu{display:flex;visibility:hidden;opacity:0;pointer-events:none;position:fixed;z-index:1100;inset:0;flex-direction:column;background:var(--go-bg);color:var(--go-ink);transition:opacity var(--go-motion) var(--go-ease-standard),visibility var(--go-motion) var(--go-ease-standard)}
 body.inkamnet-go-app .go-menu.open{visibility:visible;opacity:1;pointer-events:auto}
-body.inkamnet-go-app .go-menu>header{padding:calc(18px + env(safe-area-inset-top)) 18px 15px;display:flex;justify-content:space-between;align-items:flex-start;background:rgba(245,245,247,.97);color:var(--go-ink);border-bottom:1px solid var(--go-line)}
-body.inkamnet-go-app .go-menu header small{color:var(--go-accent)!important;font-size:var(--go-type-meta)}
+body.inkamnet-go-app .go-menu>header{padding:calc(18px + env(safe-area-inset-top)) 18px 15px;display:flex;justify-content:space-between;align-items:flex-start;background:var(--go-bg);color:var(--go-ink);border-bottom:1px solid var(--go-rule)}
+body.inkamnet-go-app .go-menu header small{color:var(--go-accent-text)!important;font-size:var(--go-type-meta)}
 body.inkamnet-go-app .go-menu header h2{font-size:1.45rem;margin:3px 0 2px}
 body.inkamnet-go-app .go-menu header p{font-size:var(--go-type-body);color:var(--go-muted);margin:0}
-body.inkamnet-go-app .go-menu header button,body.inkamnet-go-app .go-sheet header button{border:0;width:44px;height:44px;border-radius:var(--go-radius-sm);background:#e9e9ed;color:var(--go-ink)}
+body.inkamnet-go-app .go-menu header button,body.inkamnet-go-app .go-sheet header button{border:0;width:44px;height:44px;border-radius:var(--go-radius-sm);background:var(--go-press);color:var(--go-ink)}
 body.inkamnet-go-app .go-menu-scroll{flex:1 1 auto;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:16px 14px calc(30px + env(safe-area-inset-bottom))}
 body.inkamnet-go-app .go-menu section{margin-bottom:20px}
 body.inkamnet-go-app .go-menu section h3{font-size:.75rem;margin:0 4px 8px;color:var(--go-muted);font-weight:700}
 body.inkamnet-go-app .go-menu-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
 body.inkamnet-go-app .go-menu-grid>a,body.inkamnet-go-app .go-menu-grid>button{min-width:0;min-height:84px;border:0;border-radius:var(--go-radius-sm);background:transparent;color:var(--go-ink);text-decoration:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:8px 4px;text-align:center;box-shadow:none}
-body.inkamnet-go-app .go-menu-grid i{width:36px;height:36px;border-radius:var(--go-radius-sm);display:grid;place-items:center;background:rgba(108,79,224,.08);color:var(--go-accent);font-size:1.02rem}
+body.inkamnet-go-app .go-menu-grid i{width:36px;height:36px;border-radius:var(--go-radius-sm);display:grid;place-items:center;background:rgba(var(--go-accent-rgb),.10);color:var(--go-accent-text);font-size:1.02rem}
 body.inkamnet-go-app .go-menu-grid span{font-size:var(--go-type-meta);font-weight:600;line-height:1.3;overflow-wrap:anywhere}
-body.inkamnet-go-app .go-menu-grid>a:active,body.inkamnet-go-app .go-menu-grid>button:active{background:rgba(0,0,0,.04)}
+body.inkamnet-go-app .go-menu-grid>a:active,body.inkamnet-go-app .go-menu-grid>button:active{background:var(--go-press)}
 body.inkamnet-go-app .go-tapped{transform:scale(.98);opacity:.72}
 body.inkamnet-go-app .go-sheet{display:block;visibility:hidden;opacity:0;pointer-events:none;position:fixed;z-index:1110;inset:0;transition:opacity var(--go-motion) var(--go-ease-standard),visibility var(--go-motion) var(--go-ease-standard)}
 body.inkamnet-go-app .go-sheet.open{visibility:visible;opacity:1;pointer-events:auto}
-body.inkamnet-go-app .go-sheet-backdrop{position:absolute;inset:0;border:0;background:rgba(0,0,0,.26);backdrop-filter:blur(2px)}
-body.inkamnet-go-app .go-sheet-panel{position:absolute;left:0;right:0;bottom:0;max-height:calc(var(--go-viewport-height,100dvh) - 12px);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:9px 14px calc(20px + env(safe-area-inset-bottom));border-radius:var(--go-radius-lg) var(--go-radius-lg) 0 0;background:#fff;color:var(--go-ink);transform:translateY(105%);transition:transform var(--go-motion-slow) var(--go-ease);box-shadow:0 -16px 40px rgba(0,0,0,.12)}
+body.inkamnet-go-app .go-sheet-backdrop{position:absolute;inset:0;border:0;background:var(--go-overlay)}
+body.inkamnet-go-app .go-sheet-panel{position:absolute;left:0;right:0;bottom:0;max-height:calc(var(--go-viewport-height,100dvh) - 12px);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:9px 14px calc(20px + env(safe-area-inset-bottom));border-radius:var(--go-radius-lg) var(--go-radius-lg) 0 0;background:var(--go-card);color:var(--go-ink);transform:translateY(105%);transition:transform var(--go-motion-slow) var(--go-ease);box-shadow:var(--go-shadow)}
 body.inkamnet-go-app .go-sheet.open .go-sheet-panel{transform:none}
-body.inkamnet-go-app .go-sheet-handle{width:36px;height:4px;border-radius:4px;background:#d1d1d6;margin:0 auto 13px}
+body.inkamnet-go-app .go-sheet-handle{width:36px;height:4px;border-radius:4px;background:var(--go-line-strong);margin:0 auto 13px}
 body.inkamnet-go-app .go-sheet header{display:flex;align-items:center;justify-content:space-between;margin-bottom:13px}
-body.inkamnet-go-app .go-sheet header small{font-size:var(--go-type-meta);color:var(--go-accent)!important;font-weight:700}
+body.inkamnet-go-app .go-sheet header small{font-size:var(--go-type-meta);color:var(--go-accent-text)!important;font-weight:700}
 body.inkamnet-go-app .go-sheet header h2{font-size:1.2rem;margin:2px 0}
 body.inkamnet-go-app .go-quick-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-body.inkamnet-go-app .go-quick-grid a{min-height:76px;display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--go-line);border-radius:var(--go-radius);color:var(--go-ink);text-decoration:none;background:#fff}
-body.inkamnet-go-app .go-quick-grid>a>i{width:38px;height:38px;display:grid;place-items:center;border-radius:var(--go-radius-sm);background:rgba(108,79,224,.08);color:var(--go-accent);font-size:1rem}
+body.inkamnet-go-app .go-quick-grid a{min-height:76px;display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--go-line);border-radius:var(--go-radius);color:var(--go-ink);text-decoration:none;background:var(--go-card)}
+body.inkamnet-go-app .go-quick-grid>a>i{width:38px;height:38px;display:grid;place-items:center;border-radius:var(--go-radius-sm);background:rgba(var(--go-accent-rgb),.10);color:var(--go-accent-text);font-size:1rem}
 body.inkamnet-go-app .go-quick-grid span{display:flex;flex-direction:column;min-width:0}
 body.inkamnet-go-app .go-quick-grid b{font-size:var(--go-type-body)}
 body.inkamnet-go-app .go-quick-grid small{font-size:var(--go-type-meta)}
@@ -351,3 +365,154 @@ body.inkamnet-go-app .go-quick-grid small{font-size:var(--go-type-meta)}
   body.inkamnet-go-app .go-menu,body.inkamnet-go-app .go-sheet{left:50%;right:auto;width:760px;transform:translateX(-50%)}
 }
 @media(prefers-reduced-motion:reduce){body.inkamnet-go-app *,body.inkamnet-go-app *::before,body.inkamnet-go-app *::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+/* v1.33 performa APK: backdrop-filter (blur) di topbar, nav bawah, dan popover dihitung ulang GPU
+   pada setiap frame scroll sehingga terasa berat di HP kelas bawah. Latar elemen tersebut sudah
+   94-98% tidak transparan, jadi blur diganti warna solid tanpa perubahan tampilan yang berarti. */
+body.inkamnet-go-app *,body.inkamnet-go-app *::before,body.inkamnet-go-app *::after{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+body.inkamnet-go-app .topbar{background:var(--go-bg)!important}
+body.inkamnet-go-app .go-bottom-nav{background:var(--go-bg)}
+body.inkamnet-go-app .ink-action-popover{background:var(--go-card)!important}
+
+/* =====================================================================
+   INKAMBILL A+ (v2.0) — tema terang & gelap + motion ringan.
+   Aturan performa untuk HP RAM 4 GB: animasi hanya transform/opacity, sekali jalan,
+   ≤ 0,45 detik per elemen, tanpa blur/bayangan beranimasi, dan mati bila
+   "kurangi animasi" aktif (lihat blok prefers-reduced-motion di atas).
+   ===================================================================== */
+html[data-theme="dark"] body.inkamnet-go-app{
+  --go-bg:#0F1012;
+  --go-card:#17181B;
+  --go-card-soft:#1C1D21;
+  --go-press:#232529;
+  --go-ink:#F1F0EC;
+  --go-muted:#A3A7AE;
+  --go-muted-2:#9A9EA6;
+  --go-line:#26282C;
+  --go-line-soft:#202225;
+  --go-line-strong:#3A3D42;
+  --go-rule:#4A4D53;
+  --go-accent:#178069;
+  --go-accent-rgb:23,128,105;
+  --go-accent-text:#5FD3AE;
+  --go-on-accent:#FFFFFF;
+  --go-field-bg:#141518;
+  --go-overlay:rgba(0,0,0,.55);
+  --go-shadow:0 18px 48px rgba(0,0,0,.5);
+  --go-success:#34C29A;
+  --go-ok-text:#5FD3AE;
+  --go-ok-tint:rgba(52,194,154,.10);
+  --go-ok-line:rgba(52,194,154,.28);
+  --go-warning:#F0A43A;
+  --go-warn-text:#F0B45A;
+  --go-danger:#FF7B6E;
+  --go-neg-text:#FF8A7E;
+  color-scheme:dark;
+}
+/* Variabel app.css di dalam APK diarahkan ke palet A+, supaya isi halaman (tabel, form, kartu)
+   ikut tema yang sama dengan shell APK. */
+body.inkamnet-go-app{
+  --bg:var(--go-bg);--bg-2:var(--go-bg);--panel:var(--go-card);--panel-2:var(--go-card-soft);--panel-3:var(--go-press);
+  --line:var(--go-line);--line-2:var(--go-line-strong);--border:var(--go-line);--card:var(--go-card);
+  --text:var(--go-ink);--muted:var(--go-muted);--muted-2:var(--go-muted-2);--ink-muted:var(--go-muted-2);--input:var(--go-field-bg);
+  --brand:var(--go-accent);--brand-2:var(--go-accent-text);--brand-rgb:var(--go-accent-rgb);--accent:var(--go-accent);--accent-text:var(--go-accent-text);
+  --brand-tint:rgba(var(--go-accent-rgb),.12);--soft:rgba(var(--go-accent-rgb),.08);--glow:rgba(var(--go-accent-rgb),.14);
+  --success:var(--go-success);--warning:var(--go-warning);--danger:var(--go-danger);
+  --topbar:var(--go-bg);--sidebar-bg:var(--go-card);--sidebar-bg2:var(--go-bg);
+  --font:"Plus Jakarta Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;--font-display:var(--font);
+}
+html[data-theme="light"]:has(body.inkamnet-go-app){background:#F7F6F2}
+html[data-theme="dark"]:has(body.inkamnet-go-app){background:#0F1012}
+body.inkamnet-go-app :where(input[type="checkbox"],input[type="radio"],progress){accent-color:var(--go-accent)}
+
+/* Status yang terbaca di tema gelap (nilai terang di atas tetap). */
+html[data-theme="dark"] body.inkamnet-go-app .status-badge.green{color:var(--go-ok-text)!important}
+html[data-theme="dark"] body.inkamnet-go-app .status-badge.orange{color:var(--go-warn-text)!important}
+html[data-theme="dark"] body.inkamnet-go-app .status-badge.red{color:var(--go-neg-text)!important}
+html[data-theme="dark"] body.inkamnet-go-app .status-badge.purple{color:var(--go-accent-text)!important}
+html[data-theme="dark"] body.inkamnet-go-app :where(.text-dark,.text-body){color:var(--go-ink)!important}
+html[data-theme="dark"] body.inkamnet-go-app :where(.bg-white,.bg-light){background:var(--go-card)!important;color:var(--go-ink)!important}
+html[data-theme="dark"] body.inkamnet-go-app .table{--bs-table-color:var(--go-ink);--bs-table-bg:transparent;--bs-table-border-color:var(--go-line)}
+html[data-theme="dark"] body.inkamnet-go-app .modal-content .btn-close{filter:invert(1)}
+
+/* Header: wordmark INKAMBILL + tombol tema bulan/matahari. */
+body.inkamnet-go-app .topbar .theme-toggle{display:inline-grid!important;place-items:center}
+body.inkamnet-go-app .topbar-title{font-weight:700!important}
+
+/* Tombol & permukaan: sudut tegas, datar, tanpa bayangan. */
+body.inkamnet-go-app .btn-tech{border-radius:8px!important}
+body.inkamnet-go-app :where(.form-control,.form-select){background-color:var(--go-field-bg)!important}
+body.inkamnet-go-app .modal-header,body.inkamnet-go-app .modal-body{color:var(--go-ink)}
+
+/* Navigasi bawah A+: tab rata, garis aktif aksen yang meluncur masuk. */
+body.inkamnet-go-app .go-bottom-nav>a,body.inkamnet-go-app .go-bottom-nav>button{position:relative}
+body.inkamnet-go-app .go-bottom-nav .active{color:var(--go-accent-text);font-weight:700}
+body.inkamnet-go-app .go-bottom-nav>.active::before{content:"";position:absolute;top:-7px;left:50%;width:28px;height:2px;margin-left:-14px;border-radius:1px;background:var(--go-accent-text);animation:goTabIn .32s cubic-bezier(.2,.9,.25,1) both}
+body.inkamnet-go-app .go-bottom-nav .go-add-button{width:auto;height:54px;margin:0;border-radius:0;background:none;color:var(--go-muted);box-shadow:none}
+body.inkamnet-go-app .go-bottom-nav .go-add-button i{width:34px;height:26px;display:grid;place-items:center;border-radius:8px;background:var(--go-accent);color:var(--go-on-accent);font-size:1.05rem}
+@keyframes goTabIn{from{transform:scaleX(0);opacity:0}}
+
+/* Motion masuk: konten halaman muncul bertahap (maks. 8 blok pertama). */
+@keyframes goRise{from{opacity:0;transform:translateY(10px)}}
+@keyframes goDrop{from{opacity:0;transform:translateY(-12px)}}
+body.inkamnet-go-app .page-enter>*:nth-child(-n+8),
+body.inkamnet-go-app .page-enter>:only-child>*:nth-child(-n+8){animation:goRise .42s cubic-bezier(.2,.8,.2,1) both}
+body.inkamnet-go-app .page-enter>*:nth-child(2),body.inkamnet-go-app .page-enter>:only-child>*:nth-child(2){animation-delay:.04s}
+body.inkamnet-go-app .page-enter>*:nth-child(3),body.inkamnet-go-app .page-enter>:only-child>*:nth-child(3){animation-delay:.08s}
+body.inkamnet-go-app .page-enter>*:nth-child(4),body.inkamnet-go-app .page-enter>:only-child>*:nth-child(4){animation-delay:.12s}
+body.inkamnet-go-app .page-enter>*:nth-child(5),body.inkamnet-go-app .page-enter>:only-child>*:nth-child(5){animation-delay:.16s}
+body.inkamnet-go-app .page-enter>*:nth-child(6),body.inkamnet-go-app .page-enter>:only-child>*:nth-child(6){animation-delay:.2s}
+body.inkamnet-go-app .page-enter>*:nth-child(7),body.inkamnet-go-app .page-enter>:only-child>*:nth-child(7){animation-delay:.24s}
+body.inkamnet-go-app .page-enter>*:nth-child(8),body.inkamnet-go-app .page-enter>:only-child>*:nth-child(8){animation-delay:.28s}
+/* Kartu tagihan & KPI berurutan muncul (hanya 10 pertama, sisanya langsung tampil). */
+body.inkamnet-go-app .invoice-table tr.invoice-row:nth-child(-n+10),
+body.inkamnet-go-app .command-kpi:nth-child(-n+8){animation:goRise .4s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--go-i,0) * 35ms)}
+body.inkamnet-go-app .invoice-table tr.invoice-row:nth-child(2),body.inkamnet-go-app .command-kpi:nth-child(2){--go-i:1}
+body.inkamnet-go-app .invoice-table tr.invoice-row:nth-child(3),body.inkamnet-go-app .command-kpi:nth-child(3){--go-i:2}
+body.inkamnet-go-app .invoice-table tr.invoice-row:nth-child(4),body.inkamnet-go-app .command-kpi:nth-child(4){--go-i:3}
+body.inkamnet-go-app .invoice-table tr.invoice-row:nth-child(5),body.inkamnet-go-app .command-kpi:nth-child(5){--go-i:4}
+body.inkamnet-go-app .invoice-table tr.invoice-row:nth-child(6),body.inkamnet-go-app .command-kpi:nth-child(6){--go-i:5}
+body.inkamnet-go-app .invoice-table tr.invoice-row:nth-child(7),body.inkamnet-go-app .command-kpi:nth-child(7){--go-i:6}
+body.inkamnet-go-app .invoice-table tr.invoice-row:nth-child(8),body.inkamnet-go-app .command-kpi:nth-child(8){--go-i:7}
+body.inkamnet-go-app .invoice-table tr.invoice-row:nth-child(9){--go-i:8}
+body.inkamnet-go-app .invoice-table tr.invoice-row:nth-child(10){--go-i:9}
+/* Notifikasi (flash) turun dari atas. */
+body.inkamnet-go-app :where(.alert,.flash-message,.toast){animation:goDrop .38s cubic-bezier(.2,.9,.25,1) both}
+/* Menu penuh & sheet: isi muncul bertahap saat dibuka. */
+body.inkamnet-go-app .go-menu.open section{animation:goRise .36s cubic-bezier(.2,.8,.2,1) both}
+body.inkamnet-go-app .go-menu.open section:nth-child(2){animation-delay:.04s}
+body.inkamnet-go-app .go-menu.open section:nth-child(3){animation-delay:.08s}
+body.inkamnet-go-app .go-menu.open section:nth-child(4){animation-delay:.12s}
+body.inkamnet-go-app .go-menu.open section:nth-child(n+5){animation-delay:.16s}
+body.inkamnet-go-app .go-sheet-panel{transition:transform .42s cubic-bezier(.2,.9,.25,1)!important}
+body.inkamnet-go-app .modal.fade .modal-dialog{transition:transform .28s cubic-bezier(.2,.9,.25,1)}
+/* Ganti tema: warna berpindah halus hanya selama 0,35 detik (kelas dipasang sementara oleh JS). */
+html.go-theme-anim body.inkamnet-go-app,html.go-theme-anim body.inkamnet-go-app *{transition:background-color .3s ease,color .3s ease,border-color .3s ease!important}
+/* Angka yang berhitung naik tidak boleh membuat layout melompat. */
+body.inkamnet-go-app [data-go-counting]{font-variant-numeric:tabular-nums}
+@media(prefers-reduced-motion:reduce){
+  body.inkamnet-go-app .page-enter *,body.inkamnet-go-app .invoice-table tr.invoice-row,body.inkamnet-go-app .command-kpi,body.inkamnet-go-app .go-menu.open section,body.inkamnet-go-app .go-bottom-nav>.active::before{animation:none!important}
+}
+
+/* A+ tema terang: warna status bawaan app.css dirancang untuk latar gelap dan terlalu pucat di atas
+   latar terang (kontras < 4,5:1). Diganti versi gelap yang tetap memakai makna warna yang sama. */
+html:not([data-theme="dark"]) body.inkamnet-go-app .payment-method.cash{color:var(--go-warn-text)!important}
+html:not([data-theme="dark"]) body.inkamnet-go-app .payment-method.transfer{color:#1F4FA8!important}
+html:not([data-theme="dark"]) body.inkamnet-go-app .payment-method.qris{color:#6B3FA0!important}
+html:not([data-theme="dark"]) body.inkamnet-go-app .cash-approval-count{color:var(--go-warn-text)!important;background:rgba(180,83,9,.09)!important}
+html:not([data-theme="dark"]) body.inkamnet-go-app .bm-pending-strip :where(b,strong){color:var(--go-warn-text)!important}
+html:not([data-theme="dark"]) body.inkamnet-go-app .bulk-payment-tools b{color:var(--go-accent-text)!important}
+
+/* A+ keterbacaan status di modul lama (ACS, Analitik, Log, Laporan, Monitoring). Warna pastel bawaan
+   app.css dibuat untuk latar gelap; di APK diarahkan ke token teks A+ yang lolos kontras 4,5:1
+   di kedua tema. Warna titik/ikon/bar tidak diubah. */
+body.inkamnet-go-app .text-success{color:var(--go-ok-text)!important}
+body.inkamnet-go-app .text-danger{color:var(--go-neg-text)!important}
+body.inkamnet-go-app .text-warning{color:var(--go-warn-text)!important}
+body.inkamnet-go-app :where(.acs-metrics,.acs-legend) .online,body.inkamnet-go-app .acs-status.online{color:var(--go-ok-text)!important}
+body.inkamnet-go-app :where(.acs-metrics,.acs-legend) .warning,body.inkamnet-go-app .acs-signal.warning{color:var(--go-warn-text)!important}
+body.inkamnet-go-app :where(.acs-metrics,.acs-legend) .offline,body.inkamnet-go-app .acs-status.offline,body.inkamnet-go-app .acs-signal.critical{color:var(--go-neg-text)!important}
+body.inkamnet-go-app .analytics-section-title span{color:var(--go-accent-text)!important}
+body.inkamnet-go-app .log-tabs button.active,body.inkamnet-go-app .log-tabs button.active b{color:var(--go-ink)!important}
+body.inkamnet-go-app :where(.btn-tech.danger,.report-pdf-btn){color:var(--go-neg-text)!important}
+body.inkamnet-go-app .cc-board-kicker{color:var(--go-accent-text)!important}

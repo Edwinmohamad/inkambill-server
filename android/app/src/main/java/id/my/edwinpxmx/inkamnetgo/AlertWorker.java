@@ -79,7 +79,7 @@ public final class AlertWorker extends Worker {
                 }
             }
             if (first == null) return Result.success();
-            String title = first.optString("title", "INKAMNET GO");
+            String title = first.optString("title", "INKAMBILL");
             String detail = first.optString("detail", "Ada pembaruan operasional.");
             String href = first.optString("href", "/");
             String notificationKey = first.has("id") ? first.optString("id") : null;

@@ -19,6 +19,6 @@ const networkWorkspace=fs.readFileSync('views/network/workspace.ejs','utf8');
   [app.includes("app.use('/acs'"),'route mount'],
   [app.includes('await ensureV42Schema()'),'schema bootstrap'],
   [app.includes('syncAcsDevices()'),'scheduled sync'],
-  [layout.includes('href="/network/subscribers"')&&networkWorkspace.includes('href="/acs"'),'subscriber workspace access']
+  [networkWorkspace.includes('href="/network/subscribers')&&networkWorkspace.includes('href="/acs"'),'subscriber workspace access']
 ].forEach(([ok,label])=>assert(ok,`ACS check gagal: ${label}`));
 console.log('ACS monitoring validation passed: 13 checks, including consolidated subscriber workspace access.');

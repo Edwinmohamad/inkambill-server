@@ -3,19 +3,25 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="<%= isMobileApp?'#f5f5f7':'#090d1a' %>">
+  <meta name="theme-color" content="<%= isMobileApp?'#F7F6F2':'#090d1a' %>">
   <meta name="csrf-token" content="<%= csrfToken %>">
   <meta name="wa-gateway-connected" content="<%= waGatewayConnected?'1':'0' %>">
   <meta name="wa-blast-enabled" content="<%= waBlastEnabled?'1':'0' %>">
   <title><%= translateTitle(title) %> · <%= appName %></title>
+  <% if(!isMobileApp){ %>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <% }else{ %>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400..800&display=swap" rel="stylesheet">
+  <% } %>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <link rel="stylesheet" href="/css/app.css?v=<%= assetVersion %>">
   <link rel="stylesheet" href="/css/mobile-app.css?v=<%= assetVersion %>">
-  <script>(()=>{try{const pref=<%- isMobileApp?"'light'":"localStorage.getItem('inkamnet-theme')||"+JSON.stringify(defaultTheme||'dark') %>;document.documentElement.dataset.theme=pref==='system'?(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'):pref;if(sessionStorage.getItem('inkamnet-instant-filter')==='1'){sessionStorage.removeItem('inkamnet-instant-filter');document.documentElement.classList.add('instant-filter-nav')}}catch(e){}})();</script>
+  <script>(()=>{try{const pref=<%- isMobileApp?"localStorage.getItem('inkamnet-theme')||'system'":"localStorage.getItem('inkamnet-theme')||"+JSON.stringify(defaultTheme||'dark') %>;document.documentElement.dataset.theme=pref==='system'?(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'):pref;if(sessionStorage.getItem('inkamnet-instant-filter')==='1'){sessionStorage.removeItem('inkamnet-instant-filter');document.documentElement.classList.add('instant-filter-nav')}}catch(e){}})();</script>
   <style id="inkamnet-critical-ui">
     /* Critical shell/loader CSS prevents FOUC while the main stylesheet is loading.
        v1.26 -- Apple-style loading overlay: no app logo here (the logo stays in the
@@ -55,7 +61,7 @@
   <nav class="go-bottom-nav" aria-label="Navigasi utama aplikasi">
     <a href="/" class="<%= currentPath==='/'?'active':'' %>"><i class="bi bi-house-door-fill"></i><span>Beranda</span></a>
     <% if(can('billing')){ %><a href="/invoices" class="<%= currentPath.startsWith('/invoices')?'active':'' %>"><i class="bi bi-receipt-cutoff"></i><span>Tagihan</span></a><% }else{ %><a href="/customers" class="<%= currentPath.startsWith('/customers')?'active':'' %>"><i class="bi bi-people-fill"></i><span>Pelanggan</span></a><% } %>
-    <button type="button" class="go-add-button" data-go-quick-open aria-label="Tambah data"><i class="bi bi-plus-lg"></i></button>
+    <button type="button" class="go-add-button" data-go-quick-open aria-label="Tambah data"><i class="bi bi-plus-lg"></i><span>Tambah</span></button>
     <% if(can('billing')||can('finance')){ %><a href="/payments" class="<%= currentPath==='/payments'?'active':'' %>"><i class="bi bi-shield-check"></i><span>Approval</span></a><% }else{ %><a href="/tickets" class="<%= currentPath.startsWith('/tickets')?'active':'' %>"><i class="bi bi-life-preserver"></i><span>Tiket</span></a><% } %>
     <button type="button" class="<%= currentPath!=='/'&&!currentPath.startsWith('/invoices')&&currentPath!=='/payments'?'active':'' %>" data-go-menu-open><i class="bi bi-grid-fill"></i><span>Menu</span></button>
   </nav>
@@ -74,7 +80,7 @@
   </div>
 
   <div class="go-menu" id="goMenu" role="dialog" aria-modal="true" aria-labelledby="goMenuTitle" aria-hidden="true">
-    <header><div><small>INKAMNET GO</small><h2 id="goMenuTitle">Semua Menu</h2><p>Pilih alat kerja yang Anda butuhkan.</p></div><button type="button" data-go-menu-close aria-label="Tutup menu"><i class="bi bi-x-lg"></i></button></header>
+    <header><div><small>INKAMBILL</small><h2 id="goMenuTitle">Semua Menu</h2><p>Pilih alat kerja yang Anda butuhkan.</p></div><button type="button" data-go-menu-close aria-label="Tutup menu"><i class="bi bi-x-lg"></i></button></header>
     <div class="go-menu-scroll">
       <% if(can('customers')||can('billing')){ %><section><h3>Billing & Pelanggan</h3><div class="go-menu-grid">
         <% if(can('customers')){ %><a href="/customers"><i class="bi bi-people-fill"></i><span>Pelanggan</span></a><a href="/packages"><i class="bi bi-speedometer2"></i><span>Paket Internet</span></a><% } %>
@@ -95,7 +101,7 @@
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-brand">
         <a href="/" class="brand-link">
-          <span class="brand-logo-plate"><img src="/img/inkamnet-wordmark-hq.png?v=1.2.2" alt="INKAMNET"></span>
+          <span class="brand-logo-plate"><picture><source srcset="/img/inkamnet-wordmark-hq.webp?v=1.2.2" type="image/webp"><img src="/img/inkamnet-wordmark-hq.png?v=1.2.2" alt="INKAMNET" loading="lazy" decoding="async"></picture></span>
         </a>
         <button class="sidebar-close d-lg-none" type="button" data-sidebar-close><i class="bi bi-x-lg"></i></button>
       </div>
@@ -357,6 +363,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="/js/upload-guard.js?v=<%= assetVersion %>"></script>
   <script src="/js/app.js?v=<%= assetVersion %>"></script>
   <% if(isMobileApp){ %><script src="/js/mobile-app.js?v=<%= assetVersion %>"></script><% } %>
   <script src="/js/performance.js?v=<%= assetVersion %>" defer></script>

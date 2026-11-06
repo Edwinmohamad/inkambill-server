@@ -48,7 +48,7 @@ final class NotificationHelper {
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_notification)
                 .setColor(0xFF6C4BFF)
-                .setContentTitle(safe(title, 120, "INKAMNET GO"))
+                .setContentTitle(safe(title, 120, "INKAMBILL"))
                 .setContentText(safe(detail, 220, "Ada pembaruan operasional."))
                 .setStyle(new NotificationCompat.BigTextStyle().bigText(safe(detail, 500, "Ada pembaruan operasional.")))
                 .setContentIntent(pending)

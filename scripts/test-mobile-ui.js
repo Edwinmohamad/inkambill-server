@@ -46,7 +46,8 @@ const required=[
   ,[css,'--go-type-meta:.6875rem','readable mobile metadata scale']
   ,[css,'--go-radius:12px','consistent mobile surface radius']
   ,[css,':where(a,button,input,select,textarea,[tabindex]):focus-visible','visible APK keyboard focus']
-  ,[css,'font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text"','native Apple-style font stack']
+  ,[css,'font-family:"Plus Jakarta Sans",-apple-system,BlinkMacSystemFont','INKAMBILL A+ Plus Jakarta Sans font stack']
+  ,[css,"body.inkamnet-go-app .topbar-title-wrap:before{content:'INKAMBILL'",'INKAMBILL A+ wordmark']
   ,[css,'--go-motion-fast:120ms','consistent mobile motion timing']
   ,[css,'--go-ease:cubic-bezier(.22,1,.36,1)','consistent mobile motion easing']
   ,[css,'.modal.fade .modal-dialog{transform:translateY(12px)','restrained modal entrance motion']
@@ -56,12 +57,14 @@ const required=[
 ];
 for(const [source,needle,label] of required)if(!source.includes(needle))throw new Error(`Mobile UI missing: ${label}`);
 if(!/^body\.inkamnet-go-app/m.test(css))throw new Error('Mobile CSS is not scoped to the APK body.');
+// Satu-satunya pengecualian tipografi: wordmark INKAMBILL A+ (tebal 800, jarak huruf .08em) sesuai mockup.
+const typeCss=css.replace(/body\.inkamnet-go-app \.topbar-title-wrap:before\{[^}]*\}/,'');
 for(const match of css.matchAll(/font-size:\.(\d+)rem/g)){
   const size=Number(`0.${match[1]}`);
   if(size<.625)throw new Error(`Mobile UI contains unreadable font-size: ${match[0]}`);
 }
-for(const match of css.matchAll(/font-weight:(\d+)/g)){
+for(const match of typeCss.matchAll(/font-weight:(\d+)/g)){
   if(!['400','500','600','700'].includes(match[1]))throw new Error(`Mobile UI contains inconsistent font weight: ${match[0]}`);
 }
-if(/letter-spacing:(?!0(?:[;}]))/.test(css))throw new Error('Mobile UI contains non-zero letter spacing.');
+if(/letter-spacing:(?!0(?:[;}]))/.test(typeCss))throw new Error('Mobile UI contains non-zero letter spacing.');
 console.log(`Mobile UI validation passed: ${required.length} shell, permission, responsive, and action checks.`);

@@ -75,7 +75,7 @@ async function send(firebase, access, row) {
   const payload = JSON.stringify({message:{
     token: row.token,
     data: {
-      title:String(row.title || 'INKAMNET GO').slice(0,120),
+      title:String(row.title || 'INKAMBILL').slice(0,120),
       detail:String(row.detail || 'Ada pembaruan operasional.').slice(0,500),
       href,
       notificationId:String(row.notification_id)

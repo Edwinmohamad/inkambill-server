@@ -1,8 +1,8 @@
-<!doctype html>
-<html lang="id" data-theme="dark">
+<% const isGoApp=typeof isMobileApp!=='undefined'&&isMobileApp; %><!doctype html>
+<html lang="id" data-theme="dark"<%- isGoApp?' class="go-login"':'' %>>
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0a0f1e">
-  <title>Login · INKAMNET GO</title>
+  <title>Login · INKAMBILL</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"><link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <style>
@@ -13,9 +13,12 @@
   @keyframes fadeSlideRight{from{opacity:0;transform:translateX(-14px)}to{opacity:1;transform:translateX(0)}}
 
   .login-page{min-height:100vh;min-height:100dvh;display:grid;grid-template-columns:1.05fr 1fr;position:relative;z-index:1}
+  .login-page>section{min-width:0}
   .login-hero{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:56px 48px;position:relative;overflow:hidden;background:var(--panel);border-right:1px solid var(--line)}
   .login-hero-inner{max-width:460px;width:100%;text-align:center;animation:fadeSlideRight .5s cubic-bezier(.2,.7,.3,1) both}
   .login-hero-frame{position:relative}
+  .login-wordmark{display:flex;flex-direction:column;align-items:center;gap:8px;font-size:2.1rem;line-height:1;font-weight:800;letter-spacing:.08em;color:var(--text)}
+  .login-wordmark small{font-size:.78rem;font-weight:500;letter-spacing:0;color:var(--muted)}
   .login-hero-frame img{position:relative;z-index:1;display:block;width:100%;height:auto;max-width:280px;margin:0 auto}
   .login-hero-tag{margin:26px 0 0;color:var(--muted);font-size:.95rem;line-height:1.6;max-width:400px;margin-inline:auto}
   .login-hero-chips{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:28px}
@@ -55,6 +58,45 @@
   @media(max-width:480px){.login-card{padding:26px 20px 22px}.input-wrap,.login-button{height:48px}.field{margin-bottom:13px}}
   @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
   </style>
+  <% if(isGoApp){ %>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400..800&display=swap" rel="stylesheet">
+  <script>(()=>{try{const s=localStorage.getItem('inkamnet-theme');const t=s==='dark'||s==='light'?s:(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.dataset.theme=t;document.querySelector('meta[name="theme-color"]').setAttribute('content',t==='dark'?'#0F1012':'#F7F6F2')}catch(_){document.documentElement.dataset.theme='light'}})();</script>
+  <style>
+  /* INKAMBILL A+ — layar Masuk di APK: terang & gelap, tanpa dekorasi, motion ringan. */
+  html.go-login{--bg:#F7F6F2;--panel:#FFFFFF;--line:#BDB9AE;--rule:#111214;--text:#111214;--muted:#555A63;--accent:#0F6E5C;--on-accent:#FFFFFF;--err:#B42318;--err-tint:rgba(180,35,24,.07)}
+  html.go-login[data-theme="dark"]{--bg:#0F1012;--panel:#17181B;--line:#3A3D42;--rule:#4A4D53;--text:#F1F0EC;--muted:#9A9EA6;--accent:#34C29A;--on-accent:#06231C;--err:#FF8A7E;--err-tint:rgba(255,123,110,.1)}
+  html.go-login,html.go-login body{background:var(--bg);color:var(--text);font-family:"Plus Jakarta Sans",system-ui,sans-serif;font-variant-numeric:tabular-nums}
+  html.go-login .login-page{display:flex;flex-direction:column;min-height:100dvh;padding:calc(18px + env(safe-area-inset-top)) 24px 0}
+  html.go-login .login-hero{display:block;padding:38px 0 14px;background:none;border:0;border-bottom:1px solid var(--rule);overflow:visible}
+  html.go-login .login-hero-inner{max-width:none;text-align:left;animation:none}
+  html.go-login .login-wordmark{display:flex;flex-direction:row;align-items:baseline;justify-content:space-between;font-size:16px;font-weight:800;letter-spacing:.08em;color:var(--text)}
+  html.go-login .login-wordmark small{font-size:12px;font-weight:500;letter-spacing:0;color:var(--muted)}
+  html.go-login .login-hero-tag,html.go-login .login-hero-chips,html.go-login .login-hero-status,html.go-login .login-card .subtitle,html.go-login .input-wrap>i,html.go-login .card-foot{display:none}
+  html.go-login .login-formside{display:block;padding:0;flex:1}
+  html.go-login .login-card{max-width:none;margin:0;padding:64px 0 0;border:0;border-radius:0;background:none;box-shadow:none;animation:none}
+  html.go-login .login-card h1{font-size:40px;line-height:44px;font-weight:700;letter-spacing:-.02em;margin:0 0 30px}
+  html.go-login .field{margin-bottom:18px}
+  html.go-login .field>span:first-child{color:var(--text);font-size:13px;font-weight:600;margin-bottom:8px}
+  html.go-login .input-wrap{height:52px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+  html.go-login .input-wrap:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px rgba(15,110,92,.18)}
+  html.go-login .input-wrap input{padding:0 14px;font-size:16px;font-weight:500;color:var(--text)}
+  html.go-login .input-wrap input::placeholder{color:var(--muted)}
+  html.go-login .password-toggle{width:48px;color:var(--muted)}
+  html.go-login .remember{min-height:44px;margin:0 0 14px;color:var(--text);font-size:14px}
+  html.go-login .remember input{width:20px;height:20px;accent-color:var(--accent)}
+  html.go-login .login-button{height:52px;border-radius:8px;background:var(--accent);color:var(--on-accent);font-size:16px;font-weight:700;transition:transform .18s cubic-bezier(.2,.8,.2,1)}
+  html.go-login .login-button:hover{filter:none;transform:none}
+  html.go-login .login-button:active{transform:scale(.98)}
+  html.go-login .login-button i{display:none}
+  html.go-login .error{border-radius:8px;border-color:var(--err);background:var(--err-tint);color:var(--err)}
+  html.go-login .legal{display:flex;justify-content:space-between;margin:0 24px;padding:14px 0 calc(22px + env(safe-area-inset-bottom));border-top:1px solid var(--line);color:var(--muted);font-size:12px;text-align:left}
+  html.go-login .loader-line{background:var(--accent)}
+  @keyframes goRise{from{opacity:0;transform:translateY(10px)}}
+  html.go-login .login-hero,html.go-login .login-card h1,html.go-login .login-card form,html.go-login .legal{animation:goRise .42s cubic-bezier(.2,.8,.2,1) both}
+  html.go-login .login-card h1{animation-delay:.05s}html.go-login .login-card form{animation-delay:.1s}html.go-login .legal{animation-delay:.16s}
+  @media(prefers-reduced-motion:reduce){html.go-login *{animation:none!important;transition:none!important}}
+  </style>
+  <% } %>
 </head>
 <body>
 <div class="loader-line" id="loginLoader"></div>
@@ -62,10 +104,7 @@
   <section class="login-hero">
     <div class="login-hero-inner">
       <div class="login-hero-frame">
-        <picture>
-          <source srcset="/img/inkamnet-go-lockup-transparent.webp" type="image/webp">
-          <img src="/img/inkamnet-go-lockup-transparent.png" alt="INKAMNET GO — From the Village, Online Everywhere">
-        </picture>
+        <div class="login-wordmark" role="img" aria-label="INKAMBILL">INKAMBILL<small>Billing &amp; operasional INKAMNET</small></div>
       </div>
       <p class="login-hero-tag">Satu pusat kendali untuk pelanggan, jaringan, tagihan, dan operasional lapangan INKAMNET — real-time, di mana saja.</p>
       <div class="login-hero-chips">
@@ -78,8 +117,8 @@
   </section>
   <section class="login-formside">
     <div class="login-card">
-      <h1>Welcome back</h1>
-      <p class="subtitle">Masuk untuk melanjutkan ke INKAMNET GO.</p>
+      <h1><%= isGoApp?'Masuk':'Welcome back' %></h1>
+      <p class="subtitle">Masuk untuk melanjutkan ke INKAMBILL.</p>
       <% if(typeof error !== 'undefined'){ %><div class="error" role="alert"><i class="bi bi-exclamation-circle"></i><span><%= error %></span></div><% } %>
       <form method="post" action="/login" id="loginForm"><input type="hidden" name="_csrf" value="<%= csrfToken %>">
         <label class="field"><span>Username</span><span class="input-wrap"><i class="bi bi-person"></i><input name="username" placeholder="Masukkan username" autocomplete="username" required autofocus></span></label>
@@ -91,7 +130,7 @@
     </div>
   </section>
 </div>
-<footer class="legal">INKAMNET GO &middot; Web Billing</footer>
+<footer class="legal"><% if(isGoApp){ %><span>inkambill.edwinpxmx.my.id</span><span>Koneksi aman &middot; TLS</span><% }else{ %>INKAMBILL &middot; Web Billing<% } %></footer>
 <script>
 const password=document.getElementById('loginPassword'),toggle=document.getElementById('passwordToggle'),username=document.querySelector('input[name="username"]'),remember=document.getElementById('rememberDevice');
 try{const saved=localStorage.getItem('inkamnet_go_username');if(saved){username.value=saved;remember.checked=true;password.focus()}}catch{}

@@ -27,6 +27,7 @@ import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.SslErrorHandler;
 import android.webkit.URLUtil;
 import android.webkit.ValueCallback;
@@ -79,6 +80,7 @@ public final class MainActivity extends FragmentActivity {
     private long backgroundAt;
     private boolean unlockPromptVisible;
     private boolean locked;
+    private boolean rendererGone;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -88,10 +90,10 @@ public final class MainActivity extends FragmentActivity {
         AlertWorker.schedule(this);
 
         FrameLayout root = new FrameLayout(this);
-        root.setBackgroundColor(Color.rgb(245, 245, 247));
+        root.setBackgroundColor(Color.rgb(247, 246, 242));
 
         webView = new WebView(this);
-        webView.setBackgroundColor(Color.rgb(245, 245, 247));
+        webView.setBackgroundColor(Color.rgb(247, 246, 242));
         root.addView(webView, matchParent());
 
         progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
@@ -177,7 +179,10 @@ public final class MainActivity extends FragmentActivity {
                 progressBar.setVisibility(View.GONE);
                 CookieManager.getInstance().flush();
                 hideSplash();
-                if (isTrustedWebUrl(Uri.parse(url))) installPrintShim(view);
+                if (isTrustedWebUrl(Uri.parse(url))) {
+                    installPrintShim(view);
+                    syncChromeWithPage(view);
+                }
                 if (isAuthenticatedPage(url)) {
                     getSharedPreferences("inkamnet_go", MODE_PRIVATE).edit().putBoolean("known_session", true).apply();
                     requestNotificationPermissionOnce();
@@ -205,6 +210,21 @@ public final class MainActivity extends FragmentActivity {
                     offlineTitle.setText("Server sementara bermasalah");
                     offlineBody.setText("Permintaan belum berhasil diproses (HTTP " + response.getStatusCode() + "). Coba lagi nanti atau kembali ke halaman utama.");
                 }
+            }
+
+            @Override
+            public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+                // Tanpa handler ini Android menutup paksa seluruh aplikasi saat renderer WebView
+                // mati/kehabisan memori (mis. HP RAM kecil ketika memproses foto bukti besar).
+                // WebView yang renderernya mati tidak bisa dipakai lagi: lepaskan, lalu bangun ulang Activity.
+                if (rendererGone) return true;
+                rendererGone = true;
+                cancelFileCallback();
+                if (view.getParent() instanceof ViewGroup) ((ViewGroup) view.getParent()).removeView(view);
+                view.destroy();
+                Toast.makeText(MainActivity.this, "Tampilan dimuat ulang karena memori perangkat penuh.", Toast.LENGTH_LONG).show();
+                recreate();
+                return true;
             }
 
             @Override
@@ -239,6 +259,11 @@ public final class MainActivity extends FragmentActivity {
         String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase();
         if (isTrustedWebUrl(uri) || "about".equals(scheme)) return false;
         if (PRINT_SCHEME.equals(scheme)) {
+            if ("theme".equals(uri.getHost()) && webView.getUrl() != null
+                    && isTrustedWebUrl(Uri.parse(webView.getUrl()))) {
+                applyChromeTheme("dark".equals(uri.getLastPathSegment()));
+                return true;
+            }
             if ("print".equals(uri.getHost()) && webView.getUrl() != null
                     && isTrustedWebUrl(Uri.parse(webView.getUrl()))) printCurrentPage();
             return true;
@@ -323,7 +348,7 @@ public final class MainActivity extends FragmentActivity {
         splash.setOrientation(LinearLayout.VERTICAL);
         splash.setGravity(Gravity.CENTER);
         splash.setPadding(dp(28), dp(28), dp(28), dp(28));
-        splash.setBackgroundColor(Color.rgb(245, 245, 247));
+        splash.setBackgroundColor(Color.rgb(247, 246, 242));
 
         ImageView mark = new ImageView(this);
         mark.setImageResource(R.drawable.inkamnet_mark);
@@ -331,7 +356,7 @@ public final class MainActivity extends FragmentActivity {
         markParams.bottomMargin = dp(20);
         splash.addView(mark, markParams);
 
-        TextView name = text("INKAMNET GO", 25, Color.rgb(29, 29, 31), true);
+        TextView name = text("INKAMBILL", 25, Color.rgb(29, 29, 31), true);
         name.setLetterSpacing(.12f);
         splash.addView(name);
 
@@ -354,7 +379,7 @@ public final class MainActivity extends FragmentActivity {
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setGravity(Gravity.CENTER);
         panel.setPadding(dp(30), dp(30), dp(30), dp(30));
-        panel.setBackgroundColor(Color.rgb(245, 245, 247));
+        panel.setBackgroundColor(Color.rgb(247, 246, 242));
 
         TextView symbol = text("↯", 42, Color.rgb(108, 75, 255), true);
         panel.addView(symbol);
@@ -392,14 +417,14 @@ public final class MainActivity extends FragmentActivity {
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setGravity(Gravity.CENTER);
         panel.setPadding(dp(30), dp(30), dp(30), dp(30));
-        panel.setBackgroundColor(Color.rgb(245, 245, 247));
+        panel.setBackgroundColor(Color.rgb(247, 246, 242));
 
         ImageView mark = new ImageView(this);
         mark.setImageResource(R.drawable.inkamnet_mark);
         LinearLayout.LayoutParams markParams = new LinearLayout.LayoutParams(dp(68), dp(68));
         markParams.bottomMargin = dp(18);
         panel.addView(mark, markParams);
-        panel.addView(text("Buka INKAMNET GO", 22, Color.rgb(29, 29, 31), true));
+        panel.addView(text("Buka INKAMBILL", 22, Color.rgb(29, 29, 31), true));
 
         TextView detail = text("Verifikasi identitas untuk melanjutkan.", 13, Color.rgb(110, 110, 115), false);
         LinearLayout.LayoutParams detailParams = wrapContent();
@@ -469,7 +494,7 @@ public final class MainActivity extends FragmentActivity {
                     }
                 });
         BiometricPrompt.PromptInfo.Builder info = new BiometricPrompt.PromptInfo.Builder()
-                .setTitle("INKAMNET GO")
+                .setTitle("INKAMBILL")
                 .setSubtitle("Konfirmasi identitas Anda")
                 .setAllowedAuthenticators(authenticators);
         prompt.authenticate(info.build());
@@ -538,7 +563,7 @@ public final class MainActivity extends FragmentActivity {
             return null;
         }
         cameraIntent.putExtra(MediaStore.EXTRA_OUTPUT, cameraOutputUri);
-        cameraIntent.setClipData(ClipData.newRawUri("INKAMNET GO photo", cameraOutputUri));
+        cameraIntent.setClipData(ClipData.newRawUri("INKAMBILL photo", cameraOutputUri));
         cameraIntent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
         return cameraIntent;
     }
@@ -616,7 +641,7 @@ public final class MainActivity extends FragmentActivity {
             String fileName = URLUtil.guessFileName(download.url, download.contentDisposition, download.mimeType);
             DownloadManager.Request request = new DownloadManager.Request(Uri.parse(download.url));
             request.setTitle(fileName);
-            request.setDescription("Diunduh dari INKAMNET GO");
+            request.setDescription("Diunduh dari INKAMBILL");
             request.setMimeType(download.mimeType);
             request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
             request.setAllowedOverMetered(true);
@@ -708,14 +733,14 @@ public final class MainActivity extends FragmentActivity {
 
     @Override
     protected void onSaveInstanceState(Bundle outState) {
-        webView.saveState(outState);
+        if (!rendererGone) webView.saveState(outState);
         super.onSaveInstanceState(outState);
     }
 
     @Override
     protected void onDestroy() {
         cancelFileCallback();
-        if (webView != null) {
+        if (webView != null && !rendererGone) {
             webView.stopLoading();
             webView.setWebChromeClient(null);
             webView.setWebViewClient(null);
@@ -725,20 +750,35 @@ public final class MainActivity extends FragmentActivity {
     }
 
     private void applyNativeAppleTheme() {
-        int chrome = Color.rgb(245, 245, 247);
+        applyChromeTheme(false);
+    }
+
+    // INKAMBILL A+: status bar & navigation bar mengikuti tema halaman (terang #F7F6F2 / gelap #0F1012).
+    private void applyChromeTheme(boolean dark) {
+        int chrome = dark ? Color.rgb(15, 16, 18) : Color.rgb(247, 246, 242);
         getWindow().setStatusBarColor(chrome);
         getWindow().setNavigationBarColor(chrome);
+        if (webView != null) webView.setBackgroundColor(chrome);
+        View content = findViewById(android.R.id.content);
+        if (content instanceof ViewGroup && ((ViewGroup) content).getChildCount() > 0) {
+            ((ViewGroup) content).getChildAt(0).setBackgroundColor(chrome);
+        }
         if (Build.VERSION.SDK_INT >= 30) {
             WindowInsetsController controller = getWindow().getInsetsController();
             if (controller != null) {
                 int light = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
                         | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
-                controller.setSystemBarsAppearance(light, light);
+                controller.setSystemBarsAppearance(dark ? 0 : light, light);
             }
         } else {
-            getWindow().getDecorView().setSystemUiVisibility(
-                    View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+            getWindow().getDecorView().setSystemUiVisibility(dark ? 0
+                    : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         }
+    }
+
+    private void syncChromeWithPage(WebView view) {
+        view.evaluateJavascript("document.documentElement.dataset.theme||''",
+                value -> applyChromeTheme("\"dark\"".equals(value)));
     }
 
     private void applySystemBarInsets(View root) {
@@ -772,7 +812,7 @@ public final class MainActivity extends FragmentActivity {
             Toast.makeText(this, "Fitur cetak tidak tersedia di perangkat ini.", Toast.LENGTH_SHORT).show();
             return;
         }
-        String title = webView.getTitle() == null || webView.getTitle().isEmpty() ? "INKAMNET GO" : webView.getTitle();
+        String title = webView.getTitle() == null || webView.getTitle().isEmpty() ? "INKAMBILL" : webView.getTitle();
         PrintDocumentAdapter adapter = webView.createPrintDocumentAdapter(title);
         manager.print(title, adapter, new PrintAttributes.Builder().build());
     }

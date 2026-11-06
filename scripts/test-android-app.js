@@ -41,13 +41,13 @@ const csrf = fs.readFileSync(path.join(root, 'middleware/csrf.js'), 'utf8');
 const emulatorSmoke = fs.readFileSync(path.join(root, 'scripts/android-emulator-smoke.sh'), 'utf8');
 
 const checks = [
-  [manifest.includes('android:label="INKAMNET GO"'), 'label aplikasi'],
+  [manifest.includes('android:label="INKAMBILL"'), 'label aplikasi'],
   [manifest.includes('android:usesCleartextTraffic="false"'), 'blokir cleartext'],
   [manifest.includes('android.permission.INTERNET'), 'izin internet'],
   [manifest.includes('inkambill.edwinpxmx.my.id'), 'host deep link'],
   [appGradle.includes('applicationId "id.my.edwinpxmx.inkamnetgo"'), 'application ID'],
   [appGradle.includes('minSdk 26'), 'minimum Android'],
-  [appGradle.includes('versionCode 8') && appGradle.includes('versionName "1.3.3"'), 'versi Android'],
+  [appGradle.includes('versionCode 9') && appGradle.includes('versionName "1.3.4"'), 'versi Android'],
   [appGradle.includes('androidx.biometric:biometric'), 'biometrik'],
   [appGradle.includes('androidx.work:work-runtime'), 'background worker'],
   [appGradle.includes('firebase-messaging'), 'Firebase push messaging'],
