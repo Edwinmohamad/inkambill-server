@@ -11,15 +11,16 @@
   const progress = document.getElementById('pageProgress');
   const operationLoader = document.getElementById('operationLoader');
 
+  const clockFormatter = new Intl.DateTimeFormat('id-ID', {
+    timeZone: 'Asia/Jakarta', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
+  });
   const updateClock = () => {
-    const formatter = new Intl.DateTimeFormat('id-ID', {
-      timeZone: 'Asia/Jakarta', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
-    });
-    const value = `${formatter.format(new Date()).replaceAll('.', ':')} WIB`;
+    const value = `${clockFormatter.format(new Date()).replaceAll('.', ':')} WIB`;
     document.querySelectorAll('[data-live-clock]').forEach(el => el.textContent = value);
   };
   updateClock();
-  setInterval(updateClock, 1000);
+  // APK: jam tidak ditampilkan, jadi tidak perlu memperbarui halaman setiap detik (hemat CPU & baterai).
+  if (!body.classList.contains('inkamnet-go-app')) setInterval(updateClock, 1000);
 
   let loaderHidden = false;
   const hideLoader = () => {

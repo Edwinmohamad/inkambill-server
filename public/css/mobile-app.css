@@ -53,7 +53,6 @@ body.inkamnet-go-app{
   line-height:1.45;
   font-synthesis:none;
   -webkit-font-smoothing:antialiased;
-  text-rendering:optimizeLegibility;
   -webkit-tap-highlight-color:transparent;
 }
 body.inkamnet-go-app,body.inkamnet-go-app *{letter-spacing:0}
@@ -518,8 +517,7 @@ body.inkamnet-go-app :where(.btn-tech.danger,.report-pdf-btn){color:var(--go-neg
 body.inkamnet-go-app .cc-board-kicker{color:var(--go-accent-text)!important}
 
 /* A+ tabel → kartu (ditandai skrip di mobile-app.js). Tidak ada tabel yang perlu digeser ke samping. */
-body.inkamnet-go-app .table-responsive{overflow-x:visible}
-body.inkamnet-go-app .table-responsive:has(>table:not(.go-cards)){overflow-x:auto}
+body.inkamnet-go-app .table-responsive{overflow-x:auto}
 body.inkamnet-go-app table.go-cards{display:block!important;width:100%!important;min-width:0!important;max-width:100%!important;table-layout:auto!important;border:0!important;background:transparent!important;box-shadow:none!important}
 body.inkamnet-go-app table.go-cards>thead{display:none!important}
 body.inkamnet-go-app table.go-cards>tbody{display:grid!important;gap:10px!important;width:100%!important}
@@ -557,3 +555,11 @@ body.inkamnet-go-app .inv-gauge-legend a{display:flex;align-items:center;min-hei
 body.inkamnet-go-app .inv-view-toggle button{min-width:40px;min-height:40px}
 body.inkamnet-go-app .network-context-nav a{min-height:40px;display:inline-flex;align-items:center}
 body.inkamnet-go-app .filter-card .btn-tech,body.inkamnet-go-app .go-primary-filter .btn-tech{white-space:normal;line-height:1.2;text-align:center}
+
+/* ==========================================================================
+   MODE RINGAN APK (v1.35) — untuk HP RAM 4 GB: SEMUA animasi, transisi, dan
+   scroll halus dimatikan. Diletakkan paling akhir agar mengalahkan aturan lain.
+   ========================================================================== */
+html.go-app{scroll-behavior:auto!important}
+body.inkamnet-go-app *,body.inkamnet-go-app *::before,body.inkamnet-go-app *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+body.inkamnet-go-app .reveal-item{opacity:1!important;transform:none!important}
