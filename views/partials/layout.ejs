@@ -3,20 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="<%= isMobileApp?'#F7F6F2':'#090d1a' %>">
+  <meta name="theme-color" content="<%= isMobileApp?'#F7F6F2':'#0F1012' %>">
   <meta name="csrf-token" content="<%= csrfToken %>">
   <meta name="wa-gateway-connected" content="<%= waGatewayConnected?'1':'0' %>">
   <meta name="wa-blast-enabled" content="<%= waBlastEnabled?'1':'0' %>">
-  <title><%= translateTitle(title) %> · <%= appName %></title>
-  <% if(!isMobileApp){ %>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-  <% }else{ %>
+  <title><%= translateTitle(title) %> · INKAMBILL</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400..800&display=swap" rel="stylesheet">
-  <% } %>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <link rel="stylesheet" href="/css/app.css?v=<%= assetVersion %>">
@@ -101,7 +95,7 @@
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-brand">
         <a href="/" class="brand-link">
-          <span class="brand-logo-plate"><picture><source srcset="/img/inkamnet-wordmark-hq.webp?v=1.2.2" type="image/webp"><img src="/img/inkamnet-wordmark-hq.png?v=1.2.2" alt="INKAMNET" loading="lazy" decoding="async"></picture></span>
+          <span class="brand-wordmark">INKAMBILL</span>
         </a>
         <button class="sidebar-close d-lg-none" type="button" data-sidebar-close><i class="bi bi-x-lg"></i></button>
       </div>
@@ -203,7 +197,7 @@
       </div>
 
       <div class="sidebar-footer">
-        <div class="system-status"><span class="status-dot"></span><div><strong>INKAMNET System Online</strong><small>NOC · Billing · Finance · Warehouse</small></div></div>
+        <div class="system-status"><span class="status-dot"></span><div><strong>INKAMBILL online</strong><small>Billing · Finance · Network · Gudang</small></div></div>
         <span class="version-pill">CONTROL CENTER v1.26.0</span>
       </div>
     </aside>
@@ -214,7 +208,7 @@
       <header class="topbar">
         <div class="d-flex align-items-center gap-3 min-w-0">
           <button class="icon-button d-lg-none" type="button" data-sidebar-open><i class="bi bi-list"></i></button>
-          <div class="topbar-title-wrap min-w-0"><div class="topbar-kicker"><span class="topbar-live-dot"></span> INKAMNET CONTROL CENTER</div><div class="topbar-title text-truncate"><%= translateTitle(title) %></div></div>
+          <div class="topbar-title-wrap min-w-0"><div class="topbar-kicker"><span class="topbar-live-dot"></span> INKAMBILL</div><div class="topbar-title text-truncate"><%= translateTitle(title) %></div></div>
         </div>
         <div class="topbar-actions">
           <button class="command-button d-none d-md-flex" type="button" data-command-open><i class="bi bi-command"></i><span><%= t('quickCommand') %></span><kbd>Ctrl K</kbd></button>
@@ -252,6 +246,7 @@
         <% } %>
         <div class="page-enter"><%- body %></div>
         <link rel="stylesheet" href="/css/ui-coherence.css?v=<%= assetVersion %>">
+        <% if(!isMobileApp){ %><link rel="stylesheet" href="/css/aplus-web.css?v=<%= assetVersion %>"><% } %>
         <%- include('pagination') %>
         <footer class="app-footer"><span>© <%= new Date().getFullYear() %> Edwin Mohamad · PT INKAMNET NEXERA TECHNOLOGY</span><span>From the Village, Online Everywhere</span></footer>
       </main>

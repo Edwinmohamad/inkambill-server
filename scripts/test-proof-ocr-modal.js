@@ -14,6 +14,10 @@ async function scenario(fail=false){
  assert.deepEqual(urls,['/payments/541/proof-ocr']);
  assert.equal(ids.proofOcrStatus.textContent,fail?'Gagal dimuat':'Cocok');
  if(fail)assert.equal(ids.proofOcrFields.textContent,'Network failure');
- else assert(ids.proofOcrFields.children.some(child=>child.textContent.includes('Nominal sesuai')));
+ else {
+  // v1.34: penampil bukti hanya menampilkan keterangan hasil, tanpa rincian per pemeriksaan.
+  assert(ids.proofOcrFields.children.some(child=>child.textContent==='Bukti sesuai dengan data pembayaran.'));
+  assert(!ids.proofOcrFields.children.some(child=>child.textContent.includes('Nominal sesuai')));
+ }
 }
 (async()=>{await scenario();await scenario(true);console.log('PASS OCR modal: dynamic trigger, rendered result, visible request failure, uncached request.');})().catch(error=>{console.error(error);process.exitCode=1;});

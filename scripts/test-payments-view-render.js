@@ -16,7 +16,8 @@ function render(role,over){
     for(const status of ['pending','confirmed','failed'])for(const method of ['cash','transfer','qris'])
       assert.ok((await render(role,{payments:[{...pay,status,method}],cashApprovals:[cash]})).length>1000,`${role}/${status}/${method}`);
   }
-  for(const [role,count] of [['master_admin',9],['admin',7]]){
+  // v1.34: kolom 'Validasi Bukti' (OCR) disembunyikan dari tabel; hasil hanya tampil saat bukti dibuka.
+  for(const [role,count] of [['master_admin',8],['admin',7]]){
     const html=await render(role,{payments:[pay]});
     const table=html.match(/<table class="app-table payment-history-table[\s\S]*?<\/table>/)[0];
     assert.equal((table.match(/<th[ >]/g)||[]).length,count,'compact headers must match role');
@@ -30,6 +31,8 @@ function render(role,over){
     {...pay,id:3,customer_name:'Rina QRIS',method:'qris',proof_path:'proof.webp',proof_mime:'image/webp'}
   ]});
   assert.match(masterHtml,/id="bulkPaymentApproveModal"/);
+  assert.doesNotMatch(masterHtml,/data-payment-ocr|Validasi Bukti|OCR LOKAL/);
+  assert.match(masterHtml,/Hasil pemeriksaan bukti/);
   assert.match(masterHtml,/payment-history-table has-bulk-select/);
   assert.match(masterHtml,/data-payment-id="1"[^>]*data-proof-required="1"[^>]*data-proof-ready="0"/);
   assert.match(masterHtml,/data-payment-id="2"[^>]*data-proof-required="0"/);

@@ -1,5 +1,5 @@
 <% const isGoApp=typeof isMobileApp!=='undefined'&&isMobileApp; %><!doctype html>
-<html lang="id" data-theme="dark"<%- isGoApp?' class="go-login"':'' %>>
+<html lang="id" data-theme="dark" class="go-login">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0a0f1e">
   <title>Login · INKAMBILL</title>
@@ -58,7 +58,7 @@
   @media(max-width:480px){.login-card{padding:26px 20px 22px}.input-wrap,.login-button{height:48px}.field{margin-bottom:13px}}
   @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
   </style>
-  <% if(isGoApp){ %>
+  <% { %>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400..800&display=swap" rel="stylesheet">
   <script>(()=>{try{const s=localStorage.getItem('inkamnet-theme');const t=s==='dark'||s==='light'?s:(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.dataset.theme=t;document.querySelector('meta[name="theme-color"]').setAttribute('content',t==='dark'?'#0F1012':'#F7F6F2')}catch(_){document.documentElement.dataset.theme='light'}})();</script>
   <style>
@@ -94,6 +94,8 @@
   @keyframes goRise{from{opacity:0;transform:translateY(10px)}}
   html.go-login .login-hero,html.go-login .login-card h1,html.go-login .login-card form,html.go-login .legal{animation:goRise .42s cubic-bezier(.2,.8,.2,1) both}
   html.go-login .login-card h1{animation-delay:.05s}html.go-login .login-card form{animation-delay:.1s}html.go-login .legal{animation-delay:.16s}
+  /* Desktop & tablet: kolom masuk di tengah layar, lebar terbatas. */
+  @media(min-width:600px){html.go-login .login-page{width:100%;max-width:440px;margin:0 auto;padding-top:9vh}html.go-login .legal{max-width:392px;margin:0 auto}}
   @media(prefers-reduced-motion:reduce){html.go-login *{animation:none!important;transition:none!important}}
   </style>
   <% } %>
@@ -117,7 +119,7 @@
   </section>
   <section class="login-formside">
     <div class="login-card">
-      <h1><%= isGoApp?'Masuk':'Welcome back' %></h1>
+      <h1>Masuk</h1>
       <p class="subtitle">Masuk untuk melanjutkan ke INKAMBILL.</p>
       <% if(typeof error !== 'undefined'){ %><div class="error" role="alert"><i class="bi bi-exclamation-circle"></i><span><%= error %></span></div><% } %>
       <form method="post" action="/login" id="loginForm"><input type="hidden" name="_csrf" value="<%= csrfToken %>">
@@ -130,7 +132,7 @@
     </div>
   </section>
 </div>
-<footer class="legal"><% if(isGoApp){ %><span>inkambill.edwinpxmx.my.id</span><span>Koneksi aman &middot; TLS</span><% }else{ %>INKAMBILL &middot; Web Billing<% } %></footer>
+<footer class="legal"><span>inkambill.edwinpxmx.my.id</span><span>Koneksi aman &middot; TLS</span></footer>
 <script>
 const password=document.getElementById('loginPassword'),toggle=document.getElementById('passwordToggle'),username=document.querySelector('input[name="username"]'),remember=document.getElementById('rememberDevice');
 try{const saved=localStorage.getItem('inkamnet_go_username');if(saved){username.value=saved;remember.checked=true;password.focus()}}catch{}

@@ -55,7 +55,8 @@
   } else applyTheme(localStorage.getItem('inkamnet-theme') || html.dataset.theme || 'dark');
   document.querySelectorAll('[data-theme-toggle]').forEach(btn => btn.addEventListener('click', () => {
     const next = html.dataset.theme === 'dark' ? 'light' : 'dark';
-    if (isGoApp) { html.classList.add('go-theme-anim'); setTimeout(() => html.classList.remove('go-theme-anim'), 380); }
+    const animClass = isGoApp ? 'go-theme-anim' : 'theme-anim';
+    html.classList.add(animClass); setTimeout(() => html.classList.remove(animClass), 380);
     applyTheme(next);
     // Beri tahu shell Android agar warna status bar & navigation bar ikut tema (APK lama mengabaikannya).
     if (isGoApp) { try { location.href = 'inkamnet-go://theme/' + next; } catch (_) {} }

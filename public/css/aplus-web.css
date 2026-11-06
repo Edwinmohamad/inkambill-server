@@ -1,0 +1,140 @@
+/* =========================================================
+   INKAMBILL A+ — lapisan desain WEB (desktop & browser HP), v1.34
+   Dimuat paling akhir, hanya di web (APK memakai mobile-app.css).
+   Prinsip: anti-slop — tanpa glow, gradien, blur, atau bayangan
+   dekoratif; struktur dari garis tipis & tipografi; warna = makna.
+   Dua tema: terang (kertas hangat) & gelap. Motion hanya transform/
+   opacity, sekali jalan, dan mati bila "kurangi animasi" aktif.
+   ========================================================= */
+:root{
+  --font:"Plus Jakarta Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --font-display:var(--font);
+  --radius:12px;--radius-sm:8px;--radius-lg:16px;
+}
+html[data-theme="light"]{
+  --bg:#F7F6F2;--bg-2:#F3F1EC;--panel:#FFFFFF;--panel-2:#F7F6F2;--panel-3:#ECEAE3;
+  --sidebar-bg:#F7F6F2;--sidebar-bg2:#F7F6F2;--topbar:#F7F6F2;
+  --line:#E4E1D8;--line-2:#BDB9AE;--rule:#111214;
+  --text:#111214;--muted:#555A63;--muted-2:#62666E;--ink-muted:#62666E;--input:#FFFFFF;
+  --brand:#0F6E5C;--brand-2:#0F6E5C;--brand-rgb:15,110,92;--accent:#0F6E5C;--accent-text:#0F6E5C;--on-accent:#FFFFFF;
+  --success:#0F6E5C;--warning:#B45309;--danger:#B42318;--info:#1F4FA8;
+  --ok-text:#0F6E5C;--warn-text:#9A4D05;--neg-text:#B42318;--info-text:#1F4FA8;
+  --brand-tint:rgba(15,110,92,.09);--soft:rgba(15,110,92,.07);--glow:transparent;
+  --success-tint:rgba(15,110,92,.09);--warning-tint:rgba(180,83,9,.09);--danger-tint:rgba(180,35,24,.08);--info-tint:rgba(31,79,168,.08);
+  --shadow:0 12px 32px rgba(17,18,20,.10);--shadow-soft:0 6px 18px rgba(17,18,20,.06);
+  color-scheme:light;
+}
+html[data-theme="dark"]{
+  --bg:#0F1012;--bg-2:#121316;--panel:#17181B;--panel-2:#1C1D21;--panel-3:#232529;
+  --sidebar-bg:#0F1012;--sidebar-bg2:#0F1012;--topbar:#0F1012;
+  --line:#26282C;--line-2:#3A3D42;--rule:#4A4D53;
+  --text:#F1F0EC;--muted:#A3A7AE;--muted-2:#8E929A;--ink-muted:#8E929A;--input:#141518;
+  --brand:#178069;--brand-2:#5FD3AE;--brand-rgb:23,128,105;--accent:#178069;--accent-text:#5FD3AE;--on-accent:#FFFFFF;
+  --success:#34C29A;--warning:#F0A43A;--danger:#FF7B6E;--info:#7FA8FF;
+  --ok-text:#5FD3AE;--warn-text:#F0B45A;--neg-text:#FF8A7E;--info-text:#8FB4FF;
+  --brand-tint:rgba(52,194,154,.10);--soft:rgba(52,194,154,.08);--glow:transparent;
+  --success-tint:rgba(52,194,154,.10);--warning-tint:rgba(240,164,58,.10);--danger-tint:rgba(255,123,110,.10);--info-tint:rgba(127,168,255,.10);
+  --shadow:0 12px 32px rgba(0,0,0,.45);--shadow-soft:0 6px 18px rgba(0,0,0,.35);
+  color-scheme:dark;
+}
+html,body{background:var(--bg)!important}
+body{color:var(--text);font-family:var(--font);font-variant-numeric:tabular-nums}
+:where(h1,h2,h3,h4,h5,h6,button,input,select,textarea){font-family:inherit}
+
+/* Dekorasi latar dimatikan: tidak ada grid, orb, garis sinyal, glow, atau blur. */
+.ambient-grid,.ambient-orb,.signal-stream{display:none!important}
+.main-panel::before,.main-panel::after{display:none!important}
+.sidebar,.topbar,.modal-backdrop,.go-menu,.dropdown-menu{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+
+/* Sidebar ikut tema: rata dengan halaman, dipisah satu garis tipis. */
+.sidebar{background:var(--sidebar-bg)!important;border-right:1px solid var(--line)!important;box-shadow:none!important}
+.sidebar-brand{border-bottom:1px solid var(--rule)!important;margin:0 16px;padding:12px 2px!important}
+.brand-wordmark{font-size:16px;font-weight:800;letter-spacing:.08em;color:var(--text)}
+.sidebar-section-label{color:var(--muted)!important;font-size:11px!important;font-weight:700!important;letter-spacing:.06em!important}
+.sidebar-link{color:var(--text)!important;font-weight:500!important;border-radius:8px!important;background:transparent;box-shadow:none!important}
+.sidebar-link i{color:var(--muted)}
+.sidebar-link em{color:var(--muted);font-style:normal}
+.sidebar-link:hover{background:var(--panel-3)!important}
+.sidebar-link.active,.sidebar-link.active:hover{background:var(--text)!important;color:var(--bg)!important}
+.sidebar-link.active i,.sidebar-link.active em{color:var(--bg)!important}
+.sidebar-subnav a{color:var(--muted)}
+.sidebar-subnav a.active,.sidebar-subnav a:hover{color:var(--text)}
+.sidebar-close{color:var(--text)}
+.sidebar-footer{border-top:1px solid var(--line)!important;background:transparent!important}
+.system-status strong{color:var(--text)!important}
+.system-status small{color:var(--muted)!important}
+.system-status .status-dot{background:var(--success)!important;box-shadow:none!important}
+
+/* Topbar datar dengan garis bawah. */
+.topbar{background:var(--topbar)!important;border-bottom:1px solid var(--line)!important;box-shadow:none!important}
+.topbar-kicker{color:var(--text)!important;font-weight:800!important;letter-spacing:.08em!important}
+.topbar-live-dot,.live-chip .pulse-dot{display:none!important}
+.topbar-title{color:var(--text)!important;font-weight:700!important}
+.icon-button,.user-button,.command-button,.live-clock,.live-chip{background:transparent!important;border-color:var(--line)!important;color:var(--text)!important;box-shadow:none!important}
+
+/* Permukaan: datar, satu garis tipis, tanpa bayangan maupun gradien. */
+.content-wrap [class*="card"],.content-wrap [class*="panel"],.content-wrap [class*="hero"],.content-wrap [class*="tile"]{box-shadow:none!important;background-image:none!important}
+.data-card,.filter-card,.form-card,.metric-card,.command-panel,.ink-panel{background:var(--panel)!important;border:1px solid var(--line)!important;border-radius:var(--radius)!important}
+.modal-content{background:var(--panel)!important;border:1px solid var(--line)!important;border-radius:var(--radius)!important;box-shadow:var(--shadow)!important}
+.dropdown-menu{background:var(--panel)!important;border:1px solid var(--line)!important;box-shadow:var(--shadow-soft)!important}
+
+/* Tipografi judul modul. */
+.module-head h1{color:var(--text);font-weight:700;letter-spacing:-.01em}
+.module-kicker{color:var(--muted)!important}
+
+/* Tombol: sudut tegas, datar. Aksi utama memakai aksen. */
+.btn-tech,.action-pill,.action-menu{border-radius:8px!important;box-shadow:none!important;font-weight:600!important}
+.btn-tech.primary,.btn-primary{background:var(--brand)!important;border-color:var(--brand)!important;color:var(--on-accent)!important}
+.btn-tech.primary:hover,.btn-primary:hover{filter:brightness(1.06)}
+.btn-tech.success{background:var(--success-tint)!important;border-color:transparent!important;color:var(--ok-text)!important}
+.btn-tech.danger,.report-pdf-btn{background:var(--danger-tint)!important;border-color:transparent!important;color:var(--neg-text)!important}
+.form-control,.form-select{border-radius:8px!important;background-color:var(--input)!important;border-color:var(--line-2)!important;color:var(--text)!important}
+.form-control:focus,.form-select:focus{border-color:var(--brand)!important;box-shadow:0 0 0 3px rgba(var(--brand-rgb),.18)!important}
+input[type="checkbox"],input[type="radio"]{accent-color:var(--brand)}
+
+/* Tabel: kepala kecil abu, baris dipisah garis tipis. */
+.app-table th{color:var(--muted)!important;border-bottom:1px solid var(--rule)!important}
+.app-table td{border-bottom:1px solid var(--line)!important}
+
+/* Keterbacaan status: warna pastel bawaan dibuat untuk latar gelap; diarahkan ke token teks
+   yang lolos kontras 4,5:1 di kedua tema. Titik/ikon/bar tidak diubah. */
+.text-success{color:var(--ok-text)!important}
+.text-danger{color:var(--neg-text)!important}
+.text-warning{color:var(--warn-text)!important}
+.payment-method.cash{color:var(--warn-text)!important}
+.payment-method.transfer{color:var(--info-text)!important}
+.payment-method.qris{color:var(--accent-text)!important}
+.cash-approval-count{color:var(--warn-text)!important;background:var(--warning-tint)!important}
+.bm-pending-strip :where(b,strong){color:var(--warn-text)!important}
+.bm-pending-strip em{color:var(--accent-text)!important}
+.command-pulse em{color:var(--accent-text)!important}
+.bulk-payment-tools b{color:var(--accent-text)!important}
+:where(.acs-metrics,.acs-legend) .online,.acs-status.online{color:var(--ok-text)!important}
+:where(.acs-metrics,.acs-legend) .warning,.acs-signal.warning{color:var(--warn-text)!important}
+:where(.acs-metrics,.acs-legend) .offline,.acs-status.offline,.acs-signal.critical{color:var(--neg-text)!important}
+.analytics-section-title span{color:var(--accent-text)!important}
+.log-tabs button.active,.log-tabs button.active b{color:var(--text)!important}
+.cc-board-kicker{color:var(--accent-text)!important}
+.status-badge.green{color:var(--ok-text)!important}
+.status-badge.orange{color:var(--warn-text)!important}
+.status-badge.red{color:var(--neg-text)!important}
+.status-badge.purple,.status-badge.blue{color:var(--accent-text)!important}
+.proof-result-card{background:var(--panel-2)!important}
+.proof-result-line{margin:.35rem 0 0;color:var(--text)}
+
+/* Motion ringan: konten halaman muncul bertahap (8 blok pertama saja). */
+@keyframes aplusRise{from{opacity:0;transform:translateY(8px)}}
+.page-enter{animation:none!important}
+.page-enter>*:nth-child(-n+8){animation:aplusRise .4s cubic-bezier(.2,.8,.2,1) both}
+.page-enter>*:nth-child(2){animation-delay:.04s}.page-enter>*:nth-child(3){animation-delay:.08s}
+.page-enter>*:nth-child(4){animation-delay:.12s}.page-enter>*:nth-child(5){animation-delay:.16s}
+.page-enter>*:nth-child(6){animation-delay:.2s}.page-enter>*:nth-child(7){animation-delay:.24s}
+.page-enter>*:nth-child(8){animation-delay:.28s}
+.sidebar-link{transition:background-color .15s ease,color .15s ease}
+.btn-tech:active,.action-pill:active{transform:scale(.98)}
+/* Ganti tema: warna berpindah halus hanya selama 0,3 detik (kelas dipasang sementara oleh JS). */
+html.theme-anim body,html.theme-anim body *{transition:background-color .3s ease,color .3s ease,border-color .3s ease!important}
+@media(prefers-reduced-motion:reduce){
+  .page-enter>*{animation:none!important}
+  html.theme-anim body,html.theme-anim body *{transition:none!important}
+}
