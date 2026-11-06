@@ -123,3 +123,44 @@
     requestAnimationFrame(tick);
   })();
 })();
+
+// INKAMBILL A+ (APK): tabel lebar diubah menjadi kartu agar pas di layar HP — tidak perlu geser ke
+// samping. Label tiap nilai diambil dari judul kolom tabel. Bila skrip ini gagal, tabel tetap tampil
+// sebagai tabel geser seperti sebelumnya. Tambahkan class "go-no-cards" pada tabel untuk mengecualikan.
+(()=>{
+  const SKIP='.invoice-table,.go-no-cards';
+  const text=el=>(el?el.textContent:'').replace(/\s+/g,' ').trim();
+  const isSeq=t=>/^(no\.?|#|nomor)$/i.test(t);
+  const isAct=t=>/^(aksi|actions?|opsi|tindakan)$/i.test(t);
+  function cardify(table){
+    if(table.matches(SKIP)||table.closest('.go-no-cards'))return;
+    const head=table.tHead&&table.tHead.rows[0];if(!head)return;
+    const labels=[];let col=0;
+    for(const th of head.cells){const span=th.colSpan||1;for(let i=0;i<span;i++)labels[col++]=text(th);}
+    for(const body of table.tBodies)for(const tr of body.rows){
+      if(tr.dataset.goCard)continue;tr.dataset.goCard='1';
+      let c=0,titled=false;
+      for(const td of tr.cells){
+        const t=labels[c]||'';c+=td.colSpan||1;
+        if(tr.cells.length===1){td.dataset.goCell='full';continue;}
+        const onlyCheck=!text(td)&&td.querySelector('input[type="checkbox"]');
+        if(td.classList.contains('app-check-col')||onlyCheck){td.dataset.goCell='check';continue;}
+        if(isSeq(t)||td.classList.contains('app-seq-col')){td.dataset.goCell='seq';continue;}
+        if(isAct(t)||(!t&&td.querySelector('button,.action-pill,.action-menu'))){td.dataset.goCell='actions';continue;}
+        if(!titled&&text(td)){td.dataset.goCell='title';titled=true;continue;}
+        td.dataset.goCell='field';if(t)td.dataset.goLabel=t;else delete td.dataset.goLabel;
+      }
+    }
+    table.classList.add('go-cards');
+  }
+  const run=()=>document.querySelectorAll('table.app-table,table.table').forEach(table=>{try{cardify(table);}catch(_){}});
+  run();
+  // Baris yang dimuat belakangan (AJAX) ikut diubah; hanya bereaksi bila ada baris/tabel baru.
+  if(typeof MutationObserver!=='function')return;
+  let queued=false;
+  new MutationObserver(list=>{
+    if(queued)return;
+    if(!list.some(m=>[...m.addedNodes].some(n=>n.nodeType===1&&(n.matches('tr,table,tbody')||n.querySelector('tr')))))return;
+    queued=true;requestAnimationFrame(()=>{queued=false;run();});
+  }).observe(document.body,{childList:true,subtree:true});
+})();

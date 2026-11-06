@@ -1,0 +1,350 @@
+/* DIHASILKAN OTOMATIS oleh scripts/generate-mobile-legibility.js — jangan diedit manual.
+   APK: 348 aturan dari 16 stylesheet dinaikkan ke minimal 11px agar terbaca di HP. */
+body.inkamnet-go-app .aging-filters button{font-size:11px}
+body.inkamnet-go-app .aging-summary span{font-size:11px}
+body.inkamnet-go-app .analytics-advisory-list small{font-size:11px}
+body.inkamnet-go-app .analytics-kpi-grid article>small{font-size:11px}
+body.inkamnet-go-app .analytics-kpi-grid article>span{font-size:11px}
+body.inkamnet-go-app .analytics-mini-stats>div span{font-size:11px}
+body.inkamnet-go-app .analytics-section-title small{font-size:11px}
+body.inkamnet-go-app .analytics-section-title span{font-size:11px}
+body.inkamnet-go-app .analytics-section-title>a{font-size:11px}
+body.inkamnet-go-app .analytics-sla-card p{font-size:11px}
+body.inkamnet-go-app .analytics-sla-card>span{font-size:11px}
+body.inkamnet-go-app .billing-monitor-filter .bm-filter-field>span{font-size:11px}
+body.inkamnet-go-app .billing-monitor-filter .bm-filter-title small{font-size:11px}
+body.inkamnet-go-app .cash-approval-copy em{font-size:11px}
+body.inkamnet-go-app .cash-approval-copy small{font-size:11px}
+body.inkamnet-go-app .cash-approval-count{font-size:11px}
+body.inkamnet-go-app .cash-approval-type b{font-size:11px}
+body.inkamnet-go-app .cash-approval-type small{font-size:11px}
+body.inkamnet-go-app .cash-approval-value a{font-size:11px}
+body.inkamnet-go-app .cash-approval-value small{font-size:11px}
+body.inkamnet-go-app .cash-pending-note small{font-size:11px}
+body.inkamnet-go-app .cash-pending-note strong{font-size:11px}
+body.inkamnet-go-app .cash-pending-note>a{font-size:11px}
+body.inkamnet-go-app .cc-undo-note{font-size:11px}
+body.inkamnet-go-app .command-dashboard .dashboard-click-hint{font-size:11px}
+body.inkamnet-go-app .command-dashboard .dashboard-clickable-card::after{font-size:11px}
+body.inkamnet-go-app .customer-new-subtitle i{font-size:11px}
+body.inkamnet-go-app .customer-risk{font-size:11px}
+body.inkamnet-go-app .dashboard-user-ticker-label b{font-size:11px}
+body.inkamnet-go-app .dashboard-user-ticker-label small{font-size:11px}
+body.inkamnet-go-app .event span{font-size:11px}
+body.inkamnet-go-app .hp-pill>i{font-size:11px}
+body.inkamnet-go-app .iface-detail-group>header b{font-size:11px}
+body.inkamnet-go-app .iface-detail-group>header small{font-size:11px}
+body.inkamnet-go-app .iface-name b{font-size:11px}
+body.inkamnet-go-app .iface-name small{font-size:11px}
+body.inkamnet-go-app .iface-router>header b{font-size:11px}
+body.inkamnet-go-app .iface-router>header small{font-size:11px}
+body.inkamnet-go-app .iface-table td:first-child small{font-size:11px}
+body.inkamnet-go-app .infra-action-buttons button{font-size:11px}
+body.inkamnet-go-app .infra-catalog section h3{font-size:11px}
+body.inkamnet-go-app .infra-catalog-title small{font-size:11px}
+body.inkamnet-go-app .infra-connected-label{font-size:11px}
+body.inkamnet-go-app .infra-frame-empty small{font-size:11px}
+body.inkamnet-go-app .infra-frame-loader small{font-size:11px}
+body.inkamnet-go-app .infra-module-nav a{font-size:11px}
+body.inkamnet-go-app .infra-security-note small{font-size:11px}
+body.inkamnet-go-app .infra-security-note strong{font-size:11px}
+body.inkamnet-go-app .infra-sidebar-subnav i{font-size:11px}
+body.inkamnet-go-app .infra-tool-link small{font-size:11px}
+body.inkamnet-go-app .infra-tool-link strong{font-size:11px}
+body.inkamnet-go-app .infra-workspace-identity div small{font-size:11px}
+body.inkamnet-go-app .inspector-kpis b{font-size:11px}
+body.inkamnet-go-app .inspector-row{font-size:11px}
+body.inkamnet-go-app .inspector-row em{font-size:11px}
+body.inkamnet-go-app .inspector-section p{font-size:11px}
+body.inkamnet-go-app .inspector-status b{font-size:11px}
+body.inkamnet-go-app .inv-gauge-ring small{font-size:11px}
+body.inkamnet-go-app .inv-heat td small{font-size:11px}
+body.inkamnet-go-app .inv-tag{font-size:11px}
+body.inkamnet-go-app .mini-table td{font-size:11px}
+body.inkamnet-go-app .mon-page .bar-num{font-size:11px}
+body.inkamnet-go-app .mon-page .bar-row .row-title{font-size:11px}
+body.inkamnet-go-app .mon-page .bento .action-grid button{font-size:11px}
+body.inkamnet-go-app .mon-page .bento .mini-empty{font-size:11px}
+body.inkamnet-go-app .mon-page .bento .mini-list a{font-size:11px}
+body.inkamnet-go-app .mon-page .bento .mini-list div{font-size:11px}
+body.inkamnet-go-app .mon-page .bento h4{font-size:11px}
+body.inkamnet-go-app .mon-page .bento small{font-size:11px}
+body.inkamnet-go-app .mon-page .cc-board-kicker{font-size:11px}
+body.inkamnet-go-app .mon-page .cc-kpi span{font-size:11px}
+body.inkamnet-go-app .mon-page .cc-nav-label small{font-size:11px}
+body.inkamnet-go-app .mon-page .cc-nav-site-row{font-size:11px}
+body.inkamnet-go-app .mon-page .cc-nav-sites-label{font-size:11px}
+body.inkamnet-go-app .mon-page .cc-remote-label{font-size:11px}
+body.inkamnet-go-app .mon-page .cc-remote-row code{font-size:11px}
+body.inkamnet-go-app .mon-page .cc-row-main small{font-size:11px}
+body.inkamnet-go-app .mon-page .cc-row-main strong{font-size:11px}
+body.inkamnet-go-app .mon-page .cc-row-status{font-size:11px}
+body.inkamnet-go-app .mon-page .cc-table-card td small{font-size:11px}
+body.inkamnet-go-app .mon-page .mon-action-list button{font-size:11px}
+body.inkamnet-go-app .mon-page .mon-action-result{font-size:11px}
+body.inkamnet-go-app .mon-page .mon-detail-row small{font-size:11px}
+body.inkamnet-go-app .mon-page .mon-detail-row strong{font-size:11px}
+body.inkamnet-go-app .mon-page .mon-device-picked small{font-size:11px}
+body.inkamnet-go-app .mon-page .mon-filter-select{font-size:11px}
+body.inkamnet-go-app .mon-page .mon-refresh-indicator{font-size:11px}
+body.inkamnet-go-app .mon-page .mon-search-results button{font-size:11px}
+body.inkamnet-go-app .mon-page .mon-search-results button small{font-size:11px}
+body.inkamnet-go-app .mon-page .seg button{font-size:11px}
+body.inkamnet-go-app .mon-page .seg.seg-sm button{font-size:11px}
+body.inkamnet-go-app .mon-page .spark.empty{font-size:11px}
+body.inkamnet-go-app .network-context-nav a{font-size:11px}
+body.inkamnet-go-app .netws-action-grid b{font-size:11px}
+body.inkamnet-go-app .netws-action-grid em{font-size:11px}
+body.inkamnet-go-app .netws-attention b{font-size:11px}
+body.inkamnet-go-app .netws-attention small{font-size:11px}
+body.inkamnet-go-app .netws-card>header a{font-size:11px}
+body.inkamnet-go-app .netws-command button b{font-size:11px}
+body.inkamnet-go-app .netws-command button em{font-size:11px}
+body.inkamnet-go-app .netws-command kbd{font-size:11px}
+body.inkamnet-go-app .netws-empty{font-size:11px}
+body.inkamnet-go-app .netws-experience em{font-size:11px}
+body.inkamnet-go-app .netws-experience span{font-size:11px}
+body.inkamnet-go-app .netws-health-explain b{font-size:11px}
+body.inkamnet-go-app .netws-health-score span{font-size:11px}
+body.inkamnet-go-app .netws-incident-list b{font-size:11px}
+body.inkamnet-go-app .netws-incident-list small{font-size:11px}
+body.inkamnet-go-app .netws-incident-row b{font-size:11px}
+body.inkamnet-go-app .netws-incident-row small{font-size:11px}
+body.inkamnet-go-app .netws-inline-actions a{font-size:11px}
+body.inkamnet-go-app .netws-kpi span{font-size:11px}
+body.inkamnet-go-app .netws-maintenance-form input{font-size:11px}
+body.inkamnet-go-app .netws-maintenance-form select{font-size:11px}
+body.inkamnet-go-app .netws-maintenance-list b{font-size:11px}
+body.inkamnet-go-app .netws-maintenance-list small{font-size:11px}
+body.inkamnet-go-app .netws-object-card>div b{font-size:11px}
+body.inkamnet-go-app .netws-object-card>div span{font-size:11px}
+body.inkamnet-go-app .netws-object-card>small{font-size:11px}
+body.inkamnet-go-app .netws-object-groups>section>header a{font-size:11px}
+body.inkamnet-go-app .netws-object-title b{font-size:11px}
+body.inkamnet-go-app .netws-olt-list article header b{font-size:11px}
+body.inkamnet-go-app .netws-olt-list article header small{font-size:11px}
+body.inkamnet-go-app .netws-olt-list article>div:last-child b{font-size:11px}
+body.inkamnet-go-app .netws-personal-empty{font-size:11px}
+body.inkamnet-go-app .netws-personal-strip a{font-size:11px}
+body.inkamnet-go-app .netws-rootcause-row b{font-size:11px}
+body.inkamnet-go-app .netws-rootcause-row small{font-size:11px}
+body.inkamnet-go-app .netws-section-title>a{font-size:11px}
+body.inkamnet-go-app .netws-section-title>span{font-size:11px}
+body.inkamnet-go-app .netws-service-grid b{font-size:11px}
+body.inkamnet-go-app .netws-service-grid small{font-size:11px}
+body.inkamnet-go-app .netws-site-card b{font-size:11px}
+body.inkamnet-go-app .netws-site-card em{font-size:11px}
+body.inkamnet-go-app .netws-site-card small{font-size:11px}
+body.inkamnet-go-app .netws-table td{font-size:11px}
+body.inkamnet-go-app .netws-table td>small{font-size:11px}
+body.inkamnet-go-app .netws-tabs a{font-size:11px}
+body.inkamnet-go-app .netws-workspace-card p{font-size:11px}
+body.inkamnet-go-app .noc-card-head small{font-size:11px}
+body.inkamnet-go-app .noc-metric span{font-size:11px}
+body.inkamnet-go-app .noc-tab{font-size:11px}
+body.inkamnet-go-app .nw-chart .lbl{font-size:11px}
+body.inkamnet-go-app .nw-tag{font-size:11px}
+body.inkamnet-go-app .nx-bar-col small{font-size:11px}
+body.inkamnet-go-app .nx-chart .grid text{font-size:11px}
+body.inkamnet-go-app .nx-gauge .v small{font-size:11px}
+body.inkamnet-go-app .nx-ring .v small{font-size:11px}
+body.inkamnet-go-app .nx-site-availability small{font-size:11px}
+body.inkamnet-go-app .nx-site-foot{font-size:11px}
+body.inkamnet-go-app .nx-site-head small{font-size:11px}
+body.inkamnet-go-app .nx-site-metrics small{font-size:11px}
+body.inkamnet-go-app .nx-stat em{font-size:11px}
+body.inkamnet-go-app .nx-traffic-foot{font-size:11px}
+body.inkamnet-go-app .nx-w-size{font-size:11px}
+body.inkamnet-go-app .odp-heatmap a em{font-size:11px}
+body.inkamnet-go-app .odp-heatmap a span b{font-size:11px}
+body.inkamnet-go-app .odp-heatmap a span small{font-size:11px}
+body.inkamnet-go-app .olt-detail>header b{font-size:11px}
+body.inkamnet-go-app .olt-detail>header small{font-size:11px}
+body.inkamnet-go-app .olt-kpis b{font-size:11px}
+body.inkamnet-go-app .olt-mini-head b{font-size:11px}
+body.inkamnet-go-app .olt-mini-head small{font-size:11px}
+body.inkamnet-go-app .olt-summary b{font-size:11px}
+body.inkamnet-go-app .opc-actions a>b{font-size:11px}
+body.inkamnet-go-app .opc-actions small{font-size:11px}
+body.inkamnet-go-app .opc-actions strong{font-size:11px}
+body.inkamnet-go-app .opc-aging small{font-size:11px}
+body.inkamnet-go-app .opc-block-list b{font-size:11px}
+body.inkamnet-go-app .opc-block-list em{font-size:11px}
+body.inkamnet-go-app .opc-block-list small{font-size:11px}
+body.inkamnet-go-app .opc-block-list strong{font-size:11px}
+body.inkamnet-go-app .opc-card-head small{font-size:11px}
+body.inkamnet-go-app .opc-card-head>a{font-size:11px}
+body.inkamnet-go-app .opc-change-grid small{font-size:11px}
+body.inkamnet-go-app .opc-decision b{font-size:11px}
+body.inkamnet-go-app .opc-decision small{font-size:11px}
+body.inkamnet-go-app .opc-decision strong{font-size:11px}
+body.inkamnet-go-app .opc-drawer>header small{font-size:11px}
+body.inkamnet-go-app .opc-empty b{font-size:11px}
+body.inkamnet-go-app .opc-empty span{font-size:11px}
+body.inkamnet-go-app .opc-empty.compact{font-size:11px}
+body.inkamnet-go-app .opc-exec-counts span{font-size:11px}
+body.inkamnet-go-app .opc-forecast small{font-size:11px}
+body.inkamnet-go-app .opc-freshness span{font-size:11px}
+body.inkamnet-go-app .opc-freshness>small{font-size:11px}
+body.inkamnet-go-app .opc-funnel span{font-size:11px}
+body.inkamnet-go-app .opc-goal b{font-size:11px}
+body.inkamnet-go-app .opc-goal em{font-size:11px}
+body.inkamnet-go-app .opc-goal footer{font-size:11px}
+body.inkamnet-go-app .opc-goal small{font-size:11px}
+body.inkamnet-go-app .opc-growth-confidence b{font-size:11px}
+body.inkamnet-go-app .opc-growth-confidence small{font-size:11px}
+body.inkamnet-go-app .opc-growth-head p{font-size:11px}
+body.inkamnet-go-app .opc-growth-head>div:first-child>small{font-size:11px}
+body.inkamnet-go-app .opc-growth-insights b{font-size:11px}
+body.inkamnet-go-app .opc-growth-insights small{font-size:11px}
+body.inkamnet-go-app .opc-growth-kpis small{font-size:11px}
+body.inkamnet-go-app .opc-growth-kpis span{font-size:11px}
+body.inkamnet-go-app .opc-growth-tabs a{font-size:11px}
+body.inkamnet-go-app .opc-health p{font-size:11px}
+body.inkamnet-go-app .opc-health-ring small{font-size:11px}
+body.inkamnet-go-app .opc-health>div>small{font-size:11px}
+body.inkamnet-go-app .opc-hero-metrics em{font-size:11px}
+body.inkamnet-go-app .opc-hero-metrics small{font-size:11px}
+body.inkamnet-go-app .opc-history b{font-size:11px}
+body.inkamnet-go-app .opc-history small{font-size:11px}
+body.inkamnet-go-app .opc-history summary{font-size:11px}
+body.inkamnet-go-app .opc-inline-form input{font-size:11px}
+body.inkamnet-go-app .opc-inline-form select{font-size:11px}
+body.inkamnet-go-app .opc-inline-form summary{font-size:11px}
+body.inkamnet-go-app .opc-inline-kpi span{font-size:11px}
+body.inkamnet-go-app .opc-kicker{font-size:11px}
+body.inkamnet-go-app .opc-mini-list b{font-size:11px}
+body.inkamnet-go-app .opc-mini-list small{font-size:11px}
+body.inkamnet-go-app .opc-movement-strip em{font-size:11px}
+body.inkamnet-go-app .opc-movement-strip small{font-size:11px}
+body.inkamnet-go-app .opc-mrr-strip small{font-size:11px}
+body.inkamnet-go-app .opc-mrr-strip span{font-size:11px}
+body.inkamnet-go-app .opc-pace p{font-size:11px}
+body.inkamnet-go-app .opc-pace small{font-size:11px}
+body.inkamnet-go-app .opc-period select{font-size:11px}
+body.inkamnet-go-app .opc-priority{font-size:11px}
+body.inkamnet-go-app .opc-reason-form select{font-size:11px}
+body.inkamnet-go-app .opc-reason-list b{font-size:11px}
+body.inkamnet-go-app .opc-reason-list small{font-size:11px}
+body.inkamnet-go-app .opc-reason-list strong{font-size:11px}
+body.inkamnet-go-app .opc-retention-summary small{font-size:11px}
+body.inkamnet-go-app .opc-risk{font-size:11px}
+body.inkamnet-go-app .opc-settings input{font-size:11px}
+body.inkamnet-go-app .opc-settings label{font-size:11px}
+body.inkamnet-go-app .opc-settings select{font-size:11px}
+body.inkamnet-go-app .opc-settings>summary small{font-size:11px}
+body.inkamnet-go-app .opc-site-grid header small{font-size:11px}
+body.inkamnet-go-app .opc-site-grid span{font-size:11px}
+body.inkamnet-go-app .opc-snapshot small{font-size:11px}
+body.inkamnet-go-app .opc-stat-row small{font-size:11px}
+body.inkamnet-go-app .opc-state{font-size:11px}
+body.inkamnet-go-app .opc-table td{font-size:11px}
+body.inkamnet-go-app .opc-table td small{font-size:11px}
+body.inkamnet-go-app .opc-table th{font-size:11px}
+body.inkamnet-go-app .opc-tabs a{font-size:11px}
+body.inkamnet-go-app .opc-target em{font-size:11px}
+body.inkamnet-go-app .opc-target small{font-size:11px}
+body.inkamnet-go-app .opc-timeline-item b{font-size:11px}
+body.inkamnet-go-app .opc-timeline-item em{font-size:11px}
+body.inkamnet-go-app .opc-timeline-item small{font-size:11px}
+body.inkamnet-go-app .opc-variance span{font-size:11px}
+body.inkamnet-go-app .ops-activity p{font-size:11px}
+body.inkamnet-go-app .ops-activity small{font-size:11px}
+body.inkamnet-go-app .ops-activity time{font-size:11px}
+body.inkamnet-go-app .ops-detail-summary small{font-size:11px}
+body.inkamnet-go-app .ops-filter label{font-size:11px}
+body.inkamnet-go-app .ops-members small{font-size:11px}
+body.inkamnet-go-app .ops-module-nav small{font-size:11px}
+body.inkamnet-go-app .ops-site-rule-grid .form-select{font-size:11px}
+body.inkamnet-go-app .ops-site-rule-grid header small{font-size:11px}
+body.inkamnet-go-app .ops-site-rule-grid label{font-size:11px}
+body.inkamnet-go-app .ops-site-rules>summary small{font-size:11px}
+body.inkamnet-go-app .ops-site-strip span{font-size:11px}
+body.inkamnet-go-app .ops-summary-card em{font-size:11px}
+body.inkamnet-go-app .ops-summary-card small{font-size:11px}
+body.inkamnet-go-app .ops-ticket-main>small{font-size:11px}
+body.inkamnet-go-app .ops-ticket-meta b{font-size:11px}
+body.inkamnet-go-app .ops-ticket-meta small{font-size:11px}
+body.inkamnet-go-app .ops-timeline-item p{font-size:11px}
+body.inkamnet-go-app .ops-timeline-item small{font-size:11px}
+body.inkamnet-go-app .ops-timeline-item time{font-size:11px}
+body.inkamnet-go-app .payment-history-table .money>.cell-sub{font-size:11px}
+body.inkamnet-go-app .payment-history-table .payment-method{font-size:11px}
+body.inkamnet-go-app .pon-head b{font-size:11px}
+body.inkamnet-go-app .pon-stats span{font-size:11px}
+body.inkamnet-go-app .probe b{font-size:11px}
+body.inkamnet-go-app .probe small{font-size:11px}
+body.inkamnet-go-app .proc-card-head span{font-size:11px}
+body.inkamnet-go-app .proc-composer-head small{font-size:11px}
+body.inkamnet-go-app .proc-line label small{font-size:11px}
+body.inkamnet-go-app .proc-line label.item em{font-size:11px}
+body.inkamnet-go-app .proc-line-index{font-size:11px}
+body.inkamnet-go-app .proc-line-total small{font-size:11px}
+body.inkamnet-go-app .proc-lines-head small{font-size:11px}
+body.inkamnet-go-app .proc-saved-list header>span{font-size:11px}
+body.inkamnet-go-app .proc-saved-list li b{font-size:11px}
+body.inkamnet-go-app .proc-saved-list p{font-size:11px}
+body.inkamnet-go-app .proc-status{font-size:11px}
+body.inkamnet-go-app .proc-table small{font-size:11px}
+body.inkamnet-go-app .proc-table th{font-size:11px}
+body.inkamnet-go-app .proc-transfer-strip article>small{font-size:11px}
+body.inkamnet-go-app .psb-funnel span b{font-size:11px}
+body.inkamnet-go-app .psb-funnel span i{font-size:11px}
+body.inkamnet-go-app .psb-funnel span small{font-size:11px}
+body.inkamnet-go-app .psb-hero-copy small{font-size:11px}
+body.inkamnet-go-app .psb-hero-latest a b{font-size:11px}
+body.inkamnet-go-app .psb-hero-latest a small{font-size:11px}
+body.inkamnet-go-app .psb-hero-latest a>i{font-size:11px}
+body.inkamnet-go-app .psb-hero-latest>span{font-size:11px}
+body.inkamnet-go-app .psb-hero-metrics small{font-size:11px}
+body.inkamnet-go-app .psb-hero-metrics span{font-size:11px}
+body.inkamnet-go-app .recon-cash-widget .rcw-empty span{font-size:11px}
+body.inkamnet-go-app .recon-cash-widget .rcw-people-head small{font-size:11px}
+body.inkamnet-go-app .recon-cash-widget .rcw-person>i{font-size:11px}
+body.inkamnet-go-app .recon-cash-widget small{font-size:11px}
+body.inkamnet-go-app .recon-cash-widget span{font-size:11px}
+body.inkamnet-go-app .recon-eyebrow{font-size:11px}
+body.inkamnet-go-app .recon-intel-card small{font-size:11px}
+body.inkamnet-go-app .recon-intelligence-head small{font-size:11px}
+body.inkamnet-go-app .recon-intelligence-head span{font-size:11px}
+body.inkamnet-go-app .recon-kpi-strip span{font-size:11px}
+body.inkamnet-go-app .recon-oldest-list small{font-size:11px}
+body.inkamnet-go-app .recon-page .app-table .btn-tech.btn-sm{font-size:11px}
+body.inkamnet-go-app .recon-page .app-table .cell-sub{font-size:11px}
+body.inkamnet-go-app .recon-page .app-table .status-badge{font-size:11px}
+body.inkamnet-go-app .recon-page .app-table th{font-size:11px}
+body.inkamnet-go-app .recon-page .cash-age{font-size:11px}
+body.inkamnet-go-app .recon-page .collector-card small{font-size:11px}
+body.inkamnet-go-app .recon-page .data-card-head small{font-size:11px}
+body.inkamnet-go-app .recon-page .recon-aging-setting{font-size:11px}
+body.inkamnet-go-app .recon-page .recon-filter label{font-size:11px}
+body.inkamnet-go-app .recon-page .recon-filter-head em{font-size:11px}
+body.inkamnet-go-app .recon-page .recon-filter-head small{font-size:11px}
+body.inkamnet-go-app .recon-page .recon-kpi-strip span{font-size:11px}
+body.inkamnet-go-app .recon-page .recon-metrics .metric-label{font-size:11px}
+body.inkamnet-go-app .recon-page .recon-metrics small{font-size:11px}
+body.inkamnet-go-app .recon-page .recon-oldest-list small{font-size:11px}
+body.inkamnet-go-app .recon-presets{font-size:11px}
+body.inkamnet-go-app .recon-section-label{font-size:11px}
+body.inkamnet-go-app .recon-seg-btn em{font-size:11px}
+body.inkamnet-go-app .recon-suggestions a{font-size:11px}
+body.inkamnet-go-app .recon-summary-line small{font-size:11px}
+body.inkamnet-go-app .recon-summary-line span{font-size:11px}
+body.inkamnet-go-app .role-workspace-actions em{font-size:11px}
+body.inkamnet-go-app .role-workspace-actions small{font-size:11px}
+body.inkamnet-go-app .role-workspace-copy small{font-size:11px}
+body.inkamnet-go-app .site-card .stats b{font-size:11px}
+body.inkamnet-go-app .site-card .stats small{font-size:11px}
+body.inkamnet-go-app .site-condition-health b{font-size:11px}
+body.inkamnet-go-app .site-condition-name span small{font-size:11px}
+body.inkamnet-go-app .site-condition-name>strong small{font-size:11px}
+body.inkamnet-go-app .site-condition-status b{font-size:11px}
+body.inkamnet-go-app .site-condition-status span{font-size:11px}
+body.inkamnet-go-app .ticker-login-item small{font-size:11px}
+body.inkamnet-go-app .topology-node .node-meta{font-size:11px}
+body.inkamnet-go-app .wai-conv-tags .tag{font-size:11px}
+body.inkamnet-go-app .wai-hint{font-size:11px}
+body.inkamnet-go-app .wai-meta{font-size:11px}
+body.inkamnet-go-app .wai-note-label{font-size:11px}
+body.inkamnet-go-app .wai-sender{font-size:11px}
+html[data-theme] body.inkamnet-go-app .recon-page .app-table thead th{font-size:11px}

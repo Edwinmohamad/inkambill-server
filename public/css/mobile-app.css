@@ -516,3 +516,44 @@ body.inkamnet-go-app .analytics-section-title span{color:var(--go-accent-text)!i
 body.inkamnet-go-app .log-tabs button.active,body.inkamnet-go-app .log-tabs button.active b{color:var(--go-ink)!important}
 body.inkamnet-go-app :where(.btn-tech.danger,.report-pdf-btn){color:var(--go-neg-text)!important}
 body.inkamnet-go-app .cc-board-kicker{color:var(--go-accent-text)!important}
+
+/* A+ tabel → kartu (ditandai skrip di mobile-app.js). Tidak ada tabel yang perlu digeser ke samping. */
+body.inkamnet-go-app .table-responsive{overflow-x:visible}
+body.inkamnet-go-app .table-responsive:has(>table:not(.go-cards)){overflow-x:auto}
+body.inkamnet-go-app table.go-cards{display:block!important;width:100%!important;min-width:0!important;max-width:100%!important;table-layout:auto!important;border:0!important;background:transparent!important;box-shadow:none!important}
+body.inkamnet-go-app table.go-cards>thead{display:none!important}
+body.inkamnet-go-app table.go-cards>tbody{display:grid!important;gap:10px!important;width:100%!important}
+body.inkamnet-go-app table.go-cards>tbody>tr{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;column-gap:12px!important;row-gap:0!important;width:100%!important;min-width:0!important;padding:12px 14px!important;border:1px solid var(--go-line)!important;border-radius:var(--go-radius)!important;background:var(--go-card)!important;box-shadow:none!important}
+body.inkamnet-go-app table.go-cards>tbody>tr>td{display:block!important;position:static!important;width:auto!important;min-width:0!important;max-width:none!important;height:auto!important;padding:0!important;border:0!important;background:transparent!important;text-align:left!important;white-space:normal!important;overflow-wrap:anywhere;font-size:.8125rem;color:var(--go-ink)}
+body.inkamnet-go-app table.go-cards td[data-go-cell="seq"]{display:none!important}
+body.inkamnet-go-app table.go-cards td[data-go-cell="title"]{grid-column:1;grid-row:1;align-self:center;padding-bottom:8px!important;font-size:.9375rem;font-weight:700}
+body.inkamnet-go-app table.go-cards td[data-go-cell="check"]{grid-column:2;grid-row:1;justify-self:end;align-self:start}
+body.inkamnet-go-app table.go-cards td[data-go-cell="field"]{grid-column:1/-1;display:grid!important;grid-template-columns:minmax(76px,38%) minmax(0,1fr);column-gap:12px;justify-items:end;text-align:right!important;padding:7px 0!important;border-top:1px solid var(--go-line-soft)!important}
+body.inkamnet-go-app table.go-cards td[data-go-cell="field"]>*{grid-column:2;max-width:100%}
+body.inkamnet-go-app table.go-cards td[data-go-cell="field"]::before{content:attr(data-go-label);grid-column:1;grid-row:1/span 6;justify-self:start;text-align:left;color:var(--go-muted);font-size:.75rem;font-weight:600;line-height:1.5}
+body.inkamnet-go-app table.go-cards td[data-go-cell="field"]:not([data-go-label]){grid-template-columns:minmax(0,1fr)}
+body.inkamnet-go-app table.go-cards td[data-go-cell="field"]:not([data-go-label])>*{grid-column:1}
+body.inkamnet-go-app table.go-cards td[data-go-cell="field"]:not([data-go-label])::before{content:none}
+body.inkamnet-go-app table.go-cards td[data-go-cell="actions"]{grid-column:1/-1;display:flex!important;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:8px;padding-top:10px!important;border-top:1px solid var(--go-line-soft)!important}
+body.inkamnet-go-app table.go-cards td[data-go-cell="actions"]:empty{display:none!important}
+body.inkamnet-go-app table.go-cards td[data-go-cell="full"]{grid-column:1/-1;text-align:center!important;color:var(--go-muted)}
+body.inkamnet-go-app table.go-cards :where(.cell-main){font-weight:700}
+body.inkamnet-go-app table.go-cards :where(.cell-sub){color:var(--go-muted)}
+body.inkamnet-go-app table.go-cards .proof-chip{min-width:0!important;max-width:100%}
+@media(prefers-reduced-motion:no-preference){body.inkamnet-go-app table.go-cards>tbody>tr:nth-child(-n+8){animation:goRise .36s cubic-bezier(.2,.8,.2,1) both}}
+
+/* A+ target sentuh: chip, filter, tautan teks, dan isian minimal nyaman untuk jari. */
+body.inkamnet-go-app .content-wrap :where(a,button)[class*="chip"]{min-height:36px;display:inline-flex;align-items:center}
+body.inkamnet-go-app .content-wrap :where(select,.form-select){min-height:40px}
+body.inkamnet-go-app .content-wrap .ink-text-link{display:inline-flex;align-items:center;min-height:36px}
+body.inkamnet-go-app .bm-cycle-foot a,body.inkamnet-go-app .billing-monitor-links a,body.inkamnet-go-app .bm-chart-head a{display:inline-flex!important;align-items:center!important;min-height:36px!important;height:auto!important}
+/* Tautan di kepala/kaki panel (mis. "Lihat semua →", "Riwayat →") di semua modul. */
+body.inkamnet-go-app .content-wrap :is([class*="-head"],[class*="-foot"])>a:not(.btn-tech){display:inline-flex;align-items:center;min-height:36px}
+body.inkamnet-go-app .modal .btn-close{width:40px;height:40px;padding:0;background-size:14px}
+body.inkamnet-go-app .modal-footer{flex-wrap:wrap;gap:8px}
+body.inkamnet-go-app .modal-footer .btn-tech{flex:1 1 auto;min-height:44px;height:auto;white-space:normal;line-height:1.2;text-align:center}
+body.inkamnet-go-app .bm-segment button{min-height:36px}
+body.inkamnet-go-app .inv-gauge-legend a{display:flex;align-items:center;min-height:36px}
+body.inkamnet-go-app .inv-view-toggle button{min-width:40px;min-height:40px}
+body.inkamnet-go-app .network-context-nav a{min-height:40px;display:inline-flex;align-items:center}
+body.inkamnet-go-app .filter-card .btn-tech,body.inkamnet-go-app .go-primary-filter .btn-tech{white-space:normal;line-height:1.2;text-align:center}

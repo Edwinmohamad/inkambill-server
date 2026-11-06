@@ -15,6 +15,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <link rel="stylesheet" href="/css/app.css?v=<%= assetVersion %>">
   <link rel="stylesheet" href="/css/mobile-app.css?v=<%= assetVersion %>">
+  <% if(isMobileApp){ %><link rel="stylesheet" href="/css/mobile-legibility.css?v=<%= assetVersion %>"><% } %>
   <script>(()=>{try{const pref=<%- isMobileApp?"localStorage.getItem('inkamnet-theme')||'system'":"localStorage.getItem('inkamnet-theme')||"+JSON.stringify(defaultTheme||'dark') %>;document.documentElement.dataset.theme=pref==='system'?(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'):pref;if(sessionStorage.getItem('inkamnet-instant-filter')==='1'){sessionStorage.removeItem('inkamnet-instant-filter');document.documentElement.classList.add('instant-filter-nav')}}catch(e){}})();</script>
   <style id="inkamnet-critical-ui">
     /* Critical shell/loader CSS prevents FOUC while the main stylesheet is loading.
