@@ -7,7 +7,7 @@
   const CACHE_KEY = 'nx-dash-layout-v2';
   const OLD_KEY = 'nx-dash-layout-v1';
   const SNAP_H = 20, MIN_H = 160;
-  const reduce = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const reduce = () => document.body.classList.contains('inkamnet-go-app') || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   const narrow = () => window.matchMedia?.('(max-width: 760px)').matches;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const readCache = key => { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (_) { return null; } };

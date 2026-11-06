@@ -1,12 +1,12 @@
 // INKAMBILL A+ (APK): menghasilkan public/css/mobile-legibility.css.
 // Banyak modul lama menulis ukuran huruf mini secara langsung (mis. 8px, 9px, .54rem) yang tidak
 // terbaca di layar HP. Skrip ini membaca semua stylesheet, menemukan setiap aturan dengan font-size
-// di bawah 11px, lalu menulis aturan pengganti khusus APK (body.inkamnet-go-app) bernilai 11px.
+// di bawah 12px, lalu menulis aturan pengganti khusus APK (body.inkamnet-go-app) bernilai 12px.
 // Statis: tanpa biaya saat aplikasi berjalan. Jalankan ulang bila ada CSS baru:
 //   node scripts/generate-mobile-legibility.js
 const fs=require('fs'),path=require('path');
 const root=path.resolve(__dirname,'..'),dir=path.join(root,'public','css');
-const OUT='mobile-legibility.css',MIN=11,SKIP=new Set(['mobile-app.css','aplus-web.css',OUT]);
+const OUT='mobile-legibility.css',MIN=12,SKIP=new Set(['mobile-app.css','aplus-web.css',OUT]);
 function rules(css){
   css=css.replace(/\/\*[\s\S]*?\*\//g,'');
   const out=[];const stack=[];let buf='';

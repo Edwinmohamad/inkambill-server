@@ -57,7 +57,6 @@
   // Previously the leftover entry meant Android Back had to be pressed twice to leave a page.
   document.querySelectorAll('.go-menu a,.go-quick-grid a').forEach(link=>link.addEventListener('click',event=>{
     if(event.defaultPrevented||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
-    link.classList.add('go-tapped');setTimeout(()=>link.classList.remove('go-tapped'),180);
     const onLayer=layerState()?.kind==='overlay';
     closeAllOverlays({consumeHistory:false,restoreFocus:false});
     if(onLayer&&link.href){event.preventDefault();location.replace(link.href);}
@@ -100,28 +99,7 @@
   if(layerState())history.back();
   window.addEventListener('pageshow',event=>{if(!event.persisted)return;closeAllOverlays({consumeHistory:false,restoreFocus:false});closeMobileActionPopovers();if(layerState()){history.back();}document.querySelectorAll('.go-tapped').forEach(node=>node.classList.remove('go-tapped'));document.querySelectorAll('.modal.show').forEach(node=>{window.bootstrap?.Modal.getInstance(node)?.dispose();node.classList.remove('show');node.style.display='none';node.setAttribute('aria-hidden','true');node.removeAttribute('aria-modal');node.removeAttribute('role');});body.classList.remove('modal-open');body.style.removeProperty('overflow');body.style.removeProperty('padding-right');document.querySelectorAll('.modal-backdrop').forEach(node=>node.remove());});
 
-  // INKAMBILL A+: angka KPI berhitung naik sekali saat halaman dibuka. Ringan: maks. 12 elemen yang
-  // terlihat, satu requestAnimationFrame bersama, 650 ms, teks asli dipulihkan persis di akhir,
-  // dan dilewati bila pengguna memilih "kurangi animasi".
-  (()=>{
-    if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches)return;
-    const pattern=/^(Rp\s?)?(\d{1,3}(?:\.\d{3})+|\d+)(\s?%|\s?jt)?$/;
-    const limit=window.innerHeight*1.5;
-    const items=[...document.querySelectorAll('.command-kpi strong,.metric-card strong,.ink-kpi strong,[data-countup]')]
-      .filter(el=>!el.children.length&&el.getBoundingClientRect().top<limit)
-      .map(el=>{const text=el.textContent.trim();const m=text.match(pattern);if(!m)return null;const target=Number(m[2].replace(/\./g,''));if(!Number.isFinite(target)||target<=0)return null;return {el,text,target,prefix:m[1]||'',suffix:m[3]||''};})
-      .filter(Boolean).slice(0,12);
-    if(!items.length)return;
-    const format=n=>n.toLocaleString('id-ID');
-    items.forEach(item=>{item.el.dataset.goCounting='1';item.el.textContent=item.prefix+'0'+item.suffix;});
-    const start=performance.now(),duration=650;
-    const tick=now=>{
-      const p=Math.min(1,(now-start)/duration),e=1-Math.pow(1-p,3);
-      items.forEach(item=>{item.el.textContent=p<1?item.prefix+format(Math.round(item.target*e))+item.suffix:item.text;});
-      if(p<1)requestAnimationFrame(tick);else items.forEach(item=>delete item.el.dataset.goCounting);
-    };
-    requestAnimationFrame(tick);
-  })();
+  // KPI values render immediately; no count-up animation on Android.
 })();
 
 // INKAMBILL A+ (APK): tabel lebar diubah menjadi kartu agar pas di layar HP — tidak perlu geser ke
@@ -153,14 +131,21 @@
     }
     table.classList.add('go-cards');
   }
-  const run=()=>document.querySelectorAll('table.app-table,table.table').forEach(table=>{try{cardify(table);}catch(_){}});
-  run();
-  // Baris yang dimuat belakangan (AJAX) ikut diubah; hanya bereaksi bila ada baris/tabel baru.
+  const selector='table.app-table,table.table';
+  const pending=new Set();
+  const collect=node=>{
+    if(node.nodeType!==1)return;
+    const table=node.closest(selector);if(table)pending.add(table);
+    node.querySelectorAll(selector).forEach(table=>pending.add(table));
+  };
+  const flush=()=>{pending.forEach(table=>{if(table.isConnected)cardify(table);});pending.clear();};
+  document.querySelectorAll(selector).forEach(table=>pending.add(table));flush();
+  // Only revisit tables affected by inserted rows, never rescan the whole page.
   if(typeof MutationObserver!=='function')return;
   let queued=false;
   new MutationObserver(list=>{
-    if(queued)return;
-    if(!list.some(m=>[...m.addedNodes].some(n=>n.nodeType===1&&(n.matches('tr,table,tbody')||n.querySelector('tr')))))return;
-    queued=true;requestAnimationFrame(()=>{queued=false;run();});
-  }).observe(document.body,{childList:true,subtree:true});
+    list.forEach(m=>m.addedNodes.forEach(collect));
+    if(queued||!pending.size)return;
+    queued=true;requestAnimationFrame(()=>{queued=false;flush();});
+  }).observe(document.querySelector('.content-wrap')||document.body,{childList:true,subtree:true});
 })();

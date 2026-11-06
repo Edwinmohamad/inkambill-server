@@ -57,6 +57,9 @@
   }
   @media(max-width:480px){.login-card{padding:26px 20px 22px}.input-wrap,.login-button{height:48px}.field{margin-bottom:13px}}
   @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+  <% if(isGoApp){ %>
+  html.go-login *,html.go-login *::before,html.go-login *::after{animation:none!important;transition:none!important;backdrop-filter:none!important;scroll-behavior:auto!important}
+  <% } %>
   </style>
   <% { %>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400..800&display=swap" rel="stylesheet">

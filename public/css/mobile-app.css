@@ -37,17 +37,17 @@ body.inkamnet-go-app{
   --go-space-3:12px;
   --go-space-4:16px;
   --go-space-5:24px;
-  --go-type-meta:.6875rem;
-  --go-type-body:.8125rem;
-  --go-motion-fast:120ms;
-  --go-motion:180ms;
-  --go-motion-slow:240ms;
+  --go-type-meta:.75rem;
+  --go-type-body:.875rem;
+  --go-motion-fast:0ms;
+  --go-motion:0ms;
+  --go-motion-slow:0ms;
   --go-ease:cubic-bezier(.22,1,.36,1);
   --go-ease-standard:cubic-bezier(.4,0,.2,1);
   background:var(--go-bg)!important;
   color:var(--go-ink)!important;
   padding-bottom:calc(78px + env(safe-area-inset-bottom));
-  font-family:"Plus Jakarta Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif!important;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif!important;
   font-variant-numeric:tabular-nums;
   font-size:.875rem;
   line-height:1.45;
@@ -96,7 +96,7 @@ body.inkamnet-go-app .topbar .icon-button:active,
 body.inkamnet-go-app .topbar .user-button:active{background:var(--go-press)!important;color:var(--go-ink)!important}
 body.inkamnet-go-app .topbar .avatar{width:34px;height:34px;border:0!important;border-radius:var(--go-radius-sm)!important}
 
-body.inkamnet-go-app .content-wrap{padding:14px 12px 18px!important;max-width:100%;overflow:hidden}
+body.inkamnet-go-app .content-wrap{padding:14px 12px 18px!important;max-width:100%;min-width:0}
 body.inkamnet-go-app .page-enter{animation:none!important}
 body.inkamnet-go-app .module-head{align-items:flex-start;gap:10px;margin:3px 0 12px!important}
 body.inkamnet-go-app .module-kicker{font-size:var(--go-type-meta)!important;color:var(--go-muted-2)!important;font-weight:700!important}
@@ -110,17 +110,17 @@ body.inkamnet-go-app .btn-tech.success{color:var(--go-ok-text)!important;backgro
 body.inkamnet-go-app :where(.btn-tech,.icon-button,.user-button,.go-invoice-action-button,.invoice-pay-button,.ink-action-item,.go-menu-grid>a,.go-quick-grid>a,.go-bottom-nav>a,.go-bottom-nav>button){
   transition:background-color var(--go-motion-fast) var(--go-ease-standard),border-color var(--go-motion-fast) var(--go-ease-standard),color var(--go-motion-fast) var(--go-ease-standard),opacity var(--go-motion-fast) var(--go-ease-standard),transform var(--go-motion-fast) var(--go-ease);
 }
-body.inkamnet-go-app :where(.btn-tech,.icon-button,.user-button,.go-invoice-action-button,.invoice-pay-button,.ink-action-item,.go-menu-grid>a,.go-quick-grid>a,.go-bottom-nav>a,.go-bottom-nav>button):active{transform:scale(.98)}
+body.inkamnet-go-app :where(.btn-tech,.icon-button,.user-button,.go-invoice-action-button,.invoice-pay-button,.ink-action-item,.go-menu-grid>a,.go-quick-grid>a,.go-bottom-nav>a,.go-bottom-nav>button):active{transform:none}
 body.inkamnet-go-app :where(button,a)[aria-disabled="true"],body.inkamnet-go-app :where(button,input,select,textarea):disabled{opacity:.42!important;cursor:not-allowed}
 
 /* Filters stay near the page title and use a compact two-column mobile layout. */
 body.inkamnet-go-app .go-primary-filter{position:relative;z-index:2;margin:0 0 var(--go-space-4)!important;box-shadow:none!important}
 body.inkamnet-go-app .go-primary-filter.filter-card{padding:0!important;border:0!important;border-radius:0!important;background:transparent!important}
-body.inkamnet-go-app .go-primary-filter .filter-grid{display:grid!important;grid-template-columns:1fr 1fr!important;gap:8px!important}
+body.inkamnet-go-app .go-primary-filter .filter-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important}
 body.inkamnet-go-app .go-primary-filter .filter-grid>.filter-group:first-child{grid-column:1/-1;grid-row:1}
 body.inkamnet-go-app .go-primary-filter .billing-filter-head{padding:0 0 var(--go-space-2)!important;min-height:0;border:0!important;background:transparent!important}
 body.inkamnet-go-app .go-primary-filter .billing-filter-head small{display:none}
-body.inkamnet-go-app .go-primary-filter .billing-filter-grid{display:grid!important;grid-template-columns:1fr 1fr!important;padding:0!important;gap:8px!important}
+body.inkamnet-go-app .go-primary-filter .billing-filter-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;padding:0!important;gap:8px!important}
 body.inkamnet-go-app .go-primary-filter .billing-filter-search{grid-column:1/-1!important;grid-row:1!important}
 body.inkamnet-go-app .go-primary-filter .billing-filter-submit{grid-column:1/-1}
 body.inkamnet-go-app .go-primary-filter .search-box{width:100%;min-width:0}
@@ -248,7 +248,7 @@ body.inkamnet-go-app .ink-action-item.compact:hover{transform:none!important}
 body.inkamnet-go-app .modal{z-index:1130;padding:0!important;overscroll-behavior:contain}
 body.inkamnet-go-app.modal-open .modal-backdrop{z-index:1120}
 body.inkamnet-go-app .modal-dialog{height:calc(100vh - 16px);height:calc(var(--go-viewport-height,100dvh) - 16px);max-height:calc(100vh - 16px);max-height:calc(var(--go-viewport-height,100dvh) - 16px);margin:8px auto;align-items:flex-end;min-height:0}
-body.inkamnet-go-app .modal.fade .modal-dialog{transform:translateY(12px);transition:transform var(--go-motion-slow) var(--go-ease)}
+body.inkamnet-go-app .modal.fade .modal-dialog{transform:none;transition:transform var(--go-motion-slow) var(--go-ease)}
 body.inkamnet-go-app .modal.show .modal-dialog{transform:none}
 body.inkamnet-go-app .modal-backdrop.fade{transition:opacity var(--go-motion) var(--go-ease-standard)}
 body.inkamnet-go-app .modal-content{display:flex;flex-direction:column;min-height:0;max-height:100%!important;overflow:hidden;border:1px solid var(--go-line)!important;border-radius:var(--go-radius-lg) var(--go-radius-lg) var(--go-radius) var(--go-radius)!important;background:var(--go-card)!important;box-shadow:var(--go-shadow)!important}
@@ -419,7 +419,7 @@ body.inkamnet-go-app{
   --brand-tint:rgba(var(--go-accent-rgb),.12);--soft:rgba(var(--go-accent-rgb),.08);--glow:rgba(var(--go-accent-rgb),.14);
   --success:var(--go-success);--warning:var(--go-warning);--danger:var(--go-danger);
   --topbar:var(--go-bg);--sidebar-bg:var(--go-card);--sidebar-bg2:var(--go-bg);
-  --font:"Plus Jakarta Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;--font-display:var(--font);
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;--font-display:var(--font);
 }
 html[data-theme="light"]:has(body.inkamnet-go-app){background:#F7F6F2}
 html[data-theme="dark"]:has(body.inkamnet-go-app){background:#0F1012}
@@ -447,52 +447,9 @@ body.inkamnet-go-app .modal-header,body.inkamnet-go-app .modal-body{color:var(--
 /* Navigasi bawah A+: tab rata, garis aktif aksen yang meluncur masuk. */
 body.inkamnet-go-app .go-bottom-nav>a,body.inkamnet-go-app .go-bottom-nav>button{position:relative}
 body.inkamnet-go-app .go-bottom-nav .active{color:var(--go-accent-text);font-weight:700}
-body.inkamnet-go-app .go-bottom-nav>.active::before{content:"";position:absolute;top:-7px;left:50%;width:28px;height:2px;margin-left:-14px;border-radius:1px;background:var(--go-accent-text);animation:goTabIn .32s cubic-bezier(.2,.9,.25,1) both}
+body.inkamnet-go-app .go-bottom-nav>.active::before{content:"";position:absolute;top:-7px;left:50%;width:28px;height:2px;margin-left:-14px;border-radius:1px;background:var(--go-accent-text)}
 body.inkamnet-go-app .go-bottom-nav .go-add-button{width:auto;height:54px;margin:0;border-radius:0;background:none;color:var(--go-muted);box-shadow:none}
 body.inkamnet-go-app .go-bottom-nav .go-add-button i{width:34px;height:26px;display:grid;place-items:center;border-radius:8px;background:var(--go-accent);color:var(--go-on-accent);font-size:1.05rem}
-@keyframes goTabIn{from{transform:scaleX(0);opacity:0}}
-
-/* Motion masuk: konten halaman muncul bertahap (maks. 8 blok pertama). */
-@keyframes goRise{from{opacity:0;transform:translateY(10px)}}
-@keyframes goDrop{from{opacity:0;transform:translateY(-12px)}}
-body.inkamnet-go-app .page-enter>*:nth-child(-n+8),
-body.inkamnet-go-app .page-enter>:only-child>*:nth-child(-n+8){animation:goRise .42s cubic-bezier(.2,.8,.2,1) both}
-body.inkamnet-go-app .page-enter>*:nth-child(2),body.inkamnet-go-app .page-enter>:only-child>*:nth-child(2){animation-delay:.04s}
-body.inkamnet-go-app .page-enter>*:nth-child(3),body.inkamnet-go-app .page-enter>:only-child>*:nth-child(3){animation-delay:.08s}
-body.inkamnet-go-app .page-enter>*:nth-child(4),body.inkamnet-go-app .page-enter>:only-child>*:nth-child(4){animation-delay:.12s}
-body.inkamnet-go-app .page-enter>*:nth-child(5),body.inkamnet-go-app .page-enter>:only-child>*:nth-child(5){animation-delay:.16s}
-body.inkamnet-go-app .page-enter>*:nth-child(6),body.inkamnet-go-app .page-enter>:only-child>*:nth-child(6){animation-delay:.2s}
-body.inkamnet-go-app .page-enter>*:nth-child(7),body.inkamnet-go-app .page-enter>:only-child>*:nth-child(7){animation-delay:.24s}
-body.inkamnet-go-app .page-enter>*:nth-child(8),body.inkamnet-go-app .page-enter>:only-child>*:nth-child(8){animation-delay:.28s}
-/* Kartu tagihan & KPI berurutan muncul (hanya 10 pertama, sisanya langsung tampil). */
-body.inkamnet-go-app .invoice-table tr.invoice-row:nth-child(-n+10),
-body.inkamnet-go-app .command-kpi:nth-child(-n+8){animation:goRise .4s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--go-i,0) * 35ms)}
-body.inkamnet-go-app .invoice-table tr.invoice-row:nth-child(2),body.inkamnet-go-app .command-kpi:nth-child(2){--go-i:1}
-body.inkamnet-go-app .invoice-table tr.invoice-row:nth-child(3),body.inkamnet-go-app .command-kpi:nth-child(3){--go-i:2}
-body.inkamnet-go-app .invoice-table tr.invoice-row:nth-child(4),body.inkamnet-go-app .command-kpi:nth-child(4){--go-i:3}
-body.inkamnet-go-app .invoice-table tr.invoice-row:nth-child(5),body.inkamnet-go-app .command-kpi:nth-child(5){--go-i:4}
-body.inkamnet-go-app .invoice-table tr.invoice-row:nth-child(6),body.inkamnet-go-app .command-kpi:nth-child(6){--go-i:5}
-body.inkamnet-go-app .invoice-table tr.invoice-row:nth-child(7),body.inkamnet-go-app .command-kpi:nth-child(7){--go-i:6}
-body.inkamnet-go-app .invoice-table tr.invoice-row:nth-child(8),body.inkamnet-go-app .command-kpi:nth-child(8){--go-i:7}
-body.inkamnet-go-app .invoice-table tr.invoice-row:nth-child(9){--go-i:8}
-body.inkamnet-go-app .invoice-table tr.invoice-row:nth-child(10){--go-i:9}
-/* Notifikasi (flash) turun dari atas. */
-body.inkamnet-go-app :where(.alert,.flash-message,.toast){animation:goDrop .38s cubic-bezier(.2,.9,.25,1) both}
-/* Menu penuh & sheet: isi muncul bertahap saat dibuka. */
-body.inkamnet-go-app .go-menu.open section{animation:goRise .36s cubic-bezier(.2,.8,.2,1) both}
-body.inkamnet-go-app .go-menu.open section:nth-child(2){animation-delay:.04s}
-body.inkamnet-go-app .go-menu.open section:nth-child(3){animation-delay:.08s}
-body.inkamnet-go-app .go-menu.open section:nth-child(4){animation-delay:.12s}
-body.inkamnet-go-app .go-menu.open section:nth-child(n+5){animation-delay:.16s}
-body.inkamnet-go-app .go-sheet-panel{transition:transform .42s cubic-bezier(.2,.9,.25,1)!important}
-body.inkamnet-go-app .modal.fade .modal-dialog{transition:transform .28s cubic-bezier(.2,.9,.25,1)}
-/* Ganti tema: warna berpindah halus hanya selama 0,35 detik (kelas dipasang sementara oleh JS). */
-html.go-theme-anim body.inkamnet-go-app,html.go-theme-anim body.inkamnet-go-app *{transition:background-color .3s ease,color .3s ease,border-color .3s ease!important}
-/* Angka yang berhitung naik tidak boleh membuat layout melompat. */
-body.inkamnet-go-app [data-go-counting]{font-variant-numeric:tabular-nums}
-@media(prefers-reduced-motion:reduce){
-  body.inkamnet-go-app .page-enter *,body.inkamnet-go-app .invoice-table tr.invoice-row,body.inkamnet-go-app .command-kpi,body.inkamnet-go-app .go-menu.open section,body.inkamnet-go-app .go-bottom-nav>.active::before{animation:none!important}
-}
 
 /* A+ tema terang: warna status bawaan app.css dirancang untuk latar gelap dan terlalu pucat di atas
    latar terang (kontras < 4,5:1). Diganti versi gelap yang tetap memakai makna warna yang sama. */
@@ -540,7 +497,6 @@ body.inkamnet-go-app table.go-cards td[data-go-cell="full"]{grid-column:1/-1;tex
 body.inkamnet-go-app table.go-cards :where(.cell-main){font-weight:700}
 body.inkamnet-go-app table.go-cards :where(.cell-sub){color:var(--go-muted)}
 body.inkamnet-go-app table.go-cards .proof-chip{min-width:0!important;max-width:100%}
-@media(prefers-reduced-motion:no-preference){body.inkamnet-go-app table.go-cards>tbody>tr:nth-child(-n+8){animation:goRise .36s cubic-bezier(.2,.8,.2,1) both}}
 
 /* A+ target sentuh: chip, filter, tautan teks, dan isian minimal nyaman untuk jari. */
 body.inkamnet-go-app .content-wrap :where(a,button)[class*="chip"]{min-height:36px;display:inline-flex;align-items:center}
@@ -557,3 +513,65 @@ body.inkamnet-go-app .inv-gauge-legend a{display:flex;align-items:center;min-hei
 body.inkamnet-go-app .inv-view-toggle button{min-width:40px;min-height:40px}
 body.inkamnet-go-app .network-context-nav a{min-height:40px;display:inline-flex;align-items:center}
 body.inkamnet-go-app .filter-card .btn-tech,body.inkamnet-go-app .go-primary-filter .btn-tech{white-space:normal;line-height:1.2;text-align:center}
+
+/* APK baseline: immediate feedback, bounded controls and wrapping content.
+   Keep positioning transforms (sheets, dropdowns, tablet navigation) intact. */
+html body.inkamnet-go-app,html body.inkamnet-go-app *,
+html body.inkamnet-go-app *::before,html body.inkamnet-go-app *::after{
+  animation:none!important;transition:none!important;scroll-behavior:auto!important;
+  backdrop-filter:none!important;-webkit-backdrop-filter:none!important;will-change:auto!important;
+}
+body.inkamnet-go-app #appLoader{background:var(--go-bg)!important;color:var(--go-ink)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;transition:none!important}
+body.inkamnet-go-app #appLoader .ios-spinner i{animation:none!important;background:var(--go-ink)!important;opacity:.55!important;will-change:auto!important}
+body.inkamnet-go-app #appLoader .apple-loader-text{color:var(--go-ink)!important;font-size:.875rem!important}
+body.inkamnet-go-app .reveal-item{opacity:1!important;transform:none!important}
+body.inkamnet-go-app{
+  --fs-1:.75rem;--fs-2:.75rem;--fs-3:.75rem;--fs-4:.75rem;--fs-5:.75rem;
+  --ui-control-h:44px;
+}
+body.inkamnet-go-app :where(.main-panel,.page-enter,.module-head>div,.filter-group,.billing-filter-field,.data-card,.form-card,.metric-card,.command-panel,.ink-panel){min-width:0;max-width:100%;box-sizing:border-box}
+body.inkamnet-go-app .module-head{flex-direction:column;align-items:stretch}
+body.inkamnet-go-app .module-head::after{display:none}
+body.inkamnet-go-app .module-head p{max-width:100%;margin-bottom:0}
+body.inkamnet-go-app .module-actions{flex-wrap:wrap;overflow:visible}
+body.inkamnet-go-app .module-actions>*{flex:1 1 140px;min-width:0;max-width:100%}
+body.inkamnet-go-app .module-actions .btn-tech{justify-content:center;white-space:normal;height:auto;padding:10px 12px;font-size:.875rem!important}
+body.inkamnet-go-app .topbar-title-wrap{min-width:0;flex:1}
+body.inkamnet-go-app .topbar-title{white-space:normal;overflow-wrap:anywhere;line-height:1.3}
+body.inkamnet-go-app .topbar-actions{flex:0 0 auto}
+body.inkamnet-go-app :is(.filter-grid,.billing-filter-grid,.payment-filter-grid,.payment-filter-grid-v112,.report-filter-grid){display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:12px!important;align-items:end}
+body.inkamnet-go-app :is(.filter-grid,.billing-filter-grid,.payment-filter-grid,.payment-filter-grid-v112,.report-filter-grid)>*{min-width:0;max-width:100%;width:auto}
+body.inkamnet-go-app :is(.billing-filter-search,.report-customer-filter){grid-column:1/-1!important}
+body.inkamnet-go-app .filter-group{display:flex;flex-direction:column;gap:5px}
+body.inkamnet-go-app .go-primary-filter.billing-filter-panel{padding:12px!important}
+body.inkamnet-go-app :is(.filter-card,.go-primary-filter,.report-filter-card) label{font-size:.75rem!important;line-height:1.4;margin:0;white-space:normal}
+body.inkamnet-go-app :is(.form-control,.form-select,.search-box,.filter-group input,.filter-group select){width:100%;min-width:0!important;max-width:100%;min-height:44px;box-sizing:border-box;font-size:16px!important}
+body.inkamnet-go-app .search-box input{width:100%;min-width:0;font-size:16px!important}
+body.inkamnet-go-app :is(.filter-grid,.billing-filter-grid) .btn-tech{width:100%;min-height:44px;height:auto;font-size:.875rem!important;justify-content:center}
+body.inkamnet-go-app :is(.data-card-head,.invoice-registry-head,.invoice-registry-tools,.report-filter-actions,.cash-action-bar){flex-wrap:wrap;gap:10px}
+body.inkamnet-go-app :is(.metric-grid,.billing-stat-grid){grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+body.inkamnet-go-app :is(.metric-card,.command-kpi) strong{overflow-wrap:anywhere;line-height:1.3}
+body.inkamnet-go-app :is(.go-quick-grid a,.go-menu-grid a){min-width:0;overflow-wrap:anywhere}
+body.inkamnet-go-app .go-quick-grid>a>i{flex-shrink:0}
+body.inkamnet-go-app table.go-cards>tbody>tr[hidden]{display:none!important}
+body.inkamnet-go-app .invoice-table tr.invoice-row[hidden]{display:none!important}
+body.inkamnet-go-app .invoice-table{font-family:inherit}
+body.inkamnet-go-app table.go-cards td[data-go-cell="actions"] :is(form,.master-approval-actions,.d-flex){min-width:0;max-width:100%;flex-wrap:wrap}
+body.inkamnet-go-app table.go-cards td[data-go-cell="actions"] :is(button,.btn-tech,.approval-button){min-height:44px;height:auto;max-width:100%;white-space:normal;font-size:.8125rem!important}
+body.inkamnet-go-app table.go-cards td[data-go-cell="field"]{justify-items:stretch;overflow-wrap:anywhere}
+body.inkamnet-go-app .invoice-table .invoice-customer-cell .cell-main{white-space:normal;overflow-wrap:anywhere}
+body.inkamnet-go-app .invoice-pay-button,body.inkamnet-go-app .go-invoice-action-button{min-width:0!important;max-width:100%;height:auto!important;min-height:44px;white-space:normal}
+body.inkamnet-go-app .go-menu-grid span{font-size:.75rem}
+@media(max-width:374px){
+  body.inkamnet-go-app :is(.filter-grid,.billing-filter-grid,.payment-filter-grid,.payment-filter-grid-v112,.report-filter-grid){grid-template-columns:minmax(0,1fr)!important}
+  body.inkamnet-go-app .go-quick-grid{grid-template-columns:minmax(0,1fr)}
+  body.inkamnet-go-app .go-menu-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  body.inkamnet-go-app .invoice-table tr.invoice-row{grid-template-columns:24px minmax(0,1fr) minmax(0,1fr)!important}
+  body.inkamnet-go-app .invoice-table .invoice-customer-cell{grid-column:2/-1}
+  body.inkamnet-go-app .invoice-table .invoice-status-cell{grid-column:1/-1;grid-row:auto;justify-self:start}
+  body.inkamnet-go-app .invoice-table :is(.invoice-site-cell,.invoice-period-cell,.invoice-due-cell,.invoice-total-cell,.invoice-pay-cell,.invoice-action-cell){grid-column:1/-1!important;grid-row:auto!important;text-align:left!important}
+  body.inkamnet-go-app .invoice-table tr.invoice-row:not(.has-admin-actions){grid-template-columns:minmax(0,1fr)!important}
+  body.inkamnet-go-app .invoice-table tr.invoice-row:not(.has-admin-actions) :is(.invoice-customer-cell,.invoice-status-cell){grid-column:1!important;grid-row:auto!important}
+  body.inkamnet-go-app .invoice-inline-actions{justify-content:stretch!important}
+  body.inkamnet-go-app :is(.invoice-pay-button,.go-invoice-action-button){width:100%!important}
+}
