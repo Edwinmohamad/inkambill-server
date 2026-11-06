@@ -11,14 +11,16 @@ const rows = [
  {id:5, year:2026, month:10, date:'2026-11-04', approved:false, confirmed:true, settled:true}
 ];
 const db = {async execute(sql, params) {
- assert.match(sql,/source_invoice\.period_year\*100\+source_invoice\.period_month/);
- assert.match(sql,/source_invoice\.id IS NULL AND ct\.transaction_date BETWEEN/);
+ assert.match(sql,/lpi\.period_year\*100\+lpi\.period_month/);
+ assert.match(sql,/lpc\.status='LOCKED'/);
+ assert.match(sql,/IS NULL AND ct\.transaction_date BETWEEN/);
  assert.match(sql,/p\.settlement_status='settled'/);
  const [first,last,from,to] = params;
  return [rows.filter(r => r.approved && (!r.year || r.confirmed && r.settled) &&
    (r.year ? r.year*100+r.month >= first && r.year*100+r.month <= last : r.date >= from && r.date <= to))];
 }};
-const ctx = {db}; vm.createContext(ctx); vm.runInContext(fn+'\nthis.cashReport = cashReport;',ctx);
+const { LEDGER_PERIOD_SQL, ledgerPeriodParams } = require('../services/ledgerPeriodService');
+const ctx = {db, LEDGER_PERIOD_SQL, ledgerPeriodParams}; vm.createContext(ctx); vm.runInContext(fn+'\nthis.cashReport = cashReport;',ctx);
 const filters = (from,to) => ({from,to,site:'',category:'',flow_type:'',method:''});
 (async()=>{
  const oct=await ctx.cashReport(filters('2026-10-01','2026-10-31'));

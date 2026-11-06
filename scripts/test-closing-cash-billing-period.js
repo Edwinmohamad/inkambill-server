@@ -8,10 +8,12 @@ const rows = [
   { id: 4, transaction_date: '2026-11-08', year: 2026, month: 10, amount: 50, status: 'PENDING_APPROVAL' }
 ];
 const db = { async execute(sql, params) {
-  assert.match(sql, /source_invoice\.period_year=\? AND source_invoice\.period_month=\?/);
-  assert.match(sql, /source_invoice\.id IS NULL AND ct\.transaction_date BETWEEN \? AND \?/);
-  const [year, month, start, end] = params;
-  const inPeriod = r => r.year ? r.year === year && r.month === month : r.transaction_date >= start && r.transaction_date <= end;
+  // Aturan bersama (services/ledgerPeriodService.js): bulan tagihan, kecuali bulan itu dikunci sebelum uang masuk.
+  assert.match(sql, /lpi\.period_year\*100\+lpi\.period_month/);
+  assert.match(sql, /lpc\.status='LOCKED'/);
+  assert.match(sql, /IS NULL AND ct\.transaction_date BETWEEN \? AND \?/);
+  const [firstKey, lastKey, start, end] = params;
+  const inPeriod = r => r.year ? r.year * 100 + r.month >= firstKey && r.year * 100 + r.month <= lastKey : r.transaction_date >= start && r.transaction_date <= end;
   if (sql.includes('COUNT(*)')) return [[{ n: rows.filter(r => inPeriod(r) && r.status === 'PENDING_APPROVAL').length }]];
   assert.match(sql, /source_payment\.status='confirmed'/);
   return [rows.filter(r => inPeriod(r) && r.status === 'APPROVED' && (!r.year || r.payment_status === 'confirmed'))];

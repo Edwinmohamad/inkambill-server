@@ -8,7 +8,7 @@ function fakeConnection({meta=true,category=true,existing=false,settlementStatus
     async execute(sql,params){
       calls.push({sql,params});
       if(sql.includes('FROM invoices i JOIN customers c'))return [meta?[{site_id:7,customer_name:'Pelanggan Uji',invoice_number:'INV-1',period_month:9,period_year:2026,is_psb:0}]:[]];
-      if(sql.includes("FROM closing_periods")&&sql.includes("status='LOCKED'"))return [lockedSeptember&&String(params[0]).startsWith('2026-09')?[{id:3,period_start:'2026-09-01',period_end:'2026-09-30'}]:[]];
+      if(!sql.includes('FROM cash_transactions')&&sql.includes("FROM closing_periods")&&sql.includes("status='LOCKED'"))return [lockedSeptember&&String(params[0]).startsWith('2026-09')?[{id:3,period_start:'2026-09-01',period_end:'2026-09-30'}]:[]];
       if(sql.includes('FROM cash_categories')&&sql.includes("type='income'"))return [category?[{id:11}]:[]];
       if(sql.includes('SELECT method,status,settlement_status FROM payments'))return [[{method:'cash',status:'confirmed',settlement_status:settlementStatus}]];
       if(sql.includes('WHERE source_id=?')&&sql.includes("source_type IN ('payment','install_income')"))return [existing?[{id:99,amount:150000,approval_status:'APPROVED'}]:[]];

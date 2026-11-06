@@ -1,4 +1,5 @@
 const express=require('express');
+const { LEDGER_PERIOD_SQL, ledgerPeriodParams } = require('../services/ledgerPeriodService');
 const db=require('../config/db');
 const { createReportPdf, rupiah, date, documentLabel, COLORS }=require('../services/reportPdf');
 const router=express.Router();
@@ -57,8 +58,8 @@ async function billingReport(f){
 }
 
 async function cashReport(f){
-  const monthKey = value => Number(value.slice(0,4))*100 + Number(value.slice(5,7));
-  const where=["((source_invoice.id IS NOT NULL AND (source_invoice.period_year*100+source_invoice.period_month) BETWEEN ? AND ?) OR (source_invoice.id IS NULL AND ct.transaction_date BETWEEN ? AND ?))","COALESCE(ct.approval_status,'APPROVED')='APPROVED'"],p=[monthKey(f.from),monthKey(f.to),f.from,f.to];
+  // Periode sama persis dengan Data Kas & Closing (services/ledgerPeriodService.js).
+  const where=[LEDGER_PERIOD_SQL,"COALESCE(ct.approval_status,'APPROVED')='APPROVED'"],p=ledgerPeriodParams(f.from,f.to);
   where.push("(COALESCE(ct.source_type,'manual') NOT IN ('payment','install_income') OR (p.status='confirmed' AND (p.method<>'cash' OR p.settlement_status='settled')))");
   if(f.site){where.push('s.code=?');p.push(f.site);}
   where.push('ct.internal_transfer_key IS NULL');

@@ -1,4 +1,5 @@
 const { money, normalizeSiteCluster } = require('./closingCalculator');
+const { LEDGER_PERIOD_SQL, LEDGER_PERIOD_JOIN_SQL, ledgerPeriodParams } = require('./ledgerPeriodService');
 
 function toDateKey(value) {
   if (value === null || value === undefined || value === '') return '';
@@ -34,7 +35,7 @@ function mapCashRowToEntry(row) {
 // (draft belum dibuat) — dalam kasus itu semua transaksi APPROVED di rentang
 // tanggal dianggap belum pernah ditarik.
 async function selectUnsyncedCashRows({ db, closingId, start, end }) {
-  const params = [start, end];
+  const params = ledgerPeriodParams(start, end);
   let excludeSql = '';
   if (closingId) {
     excludeSql = ' AND ct.id NOT IN (SELECT cash_transaction_id FROM closing_entries WHERE closing_id = ? AND cash_transaction_id IS NOT NULL)';
@@ -46,7 +47,7 @@ async function selectUnsyncedCashRows({ db, closingId, start, end }) {
      JOIN cash_categories cc ON cc.id = ct.category_id
      LEFT JOIN sites s ON s.id = ct.site_id
      LEFT JOIN payments source_payment ON ct.source_type IN ('payment','install_income') AND source_payment.id=ct.source_id
-     WHERE ct.transaction_date BETWEEN ? AND ?
+     WHERE ${LEDGER_PERIOD_SQL}
        AND ct.internal_transfer_key IS NULL
        AND cc.code NOT IN ('FINPRIN','FINPROUT')
        AND COALESCE(ct.approval_status,'APPROVED') = 'APPROVED'
@@ -192,7 +193,7 @@ async function syncCashTransactionsIntoDraftAutoClosing({ conn, cashTransactionI
      JOIN cash_categories cc ON cc.id=ct.category_id
      LEFT JOIN sites s ON s.id=ct.site_id
      LEFT JOIN payments source_payment ON ct.source_type IN ('payment','install_income') AND source_payment.id=ct.source_id
-     JOIN closing_periods cp ON ct.transaction_date BETWEEN cp.period_start AND cp.period_end
+     JOIN closing_periods cp ON ${LEDGER_PERIOD_JOIN_SQL}
      WHERE ct.id IN (${marks})
        AND ct.internal_transfer_key IS NULL
        AND cc.code NOT IN ('FINPRIN','FINPROUT')
@@ -228,8 +229,8 @@ async function syncCashTransactionsIntoDraftAutoClosing({ conn, cashTransactionI
 //   sama dengan Data Kas.
 async function countPendingCashData({ db, closingId, start, end }) {
   const [[pendingRow]] = await db.execute(
-    `SELECT COUNT(*) n FROM cash_transactions ct WHERE ct.transaction_date BETWEEN ? AND ? AND ct.approval_status = 'PENDING_APPROVAL'`,
-    [start, end]
+    `SELECT COUNT(*) n FROM cash_transactions ct WHERE ${LEDGER_PERIOD_SQL} AND ct.approval_status = 'PENDING_APPROVAL'`,
+    ledgerPeriodParams(start, end)
   );
   const unsyncedRows = await selectUnsyncedCashRows({ db, closingId, start, end });
   const invalidApproved = unsyncedRows.filter(row=>Boolean(mapCashRowToEntry(row).skip)).length;
