@@ -783,3 +783,13 @@
   })();
 
 })();
+
+// Widget/kartu ringkasan yang bisa diklik (v1.35): elemen [data-href] membuka halaman terkait.
+// Klik pada tautan/tombol/isian di dalam kartu tetap menjalankan aksinya sendiri.
+(()=>{
+  const ready=()=>document.querySelectorAll('[data-href]').forEach(el=>{if(!el.hasAttribute('tabindex'))el.setAttribute('tabindex','0');el.setAttribute('role','link');});
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',ready);else ready();
+  const go=(el,e)=>{const href=el.getAttribute('data-href');if(!href)return;if(e&&(e.ctrlKey||e.metaKey||e.button===1)){window.open(href,'_blank','noopener');return;}location.href=href;};
+  document.addEventListener('click',e=>{const el=e.target.closest&&e.target.closest('[data-href]');if(!el)return;if(e.target.closest('a,button,input,select,textarea,label,summary,[data-bs-toggle]'))return;if(window.getSelection&&String(window.getSelection()).length)return;go(el,e);});
+  document.addEventListener('keydown',e=>{if(e.key!=='Enter')return;const el=e.target.closest&&e.target.closest('[data-href]');if(el&&el===e.target)go(el,e);});
+})();

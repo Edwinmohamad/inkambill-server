@@ -254,6 +254,8 @@ app.use(require('./routes/auth'));
 app.use('/my-cash', requireAuth, require('./routes/myCash'));
 app.use('/', requireAuth, requirePermission('dashboard'), require('./routes/dashboard'));
 app.use('/analytics', requireAuth, requirePermission('finance'), require('./routes/analytics'));
+// v1.35 — Performa Bulanan: penagihan & arus kas per periode (menggantikan menu Analitik Bisnis).
+app.use('/performa', requireAuth, requirePermission('finance'), require('./routes/monthlyPerformance'));
 app.use('/customers', requireAuth, requirePermission('customers'), require('./routes/customers'));
 app.use('/packages', requireAuth, requirePermission('customers'), require('./routes/packages'));
 app.use('/invoices', requireAuth, requirePermission('billing'), require('./routes/invoices'));

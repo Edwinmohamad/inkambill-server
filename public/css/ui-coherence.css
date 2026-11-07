@@ -237,7 +237,7 @@ body.inkamnet-go-app .content-wrap{max-width:none}
 #proofViewerModal .proof-viewer-grid{grid-template-columns:minmax(0,1fr) 260px;min-height:0}
 #proofViewerModal .proof-stage{min-height:0;height:min(62vh,540px);max-height:none;overflow:hidden;padding:12px}
 #proofViewerModal .proof-meta-panel{max-height:min(62vh,540px);overflow-y:auto}
-#proofViewerModal .proof-stage img{max-width:100%;max-height:100%;width:auto;height:auto;border-radius:8px}
+#proofViewerModal .proof-stage img{display:block;max-width:100%;max-height:calc(min(62vh,540px) - 24px);width:auto;height:auto;object-fit:contain;border-radius:8px}
 #proofViewerModal .proof-stage iframe{width:100%;height:100%}
 #proofViewerModal .proof-meta-panel{padding:14px 16px;gap:10px}
 #proofViewerModal .proof-verified-seal{padding:8px 10px}
@@ -245,6 +245,7 @@ body.inkamnet-go-app .content-wrap{max-width:none}
 @media(max-width:991.98px){
   #proofViewerModal .proof-viewer-grid{grid-template-columns:1fr}
   #proofViewerModal .proof-stage{height:min(46vh,420px)}
+  #proofViewerModal .proof-stage img{max-height:calc(min(46vh,420px) - 24px)}
   #proofViewerModal .proof-meta-panel{max-height:none;overflow:visible}
   #proofViewerModal .proof-meta-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px}
 }
@@ -252,6 +253,7 @@ body.inkamnet-go-app .content-wrap{max-width:none}
   #proofViewerModal .modal-dialog{margin:8px;max-width:none}
   #proofViewerModal .modal-content{max-height:calc(100vh - 16px)}
   #proofViewerModal .proof-stage{height:40vh;padding:8px}
+  #proofViewerModal .proof-stage img{max-height:calc(40vh - 16px)}
   #proofViewerModal #proofOpenNew span,#proofViewerModal #proofOpenNew{font-size:.8125rem}
 }
 
@@ -325,3 +327,18 @@ tr.cpanel-current>td{background:var(--brand-tint)!important}
 /* Catatan periode Tagihan: cukup satu baris "Periode aktif: ...", tanpa paragraf penjelas. */
 .billing-period-note span{display:none!important}
 .billing-period-note{padding-top:8px!important;padding-bottom:8px!important;align-items:center!important}
+
+/* Kredit pengembang (v1.35). */
+.dev-credit{margin-top:10px;font-size:12px;color:var(--muted);letter-spacing:0}
+.dev-credit b{color:var(--text);font-weight:700}
+.go-dev-credit{text-align:center;margin:4px 0 0}
+#proofViewerModal .proof-stage img{cursor:zoom-in}
+#proofViewerModal .proof-stage.proof-zoom{overflow:auto!important;place-items:start center!important;align-content:start}
+#proofViewerModal .proof-stage.proof-zoom img{max-height:none!important;width:100%!important;max-width:100%!important;cursor:zoom-out}
+
+/* Kartu yang bisa diklik: kursor tangan + garis menegas saat disorot, tanpa animasi berat. */
+[data-href]{cursor:pointer}
+[data-href]:hover{border-color:var(--line-2,#BDB9AE)!important}
+[data-href]:focus-visible{outline:2px solid var(--brand,#0F6E5C);outline-offset:2px}
+body.inkamnet-go-app [data-href]:active{background:var(--go-press)!important}
+.app-footer .dev-credit{margin:0}

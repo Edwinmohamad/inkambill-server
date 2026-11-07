@@ -82,11 +82,12 @@
         <% if(can('billing')){ %><a href="/invoices"><i class="bi bi-receipt-cutoff"></i><span>Tagihan</span></a><a href="/payments"><i class="bi bi-shield-check"></i><span>Approval</span></a><a href="/custom-invoices"><i class="bi bi-file-earmark-text"></i><span>Faktur Kustom</span></a><a href="/discounts"><i class="bi bi-percent"></i><span>Diskon</span></a><a href="/charges"><i class="bi bi-plus-square"></i><span><%= t('charges') %></span></a><% if(isAdmin){ %><a href="/payments/reconciliation"><i class="bi bi-arrow-repeat"></i><span><%= t('reconciliation') %></span></a><% } %><% } %>
       </div></section><% } %>
       <% if(can('finance')||can('reports')){ %><section class="go-menu-group tone-amber"><h3>Keuangan</h3><div class="go-menu-grid">
-        <% if(can('finance')){ %><a href="/cash"><i class="bi bi-cash-stack"></i><span>Arus Kas</span></a><a href="/analytics"><i class="bi bi-pie-chart"></i><span>Analitik</span></a><a href="/debts"><i class="bi bi-journal-check"></i><span>Hutang Piutang</span></a><a href="/cash/categories"><i class="bi bi-tags"></i><span><%= t('cashCategories') %></span></a><% } %><% if(can('reports')){ %><a href="/reports"><i class="bi bi-bar-chart-line"></i><span>Laporan</span></a><% } %><% if(canClosing){ %><a href="/closing"><i class="bi bi-calculator"></i><span>Closing</span></a><% } %>
+        <% if(can('finance')){ %><a href="/cash"><i class="bi bi-cash-stack"></i><span>Arus Kas</span></a><a href="/performa"><i class="bi bi-graph-up-arrow"></i><span>Performa Bulanan</span></a><a href="/debts"><i class="bi bi-journal-check"></i><span>Hutang Piutang</span></a><a href="/cash/categories"><i class="bi bi-tags"></i><span><%= t('cashCategories') %></span></a><% } %><% if(can('reports')){ %><a href="/reports"><i class="bi bi-bar-chart-line"></i><span>Laporan</span></a><% } %><% if(canClosing){ %><a href="/closing"><i class="bi bi-calculator"></i><span>Closing</span></a><% } %>
       </div></section><% } %>
       <% if(can('network')){ %><section class="go-menu-group tone-blue"><h3>Network</h3><div class="go-menu-grid"><a href="/nms/secrets"><i class="bi bi-arrow-repeat"></i><span>Sinkronisasi PPPoE</span></a><a href="/routers"><i class="bi bi-router"></i><span>Pengaturan Router</span></a></div></section><% } %>
-      <% if(can('support')||can('warehouse')){ %><section class="go-menu-group tone-violet"><h3>Operasional</h3><div class="go-menu-grid"><% if(can('support')){ %><a href="/operations"><i class="bi bi-kanban"></i><span>Operation Center</span></a><a href="/schedules"><i class="bi bi-calendar2-check"></i><span>Jadwal Teknisi</span></a><a href="/team-kpi"><i class="bi bi-bar-chart-steps"></i><span>KPI Tim</span></a><a href="/server-duty"><i class="bi bi-shield-check"></i><span><%= t('serverDuty') %></span></a><% } %><% if(can('warehouse')){ %><a href="/inventory"><i class="bi bi-box-seam"></i><span>Gudang</span></a><a href="/inventory/movements"><i class="bi bi-arrow-left-right"></i><span><%= t('movements') %></span></a><a href="/inventory/usage"><i class="bi bi-tools"></i><span><%= t('material') %></span></a><a href="/inventory/suppliers"><i class="bi bi-truck"></i><span><%= t('supplier') %></span></a><% } %></div></section><% } %>
+      <% if(can('support')||can('warehouse')){ %><section class="go-menu-group tone-violet"><h3>Operasional</h3><div class="go-menu-grid"><% if(can('support')){ %><a href="/server-duty"><i class="bi bi-shield-check"></i><span><%= t('serverDuty') %></span></a><% } %><% if(can('warehouse')){ %><a href="/inventory"><i class="bi bi-box-seam"></i><span>Gudang</span></a><a href="/inventory/movements"><i class="bi bi-arrow-left-right"></i><span><%= t('movements') %></span></a><a href="/inventory/usage"><i class="bi bi-tools"></i><span><%= t('material') %></span></a><a href="/inventory/suppliers"><i class="bi bi-truck"></i><span><%= t('supplier') %></span></a><% } %></div></section><% } %>
       <section class="go-menu-group tone-slate"><h3>Akun & Sistem</h3><div class="go-menu-grid"><a href="/profile"><i class="bi bi-person-circle"></i><span>Profil Saya</span></a><% if(can('billing')||can('support')||can('customers')||can('settings')){ %><a href="/wa-inbox"><i class="bi bi-chat-dots"></i><span>WA Inbox</span></a><% } %><% if(can('settings')){ %><a href="/settings"><i class="bi bi-sliders2"></i><span>Pengaturan</span></a><a href="/wa-gateway"><i class="bi bi-whatsapp"></i><span>WA Gateway</span></a><% } %><% if(can('logs')){ %><a href="/logs"><i class="bi bi-terminal"></i><span><%= t('activityLog') %></span></a><% } %></div></section>
+      <p class="dev-credit go-dev-credit">Developer by <b>Edwin Mohamad</b></p>
     </div>
   </div>
   <% } %>
@@ -102,10 +103,10 @@
       </div>
 
       <div class="sidebar-scroll">
-        <div class="sidebar-section-label">CONTROL CENTER</div>
+        <div class="sidebar-section-label">UTAMA</div>
         <nav class="sidebar-nav">
           <a class="sidebar-link <%= currentPath === '/' ? 'active' : '' %>" href="/"><i class="bi bi-grid-1x2-fill"></i><span><%= t('dashboard') %></span><em>⌘</em></a>
-          <% if(can('finance')){ %><a class="sidebar-link <%= currentPath.startsWith('/analytics') ? 'active' : '' %>" href="/analytics"><i class="bi bi-pie-chart-fill"></i><span>Analitik Bisnis</span><em>AI</em></a><% } %>
+          <% if(can('finance')){ %><a class="sidebar-link <%= currentPath.startsWith('/performa') ? 'active' : '' %>" href="/performa"><i class="bi bi-graph-up-arrow"></i><span>Performa Bulanan</span></a><% } %>
         </nav>
 
         <% if(can('customers')){ %>
@@ -160,9 +161,6 @@
         <div class="sidebar-section-label"><%= language==='en'?'OPERATIONS':'OPERASIONAL' %></div>
         <nav class="sidebar-nav">
           <% if(can('support')){ %>
-          <a class="sidebar-link <%= currentPath.startsWith('/operations') ? 'active' : '' %>" href="/operations"><i class="bi bi-kanban-fill"></i><span>Operation Center</span><em>SPV</em></a>
-          <a class="sidebar-link <%= currentPath.startsWith('/schedules') ? 'active' : '' %>" href="/schedules"><i class="bi bi-calendar2-check-fill"></i><span><%= t('techSchedule') %></span></a>
-          <a class="sidebar-link <%= currentPath.startsWith('/team-kpi') ? 'active' : '' %>" href="/team-kpi"><i class="bi bi-bar-chart-steps"></i><span><%= language==='en'?'Team KPI':'KPI Tim' %></span></a>
           <a class="sidebar-link <%= currentPath.startsWith('/server-duty') ? 'active' : '' %>" href="/server-duty"><i class="bi bi-shield-check"></i><span><%= t('serverDuty') %></span></a>
           <% } %>
           <% if(can('warehouse')){ %>
@@ -197,7 +195,7 @@
 
       <div class="sidebar-footer">
         <div class="system-status"><span class="status-dot"></span><div><strong>INKAMBILL online</strong><small>Billing · Finance · Network · Gudang</small></div></div>
-        <span class="version-pill">CONTROL CENTER v1.26.0</span>
+        <div class="dev-credit">Developer by <b>Edwin Mohamad</b></div>
       </div>
     </aside>
 
@@ -247,7 +245,7 @@
         <link rel="stylesheet" href="/css/ui-coherence.css?v=<%= assetVersion %>">
         <% if(!isMobileApp){ %><link rel="stylesheet" href="/css/aplus-web.css?v=<%= assetVersion %>"><% } %>
         <%- include('pagination') %>
-        <footer class="app-footer"><span>© <%= new Date().getFullYear() %> Edwin Mohamad · PT INKAMNET NEXERA TECHNOLOGY</span><span>From the Village, Online Everywhere</span></footer>
+        <footer class="app-footer"><span>© <%= new Date().getFullYear() %> PT INKAMNET NEXERA TECHNOLOGY</span><span class="dev-credit">Developer by <b>Edwin Mohamad</b></span></footer>
       </main>
     </div>
   </div>
@@ -344,11 +342,11 @@
         <% if(can('billing')){ %><a href="/invoices" data-keywords="tagihan invoice generate"><i class="bi bi-receipt"></i><div><strong>Buka Tagihan</strong><small>Generate & kelola billing</small></div><span>→</span></a>
         <a href="/payments" data-keywords="approval pembayaran transaksi kas"><i class="bi bi-shield-check"></i><div><strong>Approval & Transaksi</strong><small>Pembayaran dan approval kas</small></div><span>→</span></a><% if(isAdmin){ %>
         <a href="/payments/reconciliation" data-keywords="rekonsiliasi setoran cash staff"><i class="bi bi-arrow-repeat"></i><div><strong>Rekonsiliasi Cash</strong><small>Cek uang yang masih di staff</small></div><span>→</span></a><% } %><% } %>
-        <% if(can('support')){ %><a href="/operations" data-keywords="operation center operasional supervisor ticket kpi tim aktivitas lapangan"><i class="bi bi-kanban-fill"></i><div><strong>Operation Center</strong><small>Aktivitas &amp; kontrol tim</small></div><span>→</span></a><a href="/server-duty" data-keywords="piket server jadwal shift"><i class="bi bi-shield-check"></i><div><strong>Piket Server</strong><small>Jadwal piket mingguan</small></div><span>→</span></a>
-        <a href="/team-kpi" data-keywords="kpi tim teknisi staff performance"><i class="bi bi-bar-chart-steps"></i><div><strong>KPI Tim</strong><small>Performa teknisi & staff</small></div><span>→</span></a><% } %>
+        <% if(can('support')){ %><a href="/server-duty" data-keywords="piket server jadwal shift"><i class="bi bi-shield-check"></i><div><strong>Piket Server</strong><small>Jadwal piket mingguan</small></div><span>→</span></a>
+<% } %>
         <% if(can('network')){ %><a href="/nms/secrets" data-keywords="mikrotik pppoe sinkronisasi pelanggan"><i class="bi bi-arrow-repeat"></i><div><strong>Sinkronisasi PPPoE</strong><small>Hubungkan PPPoE dan data pelanggan</small></div><span>→</span></a><a href="/routers" data-keywords="router mikrotik pengaturan"><i class="bi bi-router-fill"></i><div><strong>Pengaturan Router</strong><small>Konfigurasi router PPPoE</small></div><span>→</span></a><% } %>
         <% if(can('warehouse')){ %><a href="/inventory" data-keywords="gudang stock barang"><i class="bi bi-box-seam-fill"></i><div><strong>Stock Gudang</strong><small>Warehouse control</small></div><span>→</span></a><% } %>
-        <% if(can('finance')){ %><a href="/analytics" data-keywords="analitik finance psb mrr cashflow odp"><i class="bi bi-graph-up-arrow"></i><div><strong>Analitik Keuangan & PSB</strong><small>Executive, finance, PSB & infrastruktur</small></div><span>→</span></a><a href="/cash" data-keywords="kas uang pendapatan pengeluaran"><i class="bi bi-cash-stack"></i><div><strong>Arus Kas</strong><small>Income & expense</small></div><span>→</span></a><% } %>
+        <% if(can('finance')){ %><a href="/performa" data-keywords="performa bulanan penagihan collection arus kas laba bulan"><i class="bi bi-graph-up-arrow"></i><div><strong>Performa Bulanan</strong><small>Penagihan & arus kas per bulan</small></div><span>→</span></a><a href="/cash" data-keywords="kas uang pendapatan pengeluaran"><i class="bi bi-cash-stack"></i><div><strong>Arus Kas</strong><small>Income & expense</small></div><span>→</span></a><% } %>
         <% if(can('reports')){ %><a href="/reports" data-keywords="laporan report site"><i class="bi bi-bar-chart-line-fill"></i><div><strong>Laporan</strong><small>Billing, finance & site</small></div><span>→</span></a><% } %>
       </div>
       <div class="command-footer"><span><i class="bi bi-arrow-return-left"></i> Open</span><span><i class="bi bi-stars"></i> INKAMNET Command Center</span></div>

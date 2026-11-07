@@ -1,0 +1,91 @@
+<%
+  const P = perf, c = P.cur;
+  const monthNames = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+  const short = v => { const n = Math.abs(Number(v || 0)), s = Number(v || 0) < 0 ? '-' : ''; if (n >= 1e9) return s + (n / 1e9).toFixed(1).replace('.', ',') + ' M'; if (n >= 1e6) return s + (n / 1e6).toFixed(1).replace('.', ',') + ' jt'; if (n >= 1e3) return s + Math.round(n / 1e3) + ' rb'; return s + n; };
+  const pctTxt = v => v == null ? '—' : String(v).replace('.', ',') + '%';
+  const tone = v => v == null ? '' : v >= 90 ? 'good' : v >= 70 ? 'mid' : 'low';
+  const nowY = new Date().getFullYear();
+%>
+<link rel="stylesheet" href="/css/performa.css?v=<%= assetVersion %>">
+<section class="pf">
+  <div class="module-head">
+    <div><h1>Performa Bulanan</h1></div>
+    <form method="get" class="pf-period" aria-label="Pilih periode">
+      <select name="month" class="form-select" aria-label="Bulan" onchange="this.form.submit()"><% monthNames.forEach((n, i) => { %><option value="<%= i + 1 %>" <%= P.month === i + 1 ? 'selected' : '' %>><%= n %></option><% }) %></select>
+      <select name="year" class="form-select" aria-label="Tahun" onchange="this.form.submit()"><% for (let y = nowY + 1; y >= nowY - 4; y--) { %><option value="<%= y %>" <%= P.year === y ? 'selected' : '' %>><%= y %></option><% } %></select>
+    </form>
+  </div>
+
+  <% if (P.warnings.length) { %><div class="alert alert-warning alert-modern">Sebagian data gagal dimuat: <%= P.warnings.join(' · ') %></div><% } %>
+
+  <h2 class="pf-title"><%= monthNames[P.month - 1] %> <%= P.year %><% if (c.closing) { %> <span class="pf-badge <%= c.closing === 'LOCKED' ? 'locked' : '' %>"><%= c.closing === 'LOCKED' ? 'Closing terkunci' : 'Closing draft' %></span><% } %></h2>
+  <div class="pf-kpis">
+    <a class="pf-kpi pf-kpi-main <%= tone(c.rate) %>" href="/invoices?month=<%= P.month %>&amp;year=<%= P.year %>">
+      <span>Tingkat penagihan</span><strong><%= pctTxt(c.rate) %></strong>
+      <i class="pf-meter" aria-hidden="true"><b style="width:<%= Math.min(100, c.rate || 0) %>%"></b></i>
+      <small><% if (P.rateDelta == null) { %>Belum ada pembanding bulan lalu<% } else { %><em class="<%= P.rateDelta >= 0 ? 'up' : 'down' %>"><%= P.rateDelta >= 0 ? '▲' : '▼' %> <%= String(Math.abs(P.rateDelta)).replace('.', ',') %> poin</em> dari bulan lalu<% } %></small>
+    </a>
+    <a class="pf-kpi" href="/invoices?month=<%= P.month %>&amp;year=<%= P.year %>"><span>Tagihan terbit</span><strong><%= formatRupiah(c.billed) %></strong><small><%= c.invoices %> faktur</small></a>
+    <a class="pf-kpi" href="/invoices?month=<%= P.month %>&amp;year=<%= P.year %>&amp;status=paid"><span>Terbayar</span><strong><%= formatRupiah(c.paid) %></strong><small>Transfer <%= short(c.transfer) %> · Cash <%= short(c.cash) %></small></a>
+    <a class="pf-kpi" href="/invoices?month=<%= P.month %>&amp;year=<%= P.year %>&amp;status=open"><span>Sisa tagihan</span><strong class="neg"><%= formatRupiah(c.outstanding) %></strong><small><%= Math.max(0, c.invoices - c.paidCount) %> faktur belum lunas</small></a>
+    <a class="pf-kpi" href="/cash?month=<%= P.month %>&amp;year=<%= P.year %>"><span>Laba bersih kas</span><strong class="<%= c.net < 0 ? 'neg' : '' %>"><%= formatRupiah(c.net) %></strong><small>Masuk <%= short(c.income) %> · Keluar <%= short(c.expense) %></small></a>
+    <a class="pf-kpi" href="/payments?month=<%= P.month %>&amp;year=<%= P.year %>"><span>Bayar tepat waktu</span><strong><%= pctTxt(c.onTimeRate) %></strong><small><%= c.onTime %> dari <%= c.paidCount %> faktur lunas</small></a>
+  </div>
+
+  <div class="pf-grid">
+    <article class="data-card pf-card">
+      <div class="data-card-head"><div><h3>Penagihan <%= P.year %></h3></div><span class="pf-legend"><i class="billed"></i>Tagihan <i class="paid"></i>Terbayar</span></div>
+      <div class="pf-bars" role="img" aria-label="Grafik tagihan dan terbayar per bulan">
+        <% P.months.forEach(m => { %><a class="pf-col <%= m.month === P.month ? 'is-current' : '' %>" href="?year=<%= P.year %>&amp;month=<%= m.month %>" title="<%= m.label %>: tagihan <%= formatRupiah(m.billed) %>, terbayar <%= formatRupiah(m.paid) %> (<%= pctTxt(m.rate) %>)">
+          <span class="pf-col-val"><%= m.rate == null ? '' : Math.round(m.rate) + '%' %></span>
+          <span class="pf-col-bars"><i class="billed" style="height:<%= Math.round(m.billed / P.maxBilled * 100) %>%"></i><i class="paid" style="height:<%= Math.round(m.paid / P.maxBilled * 100) %>%"></i></span>
+          <span class="pf-col-label"><%= m.label %></span></a><% }) %>
+      </div>
+    </article>
+    <article class="data-card pf-card">
+      <div class="data-card-head"><div><h3>Arus kas <%= P.year %></h3></div><span class="pf-legend"><i class="income"></i>Masuk <i class="expense"></i>Keluar</span></div>
+      <div class="pf-bars" role="img" aria-label="Grafik pemasukan dan pengeluaran per bulan">
+        <% P.months.forEach(m => { %><a class="pf-col <%= m.month === P.month ? 'is-current' : '' %>" href="?year=<%= P.year %>&amp;month=<%= m.month %>" title="<%= m.label %>: masuk <%= formatRupiah(m.income) %>, keluar <%= formatRupiah(m.expense) %>, laba <%= formatRupiah(m.net) %>">
+          <span class="pf-col-val <%= m.net < 0 ? 'neg' : '' %>"><%= m.income || m.expense ? short(m.net) : '' %></span>
+          <span class="pf-col-bars"><i class="income" style="height:<%= Math.round(m.income / P.maxFlow * 100) %>%"></i><i class="expense" style="height:<%= Math.round(m.expense / P.maxFlow * 100) %>%"></i></span>
+          <span class="pf-col-label"><%= m.label %></span></a><% }) %>
+      </div>
+    </article>
+  </div>
+
+  <article class="data-card pf-card">
+    <div class="data-card-head"><div><h3>Per bulan · <%= P.year %></h3></div><% if (P.best) { %><span class="pf-note">Terbaik: <b><%= monthNames[P.best.month - 1] %></b> (<%= pctTxt(P.best.rate) %>)</span><% } %></div>
+    <div class="table-responsive">
+      <table class="app-table pf-table go-no-cards">
+        <thead><tr><th>Bulan</th><th>Tagihan</th><th>Terbayar</th><th>Penagihan</th><th>Sisa</th><th>Masuk kas</th><th>Keluar kas</th><th>Laba</th><th>Closing</th></tr></thead>
+        <tbody>
+          <% P.months.forEach(m => { %><tr class="<%= m.month === P.month ? 'is-current' : '' %>" data-href="?year=<%= P.year %>&amp;month=<%= m.month %>">
+            <td><span class="cell-main"><%= monthNames[m.month - 1] %></span></td>
+            <td class="money"><%= formatRupiah(m.billed) %></td>
+            <td class="money"><%= formatRupiah(m.paid) %></td>
+            <td><span class="pf-rate <%= tone(m.rate) %>"><%= pctTxt(m.rate) %></span></td>
+            <td class="money"><%= formatRupiah(m.outstanding) %></td>
+            <td class="money"><%= formatRupiah(m.income) %></td>
+            <td class="money"><%= formatRupiah(m.expense) %></td>
+            <td class="money <%= m.net < 0 ? 'neg' : '' %>"><%= formatRupiah(m.net) %></td>
+            <td><%= m.closing === 'LOCKED' ? 'Terkunci' : m.closing === 'DRAFT' ? 'Draft' : '—' %></td>
+          </tr><% }) %>
+        </tbody>
+        <tfoot><tr><th>Total</th><th class="money"><%= formatRupiah(P.totals.billed) %></th><th class="money"><%= formatRupiah(P.totals.paid) %></th><th><%= pctTxt(P.totals.rate) %></th><th class="money"><%= formatRupiah(P.totals.outstanding) %></th><th class="money"><%= formatRupiah(P.totals.income) %></th><th class="money"><%= formatRupiah(P.totals.expense) %></th><th class="money <%= P.totals.net < 0 ? 'neg' : '' %>"><%= formatRupiah(P.totals.net) %></th><th></th></tr></tfoot>
+      </table>
+    </div>
+  </article>
+
+  <article class="data-card pf-card">
+    <div class="data-card-head"><div><h3>Penagihan per site · <%= monthNames[P.month - 1] %></h3></div><span class="pf-note">Urut dari yang paling rendah</span></div>
+    <% if (P.sites.length) { %>
+    <ul class="pf-sites">
+      <% P.sites.forEach(s => { %><li data-href="/invoices?month=<%= P.month %>&amp;year=<%= P.year %>&amp;site=<%= encodeURIComponent(s.site) %>&amp;status=open">
+        <span class="pf-site-name"><b><%= s.site %></b><small><%= s.invoices %> faktur · sisa <%= short(s.outstanding) %></small></span>
+        <i class="pf-meter" aria-hidden="true"><b class="<%= tone(s.rate) %>" style="width:<%= Math.min(100, s.rate || 0) %>%"></b></i>
+        <span class="pf-rate <%= tone(s.rate) %>"><%= pctTxt(s.rate) %></span>
+      </li><% }) %>
+    </ul>
+    <% } else { %><p class="pf-empty">Belum ada tagihan untuk bulan ini.</p><% } %>
+  </article>
+</section>

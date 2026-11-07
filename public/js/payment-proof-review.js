@@ -54,3 +54,13 @@
   bulkModal?.addEventListener('hidden.bs.modal',()=>{bulkRequest++;});
   const img=document.getElementById('proofViewerImage');if(img){img.style.cursor='zoom-in';img.addEventListener('click',()=>{const zoom=img.style.maxWidth==='none';img.style.maxWidth=zoom?'':'none';img.style.maxHeight=zoom?'':'none';img.style.cursor=zoom?'zoom-in':'zoom-out';});document.getElementById('proofViewerModal')?.addEventListener('hidden.bs.modal',()=>{proofRequest++;img.style.maxWidth='';img.style.maxHeight='';});}
 })();
+
+// Bukti transfer (v1.35): gambar tampil utuh; sentuh/klik untuk perbesar selebar jendela lalu gulir,
+// sentuh lagi untuk kembali utuh. Status zoom direset setiap jendela dibuka.
+(()=>{
+  const modal=document.getElementById('proofViewerModal');if(!modal||typeof modal.addEventListener!=='function')return;
+  const img=document.getElementById('proofViewerImage');const stage=img&&img.closest?img.closest('.proof-stage'):null;if(!img||!stage)return;
+  img.title='Sentuh untuk perbesar';
+  img.addEventListener('click',()=>{const on=stage.classList.toggle('proof-zoom');img.title=on?'Sentuh untuk kembali utuh':'Sentuh untuk perbesar';if(!on)stage.scrollTop=0;});
+  modal.addEventListener('show.bs.modal',()=>{stage.classList.remove('proof-zoom');stage.scrollTop=0;});
+})();

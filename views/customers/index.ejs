@@ -13,10 +13,10 @@
   </div>
 
   <div class="metric-grid">
-    <article class="metric-card"><div class="metric-top"><span class="metric-label">Total Pelanggan</span><span class="metric-icon"><i class="bi bi-people-fill"></i></span></div><strong><%= n(stats.total) %></strong><small>Seluruh data pelanggan</small></article>
-    <article class="metric-card green"><div class="metric-top"><span class="metric-label">Pelanggan Aktif</span><span class="metric-icon"><i class="bi bi-person-check-fill"></i></span></div><strong><%= n(stats.active) %></strong><small>Service aktif</small></article>
-    <article class="metric-card orange"><div class="metric-top"><span class="metric-label"><%= language==='en'?'Suspended':'Ditangguhkan' %></span><span class="metric-icon"><i class="bi bi-pause-circle-fill"></i></span></div><strong><%= n(stats.suspended) %></strong><small>Nonaktif sementara</small></article>
-    <article class="metric-card red"><div class="metric-top"><span class="metric-label">Terisolir</span><span class="metric-icon"><i class="bi bi-wifi-off"></i></span></div><strong><%= n(stats.isolated) %></strong><small>Status isolasi jaringan</small></article>
+    <article data-href="/customers" class="metric-card"><div class="metric-top"><span class="metric-label">Total Pelanggan</span><span class="metric-icon"><i class="bi bi-people-fill"></i></span></div><strong><%= n(stats.total) %></strong><small>Seluruh data pelanggan</small></article>
+    <article data-href="/customers?status=active" class="metric-card green"><div class="metric-top"><span class="metric-label">Pelanggan Aktif</span><span class="metric-icon"><i class="bi bi-person-check-fill"></i></span></div><strong><%= n(stats.active) %></strong><small>Service aktif</small></article>
+    <article data-href="/customers?status=suspended" class="metric-card orange"><div class="metric-top"><span class="metric-label"><%= language==='en'?'Suspended':'Ditangguhkan' %></span><span class="metric-icon"><i class="bi bi-pause-circle-fill"></i></span></div><strong><%= n(stats.suspended) %></strong><small>Nonaktif sementara</small></article>
+    <article data-href="/nms/secrets" class="metric-card red"><div class="metric-top"><span class="metric-label">Terisolir</span><span class="metric-icon"><i class="bi bi-wifi-off"></i></span></div><strong><%= n(stats.isolated) %></strong><small>Status isolasi jaringan</small></article>
   </div>
 
   <form class="filter-card" method="get" data-server-search-fallback>

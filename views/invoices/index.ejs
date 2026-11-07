@@ -24,10 +24,10 @@
        (masih dihitung, hanya tidak semuanya ditampilkan di sini) supaya tidak berisiko merusak halaman lain
        yang mungkin memakai object summary yang sama. -->
   <div class="billing-stat-grid">
-    <article class="billing-stat"><span class="billing-stat-icon green"><i class="bi bi-receipt"></i></span><div><small>Tagihan Terbit</small><strong><%= summary.issued %></strong></div></article>
-    <article class="billing-stat"><span class="billing-stat-icon green"><i class="bi bi-check2-circle"></i></span><div><small>Tagihan Lunas</small><strong><%= summary.paidCount %></strong></div></article>
-    <article class="billing-stat"><span class="billing-stat-icon red"><i class="bi bi-alarm"></i></span><div><small>Belum Lunas</small><strong><%= summary.unpaidCount %></strong></div></article>
-    <article class="billing-stat"><span class="billing-stat-icon red"><i class="bi bi-hourglass-split"></i></span><div><small>Sisa Tagihan</small><strong><%= formatRupiah(summary.outstanding) %></strong></div></article>
+    <article data-href="/invoices?month=<%= filters.month %>&amp;year=<%= filters.year %>" class="billing-stat"><span class="billing-stat-icon green"><i class="bi bi-receipt"></i></span><div><small>Tagihan Terbit</small><strong><%= summary.issued %></strong></div></article>
+    <article data-href="/invoices?month=<%= filters.month %>&amp;year=<%= filters.year %>&amp;status=paid" class="billing-stat"><span class="billing-stat-icon green"><i class="bi bi-check2-circle"></i></span><div><small>Tagihan Lunas</small><strong><%= summary.paidCount %></strong></div></article>
+    <article data-href="/invoices?month=<%= filters.month %>&amp;year=<%= filters.year %>&amp;status=open" class="billing-stat"><span class="billing-stat-icon red"><i class="bi bi-alarm"></i></span><div><small>Belum Lunas</small><strong><%= summary.unpaidCount %></strong></div></article>
+    <article data-href="/invoices?month=<%= filters.month %>&amp;year=<%= filters.year %>&amp;status=open" class="billing-stat"><span class="billing-stat-icon red"><i class="bi bi-hourglass-split"></i></span><div><small>Sisa Tagihan</small><strong><%= formatRupiah(summary.outstanding) %></strong></div></article>
   </div>
 
   <% const scopedInvoiceRow=filters.customer?invoices.find(i=>String(i.customer_id)===String(filters.customer)):null;
