@@ -712,6 +712,10 @@
   document.getElementById('nxShortcuts')?.addEventListener('click', showShortcuts);
   // Capture phase: menimpa palette global aplikasi selama berada di halaman NMS.
   window.addEventListener('keydown', e => {
+    if(root.id==='nmsSecrets'){
+      if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();e.stopImmediatePropagation();document.getElementById('fQ')?.focus();}
+      return;
+    }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); e.stopImmediatePropagation(); pal.classList.contains('show') ? closePalette() : openPalette(); return; }
     const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '') || document.activeElement?.isContentEditable;
     if (typing || e.ctrlKey || e.metaKey || e.altKey) return;

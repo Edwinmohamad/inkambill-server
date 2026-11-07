@@ -16,7 +16,7 @@
   if (st.q) $('fQ').value = st.q;
 
   // ---------------------------------------------------------------- Tampilan (chips) + tersimpan
-  const BASE_VIEWS = [{ id: 'all', label: 'Semua', status: '' }, { id: 'online', label: 'Online', status: 'online' }, { id: 'offline', label: 'Offline', status: 'offline' }, { id: 'isolated', label: 'Diisolir', status: 'isolated' }, { id: 'fasum', label: 'Fasum', status: 'fasum', tab: 'unsynced' }];
+  const BASE_VIEWS = [{ id: 'all', label: 'Semua', status: '' }, { id: 'fasum', label: 'Fasum', status: 'fasum', tab: 'unsynced' }];
   const loadSaved = () => { try { return JSON.parse(localStorage.getItem('nx-views') || '[]'); } catch (_) { return []; } };
   const saveSaved = v => { try { localStorage.setItem('nx-views', JSON.stringify(v.slice(0, 12))); } catch (_) {} };
   function renderViews() {
@@ -45,44 +45,17 @@
   });
 
   // ---------------------------------------------------------------- Tabel
-  const COLS = {
-    synced: ['', 'Pelanggan', 'Site', 'Username', 'Profile', 'IP', 'Status', 'Ping', ''],
-    unsynced: ['', 'Username', 'Site / Router', 'Profile', 'IP', 'Caller-ID', 'Status', 'Ping', '']
-  };
-  const STATE = { online: 'Online', offline: 'Offline', isolated: 'Diisolir' };
-  const METHOD = { customer_code: 'Customer ID', customer_name: 'Nama', pppoe_username: 'Data billing', manual: 'Manual', phone: 'No. HP', comment: 'Comment', fuzzy: 'Mirip', created: 'Dibuat di NMS', cid_tag: 'Tag CID', alias: 'Alias', moved: 'Pindah router', mac: 'MAC', ip: 'IP' };
-  const METHOD_TONE = { cid_tag: 'purple', customer_code: 'green', alias: 'blue', customer_name: 'blue' };
-  function head() {
-    $('tHead').innerHTML = `<tr>${COLS[st.tab].map((c, i) => i === 0 ? `<th class="check">${N.canControl ? '<input type="checkbox" id="chkAll" aria-label="Pilih semua">' : ''}</th>` : `<th ${i === COLS[st.tab].length - 1 ? 'style="text-align:right"' : ''}>${c}</th>`).join('')}</tr>`;
-    $('fExemptWrap').hidden = st.tab !== 'unsynced';
+  const COLS={synced:['Pelanggan','Site','Username PPPoE','Paket / Profile','Tindakan'],unsynced:['Username PPPoE','Site / Router','Profile','Tindakan']};
+  function head(){ $('tHead').innerHTML='<tr>'+COLS[st.tab].map(c=>'<th>'+c+'</th>').join('')+'</tr>';$('fExemptWrap').hidden=st.tab!=='unsynced'; }
+  function actions(r){
+    if(!N.canControl)return '';
+    return '<div class="nx-actions">'+(r.customer_id
+      ? '<button type="button" class="nx-btn sm" data-act="map" data-id="'+r.id+'">Ganti pelanggan</button><button type="button" class="nx-btn sm red" data-act="unmap" data-id="'+r.id+'">Lepas</button>'
+      : '<button type="button" class="nx-btn sm primary" data-act="map" data-id="'+r.id+'">Hubungkan</button>')+'</div>';
   }
-  const chk = r => N.canControl ? `<input type="checkbox" data-sel="${r.id}" ${selected.has(r.id) ? 'checked' : ''} aria-label="Pilih ${esc(r.username)}">` : '';
-  const ip = r => `<span class="mono">${esc(r.active_address || r.remote_address || '—')}</span>`;
-  const state = r => `<span class="nx-state ${r.state}">${STATE[r.state]}</span>${r.active_uptime && r.state === 'online' ? `<span class="sub mono">${esc(r.active_uptime)}</span>` : ''}`;
-  function actions(r) {
-    const b = (a, icon, title, cls = '') => `<button type="button" class="nx-btn sm icon ${cls}" data-act="${a}" data-id="${r.id}" title="${title}" aria-label="${title}"><i class="bi ${icon}"></i></button>`;
-    let html = b('ping', 'bi-activity', 'Ping 5x (P)', 'ghost');
-    if (N.canControl) {
-      if (st.tab === 'unsynced') html += `<button type="button" class="nx-btn sm tint" data-act="map" data-id="${r.id}"><i class="bi bi-link-45deg"></i>Hubungkan</button>`;
-      else html += r.is_isolated ? b('unisolate', 'bi-check2-circle', 'Buka isolir (U)', 'green') : b('isolate', 'bi-slash-circle', 'Isolir (I)', 'ghost');
-    }
-    html += b('more', 'bi-three-dots', 'Aksi lain', 'ghost');
-    return `<div class="nx-actions">${html}</div>`;
-  }
-  function row(r, i) {
-    const cls = [selected.has(r.id) ? 'selected' : '', pending.has(r.id) ? 'pending' : '', i === focusIdx ? 'focus' : ''].join(' ');
-    if (st.tab === 'synced') return `<tr data-row="${r.id}" data-i="${i}" class="${cls}"><td class="check">${chk(r)}</td>
-      <td class="first cust" data-open="${r.id}"><span class="name">${esc(r.customer_name)}</span><span class="sub">${esc(r.customer_code)}${r.package_name ? ' · ' + esc(r.package_name) : ''}</span></td>
-      <td data-label="Site">${esc(r.site_code)}</td>
-      <td data-label="Username"><span class="mono">${esc(r.username)}</span>${r.caller_id ? ' <i class="bi bi-lock-fill dim" title="MAC terkunci"></i>' : ''}<span class="sub">${esc(METHOD[r.match_method] || r.match_method || '')} · 🔒 Bound</span></td>
-      <td data-label="Profile">${esc(r.profile || '—')}${r.is_isolated && r.original_profile ? `<span class="sub">asal ${esc(r.original_profile)}</span>` : ''}${r.profile_mismatch ? `<span class="sub" style="color:var(--x-orange)"><i class="bi bi-exclamation-triangle"></i> paket: ${esc(r.package_profile || '—')}</span>` : ''}</td>
-      <td data-label="IP">${ip(r)}</td><td data-label="Status">${state(r)}</td><td data-label="Ping" data-ping="${r.id}">${N.pingBadge(r.id)}</td><td class="acts">${actions(r)}</td></tr>`;
-    return `<tr data-row="${r.id}" data-i="${i}" class="${cls}"><td class="check">${chk(r)}</td>
-      <td class="first cust" data-open="${r.id}"><span class="name mono">${esc(r.username)}</span>${r.comment ? `<span class="sub">${esc(r.comment)}</span>` : ''}${r.is_exempt ? (r.exempt_type === 'fasum' ? `<span class="sub"><span class="nx-pill purple" style="font-size:10.5px;padding:1px 6px"><i class="bi bi-building"></i> Fasum</span>${r.exempt_note ? ' ' + esc(r.exempt_note) : ''}${r.exempt_source === 'manual' ? '' : ' <span class="dim">· otomatis</span>'}</span>` : `<span class="sub" style="color:var(--x-orange)">exempt: ${esc(r.exempt_type)}</span>`) : ''}</td>
-      <td data-label="Site">${esc(r.site_code)}<span class="sub">${esc(r.router_name)}</span></td>
-      <td data-label="Profile">${esc(r.profile || '—')}</td><td data-label="IP">${ip(r)}</td>
-      <td data-label="Caller-ID" class="mono">${esc(r.caller_id || r.active_caller_id || '—')}</td>
-      <td data-label="Status">${state(r)}</td><td data-label="Ping" data-ping="${r.id}">${N.pingBadge(r.id)}</td><td class="acts">${actions(r)}</td></tr>`;
+  function row(r,i){
+    const customer=r.customer_id?'<a href="/customers/'+r.customer_id+'">'+esc(r.customer_name)+'</a><span class="sub">'+esc(r.customer_code)+'</span>':esc(r.username);
+    return '<tr data-row="'+r.id+'" data-i="'+i+'"><td class="first">'+customer+'</td><td data-label="Site">'+esc(r.site_code)+'<span class="sub">'+esc(r.router_name||'')+'</span></td>'+(st.tab==='synced'?'<td data-label="Username PPPoE">'+esc(r.username)+'</td>':'')+'<td data-label="Profile">'+esc(r.profile||'—')+'</td><td class="acts">'+actions(r)+'</td></tr>';
   }
   function render() {
     head();
@@ -111,9 +84,7 @@
     try {
       const { counts: c } = await api(`/nms/api/counts${N.withSite()}`);
       if (seq !== countSeq) return;
-      $('cOnline').textContent = c.online; $('cOffline').textContent = c.offline; $('cIsolated').textContent = c.isolated;
-      $('cSyncPct').textContent = `${c.syncedPct}%`; $('cSynced').textContent = c.synced; $('cExempt').textContent = c.exempt - (c.fasum || 0);
-      if ($('cFasum')) { $('cFasum').textContent = c.fasum || 0; $('cFasumOff').textContent = c.fasumOffline || 0; }
+      $('cSynced').textContent=c.synced; $('cUnsynced').textContent=c.unsynced; $('cSyncPct').textContent=c.syncedPct+'%';
       $('tabSynced').textContent = c.synced; $('tabUnsynced').textContent = c.unsynced;
     } catch (_) {}
   }
@@ -135,7 +106,7 @@
     const all = $('chkAll'); if (all) { all.checked = st.rows.length > 0 && st.rows.every(r => selected.has(r.id)); all.indeterminate = !all.checked && st.rows.some(r => selected.has(r.id)); }
   }
   function toggle(id, on) { if (on) selected.add(id); else selected.delete(id); const tr = $('tBody').querySelector(`[data-row="${id}"]`); if (tr) { tr.classList.toggle('selected', on); const c = tr.querySelector('[data-sel]'); if (c) c.checked = on; } }
-  $('tBody').addEventListener('click', e => {
+  $('tBody').addEventListener('click', async e => {
     const box = e.target.closest('[data-sel]');
     if (box) {
       const id = Number(box.dataset.sel);
@@ -150,7 +121,8 @@
       const r = st.rows.find(x => x.id === Number(btn.dataset.id)); if (!r) return;
       if (btn.dataset.act === 'more') return N.menu(btn, N.actionItems(r));
       if (btn.dataset.act === 'map') return N.openMap(r);
-      return N.act(r, btn.dataset.act);
+      if(btn.disabled)return;btn.disabled=true;
+      try{await N.act(r, btn.dataset.act);}finally{btn.disabled=false;}return;
     }
     const open = e.target.closest('[data-open]');
     if (open) N.drawer(Number(open.dataset.open));
@@ -318,12 +290,9 @@
 
   // ---------------------------------------------------------------- Menu toolbar
   $('btnMore').addEventListener('click', e => N.menu(e.currentTarget, [
-    ...(N.canControl ? [{ label: 'Aksi masal per site…', icon: 'bi-collection', run: siteBulk }, '-'] : []),
     { label: 'Ekspor tab ini (CSV legacy)', icon: 'bi-filetype-csv', run: () => location.assign(`/nms/api/export${qs({ site: N.site || undefined, kind: st.tab })}`) },
-    { label: 'Laporan Fasum…', icon: 'bi-building', run: fasumReport },
     ...(N.canControl ? [{ label: 'Tulis tag CID ke MikroTik…', icon: 'bi-tag', run: writeCidTags }] : []),
     { label: 'Riwayat Smart Sync & undo', icon: 'bi-clock-history', run: () => location.assign(`/nms/automation${N.withSite()}#sync`) },
-    { label: 'Pintasan keyboard', icon: 'bi-keyboard', run: () => document.getElementById('nxShortcuts')?.click() }
   ]));
   $('btnRefresh')?.addEventListener('click', async e => {
     const btn = e.currentTarget; btn.classList.add('busy');
@@ -536,12 +505,12 @@
       case 'ArrowDown': e.preventDefault(); setFocus(focusIdx + 1); break;
       case 'ArrowUp': e.preventDefault(); setFocus(focusIdx - 1); break;
       case ' ': case 'x': if (r && N.canControl) { e.preventDefault(); toggle(r.id, !selected.has(r.id)); syncBulkBar(); } break;
-      case 'Enter': if (r) { e.preventDefault(); N.drawer(r.id); } break;
-      case 'p': case 'P': if (r) N.act(r, 'ping'); break;
-      case 'd': case 'D': if (r) N.act(r, 'diagnose'); break;
-      case 'i': case 'I': if (r && N.canControl && !r.is_isolated) N.act(r, 'isolate'); break;
-      case 'u': case 'U': if (r && N.canControl && r.is_isolated) N.act(r, 'unisolate'); break;
-      case 'k': case 'K': if (r && N.canControl) N.act(r, 'kick'); break;
+      case 'Enter': if (r) { e.preventDefault(); if(N.canControl)N.openMap(r); } break;
+
+
+
+
+
       case 's': case 'S': smartSync(); break;
       case 'Escape': if (selected.size) { selected.clear(); render(); } break;
       default: break;
@@ -551,13 +520,9 @@
   // ---------------------------------------------------------------- Real-time
   let rt = null;
   const soon = () => { clearTimeout(rt); rt = setTimeout(reload, 1500); };
-  N.stream({
-    ppp: e => { if (st.rows.some(r => String(r.username).toLowerCase() === String(e.username || '').toLowerCase())) soon(); },
-    router_state: s => { if (s.status === 'offline') { N.setOffline(true); toast('Router tidak terjangkau. Tabel memakai data cache.', 'err'); } },
-    sync: soon
-  }, { fallback: reload, fallbackMs: 30000 });
+  window.addEventListener('focus',()=>{if(!document.hidden)reload();});
 
   renderViews(); syncTabs(); head(); load();
   if (url.searchParams.get('sync') === '1') setTimeout(smartSync, 300);
-  if (Number(app.dataset.focus)) setTimeout(() => N.drawer(Number(app.dataset.focus)), 300);
+
 })();

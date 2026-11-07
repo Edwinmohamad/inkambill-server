@@ -9,7 +9,7 @@
           <span class="dashboard-user-photo"><% if(user?.profile_photo){ %><img src="/profile/photo/<%= encodeURIComponent(user.profile_photo) %>" alt="Foto <%= user.name %>"><% }else{ %><b><%= (user?.name||'A').charAt(0).toUpperCase() %></b><i class="bi bi-person-fill"></i><% } %></span>
           <span class="dashboard-user-copy"><small><i></i> SEDANG ONLINE</small><strong><%= statusLabel(actualRole||user?.role||'admin') %></strong><em><i class="bi bi-person-circle"></i> Buka profil</em></span>
         </a>
-        <div class="command-welcome-copy"><h1><%= greeting %>, <%= user?.name||'Administrator' %></h1><p>Ringkasan operasional terbaru.</p></div>
+        <div class="command-welcome-copy"><h1><%= greeting %>, <%= user?.name||'Administrator' %></h1></div>
       </div>
     </div>
     <div class="command-hero-actions"><a href="/customers/new" class="command-add"><i class="bi bi-person-plus-fill"></i>Tambah Pelanggan</a></div>
@@ -58,9 +58,16 @@
       </div>
     </header>
 
+    <article class="receipt-summary" aria-label="Penerimaan berdasarkan tanggal bayar">
+      <header><h3>Penerimaan pelanggan · <%= incomeDateLabel %></h3><span>Tanggal bayar · terverifikasi</span></header>
+      <% if(typeof customerReceipts!=='undefined'&&customerReceipts){ %>
+      <% if(isAdmin){ %><div class="receipt-methods"><div><span>Transfer</span><strong><%= formatRupiah(customerReceipts.transfer) %></strong></div><div><span>Cash</span><strong><%= formatRupiah(customerReceipts.cash) %></strong></div><div><span>QRIS</span><strong><%= formatRupiah(customerReceipts.qris) %></strong></div><div><span>Total</span><strong><%= formatRupiah(customerReceipts.amount) %></strong></div></div><% } %>
+      <footer><span><%= customerReceipts.count %> pembayaran</span><% if(isAdmin&&customerReceipts.cashHeld){ %><span>Cash belum disetor: <%= formatRupiah(customerReceipts.cashHeld) %></span><% } %><% if(customerReceipts.pendingCount){ %><span><%= customerReceipts.pendingCount %> belum disetujui<% if(isAdmin){ %> · <%= formatRupiah(customerReceipts.pending) %><% } %></span><% } %></footer>
+      <% }else{ %><p role="status">Penerimaan belum dapat dimuat. Silakan muat ulang.</p><% } %>
+    </article>
     <div class="billing-monitor-top-grid">
       <article class="bm-card bm-revenue-card">
-        <div class="bm-card-top"><span><i class="bi bi-arrow-down-left-circle-fill"></i> PENDAPATAN <%= incomeDateLabel %></span><em><i></i> TERVERIFIKASI</em></div>
+        <div class="bm-card-top"><span><i class="bi bi-arrow-down-left-circle-fill"></i> MASUK KAS <%= incomeDateLabel %></span><em><i></i> TERVERIFIKASI</em></div>
         <% if(isAdmin){ %><strong class="bm-big-money"><%= formatRupiah(bm.today.amount) %></strong><% }else{ %><strong class="bm-big-money"><%= bm.today.count %> transaksi</strong><% } %>
         <div class="bm-revenue-meta"><span><b><%= bm.today.count %></b> pembayaran masuk kas</span><span class="<%= bm.today.deltaPct!=null&&bm.today.deltaPct>=0?'up':bm.today.deltaPct!=null?'down':'' %>"><% if(bm.today.deltaPct!=null){ %><i class="bi <%= bm.today.deltaPct>=0?'bi-arrow-up-right':'bi-arrow-down-right' %>"></i><%= Math.abs(bm.today.deltaPct) %>% vs kemarin<% }else{ %>Belum ada pembanding kemarin<% } %></span></div>
         <% if(isAdmin){ %><div class="bm-method-grid"><span><small>Transfer</small><b><%= formatRupiah(bm.today.transfer) %></b></span><span><small>QRIS</small><b><%= formatRupiah(bm.today.qris) %></b></span><span><small>Cash disetor</small><b><%= formatRupiah(bm.today.cash) %></b></span></div><% } %>
@@ -124,7 +131,7 @@
 
   <div class="command-pulse-grid dashboard-ops-pulse-v119">
     <% if(can('billing')){ %><a class="command-pulse <%= Number(bm.today.pendingCount||0)>0?'warn':'ok' %>" href="/payments?approval=pending<%= selectedSiteCode?`&site=${encodeURIComponent(selectedSiteCode)}`:'' %>"><div><span>PENDING APPROVAL</span><strong><%= Number(bm.today.pendingCount||0) %></strong><em><% if(isAdmin){ %><%= formatRupiah(bm.today.pendingAmount||0) %> · <% } %>Buka approval →</em></div><i class="bi bi-shield-exclamation"></i></a><% }else{ %><article class="command-pulse"><div><span>BILLING</span><strong><%= collectionRate %>%</strong></div><i class="bi bi-graph-up-arrow"></i></article><% } %>
-    <a href="<%= ticketTarget %>" class="command-pulse <%= Number(noc.tickets_open||0)>0?'warn':'ok' %>"><div><span>TICKET AKTIF</span><strong><%= Number(noc.tickets_open||0) %></strong><em>Buka daftar tiket →</em></div><i class="bi bi-life-preserver"></i></a>
+
   </div>
 
   <!-- v1.21.0 — Section 1 widgets, placed right under the existing pulse row so the whole "operational
@@ -175,7 +182,7 @@
   <% if(isAdmin){ %>
   <div class="command-main-grid dashboard-v19-lower dashboard-v119-finance">
     <article class="command-panel command-chart-panel dashboard-traffic-panel">
-      <div class="command-panel-head"><div><span>TRAFFIC KEUANGAN</span><h3>Tagihan vs Pembayaran <%= selectedYear %></h3></div><div class="command-legend"><span><i class="invoice"></i>Tagihan</span><span><i class="payment"></i>Pembayaran</span></div></div>
+      <div class="command-panel-head"><div><span>RINGKASAN KEUANGAN</span><h3>Tagihan vs Pembayaran <%= selectedYear %></h3></div><div class="command-legend"><span><i class="invoice"></i>Tagihan</span><span><i class="payment"></i>Pembayaran</span></div></div>
       <div class="command-chart"><canvas id="commandBillingChart"></canvas></div>
     </article>
   </div>
@@ -187,7 +194,7 @@
       <div class="priority-list priority-grid-v19">
         <% if(isAdmin){ %><a href="<%= cashTarget %>" class="priority-row <%= Number(noc.cash_held||0)>0?'attention':'clear' %>"><span><i class="bi bi-person-vcard"></i></span><div><strong>Cash di Tim</strong><small>Perlu rekonsiliasi</small></div><b><%= formatRupiah(noc.cash_held||0) %></b></a><% } %>
         <a href="/invoices?month=<%= selectedMonth %>&year=<%= selectedYear %>&status=overdue" class="priority-row <%= Number(noc.overdue_customers||0)>0?'danger':'clear' %>"><span><i class="bi bi-exclamation-triangle"></i></span><div><strong>Terlambat</strong><small>Pelanggan perlu follow-up</small></div><b><%= Number(noc.overdue_customers||0) %></b></a>
-        <a href="<%= ticketTarget %>" class="priority-row <%= Number(noc.tickets_open||0)>0?'attention':'clear' %>"><span><i class="bi bi-life-preserver"></i></span><div><strong>Tiket Aktif</strong><small>Terbuka / diproses / menunggu</small></div><b><%= Number(noc.tickets_open||0) %></b></a>
+
       </div>
     </article>
 
@@ -218,7 +225,7 @@
     <% if(Number(noc.pppoe_unlinked||0)>0){ %><a href="/customers?<%= customerSiteQuery %><%= customerSiteQuery?'&':'' %>network=unlinked"><i class="bi bi-router"></i><span><b><%= Number(noc.pppoe_unlinked||0) %> pelanggan belum sinkron PPPoE</b><small>Gunakan saran sinkronisasi sesuai site</small></span></a><% } %>
     <% if(isAdmin && Number(noc.cash_held||0)>0){ %><a href="<%= cashTarget %>"><i class="bi bi-cash-stack"></i><span><b>Cash di tim <%= formatRupiah(noc.cash_held||0) %></b><small>Perlu disetor dan direkonsiliasi</small></span></a><% } %>
     <% if(Number(noc.critical_tickets||0)>0){ %><a class="hard" href="<%= can('support')?`/tickets?status=active&priority=critical${siteQuery}`:'/' %>"><i class="bi bi-life-preserver"></i><span><b><%= Number(noc.critical_tickets||0) %> tiket kritis</b><small>Prioritaskan respons dan eskalasi teknisi</small></span></a><% } %>
-    <% if(Number(noc.tickets_open||0)>0){ %><a href="<%= ticketTarget %>"><i class="bi bi-life-preserver"></i><span><b><%= Number(noc.tickets_open||0) %> tiket aktif</b><small>Buka daftar pekerjaan dukungan</small></span></a><% } %>
+    <% if(Number(noc.tickets_open||0)>0){ %><% } %>
   </div>
   <% if(alertCount>3){ %><button type="button" class="dashboard-alert-more" data-important-more><span data-important-more-label>Lihat <%= alertCount-3 %> Lainnya</span></button><% } %>
   <div class="dashboard-alert-progress"><i></i></div>

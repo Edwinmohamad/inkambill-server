@@ -1,0 +1,9 @@
+<div class="customer-summary">
+  <div class="customer-summary-heading"><h3><%= customer.name %></h3><span><%= customer.customer_code %></span><span class="status-badge"><%= statusLabel(customer.customer_status) %></span></div>
+  <dl class="customer-summary-fields">
+    <% [['Telepon',customer.phone],['Alamat',customer.address],['Site',customer.site_code],['Cluster',customer.cluster_name],['Paket',customer.package_name],['Harga',formatRupiah(customer.package_price||0)],['Jatuh tempo',customer.due_day ? 'Tanggal '+customer.due_day : '-'],['PPPoE',customer.pppoe_username],['Router',customer.router_name]].forEach(([label,value])=>{ %><div><dt><%= label %></dt><dd><%= value||'-' %></dd></div><% }) %>
+  </dl>
+  <h4>Tagihan terbaru</h4>
+  <div class="customer-summary-invoices"><% invoices.slice(0,5).forEach(i=>{ %><a href="/invoices?customer=<%= customer.id %>&month=<%= i.period_month %>&year=<%= i.period_year %>"><div><strong><%= i.period_month %>/<%= i.period_year %></strong><span><%= statusLabel(i.status) %></span></div><b><%= formatRupiah(i.outstanding) %></b></a><% }) %><% if(!invoices.length){ %><p>Belum ada tagihan.</p><% } %></div>
+  <div class="customer-summary-actions"><a class="btn-tech" href="/customers/<%= customer.id %>">Detail lengkap</a><a class="btn-tech primary" href="/customers/<%= customer.id %>/edit">Edit pelanggan</a></div>
+</div>

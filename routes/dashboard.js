@@ -1,3 +1,4 @@
+const {loadCustomerReceipts}=require('../services/customerReceiptService');
 const express = require('express');
 const db = require('../config/db');
 const { requirePermission } = require('../middleware/auth');
@@ -233,12 +234,15 @@ router.get('/', async (req, res) => {
   const greeting=jakartaHour<11?'Selamat pagi':jakartaHour<15?'Selamat siang':jakartaHour<18?'Selamat sore':'Selamat malam';
   const years=Array.from({length:5},(_,i)=>now.getFullYear()-2+i);for(const year of [selectedYear,kpiYear,psbYear,offYear])if(!years.includes(year))years.push(year);years.sort((a,b)=>a-b);
   const billingMonitor=await billingMonitorPromise;
+  let customerReceipts=null;
+  try{customerReceipts=await loadCustomerReceipts({date:selectedIncomeDate,siteId});}
+  catch(error){console.error('Customer receipts unavailable:',error.message);}
 
   res.render('dashboard/index',{
     title:'Dashboard',customer,revenue,billed,unpaid,newCustomers,psbToday,psbCustomers,network,noc,recent,loginTicker,siteOptions,siteCustomerRows,weekDuty,todayDuty,week,invoiceKpi,hardOverdueCustomers,inactiveCustomers,isolatedCustomers,
     selectedSiteCode:selectedSite?.code||'',selectedSiteName:selectedSite?.name||'Semua Site',collectionRate,routerRate,
     selectedMonth,selectedYear,years,selectedCycle,trendMonths,selectedIncomeDate,incomeDateLabel,kpiMonth,kpiYear,kpiSiteCode:kpiSite?.code||'',psbMonth,psbYear,psbSiteCode:psbSite?.code||'',offMonth,offYear,offSiteCode:offSite?.code||'',
-    greeting,billingMonitor,monthly:{labels:monthLabels,invoices:monthlyInvoices,payments:monthlyPayments,psbLabels,psb:dailyPsb},
+    customerReceipts,greeting,billingMonitor,monthly:{labels:monthLabels,invoices:monthlyInvoices,payments:monthlyPayments,psbLabels,psb:dailyPsb},
     closing,waOverview,serverResource,odpAvailableCount,
     collectionBilled:nz(collectionBilling.total),collectionCollected:nz(collectionBilling.collected)
   });

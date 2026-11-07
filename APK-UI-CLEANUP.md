@@ -29,3 +29,13 @@ Local result: 71/71 audit scripts and 10/10 browser viewport/theme combinations 
 This is not a physical Android performance benchmark or an authenticated production-data test.
 After deployment, verify the busy billing/cash/dashboard screens on the target phones,
 including the keyboard, larger Android text settings and production data volumes.
+
+## Operational revision
+
+- Removes Cash Saya and Ticketing entries from web/APK navigation and ticket shortcuts from the dashboard. Historical routes/data are retained.
+- PPPoE synchronization shows mapping status, customer, username and profile with direct Ganti pelanggan/Lepas actions. It reuses the existing authorized, audited unmap endpoint; traffic/status streaming and monitoring controls are removed from this page.
+- Customer names in the customer list open a right-side detail panel; phones use the available viewport. The existing authorized detail route renders an escaped partial and the client cancels stale requests.
+- Approval and cash proof dialogs have bounded image/PDF previews and scrollable metadata. Repetitive subtitles are removed while warnings and transaction identifiers remain.
+- A separate daily receipt card uses `payments.paid_at`, all invoice periods, and the selected site. Confirmed transfer, cash and QRIS are separate; pending totals and cash still held by staff are explicitly separate. Existing ledger recognition and closing calculations are unchanged. The payment-date input defaults to the Jakarta calendar date.
+
+`npm run test:operations-layout` uses local Bootstrap assets and mocked data/APIs to test customer details, proof viewing and unmapping on 360/390/1366px screens in both themes (18 page/viewport/theme checks). `node scripts/test-customer-receipts.js` checks payment-date query bounds, site scope and method/pending aggregation. All 72 audit scripts passed locally. These checks do not replace production database or physical Android validation.

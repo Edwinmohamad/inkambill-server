@@ -1,7 +1,7 @@
 <section class="billing-page">
   <div class="module-head billing-head">
     <div>
-      <div class="module-kicker">MESIN TAGIHAN</div>
+
       <h1>Tagihan Pelanggan</h1>
       <p>Buat tagihan per bulan atau per pelanggan, pantau status pembayaran, dan tindak lanjuti tagihan dari satu halaman.</p>
     </div>
@@ -119,7 +119,7 @@
   <div class="modal-dialog modal-lg modal-dialog-centered">
     <form method="post" action="/invoices/generate" class="modal-content">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-      <div class="modal-header"><div><div class="module-kicker">PEMBUAT TAGIHAN</div><h5 class="modal-title">Refresh / Buat Tagihan</h5></div><button class="btn-close" type="button" data-bs-dismiss="modal"></button></div>
+      <div class="modal-header"><div><h5 class="modal-title">Refresh / Buat Tagihan</h5></div><button class="btn-close" type="button" data-bs-dismiss="modal"></button></div>
       <div class="modal-body">
         <div class="generate-note"><i class="bi bi-shield-check"></i><div><strong>Idempotent - aman dijalankan ulang</strong><small>Pilih bulan/tahun lalu jalankan kapan saja untuk menangkap pelanggan baru. Tagihan existing, termasuk yang sudah LUNAS, tidak akan dibuat ulang atau di-reset.</small></div></div>
         <div class="row g-3 mt-1">
@@ -141,7 +141,7 @@
     <form class="modal-content customer-import-modal" method="post" action="/invoices/import" enctype="multipart/form-data">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>">
       <div class="modal-header">
-        <div><div class="module-kicker">IMPORT TAGIHAN</div><h5 class="modal-title">Import Tagihan dari Excel</h5><small class="text-secondary">Bisa membuat tagihan baru maupun memperbarui tagihan yang sudah ada.</small></div>
+        <div><h5 class="modal-title">Import Tagihan dari Excel</h5><small class="text-secondary">Bisa membuat tagihan baru maupun memperbarui tagihan yang sudah ada.</small></div>
         <button class="btn-close" type="button" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
@@ -193,7 +193,7 @@
     <form class="modal-content" id="invoiceEditForm" method="post">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>">
       <input type="hidden" name="return_to" value="/invoices?<%= periodQueryString %>">
-      <div class="modal-header"><div><div class="module-kicker">EDIT TAGIHAN</div><h5 class="modal-title">Perbaiki Metadata Tagihan</h5><small class="text-secondary" id="invoiceEditIdentity">-</small></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-header"><div><h5 class="modal-title">Perbaiki Metadata Tagihan</h5><small class="text-secondary" id="invoiceEditIdentity">-</small></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body">
         <div class="invoice-edit-safety"><i class="bi bi-shield-lock-fill"></i><div><strong>Nominal dikunci</strong><small>Tanggal dan tipe dapat diedit tanpa mengubah nominal. Gunakan aksi “Jadikan Belum Lunas” untuk koreksi pembayaran yang salah.</small></div></div>
         <div class="row g-3 mt-1"><div class="col-md-6"><label class="form-label">Tanggal Faktur</label><input class="form-control" type="date" name="invoice_date" id="invoiceEditDate" required></div><div class="col-md-6"><label class="form-label">Jatuh Tempo</label><input class="form-control" type="date" name="due_date" id="invoiceEditDue" required></div><div class="col-12"><label class="form-label">Tipe Tagihan</label><select class="form-select" name="is_prorata" id="invoiceEditProrata"><option value="0">Bulanan</option><option value="1">Prorata</option></select></div></div>
@@ -208,7 +208,7 @@
     <form class="modal-content" id="invoiceDiscountForm" method="post">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>">
       <input type="hidden" name="return_to" value="/invoices?<%= periodQueryString %>">
-      <div class="modal-header"><div><div class="module-kicker">DISKON TAGIHAN</div><h5 class="modal-title">Tambah / Ubah Diskon</h5><small class="text-secondary" id="invoiceDiscountIdentity">-</small></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-header"><div><h5 class="modal-title">Tambah / Ubah Diskon</h5><small class="text-secondary" id="invoiceDiscountIdentity">-</small></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body">
         <div class="invoice-edit-safety"><i class="bi bi-shield-lock-fill"></i><div><strong>Total dihitung ulang otomatis</strong><small>Total Akhir = Nominal Tagihan − Diskon. Tidak berlaku untuk tagihan yang sudah lunas/dibatalkan.</small></div></div>
         <div class="row g-3 mt-1">

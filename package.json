@@ -36,7 +36,8 @@
     "test:psb-next-month": "node scripts/test-psb-next-month-billing.js",
     "audit:financial": "node scripts/financial-integrity-audit.js",
     "repair:psb-income": "node scripts/repair-legacy-psb-double-income.js",
-    "test:mobile-layout": "node scripts/check-mobile-layout.cjs"
+    "test:mobile-layout": "node scripts/check-mobile-layout.cjs",
+    "test:operations-layout": "node scripts/check-operations-layout.cjs"
   },
   "dependencies": {
     "bcryptjs": "3.0.2",
@@ -54,6 +55,7 @@
     "qrcode": "^1.5.4"
   },
   "devDependencies": {
+    "bootstrap": "^5.3.8",
     "playwright": "^1.65.0"
   }
 }

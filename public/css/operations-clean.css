@@ -1,0 +1,45 @@
+/* Shared web/APK corrections, loaded after page styles. */
+.receipt-summary{margin:0 0 16px;padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--text)}
+.receipt-summary header,.receipt-summary footer{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.receipt-summary h3{font-size:16px;margin:0}.receipt-summary header>span,.receipt-summary footer{font-size:12px;color:var(--muted)}
+.receipt-methods{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:16px 0}
+.receipt-methods>div{min-width:0}.receipt-methods span{display:block;font-size:13px;color:var(--muted)}
+.receipt-methods strong{display:block;font-size:clamp(16px,1.5vw,23px);line-height:1.4;overflow-wrap:anywhere}
+#customerDetailPanel .modal-dialog{position:absolute;right:0;top:0;margin:0;width:min(480px,100%);max-width:100%;height:100%;min-height:0;max-height:100%;transform:none!important}
+#customerDetailPanel .modal-content{height:100%;max-height:100%;border-radius:14px 0 0 14px;display:flex;overflow:hidden}
+#customerDetailPanel .modal-header{flex-shrink:0;padding:16px 20px}#customerDetailPanel .modal-title{font-size:18px}
+#customerDetailPanel .modal-body{padding:20px;overflow:auto;min-height:0}
+.customer-summary-heading{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:20px}
+.customer-summary-heading h3{width:100%;font-size:20px;margin:0;overflow-wrap:anywhere}
+.customer-summary-heading>span{font-size:13px;color:var(--muted)}
+.customer-summary-fields{margin:0 0 24px}.customer-summary-fields>div{display:grid;grid-template-columns:100px minmax(0,1fr);gap:14px;padding:10px 0;border-bottom:1px solid var(--line)}
+.customer-summary-fields dt{font-size:13px;font-weight:400;color:var(--muted)}.customer-summary-fields dd{margin:0;font-size:14px;overflow-wrap:anywhere}
+.customer-summary h4{font-size:15px;margin:0 0 8px}.customer-summary-invoices>a{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);color:var(--text);text-decoration:none;font-size:14px}
+.customer-summary-invoices span{display:block;color:var(--muted);font-size:12px}.customer-summary-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px}.customer-summary-actions>a{flex:1;justify-content:center;min-height:44px}
+/* Bound both cash and approval evidence dialogs; scroll metadata independently. */
+:is(#proofViewerModal,#cashProofViewerModal) .modal-dialog{width:calc(100% - 32px);max-width:960px;height:auto!important;min-height:calc(100% - 32px);max-height:none!important;margin:16px auto;align-items:center}
+:is(#proofViewerModal,#cashProofViewerModal) .modal-content{height:auto!important;max-height:calc(var(--go-viewport-height,100dvh) - 32px)!important;overflow:hidden!important}
+:is(#proofViewerModal,#cashProofViewerModal) .modal-header{flex-shrink:0;padding:12px 16px;gap:12px;flex-wrap:wrap}
+:is(#proofViewerModal,#cashProofViewerModal) .modal-title{font-size:17px}
+:is(#proofViewerModal,#cashProofViewerModal) .proof-viewer-grid{min-height:0!important;display:grid;grid-template-columns:minmax(0,1fr) 280px;overflow:auto;padding:0!important}
+:is(#proofViewerModal,#cashProofViewerModal) .proof-stage{min-height:240px!important;height:min(65dvh,560px);max-height:none!important;padding:12px;overflow:auto;background:var(--panel-3)}
+:is(#proofViewerModal,#cashProofViewerModal) .proof-stage img{max-width:100%;max-height:100%;object-fit:contain;border-radius:6px}
+:is(#proofViewerModal,#cashProofViewerModal) .proof-stage iframe{width:100%;height:100%;min-height:220px;max-height:100%;border:0}
+:is(#proofViewerModal,#cashProofViewerModal) .proof-meta-panel{min-width:0;max-height:min(65dvh,560px);overflow:auto;padding:14px}
+:is(#proofViewerModal,#cashProofViewerModal) .proof-meta-list{margin:8px 0}.proof-meta-list>div{padding:8px 0}
+#nmsSecrets .sync-stats{grid-template-columns:repeat(3,minmax(0,1fr))}
+#nmsSecrets .nx-eyebrow,#nmsSecrets #nxOpenPalette{display:none}
+#nmsSecrets .nx-actions{display:flex;flex-wrap:wrap;gap:8px}#nmsSecrets .nx-actions button{min-height:40px;white-space:normal}
+#nmsSecrets .nx-table-wrap{min-height:180px!important;max-height:none!important}
+#nmsSecrets .nx-toolbar{flex-wrap:wrap;gap:10px}#nmsSecrets .nx-search{flex:1 1 220px;min-width:0}
+@media(max-width:767px){
+ .receipt-methods{grid-template-columns:repeat(2,minmax(0,1fr))}.receipt-summary{padding:14px}
+ :is(#proofViewerModal,#cashProofViewerModal) .modal-dialog{width:calc(100% - 16px);margin:8px auto;min-height:calc(100% - 16px)}
+ :is(#proofViewerModal,#cashProofViewerModal) .modal-content{max-height:calc(var(--go-viewport-height,100dvh) - 16px)!important}
+ :is(#proofViewerModal,#cashProofViewerModal) .proof-viewer-grid{grid-template-columns:minmax(0,1fr)}
+ :is(#proofViewerModal,#cashProofViewerModal) .proof-stage{height:42dvh;min-height:180px!important}
+ :is(#proofViewerModal,#cashProofViewerModal) .proof-meta-panel{max-height:none;overflow:visible}
+ #customerDetailPanel .modal-dialog{height:var(--go-viewport-height,100dvh)!important;max-height:var(--go-viewport-height,100dvh)!important;margin:0!important}
+ #customerDetailPanel .modal-content{border-radius:0;height:100%!important}#customerDetailPanel .modal-body{padding:16px}
+ #nmsSecrets .sync-stats{gap:8px}#nmsSecrets .nx-stat{padding:12px;min-width:0}#nmsSecrets .nx-stat strong{font-size:22px}
+}
