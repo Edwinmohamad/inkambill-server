@@ -6,7 +6,7 @@ const { audit } = require('../services/auditService');
 const { requireAdmin, requireMasterAdmin, isMasterAdminRole } = require('../middleware/auth');
 const { validateWhatsapp } = require('../services/whatsappService');
 const { syncCustomerDiscountToOpenInvoices } = require('../services/invoiceService');
-const { isolateCustomer } = require('../services/networkService');
+const { isolateCustomer, unisolateCustomer } = require('../services/networkService');
 const { buildPsbTerms } = require('../services/psbService');
 const router = express.Router();
 
@@ -625,6 +625,34 @@ router.post('/:id',async(req,res)=>{
   await audit({userId:req.session.user.id,action:'update',entityType:'customer',entityId:req.params.id,description:`Update ${customerCode} - ${b.name}${resynced?` · diskon disesuaikan otomatis pada ${resynced} tagihan berjalan`:''}`,ip:req.ip});
   const isolation = ['suspended','terminated'].includes(String(b.customer_status||'').toLowerCase()) && String(before?.customer_status||'') !== String(b.customer_status||'') ? await isolateAfterStatusChange(req.params.id,'customer_status') : { attempted:false };
   req.session.flash={type:isolation.attempted&&!isolation.ok?'warning':'success',message:`Data pelanggan diperbarui.${resynced?` Diskon otomatis disesuaikan pada ${resynced} tagihan berjalan milik pelanggan ini (tagihan yang sudah lunas/dibatalkan tidak diubah).`:''}${isolation.attempted?(isolation.ok?' PPPoE langsung diisolir.':` Status tersimpan, tetapi isolir MikroTik gagal: ${isolation.error}`):''}`};
+  res.redirect('/customers');
+});
+router.post('/:id/status',requireAdmin,async(req,res)=>{
+  const status=String(req.body.status||'').toLowerCase();
+  if(!['active','suspended','terminated'].includes(status)){
+    req.session.flash={type:'danger',message:'Status pelanggan tidak dikenal.'};return res.redirect('/customers');
+  }
+  const [[customer]]=await db.execute('SELECT id,customer_code,name,customer_status FROM customers WHERE id=? AND archived_at IS NULL LIMIT 1',[req.params.id]);
+  if(!customer){req.session.flash={type:'warning',message:'Pelanggan tidak ditemukan.'};return res.redirect('/customers');}
+  if(customer.customer_status!==status){
+    await db.execute('UPDATE customers SET customer_status=?,status_changed_at=NOW() WHERE id=?',[status,customer.id]);
+    await audit({userId:req.session.user.id,action:'customer_status',entityType:'customer',entityId:customer.id,description:`Status ${customer.customer_code}: ${customer.customer_status} → ${status}`,ip:req.ip});
+  }
+  const isolation=status==='active'?{attempted:false}:await isolateAfterStatusChange(customer.id,'customer_status');
+  req.session.flash={type:isolation.attempted&&!isolation.ok?'warning':'success',message:`Status ${customer.name} menjadi ${status}.${status==='active'?' Periksa isolir jaringan sebelum membuka layanan.':''}${isolation.attempted&&!isolation.ok?` Isolir router gagal: ${isolation.error}`:''}`};
+  res.redirect('/customers');
+});
+router.post('/:id/network',requireAdmin,async(req,res)=>{
+  const action=String(req.body.action||'');
+  if(!['isolate','unisolate'].includes(action)){req.session.flash={type:'danger',message:'Aksi jaringan tidak dikenal.'};return res.redirect('/customers');}
+  const [[customer]]=await db.execute('SELECT id,customer_code,name,customer_status,archived_at,router_id,pppoe_username FROM customers WHERE id=? LIMIT 1',[req.params.id]);
+  if(!customer||customer.archived_at||!customer.router_id||!customer.pppoe_username){req.session.flash={type:'warning',message:'Pelanggan atau koneksi PPPoE tidak tersedia.'};return res.redirect('/customers');}
+  if(action==='unisolate'&&customer.customer_status!=='active'){req.session.flash={type:'warning',message:'Aktifkan status pelanggan sebelum membuka isolir.'};return res.redirect('/customers');}
+  try{
+    if(action==='isolate')await isolateCustomer(customer.id,'manual');else await unisolateCustomer(customer.id,false);
+    await audit({userId:req.session.user.id,action:`customer_${action}`,entityType:'customer',entityId:customer.id,description:`${action} manual ${customer.customer_code} - ${customer.name}`,ip:req.ip});
+    req.session.flash={type:'success',message:`Aksi ${action==='isolate'?'isolir':'buka isolir'} selesai untuk ${customer.name}.`};
+  }catch(error){req.session.flash={type:'danger',message:`Gagal mengubah jaringan ${customer.name}: ${error.message}`};}
   res.redirect('/customers');
 });
 router.post('/:id/delete',requireAdmin,async(req,res)=>{

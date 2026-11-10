@@ -12,7 +12,35 @@ const { isVendorCashCategory }=require('../services/cashCategoryService');
 const { audit }=require('../services/auditService');
 const { assertDateOpen, financialAudit }=require('../services/financialControlService');
 const { syncCashTransactionsIntoDraftAutoClosing }=require('../services/closingSyncService');
+const bankReconciliation=require('../services/bankReconciliationService');
 const router=express.Router();
+function validBankDate(value){if(!/^\d{4}-\d{2}-\d{2}$/.test(String(value||'')))return false;const date=new Date(`${value}T00:00:00Z`);return !Number.isNaN(date.getTime())&&date.toISOString().slice(0,10)===value;}
+router.get('/cash/bank-reconciliation',requireAdmin,async(req,res)=>{
+  const [banks]=await db.query("SELECT id,bank_name,account_name,account_number FROM banks WHERE is_active=1 AND type IN ('bank_transfer','virtual_account','other') ORDER BY bank_name,account_number");
+  const dayParts=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Jakarta',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()).map(part=>[part.type,part.value]));
+  const today=`${dayParts.year}-${dayParts.month}-${dayParts.day}`;
+  const from=validBankDate(req.query.from)?String(req.query.from):`${today.slice(0,7)}-01`;
+  const to=validBankDate(req.query.to)?String(req.query.to):today;
+  const bank=banks.find(row=>String(row.id)===String(req.query.bank_id))||banks[0];
+  const transfer=bank&&from<=to?await bankReconciliation.transferTotal(bank,from,to):{total:0,count:0};
+  const [[snapshot]]=bank&&from<=to?await db.execute('SELECT * FROM bank_reconciliation_snapshots WHERE bank_id=? AND period_from=? AND period_to=?',[bank.id,from,to]):[[null]];
+  const result=bankReconciliation.reconcile(snapshot,transfer.total);
+  res.render('finance/bank-reconciliation',{title:'Rekonsiliasi Rekening',banks,bank,from,to,transfer,snapshot,expected:result?.expected,difference:result?.difference});
+});
+router.post('/cash/bank-reconciliation',requireMasterAdmin,async(req,res)=>{
+  const bankId=Number(req.body.bank_id),from=String(req.body.from||''),to=String(req.body.to||'');
+  const [banks]=await db.execute("SELECT id,bank_name,account_name,account_number FROM banks WHERE id=? AND is_active=1 AND type IN ('bank_transfer','virtual_account','other') LIMIT 1",[bankId]);
+  const nums=['opening_balance','closing_balance','other_credits','other_debits'].map(key=>Number(req.body[key]));
+  if(!banks.length||!validBankDate(from)||!validBankDate(to)||from>to||['opening_balance','closing_balance','other_credits','other_debits'].some(key=>String(req.body[key]??'').trim()==='')||nums.some(n=>!Number.isFinite(n)||Math.abs(n)>=1e14)||nums[2]<0||nums[3]<0){
+    req.session.flash={type:'danger',message:'Data rekening, periode, atau nominal tidak valid.'};return res.redirect('/cash/bank-reconciliation');
+  }
+  const note=String(req.body.note||'').trim().slice(0,500);
+  await db.execute(`INSERT INTO bank_reconciliation_snapshots(bank_id,period_from,period_to,opening_balance,closing_balance,other_credits,other_debits,note,recorded_by)
+    VALUES(?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE opening_balance=VALUES(opening_balance),closing_balance=VALUES(closing_balance),other_credits=VALUES(other_credits),other_debits=VALUES(other_debits),note=VALUES(note),recorded_by=VALUES(recorded_by)`,[bankId,from,to,...nums,note||null,req.session.user.id]);
+  await audit({userId:req.session.user.id,action:'bank_reconciliation',entityType:'bank',entityId:bankId,description:`Catat saldo manual ${bankReconciliation.bankLabel(banks[0])} ${from} s.d. ${to}; awal ${nums[0]}, akhir ${nums[1]}, kredit lain ${nums[2]}, debit lain ${nums[3]}`,ip:req.ip});
+  req.session.flash={type:'success',message:'Saldo rekening manual tersimpan. Periksa selisih di ringkasan.'};
+  res.redirect(`/cash/bank-reconciliation?bank_id=${bankId}&from=${from}&to=${to}`);
+});
 function assertManualCash(tx){
   if(tx.internal_transfer_key||tx.warehouse_transfer_id||tx.warehouse_purchase_id)throw new Error('Transaksi transfer internal dikunci sebagai pasangan atau terhubung dokumen gudang. Koreksi dari Pengadaan.');
   if(tx.source_type&&tx.source_type!=='manual')throw new Error('Jurnal otomatis/payment-linked tidak boleh dihapus atau diedit dari Data Kas. Koreksi dari Payment/Tagihan.');
@@ -172,7 +200,7 @@ router.get('/cash',async(req,res)=>{
   // invoice records, so that path stays blocked in the delete/force-delete routes below.
   // Bukti transfer disimpan pada payments, bukan diduplikasi ke cash_transactions. Data Kas mengambil
   // metadata bukti sumber secara langsung agar lampiran yang dilihat selalu versi pembayaran terbaru.
-  let sql=`SELECT ct.*,cc.code category_code,cc.name category_name,cc.type category_type,s.code site_code,pu.name proof_uploader_name,src_pmt.id source_payment_id,src_pmt.proof_path source_payment_proof_path,src_pmt.proof_original_name source_payment_proof_name,src_pmt.proof_mime source_payment_proof_mime,src_inv.id source_invoice_id,src_inv.invoice_number source_invoice_number,src_inv.period_month source_invoice_month,src_inv.period_year source_invoice_year,src_customer.name source_customer_name,src_customer.customer_code source_customer_code,COALESCE(NULLIF(TRIM(ct.name),''),CASE WHEN src_customer.name IS NOT NULL THEN CONCAT('Pembayaran ',src_customer.name) END,'Transaksi kas') display_name FROM cash_transactions ct JOIN cash_categories cc ON cc.id=ct.category_id LEFT JOIN sites s ON s.id=ct.site_id LEFT JOIN users pu ON pu.id=ct.proof_uploaded_by LEFT JOIN payments src_pmt ON ct.source_type IN ('payment','install_income') AND src_pmt.id=ct.source_id LEFT JOIN invoices src_inv ON src_inv.id=src_pmt.invoice_id LEFT JOIN customers src_customer ON src_customer.id=src_inv.customer_id WHERE ${LEDGER_PERIOD_SQL}`;
+  let sql=`SELECT ct.*,cc.code category_code,cc.name category_name,cc.type category_type,s.code site_code,pu.name proof_uploader_name,src_pmt.id source_payment_id,src_pmt.proof_path source_payment_proof_path,src_pmt.proof_original_name source_payment_proof_name,src_pmt.proof_mime source_payment_proof_mime,src_inv.id source_invoice_id,src_inv.invoice_number source_invoice_number,src_inv.period_month source_invoice_month,src_inv.period_year source_invoice_year,src_customer.name source_customer_name,src_customer.customer_code source_customer_code,COALESCE(NULLIF(TRIM(ct.name),''),CASE WHEN src_customer.name IS NOT NULL THEN CONCAT('Pembayaran ',src_customer.name) END,'Transaksi kas') display_name FROM cash_transactions ct JOIN cash_categories cc ON cc.id=ct.category_id LEFT JOIN sites s ON s.id=ct.site_id LEFT JOIN users pu ON pu.id=ct.proof_uploaded_by LEFT JOIN payments src_pmt ON ct.source_type IN ('payment','install_income') AND src_pmt.id=ct.source_id LEFT JOIN invoices src_inv ON src_inv.id=src_pmt.invoice_id LEFT JOIN customers src_customer ON src_customer.id=src_inv.customer_id WHERE ${LEDGER_PERIOD_SQL} AND COALESCE(ct.approval_status,'APPROVED')<>'REJECTED'`;
   const params=[...cashPeriodParams];if(site){sql+=` AND s.code=?`;params.push(site);}if(category){sql+=` AND ct.category_id=?`;params.push(category);}if(type){sql+=` AND cc.type=?`;params.push(type);}if(method==='manual'){sql+=` AND COALESCE(ct.source_type,'manual')='manual'`;}else if(method){sql+=` AND ct.source_type IN ('payment','install_income') AND src_pmt.method=?`;params.push(method);}if(q){sql+=` AND (ct.transaction_code LIKE ? OR ct.name LIKE ? OR src_customer.name LIKE ? OR src_customer.customer_code LIKE ? OR src_inv.invoice_number LIKE ? OR ct.notes LIKE ? OR cc.name LIKE ? OR cc.code LIKE ? OR ct.purchase_shop_name LIKE ? OR ct.purchase_channel LIKE ? OR ct.vendor_name LIKE ?)`;const like=`%${q}%`;params.push(like,like,like,like,like,like,like,like,like,like,like);}sql+=` ORDER BY ct.transaction_date DESC,ct.id DESC`;
   // Include system categories in filters so every category visible in the chart/ledger can be traced.
   // The view excludes them only from Add/Edit manual transaction selectors.
