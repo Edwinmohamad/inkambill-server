@@ -360,6 +360,7 @@ async function bootstrap() {
   await ensureV64Schema();
   await ensureV65Schema();
   await ensureV66Schema();
+  await require('./services/bankReconciliationService').ensureSchema();
   await ensureWaCrmSchema();
   await recoverProofOcrOnBoot();
   await ensureNmsV2Schema();

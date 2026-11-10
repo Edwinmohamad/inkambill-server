@@ -21,6 +21,7 @@ const RECON = {
       JOIN invoices i ON i.customer_id=c.id AND i.status IN ('unpaid','partial','overdue') AND i.outstanding>0
       CROSS JOIN settings st
       WHERE st.id=1 AND c.archived_at IS NULL AND c.customer_status='active' AND p.is_isolated=0 AND p.is_exempt=0
+        AND (c.isolate_hold_until IS NULL OR c.isolate_hold_until<CURDATE())
         AND CURDATE() > DATE_ADD(i.due_date, INTERVAL COALESCE(c.grace_days, s.default_grace_days, st.default_grace_days, 2) DAY)
         ${siteWhere('c.site_id', siteId, p)}
       GROUP BY p.id, p.username, p.is_online, p.profile, s.code, c.id, c.customer_code, c.name, c.phone, c.isolate_hold_until

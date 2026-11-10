@@ -16,7 +16,7 @@
   --x-shadow-lg:0 24px 64px rgba(0,0,0,.18),0 2px 8px rgba(0,0,0,.06);
   --x-mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
   --x-ease:cubic-bezier(.32,.72,0,1);
-  color:var(--x-text);font-size:14px;line-height:1.45;letter-spacing:-.005em;-webkit-font-smoothing:antialiased;
+  color:var(--x-text);font-family:var(--font,system-ui,sans-serif);font-size:14px;line-height:1.45;letter-spacing:-.005em;-webkit-font-smoothing:antialiased;
   max-width:1560px;margin:0 auto;padding:0 0 48px
 }
 html[data-theme="dark"] .nx{
@@ -28,6 +28,7 @@ html[data-theme="dark"] .nx{
 .nx *,.nx *::before,.nx *::after{box-sizing:border-box}
 .nx a{color:inherit;text-decoration:none}
 :where(.nx) button{font-family:inherit;color:inherit}
+.nx input,.nx select,.nx textarea,.nx button{font-family:inherit}
 html[data-theme="dark"] .nx{color-scheme:dark}
 .nx .mono,.nx .num{font-family:var(--x-mono);font-variant-numeric:tabular-nums;letter-spacing:0}
 .nx .muted{color:var(--x-muted)}.nx .dim{color:var(--x-dim)}

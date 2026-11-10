@@ -75,7 +75,7 @@
     const b = (fix, label, cls = 'tint') => `<button type="button" class="nx-btn sm ${cls}" data-fix="${fix}" data-row="${i}">${label}</button>`;
     const ticket = b('ticket', 'Tiket teknisi', 'ghost');
     switch (g.fix) {
-      case 'isolate': return b('isolate', 'Isolir', 'red') + (g.key === 'overdue_active' && r.customer_id ? b('hold', 'Tunda', '') : '') + ticket;
+      case 'isolate': return b('isolate', 'Isolir', 'red') + (g.key === 'overdue_active' && r.customer_id ? b('hold', 'Tunda (janji bayar)', '') : '') + ticket;
       case 'unisolate': return b('unisolate', 'Buka isolir', 'green') + ticket;
       case 'map': return b('map', 'Hubungkan') + b('create-customer', 'Buat pelanggan', '') + ticket;
       case 'create_secret': return b('create-secret', 'Buat ulang') + b('unmap', 'Putuskan mapping', 'ghost') + ticket;

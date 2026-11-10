@@ -2658,3 +2658,15 @@ html[data-theme="light"] .bm-revenue-card{background:linear-gradient(150deg,rgba
 .payment-history-table .payment-col-approval{width:200px}
 .payment-history-table .payment-approval-buttons{max-width:100%;flex-wrap:wrap}
 .payment-history-table .payment-approval-buttons .approval-button{flex:0 0 auto;white-space:nowrap;overflow-wrap:normal;word-break:normal}
+
+/* Compact, viewport-bound evidence viewer shared by Approval and Data Kas. */
+#cashProofViewerModal .modal-dialog,#proofViewerModal .modal-dialog{width:min(920px,calc(100vw - 24px));max-width:920px;margin:12px auto}
+#cashProofViewerModal .modal-content,#proofViewerModal .modal-content{max-height:calc(100dvh - 24px)}
+#cashProofViewerModal .proof-viewer-grid,#proofViewerModal .proof-viewer-grid{min-height:0;overflow:auto}
+#cashProofViewerModal .proof-stage,#proofViewerModal .proof-stage{min-height:0;height:min(60dvh,560px)}
+#cashProofViewerModal .proof-stage img,#proofViewerModal .proof-stage img{max-height:calc(min(60dvh,560px) - 20px)}
+#cashProofViewerModal .proof-stage iframe,#proofViewerModal .proof-stage iframe{height:calc(min(60dvh,560px) - 20px)}
+#cashProofViewerModal .proof-meta-panel,#proofViewerModal .proof-meta-panel{max-height:min(60dvh,560px);overflow-y:auto}
+#cashProofComparison{margin:12px 0;padding:10px;border:1px solid var(--line);border-radius:10px}#cashProofComparison p{margin:0 0 5px}
+@media(max-width:991.98px){#cashProofViewerModal .proof-stage,#proofViewerModal .proof-stage{height:min(42dvh,400px)}#cashProofViewerModal .proof-meta-panel,#proofViewerModal .proof-meta-panel{max-height:35dvh}}
+.payment-history-table{min-width:1220px}.payment-history-table .payment-col-method{min-width:105px}.payment-history-table .payment-col-proof{min-width:155px}.payment-history-table td .proof-chip{margin-top:0}

@@ -163,6 +163,9 @@ async function buildReportPayload(req){
     ];
   }
 
+  // Nomor urut mengikuti urutan baris hasil filter dan tetap berlanjut antarhalaman PDF.
+  rows.forEach((row,index)=>{row.report_number=index+1;});
+  columns.unshift({label:'No.',width:.42,key:'report_number',align:'center'});
   return {type,rows,columns,summaryItems,title,subtitle,baseFilename};
 }
 
