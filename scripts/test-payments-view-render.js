@@ -17,7 +17,7 @@ function render(role,over){
       assert.ok((await render(role,{payments:[{...pay,status,method}],cashApprovals:[cash]})).length>1000,`${role}/${status}/${method}`);
   }
   // v1.34: kolom 'Validasi Bukti' (OCR) disembunyikan dari tabel; hasil hanya tampil saat bukti dibuka.
-  for(const [role,count] of [['master_admin',8],['admin',7]]){
+  for(const [role,count] of [['master_admin',9],['admin',8]]){
     const html=await render(role,{payments:[pay]});
     const table=html.match(/<table class="app-table payment-history-table[\s\S]*?<\/table>/)[0];
     assert.equal((table.match(/<th[ >]/g)||[]).length,count,'compact headers must match role');
