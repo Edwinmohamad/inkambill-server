@@ -730,7 +730,7 @@ async function settleCashPayments(conn,{paymentIds,settlementDate,actorId,mode='
   return {settlementId,code,done,skipped,total,difference};
 }
 
-router.post('/:id/settle',requireAdmin,async(req,res)=>{
+router.post('/:id/settle',requireMasterAdmin,async(req,res)=>{
   const conn=await db.getConnection();let result;
   try{
     await conn.beginTransaction();
@@ -745,7 +745,7 @@ router.post('/:id/settle',requireAdmin,async(req,res)=>{
 
 // v1.25.5 (update) — "Konfirmasi Setoran Massal". Sejak v1.28 satu batch = satu nomor setoran dalam satu
 // transaksi DB; baris yang sudah tidak tertahan di staff tetap dilewati, bukan menggagalkan batch.
-router.post('/bulk-settle',requireAdmin,async(req,res)=>{
+router.post('/bulk-settle',requireMasterAdmin,async(req,res)=>{
   const returnTo=localReturn(req.body.return_to,'/payments/reconciliation');
   const ids=selectedPaymentIds(req.body);
   if(!ids.length){req.session.flash={type:'warning',message:'Pilih minimal satu setoran terlebih dahulu.'};return res.redirect(returnTo);}
@@ -766,7 +766,7 @@ router.post('/bulk-settle',requireAdmin,async(req,res)=>{
 // v1.28 — Setoran sebagian per collector: admin memasukkan nominal uang yang benar-benar diserahkan,
 // sistem mencocokkan ke transaksi cash tertua (FIFO) yang muat utuh. Transaksi yang tidak muat tetap
 // "Belum Disetor"; kelebihan uang yang tidak cocok ke transaksi mana pun dicatat sebagai selisih lebih.
-router.post('/reconciliation/partial-settle',requireAdmin,async(req,res)=>{
+router.post('/reconciliation/partial-settle',requireMasterAdmin,async(req,res)=>{
   const returnTo='/payments/reconciliation';
   const collectorId=Number(req.body.collector_user_id);
   const handed=cleanMoney(req.body.handed_amount);

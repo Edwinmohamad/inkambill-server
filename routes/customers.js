@@ -169,15 +169,17 @@ router.get('/', async (req, res) => {
   // removed; it only returns NULL if the `customers` table has literally zero rows at all, which is why
   // every field is still read downstream via an explicit `!=null` check instead of the old `stats.x||0`
   // shorthand (see views/customers/index.ejs) — `0` must never fall back to a stale/dummy value.
+  // v1.36: widget-stats mengikuti filter site yang dipilih di halaman (sebelumnya selalu global,
+  // tidak berubah walau sudah difilter per site), konsisten dengan daftar customerSql() di bawahnya.
   const [[stats]]=await db.query(`SELECT
-    SUM(archived_at IS NULL) total,
-    SUM(archived_at IS NULL AND customer_status='active') active,
-    SUM(archived_at IS NULL AND customer_status='suspended') suspended,
-    SUM(archived_at IS NULL AND network_status='isolated') isolated,
-    SUM(archived_at IS NULL AND customer_status='active' AND pppoe_username IS NOT NULL AND router_id IS NOT NULL) pppoe_linked,
-    SUM(archived_at IS NULL AND customer_status='active' AND (pppoe_username IS NULL OR router_id IS NULL)) pppoe_unlinked,
-    SUM(archived_at IS NOT NULL) archived
-    FROM customers`);
+    SUM(c.archived_at IS NULL) total,
+    SUM(c.archived_at IS NULL AND c.customer_status='active') active,
+    SUM(c.archived_at IS NULL AND c.customer_status='suspended') suspended,
+    SUM(c.archived_at IS NULL AND c.network_status='isolated') isolated,
+    SUM(c.archived_at IS NULL AND c.customer_status='active' AND c.pppoe_username IS NOT NULL AND c.router_id IS NOT NULL) pppoe_linked,
+    SUM(c.archived_at IS NULL AND c.customer_status='active' AND (c.pppoe_username IS NULL OR c.router_id IS NULL)) pppoe_unlinked,
+    SUM(c.archived_at IS NOT NULL) archived
+    FROM customers c${filters.site?' JOIN sites s ON s.id=c.site_id AND s.code=?':''}`,filters.site?[filters.site]:[]);
   // Explicit-null-check normalization (per the CRITICAL bug-fix instruction: never use `x||dummy`, because
   // a genuine 0 is falsy and would incorrectly fall back). Only `undefined`/`null` fall back to 0 here.
   const statsSafe={
