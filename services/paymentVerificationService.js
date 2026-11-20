@@ -12,6 +12,7 @@ const { unisolateCustomer }=require('./networkService');
 const { assignCashTransactionCode }=require('./cashService');
 const { isoDate, assertDateOpen, lockedPeriodForDate, resolveBookDate, financialAudit }=require('./financialControlService');
 const { syncCashTransactionsIntoDraftAutoClosing }=require('./closingSyncService');
+const { shrinkIfNeeded }=require('./imageShrink');
 
 const PROOF_DIR=path.join(__dirname,'..','storage','payment-proofs');
 fs.mkdirSync(PROOF_DIR,{recursive:true});
@@ -32,8 +33,9 @@ async function saveProofFile(file){
   const ext=proofExtension(file.mimetype);
   if(!ext||!proofSignatureMatches(file))throw new Error('Isi file bukti tidak sesuai format JPG, PNG, WEBP, atau PDF yang diizinkan.');
   const filename=`proof-${Date.now()}-${crypto.randomUUID()}${ext}`;
-  await fs.promises.writeFile(path.join(PROOF_DIR,filename),file.buffer,{flag:'wx'});
-  return {filename,originalName:file.originalname,mime:file.mimetype,size:file.size};
+  const {buffer,size}=await shrinkIfNeeded(file.buffer,file.mimetype);
+  await fs.promises.writeFile(path.join(PROOF_DIR,filename),buffer,{flag:'wx'});
+  return {filename,originalName:file.originalname,mime:file.mimetype,size};
 }
 async function removeProofFile(filename){
   if(!filename)return;

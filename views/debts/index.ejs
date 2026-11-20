@@ -46,6 +46,12 @@
     <a class="payment-chip <%= scope === 'EXTERNAL' ? 'active' : '' %>" href="<%= qs({ scope: 'EXTERNAL', employee: '', type: '' }) %>"><i class="bi bi-building"></i>Eksternal</a>
   </nav>
 
+  <nav class="payment-filter-chips hp-status-tabs" aria-label="Status catatan">
+    <a class="payment-chip <%= (filters.status==='ACTIVE'||!filters.status) ? 'active' : '' %>" href="<%= qs({ status: '' }) %>"><i class="bi bi-lightning-charge"></i>Aktif</a>
+    <a class="payment-chip <%= filters.status==='PAID' ? 'active' : '' %>" href="<%= qs({ status: 'PAID' }) %>"><i class="bi bi-clock-history"></i>Histori &middot; Lunas</a>
+    <a class="payment-chip <%= filters.status==='ARCHIVED' ? 'active' : '' %>" href="<%= qs({ status: 'ARCHIVED' }) %>"><i class="bi bi-archive"></i>Arsip</a>
+  </nav>
+
   <section class="metric-grid hp-stats" aria-label="Ringkasan">
     <% if (scope === 'INTERNAL') { %>
       <a class="hp-stat tone-orange" href="<%= qs({ type: 'RECEIVABLE' }) %>"><span class="hp-stat-label"><i class="bi bi-person-down"></i>Hutang Teknisi ke Kantor</span><strong><%= rp(I.RECEIVABLE.remaining) %></strong><small><%= I.RECEIVABLE.total %> catatan aktif</small></a>

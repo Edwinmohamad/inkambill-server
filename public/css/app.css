@@ -2613,6 +2613,7 @@ html[data-theme="light"] .bm-revenue-card{background:linear-gradient(150deg,rgba
 .payment-history-head .invoice-registry-tools{flex-wrap:wrap;gap:10px}
 .payment-history-table{min-width:1090px}
 .payment-history-table th,.payment-history-table td{vertical-align:top;white-space:normal;overflow-wrap:anywhere}
+.payment-history-table th.payment-col-number,.payment-history-table td.payment-col-number{white-space:nowrap;overflow-wrap:normal;width:40px;text-align:center}
 .payment-history-table th{font-size:11px;line-height:1.4}
 .payment-history-table td{padding:14px 10px;font-size:13px;line-height:1.45}
 .payment-history-table .cell-main{font-size:13px}

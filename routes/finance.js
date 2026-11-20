@@ -13,6 +13,7 @@ const { audit }=require('../services/auditService');
 const { assertDateOpen, financialAudit }=require('../services/financialControlService');
 const { syncCashTransactionsIntoDraftAutoClosing }=require('../services/closingSyncService');
 const bankReconciliation=require('../services/bankReconciliationService');
+const { shrinkIfNeeded } = require('../services/imageShrink');
 const router=express.Router();
 function validBankDate(value){if(!/^\d{4}-\d{2}-\d{2}$/.test(String(value||'')))return false;const date=new Date(`${value}T00:00:00Z`);return !Number.isNaN(date.getTime())&&date.toISOString().slice(0,10)===value;}
 router.get('/cash/bank-reconciliation',requireAdmin,async(req,res)=>{
@@ -78,7 +79,7 @@ fs.mkdirSync(CASH_PROOF_DIR,{recursive:true});
 function intInRange(value,min,max,fallback){const n=Number(value);return Number.isInteger(n)&&n>=min&&n<=max?n:fallback;}
 function proofExtension(mime){return ({'image/jpeg':'.jpg','image/png':'.png','image/webp':'.webp','application/pdf':'.pdf'})[mime]||'';}
 function proofSignatureMatches(file){const b=file?.buffer;if(!b||b.length<12)return false;if(file.mimetype==='image/jpeg')return b[0]===0xff&&b[1]===0xd8&&b[2]===0xff;if(file.mimetype==='image/png')return b.subarray(0,8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]));if(file.mimetype==='image/webp')return b.subarray(0,4).toString()==='RIFF'&&b.subarray(8,12).toString()==='WEBP';if(file.mimetype==='application/pdf')return b.subarray(0,5).toString()==='%PDF-';return false;}
-async function saveCashProof(file){if(!file)return null;const ext=proofExtension(file.mimetype);if(!ext||!proofSignatureMatches(file))throw new Error('Isi file bukti pengeluaran tidak sesuai format yang diizinkan.');const filename=`cash-${Date.now()}-${crypto.randomUUID()}${ext}`;await fs.promises.writeFile(path.join(CASH_PROOF_DIR,filename),file.buffer,{flag:'wx'});return{filename,originalName:file.originalname,mime:file.mimetype,size:file.size};}
+async function saveCashProof(file){if(!file)return null;const ext=proofExtension(file.mimetype);if(!ext||!proofSignatureMatches(file))throw new Error('Isi file bukti pengeluaran tidak sesuai format yang diizinkan.');const filename=`cash-${Date.now()}-${crypto.randomUUID()}${ext}`;const {buffer,size}=await shrinkIfNeeded(file.buffer,file.mimetype);await fs.promises.writeFile(path.join(CASH_PROOF_DIR,filename),buffer,{flag:'wx'});return{filename,originalName:file.originalname,mime:file.mimetype,size};}
 async function removeCashProof(filename){if(!filename)return;try{await fs.promises.unlink(path.join(CASH_PROOF_DIR,path.basename(filename)));}catch(e){if(e.code!=='ENOENT')console.error('Gagal hapus bukti kas:',e.message);}}
 function cashReturn(body){const month=body.return_month||'',year=body.return_year||'',site=body.return_site||'',q=body.return_q||'',category=body.return_category||'',type=body.return_type||'',method=body.return_method||'';const p=new URLSearchParams();if(month)p.set('month',month);if(year)p.set('year',year);if(site)p.set('site',site);if(q)p.set('q',q);if(category)p.set('category',category);if(type)p.set('type',type);if(method)p.set('method',method);return `/cash${p.toString()?`?${p.toString()}`:''}`;}
 function localReturn(value,fallback='/cash'){const v=String(value||'');return v.startsWith('/')&&!v.startsWith('//')?v:fallback;}

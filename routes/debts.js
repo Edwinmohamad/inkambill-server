@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const db = require('../config/db');
 const { audit } = require('../services/auditService');
 const { financialAudit } = require('../services/financialControlService');
+const { shrinkIfNeeded } = require('../services/imageShrink');
 const { requireAdmin } = require('../middleware/auth');
 
 const router = express.Router();
@@ -101,8 +102,9 @@ async function saveDebtProof(file) {
   const ext = proofExtension(file.mimetype);
   if (!ext || !proofSignatureMatches(file)) throw new Error('Isi file lampiran bukti tidak sesuai format yang diizinkan.');
   const filename = `debt-${Date.now()}-${crypto.randomUUID()}${ext}`;
-  await fs.promises.writeFile(path.join(DEBT_PROOF_DIR, filename), file.buffer, { flag: 'wx' });
-  return { filename, originalName: file.originalname, mime: file.mimetype, size: file.size };
+  const { buffer, size } = await shrinkIfNeeded(file.buffer, file.mimetype);
+  await fs.promises.writeFile(path.join(DEBT_PROOF_DIR, filename), buffer, { flag: 'wx' });
+  return { filename, originalName: file.originalname, mime: file.mimetype, size };
 }
 async function removeDebtProof(filename) {
   if (!filename) return;

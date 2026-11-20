@@ -1,6 +1,7 @@
 const fs=require('fs');
 const path=require('path');
 const crypto=require('crypto');
+const { shrinkIfNeeded }=require('./imageShrink');
 function extFor(mime){return ({'image/jpeg':'.jpg','image/png':'.png','image/webp':'.webp'})[mime]||'';}
 function signatureOk(file){
   const b=file?.buffer;if(!b||b.length<12)return false;
@@ -14,8 +15,9 @@ async function savePhoto(file,dir,prefix){
   const ext=extFor(file.mimetype);if(!ext||!signatureOk(file))throw new Error('Isi file foto tidak sesuai format JPG, PNG, atau WEBP.');
   await fs.promises.mkdir(dir,{recursive:true});
   const filename=`${prefix}-${Date.now()}-${crypto.randomUUID()}${ext}`;
-  await fs.promises.writeFile(path.join(dir,filename),file.buffer,{flag:'wx'});
-  return{filename,originalName:file.originalname,mime:file.mimetype,size:file.size};
+  const {buffer,size}=await shrinkIfNeeded(file.buffer,file.mimetype);
+  await fs.promises.writeFile(path.join(dir,filename),buffer,{flag:'wx'});
+  return{filename,originalName:file.originalname,mime:file.mimetype,size};
 }
 async function removePhoto(dir,filename){if(!filename)return;try{await fs.promises.unlink(path.join(dir,path.basename(filename)));}catch(e){if(e.code!=='ENOENT')console.error('Gagal hapus foto lampiran:',e.message);}}
 function sendPhoto(res,dir,row){
