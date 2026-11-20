@@ -358,5 +358,24 @@
   <script src="/js/app.js?v=<%= assetVersion %>"></script>
   <% if(isMobileApp){ %><script src="/js/mobile-app.js?v=<%= assetVersion %>"></script><% } %>
   <script src="/js/performance.js?v=<%= assetVersion %>" defer></script>
+  <% if(userAccessHiddenPrefixes&&userAccessHiddenPrefixes.length){ %>
+  <script>
+  // v1.35 — "Akses Pengguna": sembunyikan link menu yang tidak dicentang Master Admin untuk akun
+  // ini. Kosmetik saja — penjagaan sesungguhnya ada di server (middleware/userAccess.js); menyembunyikan
+  // link di sini hanya mencegah kebingungan user melihat menu yang nanti ditolak server.
+  (function(){
+    var hide=<%- JSON.stringify(userAccessHiddenPrefixes) %>;
+    document.querySelectorAll('a[href]').forEach(function(a){
+      var href=a.getAttribute('href')||'';
+      if(!href.startsWith('/'))return;
+      var path=href.split('?')[0].split('#')[0];
+      if(hide.some(function(p){return path===p||path.startsWith(p+'/');})){
+        var item=a.closest('.sidebar-nav-group')||a.closest('section.go-menu-group')||a.closest('li')||a;
+        item.style.display='none';
+      }
+    });
+  })();
+  </script>
+  <% } %>
 </body>
 </html>

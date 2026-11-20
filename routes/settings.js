@@ -6,6 +6,7 @@ const crypto=require('crypto');
 const db=require('../config/db');
 const { requireAdmin, requireMasterAdmin, PERMISSIONS, normalizePermissions, normalizeRole, isMasterAdminRole }=require('../middleware/auth');
 const { audit }=require('../services/auditService');
+const { MENU_ITEMS, ACTIONS, TEMPLATES, parseAccess }=require('../services/userAccessService');
 const router=express.Router();
 
 const tabs=new Set(['company','invoice','application','accounts','employees','departments','positions','banks','gateways','roles','reset']);
@@ -33,14 +34,14 @@ router.get('/',async(req,res)=>{
   const tab=tabs.has(req.query.tab)?req.query.tab:'company';
   const [[settings]]=await db.query(`SELECT * FROM settings WHERE id=1`);
   const [sites]=await db.query(`SELECT * FROM sites ORDER BY code`);
-  const [users]=await db.query(`SELECT id,name,username,role,profile_photo,is_active,created_at FROM users ORDER BY is_active DESC,name`);
+  const [users]=await db.query(`SELECT id,name,username,role,profile_photo,is_active,created_at,access_json FROM users ORDER BY is_active DESC,name`);
   const [departments]=await db.query(`SELECT * FROM departments ORDER BY is_active DESC,name`);
   const [positions]=await db.query(`SELECT p.*,d.name department_name FROM positions p LEFT JOIN departments d ON d.id=p.department_id ORDER BY p.is_active DESC,d.name,p.name`);
   const [employees]=await db.query(`SELECT e.*,d.name department_name,p.name position_name,p.category position_category,u.username FROM employees e LEFT JOIN departments d ON d.id=e.department_id LEFT JOIN positions p ON p.id=e.position_id LEFT JOIN users u ON u.id=e.user_id ORDER BY e.is_active DESC,e.name`);
   const [banks]=await db.query(`SELECT * FROM banks ORDER BY is_active DESC,bank_name`);
   const [gateways]=await db.query(`SELECT * FROM payment_gateways ORDER BY FIELD(status,'active','testing','inactive'),name`);
   const [roles]=await db.query(`SELECT * FROM role_permissions ORDER BY role_key`);
-  res.render('settings/index',{title:'Pengaturan',settings,sites,users,departments,positions,employees,banks,gateways,roles,tab,permissionCatalog:PERMISSIONS.map(key=>({key,label:permissionLabels[key]||key}))});
+  res.render('settings/index',{title:'Pengaturan',settings,sites,users,departments,positions,employees,banks,gateways,roles,tab,permissionCatalog:PERMISSIONS.map(key=>({key,label:permissionLabels[key]||key})),accessMenuItems:MENU_ITEMS,accessActions:ACTIONS,accessTemplates:TEMPLATES,parseUserAccess:parseAccess});
 });
 
 router.post('/',requireMasterAdmin,async(req,res)=>{
@@ -214,6 +215,33 @@ router.post('/users/:id/password',requireAdmin,async(req,res)=>{
   const hash=await bcrypt.hash(password,12);await db.execute(`UPDATE users SET password_hash=? WHERE id=?`,[hash,id]);
   await audit({userId:req.session.user.id,action:'update',entityType:'user',entityId:id,description:`Password akun ${rows[0].username} direset`,ip:req.ip});
   req.session.flash={type:'success',message:'Password berhasil direset.'};res.redirect('/settings?tab=accounts');
+});
+
+// v1.35 — "Akses Pengguna": Master Admin mencentang menu/aksi mana yang boleh dibuka tiap akun non
+// Master Admin. access_json NULL berarti akun mengikuti hak akses role seperti sebelumnya (default
+// aman untuk akun yang belum pernah diatur). Dijaga di server oleh middleware/userAccess.js, bukan
+// hanya menyembunyikan menu — jadi mengetik URL menu yang tidak dicentang tetap ditolak.
+router.post('/users/:id/access',requireMasterAdmin,async(req,res)=>{
+  const id=Number(req.params.id);
+  const [rows]=await db.execute(`SELECT id,username,role FROM users WHERE id=? LIMIT 1`,[id]);
+  if(!rows.length){req.session.flash={type:'danger',message:'Akun tidak ditemukan.'};return res.redirect('/settings?tab=accounts');}
+  const target=rows[0];
+  if(isMasterAdminRole(target.role)){req.session.flash={type:'warning',message:'Master Admin selalu memiliki akses penuh dan tidak perlu diatur.'};return res.redirect('/settings?tab=accounts');}
+  const mode=clean(req.body.access_mode);
+  let accessJson=null;
+  if(mode==='custom'){
+    const menuKeys=new Set(MENU_ITEMS.map(m=>m.key));
+    const actionKeys=new Set(ACTIONS.map(a=>a.key));
+    const menus=[].concat(req.body.menus||[]).filter(k=>menuKeys.has(k));
+    const actions=[].concat(req.body.actions||[]).filter(k=>actionKeys.has(k));
+    const template=TEMPLATES[req.body.template]?req.body.template:null;
+    const home=menus.includes(req.body.home)?req.body.home:null;
+    if(!menus.length){req.session.flash={type:'danger',message:'Pilih minimal satu menu untuk akun ini, atau pakai "Ikuti Role Default".'};return res.redirect('/settings?tab=accounts');}
+    accessJson=JSON.stringify({menus,actions,home,template});
+  }
+  await db.execute(`UPDATE users SET access_json=? WHERE id=?`,[accessJson,id]);
+  await audit({userId:req.session.user.id,action:'update',entityType:'user_access',entityId:id,description:`Akses menu akun ${target.username} ${mode==='custom'?'diatur custom':'dikembalikan ke default role'}`,ip:req.ip});
+  req.session.flash={type:'success',message:'Akses menu akun berhasil disimpan.'};res.redirect('/settings?tab=accounts');
 });
 
 // v1.24.4 — "Bersihkan Data Uji Coba": one-click in-app equivalent of BERSIHKAN-DATA-UJICOBA.sql,

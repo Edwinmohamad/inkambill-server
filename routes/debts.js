@@ -6,7 +6,7 @@ const db = require('../config/db');
 const { audit } = require('../services/auditService');
 const { financialAudit } = require('../services/financialControlService');
 const { shrinkIfNeeded } = require('../services/imageShrink');
-const { requireAdmin } = require('../middleware/auth');
+const { requireAdmin, requireMasterAdmin } = require('../middleware/auth');
 
 const router = express.Router();
 const validDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
@@ -450,7 +450,11 @@ router.post('/:id/archive', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/:id/payments/:paymentId/delete', async (req, res, next) => {
+// Membatalkan pembayaran yang sudah tercatat memindahkan sisa hutang/piutang kembali ke "belum
+// lunas" — titik rawan curang (kolektor catat bayar lalu batalkan sendiri untuk kantongi uang
+// tunai sambil pelanggan tetap tampak menunggak). Hanya Master Admin yang boleh membatalkan,
+// sama seperti Hapus Paksa di Data Kas. Histori dan bukti tetap tersimpan (soft-void, lihat di bawah).
+router.post('/:id/payments/:paymentId/delete', requireMasterAdmin, async (req, res, next) => {
   let conn;
   let removedProof = null;
   try {

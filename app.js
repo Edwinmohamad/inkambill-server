@@ -38,12 +38,13 @@ const { scanLowStock } = require('./services/inventoryService');
 const { deliverMobilePushes } = require('./services/mobilePushService');
 const { runCashAgingAlert } = require('./services/cashSettlementService');
 const { purgeOldLogs } = require('./services/logRetentionService');
-const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema, ensureV58Schema, ensureV59Schema, ensureV60Schema, ensureV61Schema, ensureV62Schema, ensureV63Schema, ensureV64Schema, ensureV65Schema, ensureV66Schema } = require('./services/schemaService');
+const { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema, ensureV58Schema, ensureV59Schema, ensureV60Schema, ensureV61Schema, ensureV62Schema, ensureV63Schema, ensureV64Schema, ensureV65Schema, ensureV66Schema, ensureV67Schema } = require('./services/schemaService');
 const { recoverProofOcrOnBoot, runProofOcrSweep } = require('./services/proofOcrService');
 const { requireN8nToken } = require('./middleware/n8n');
 const { initGatewayOnBoot, reconcileGatewayStatus, processQueue, runAutoReminderSweep } = require('./services/whatsappGatewayService');
 const { ensureV56Schema: ensureWaCrmSchema } = require('./services/waCrmSchema');
 const { requireWahaWebhookToken } = require('./middleware/waha');
+const enforceUserAccess = require('./middleware/userAccess');
 
 const app = express();
 const assetVersion = ['public/css/app.css','public/css/debts.css','public/css/nms-wall.css','public/js/nms-wall.js','public/css/mobile-app.css','public/css/monitoring.css','public/js/app.js','public/js/upload-guard.js','public/css/aplus-web.css','public/css/mobile-legibility.css','public/js/payment-proof-review.js','public/js/mobile-app.js','public/js/nms.js','public/js/performance.js','public/js/monitoring.js']
@@ -88,6 +89,7 @@ app.use(session({
   cookie: { httpOnly: true, sameSite: 'lax', secure: process.env.COOKIE_SECURE === 'true', maxAge: 1000*60*60*12 }
 }));
 app.use(loadPermissions);
+app.use(enforceUserAccess);
 app.use(commonLocals);
 // Parse multipart payment-proof forms before CSRF validation so the hidden token is available.
 app.use('/customers/import', (req, res, next) => {
@@ -360,6 +362,7 @@ async function bootstrap() {
   await ensureV64Schema();
   await ensureV65Schema();
   await ensureV66Schema();
+  await ensureV67Schema();
   await require('./services/bankReconciliationService').ensureSchema();
   await ensureWaCrmSchema();
   await recoverProofOcrOnBoot();

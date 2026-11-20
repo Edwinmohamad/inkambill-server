@@ -241,7 +241,7 @@
                   <small>Sisa <%= rp(entry.remainingAfter) %><%= entry.voided ? ` · BATAL: ${entry.voidReason || 'Pembayaran dibatalkan'}` : '' %><%= entry.notes ? ` · ${entry.notes}` : '' %></small>
                   <div class="hp-tl-actions">
                     <% if (entry.hasProof) { %><a href="/debts/<%= row.id %>/payments/<%= entry.id %>/proof" target="_blank" rel="noopener"><i class="bi bi-paperclip"></i>Bukti</a><% } %>
-                    <% if (entry.kind === 'payment' && !entry.voided && row.status !== 'ARCHIVED') { %><form method="post" action="/debts/<%= row.id %>/payments/<%= entry.id %>/delete" onsubmit="const reason=prompt('Alasan pembatalan pembayaran wajib diisi (minimal 5 karakter):');if(!reason||reason.trim().length<5)return false;this.querySelector('[name=reason]').value=reason.trim();return true;"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="reason"><button type="submit" class="danger"><i class="bi bi-trash"></i>Batalkan</button></form><% } %>
+                    <% if (entry.kind === 'payment' && !entry.voided && row.status !== 'ARCHIVED' && isMasterAdmin) { %><form method="post" action="/debts/<%= row.id %>/payments/<%= entry.id %>/delete" onsubmit="const reason=prompt('Alasan pembatalan pembayaran wajib diisi (minimal 5 karakter):');if(!reason||reason.trim().length<5)return false;this.querySelector('[name=reason]').value=reason.trim();return true;"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="reason"><button type="submit" class="danger"><i class="bi bi-trash"></i>Batalkan</button></form><% } %>
                   </div>
                 </div>
               </div>

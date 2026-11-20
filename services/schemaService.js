@@ -1408,4 +1408,11 @@ async function ensureV66Schema() {
     WHERE NOT EXISTS (SELECT 1 FROM cash_categories WHERE code='FINPROUT')`);
 }
 
-module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema, ensureV58Schema, ensureV59Schema, ensureV60Schema, ensureV61Schema, ensureV62Schema, ensureV63Schema, ensureV64Schema, ensureV65Schema, ensureV66Schema };
+async function ensureV67Schema() {
+  // v1.35 — "Akses Pengguna" (menu centang per user). users.access_json menyimpan daftar menu/aksi
+  // yang diizinkan Master Admin per akun (lihat services/userAccessService.js). NULL = ikuti hak
+  // akses role seperti sebelumnya (tidak ada perubahan perilaku untuk akun yang belum diatur).
+  await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS access_json LONGTEXT NULL`);
+}
+
+module.exports = { ensureV14Schema, ensureV15Schema, ensureV16Schema, ensureV17Schema, ensureV18Schema, ensureV19Schema, ensureV20Schema, ensureV21Schema, ensureV22Schema, ensureV23Schema, ensureV24Schema, ensureV25Schema, ensureV26Schema, ensureV27Schema, ensureV29Schema, ensureV30Schema, ensureV31Schema, ensureV32Schema, ensureV33Schema, ensureV34Schema, ensureV35Schema, ensureV36Schema, ensureV37Schema, ensureV38Schema, ensureV39Schema, ensureV40Schema, ensureV41Schema, ensureV42Schema, ensureV43Schema, ensureV44Schema, ensureV45Schema, ensureV46Schema, ensureV47Schema, ensureV48Schema, ensureV49Schema, ensureV50Schema, ensureV51Schema, ensureV52Schema, ensureV53Schema, ensureV54Schema, ensureV55Schema, ensureV56Schema, ensureV57Schema, ensureV58Schema, ensureV59Schema, ensureV60Schema, ensureV61Schema, ensureV62Schema, ensureV63Schema, ensureV64Schema, ensureV65Schema, ensureV66Schema, ensureV67Schema };
