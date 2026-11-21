@@ -12,7 +12,9 @@ concurrency:
 jobs:
   deploy:
     runs-on: [self-hosted, linux, x64]
-    timeout-minutes: 35
+    # Dinaikkan dari 35: backup + rebuild/restart sempat kena auto-cancel GitHub di tengah
+    # jalan padahal masih berjalan normal, bukan macet.
+    timeout-minutes: 60
     steps:
       - name: Update production source
         shell: bash
