@@ -54,6 +54,10 @@ body.inkamnet-go-app{
   font-synthesis:none;
   -webkit-font-smoothing:antialiased;
   -webkit-tap-highlight-color:transparent;
+  /* v2.1: halaman utama (bukan overlay) belum punya overscroll-behavior -- saat scroll mentok di
+     atas/bawah, gesture bisa "nyangkut" sebentar menunggu efek overscroll bawaan WebView selesai.
+     Overlay (menu/modal/sheet) sudah contain; sekarang body/scroll utama ikut contain juga. */
+  overscroll-behavior-y:contain;
 }
 body.inkamnet-go-app,body.inkamnet-go-app *{letter-spacing:0}
 body.inkamnet-go-app :where(h1,h2,h3,h4,h5,h6,button,input,select,textarea){font-family:inherit!important}
@@ -179,6 +183,11 @@ body.inkamnet-go-app .invoice-table tr.invoice-row{
   border-radius:var(--go-radius)!important;
   background:var(--go-card)!important;
   box-shadow:none!important;
+  /* v2.1: daftar tagihan bisa ratusan baris -- contain mengunci dampak layout/paint tiap kartu ke
+     dirinya sendiri, supaya browser tidak perlu mengecek ulang seluruh daftar tiap kali scroll
+     (sumber utama "lemot" di HP RAM 4 GB). Tidak pakai contain-intrinsic-size supaya tinggi kartu
+     tetap akurat sejak awal -- jadi aman, tanpa risiko lompatan tampilan. */
+  contain:layout paint;
 }
 body.inkamnet-go-app .invoice-table tr.invoice-row:not(.has-admin-actions){grid-template-columns:minmax(0,1fr) auto!important}
 body.inkamnet-go-app .invoice-table tr.invoice-row>td{position:static!important;display:block!important;width:auto!important;min-width:0!important;max-width:none!important;padding:0!important;border:0!important;background:transparent!important;text-align:left!important;white-space:normal!important}
@@ -278,7 +287,7 @@ body.inkamnet-go-app .command-period select{min-width:88px;color:var(--go-ink)!i
 body.inkamnet-go-app .command-add{width:44px;height:44px;padding:0!important;font-size:0!important;border-radius:var(--go-radius-sm)!important;background:var(--go-accent)!important;color:var(--go-on-accent)!important;box-shadow:none!important}
 body.inkamnet-go-app .command-add i{font-size:1rem}
 body.inkamnet-go-app .command-kpis{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:9px!important;margin:10px 0!important}
-body.inkamnet-go-app .command-kpi{min-height:100px!important;padding:12px!important;border:1px solid var(--go-line)!important;background:var(--go-card)!important;border-radius:var(--go-radius)!important;box-shadow:none!important}
+body.inkamnet-go-app .command-kpi{min-height:100px!important;padding:12px!important;border:1px solid var(--go-line)!important;background:var(--go-card)!important;border-radius:var(--go-radius)!important;box-shadow:none!important;contain:layout paint}
 body.inkamnet-go-app .command-kpi-icon{width:34px!important;height:34px!important;border-radius:var(--go-radius-sm)!important}
 body.inkamnet-go-app .command-kpi small{font-size:var(--go-type-meta)!important}
 body.inkamnet-go-app .command-kpi strong{font-size:1rem!important;color:var(--go-ink)!important;overflow-wrap:anywhere}
@@ -521,7 +530,7 @@ body.inkamnet-go-app .table-responsive{overflow-x:auto}
 body.inkamnet-go-app table.go-cards{display:block!important;width:100%!important;min-width:0!important;max-width:100%!important;table-layout:auto!important;border:0!important;background:transparent!important;box-shadow:none!important}
 body.inkamnet-go-app table.go-cards>thead{display:none!important}
 body.inkamnet-go-app table.go-cards>tbody{display:grid!important;gap:10px!important;width:100%!important}
-body.inkamnet-go-app table.go-cards>tbody>tr{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;column-gap:12px!important;row-gap:0!important;width:100%!important;min-width:0!important;padding:12px 14px!important;border:1px solid var(--go-line)!important;border-radius:var(--go-radius)!important;background:var(--go-card)!important;box-shadow:none!important}
+body.inkamnet-go-app table.go-cards>tbody>tr{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;column-gap:12px!important;row-gap:0!important;width:100%!important;min-width:0!important;padding:12px 14px!important;border:1px solid var(--go-line)!important;border-radius:var(--go-radius)!important;background:var(--go-card)!important;box-shadow:none!important;contain:layout paint}
 body.inkamnet-go-app table.go-cards>tbody>tr>td{display:block!important;position:static!important;width:auto!important;min-width:0!important;max-width:none!important;height:auto!important;padding:0!important;border:0!important;background:transparent!important;text-align:left!important;white-space:normal!important;overflow-wrap:anywhere;font-size:.8125rem;color:var(--go-ink)}
 body.inkamnet-go-app table.go-cards td[data-go-cell="seq"]{display:none!important}
 body.inkamnet-go-app table.go-cards td[data-go-cell="title"]{grid-column:1;grid-row:1;align-self:center;padding-bottom:8px!important;font-size:.9375rem;font-weight:700}

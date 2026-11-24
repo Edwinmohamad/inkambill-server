@@ -150,6 +150,11 @@ public final class MainActivity extends FragmentActivity {
         settings.setUseWideViewPort(true);
         settings.setUserAgentString(settings.getUserAgentString() + " INKAMNET-GO/" + BuildConfig.VERSION_NAME);
 
+        // v2.1: WebView bawaan menampilkan efek "overscroll glow" biru saat scroll mentok
+        // di atas/bawah -- di beberapa HP RAM kecil efek ini terasa seperti scroll "nyangkut"
+        // sesaat. App-native lain umumnya mematikannya; tidak mengubah perilaku scroll itu sendiri.
+        webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
+
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);
         cookies.setAcceptThirdPartyCookies(webView, false);
