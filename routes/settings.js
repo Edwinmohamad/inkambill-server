@@ -41,7 +41,12 @@ router.get('/',async(req,res)=>{
   const [banks]=await db.query(`SELECT * FROM banks ORDER BY is_active DESC,bank_name`);
   const [gateways]=await db.query(`SELECT * FROM payment_gateways ORDER BY FIELD(status,'active','testing','inactive'),name`);
   const [roles]=await db.query(`SELECT * FROM role_permissions ORDER BY role_key`);
-  res.render('settings/index',{title:'Pengaturan',settings,sites,users,departments,positions,employees,banks,gateways,roles,tab,permissionCatalog:PERMISSIONS.map(key=>({key,label:permissionLabels[key]||key})),accessMenuItems:MENU_ITEMS,accessActions:ACTIONS,accessTemplates:TEMPLATES,parseUserAccess:parseAccess});
+  // v2.1 fix — roleNames sebelumnya hanya dideklarasikan di dalam blok tab==='accounts' di view,
+  // padahal modal "Akses Menu" (di luar blok tab manapun, supaya bisa dibuka dari tab apa saja)
+  // ikut memakainya -> ReferenceError: roleNames is not defined -> 500 di SEMUA tab Pengaturan
+  // begitu ada 1 akun non-Master-Admin. Dihitung sekali di sini supaya tersedia di seluruh view.
+  const roleNames=Object.fromEntries(roles.map(r=>[r.role_key,r.role_name]));
+  res.render('settings/index',{title:'Pengaturan',settings,sites,users,departments,positions,employees,banks,gateways,roles,roleNames,tab,permissionCatalog:PERMISSIONS.map(key=>({key,label:permissionLabels[key]||key})),accessMenuItems:MENU_ITEMS,accessActions:ACTIONS,accessTemplates:TEMPLATES,parseUserAccess:parseAccess});
 });
 
 router.post('/',requireMasterAdmin,async(req,res)=>{
